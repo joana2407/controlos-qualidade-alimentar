@@ -52,3 +52,7 @@
 - [x] Incluir no painel «Hoje» o total de inspeções de quebráveis pendentes por fábrica ou linha selecionada.
 - [x] Testar o cálculo e a apresentação do indicador de pendências de quebráveis no painel principal.
 - [x] Adicionar teste de interface que confirme o cartão «Quebráveis pendentes» e o valor devolvido pelo painel «Hoje».
+- [x] Consolidar o painel de periodicidade e a gestão de pontos de controlo de quebráveis numa única área sem conteúdo duplicado.
+- [x] Validar a navegação, os filtros, as pendências e a edição de pontos na interface consolidada.
+- [x] Adicionar teste de interface do painel único de quebráveis para filtros, pendências, seleção de ponto e edição.
+- [x] Registar validação verificável da navegação para inspeção e do fluxo de edição na interface consolidada.
