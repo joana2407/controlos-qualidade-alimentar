@@ -24,7 +24,7 @@ import {
 } from "@/components/ui/sidebar";
 import { startLogin } from "@/const";
 import { useIsMobile } from "@/hooks/useMobile";
-import { AlertTriangle, BarChart3, BookOpenCheck, Boxes, ClipboardCheck, FileWarning, FlaskConical, KeyRound, LayoutDashboard, ListChecks, LogOut, Magnet, MessageSquareMore, PanelLeft, Settings2, ShieldCheck, TimerReset } from "lucide-react";
+import { AlertTriangle, BarChart3, BookOpenCheck, Boxes, ClipboardCheck, FileWarning, FlaskConical, HelpCircle, KeyRound, LayoutDashboard, ListChecks, LogOut, Magnet, MessageSquareMore, PanelLeft, Settings2, ShieldCheck, TimerReset } from "lucide-react";
 import React, { CSSProperties, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { DashboardLayoutSkeleton } from './DashboardLayoutSkeleton';
@@ -33,6 +33,7 @@ import { Button } from "./ui/button";
 const menuItems = [
   { icon: LayoutDashboard, label: "Hoje", path: "/" },
   { icon: BookOpenCheck, label: "Plataforma", path: "/plataforma" },
+  { icon: HelpCircle, label: "Ajuda", path: "/ajuda" },
   { icon: ClipboardCheck, label: "Controlos", path: "/controlos" },
   { icon: FileWarning, label: "Não conformidades", path: "/nao-conformidades" },
   { icon: BarChart3, label: "Relatórios", path: "/relatorios" },
@@ -75,7 +76,7 @@ export default function DashboardLayout({
     return <DashboardLayoutSkeleton />
   }
 
-  if (location === "/plataforma") return <>{children}</>;
+  if (location === "/plataforma" || location === "/ajuda") return <>{children}</>;
 
   if (!user) {
     return (

@@ -19,4 +19,10 @@ describe("rota da plataforma", () => {
     render(<App />);
     expect(screen.getByText("Qualidade alimentar organizada por ação.")).toBeTruthy();
   });
+
+  it("apresenta a área de ajuda no respetivo caminho", () => {
+    window.history.pushState({}, "", "/ajuda");
+    render(<App />);
+    expect(screen.getByText("Ajuda para executar controlos com consistência.")).toBeTruthy();
+  });
 });

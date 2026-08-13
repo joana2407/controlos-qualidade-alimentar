@@ -106,3 +106,8 @@
 - [x] Adicionar um teste de interação que valide os CTAs e atalhos principais da página «Plataforma» e o acesso pela navegação lateral.
 - [x] Criar um registo verificável que relacione cada bloco da página «Plataforma» com a proposta arquitetural e os respetivos destinos operacionais.
 - [x] Adicionar um teste de navegação que confirme o acesso à página «Plataforma» a partir da sidebar.
+- [x] Criar uma página de ajuda com instruções de preenchimento para BPHF, detetores de metais, controlo sensorial, shelf-life, checklist mensal, caixas de sugestões e quebráveis.
+- [x] Incluir por módulo regras C/NC/N/A, campos obrigatórios, incidências ou alertas automáticos e responsáveis de seguimento.
+- [x] Adicionar atalhos para a ajuda na navegação e em cada módulo de controlo.
+- [x] Testar a apresentação dos guias e as ligações para os módulos operacionais.
+- [x] Detalhar em cada guia as regras de resultado aplicáveis, indicando C/NC/N/A ou C/NC conforme o módulo.

@@ -13,6 +13,7 @@ import QualityDashboard from "./pages/QualityDashboard";
 import Reports from "./pages/Reports";
 import Configuration from "./pages/Configuration";
 import PlatformOverview from "./pages/PlatformOverview";
+import HelpCenter from "./pages/HelpCenter";
 
 function Router() {
   // make sure to consider if you need authentication for certain routes
@@ -20,6 +21,7 @@ function Router() {
     <Switch>
       <Route path={"/"} component={() => <DashboardLayout><QualityDashboard /></DashboardLayout>} />
       <Route path={"/plataforma"} component={() => <DashboardLayout><PlatformOverview /></DashboardLayout>} />
+      <Route path={"/ajuda"} component={() => <DashboardLayout><HelpCenter /></DashboardLayout>} />
       <Route path={"/controlos"} component={() => <DashboardLayout><Controls /></DashboardLayout>} />
       <Route path={"/controlos/:module"} component={() => <DashboardLayout><ModuleControl /></DashboardLayout>} />
       <Route path={"/nao-conformidades"} component={() => <DashboardLayout><Nonconformities /></DashboardLayout>} />
