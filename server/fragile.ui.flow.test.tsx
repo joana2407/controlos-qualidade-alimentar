@@ -71,4 +71,12 @@ describe("fluxo de interface de pontos de controlo de quebráveis", () => {
     fireEvent.click(screen.getByRole("button", { name: /editar proteção acrílica/i }));
     expect(screen.getAllByText("Editar ponto de controlo").length).toBeGreaterThan(0);
   });
+
+  it("mantém o cabeçalho revisto e a descrição operacional sem texto duplicado", () => {
+    render(<FragileOperationsPanel createEntry={{ mutate: vi.fn(), isPending: false }} factoryId="1" />);
+    const title = screen.getByRole("heading", { name: "Quebráveis" });
+    expect(title.closest("header")?.className).toContain("flex");
+    expect(screen.getByText("Filtre a periodicidade, registe inspeções e atualize os pontos de controlo da fábrica selecionada.")).toBeTruthy();
+    expect(screen.queryByText("Pendências, catálogo, edição e registo de inspeções num único painel operacional.")).toBeNull();
+  });
 });

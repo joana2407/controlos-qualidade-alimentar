@@ -65,3 +65,7 @@
 - [x] Validar por teclado a ativação do cartão «Quebráveis pendentes» e o respetivo destino operacional.
 - [x] Validar em ecrã móvel a abertura da sidebar, a presença dos atalhos e a navegação por pelo menos um painel de controlo.
 - [x] Confirmar em ecrã móvel a presença dos sete atalhos dos painéis de controlo e a navegação de um deles.
+- [x] Rever a edição visual recente do painel de quebráveis e remover estilos de flex indevidos introduzidos automaticamente.
+- [x] Aplicar apenas o cabeçalho em flex e os ajustes de texto solicitados, preservando a responsividade do painel.
+- [x] Validar visualmente o painel de quebráveis após a correção da edição.
+- [x] Adicionar validação de interface verificável para confirmar a estrutura visual revista do painel de quebráveis.
