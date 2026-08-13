@@ -2,9 +2,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { correctiveActions, controlEntries, controlTasks, fragileItems, nonconformities } from "../../drizzle/schema";
 import type { TrpcContext } from "../_core/context";
 import { getDb } from "../db";
+import { storagePut } from "../storage";
 import { qualityRouter } from "./quality";
 
 vi.mock("../db", () => ({ getDb: vi.fn() }));
+vi.mock("../storage", () => ({ storagePut: vi.fn() }));
 
 const now = new Date();
 const tasks = [
@@ -31,6 +33,8 @@ const fragile = [
   { id: 2, factoryId: 1, periodicity: "S", location: "Zona Tratamento Térmico", name: "Iluminação Calhas" },
   { id: 3, factoryId: 2, periodicity: "M", location: "Z. PRODUÇÃO", name: "Janelas-Exterior" },
 ];
+const dbUpdates: Record<string, unknown>[] = [];
+const dbInserts: Record<string, unknown>[] = [];
 
 function createContext(): TrpcContext {
   return {
@@ -56,14 +60,17 @@ function mockDatabase() {
         return {
           orderBy: async () => records,
           then: <T>(resolve: (value: unknown[]) => T | PromiseLike<T>) => Promise.resolve(records).then(resolve),
+          where: () => ({ limit: async () => records }),
         };
       },
     }),
+    update: () => ({ set: (values: Record<string, unknown>) => ({ where: async () => { dbUpdates.push(values); return { success: true }; } }) }),
+    insert: () => ({ values: async (values: Record<string, unknown>) => { dbInserts.push(values); return { success: true }; } }),
   };
 }
 
 describe("procedimentos de qualidade por fábrica", () => {
-  beforeEach(() => vi.mocked(getDb).mockResolvedValue(mockDatabase() as any));
+  beforeEach(() => { dbUpdates.length = 0; dbInserts.length = 0; vi.clearAllMocks(); vi.mocked(getDb).mockResolvedValue(mockDatabase() as any); });
 
   it("filtra o painel e as tarefas pela fábrica selecionada", async () => {
     const caller = qualityRouter.createCaller(createContext());
@@ -90,5 +97,22 @@ describe("procedimentos de qualidade por fábrica", () => {
     const factoryTwo = await caller.listFragileItems({ factoryId: 2 });
     expect(factoryOneWeekly.map((item) => item.id)).toEqual([2]);
     expect(factoryTwo.map((item) => item.id)).toEqual([3]);
+  });
+
+  it("atualiza o ponto de quebráveis e guarda a imagem de referência associada", async () => {
+    vi.mocked(storagePut).mockResolvedValue({ key: "fragile-reference/1.png", url: "/manus-storage/fragile-reference/1.png" });
+    const caller = qualityRouter.createCaller(createContext());
+    await caller.updateFragileItem({ id: 1, name: "Portas forno Anelar 1 — revista", location: "Zona Tratamento Térmico", factoryId: 2, periodicity: "S", itemType: "Outro" });
+    await caller.uploadFragileReferenceImage({ itemId: 1, fileName: "porta.png", mimeType: "image/png", dataUrl: "data:image/png;base64,aGVsbG8=" });
+    expect(dbUpdates[0]).toMatchObject({ name: "Portas forno Anelar 1 — revista", factoryId: 2, periodicity: "S" });
+    expect(storagePut).toHaveBeenCalledWith(expect.stringContaining("fragile-reference/1/"), expect.any(Buffer), "image/png");
+    expect(dbUpdates[1]).toMatchObject({ referenceImageKey: "fragile-reference/1.png", referenceImageUrl: "/manus-storage/fragile-reference/1.png", referenceImageName: "porta.png" });
+  });
+
+  it("cria um ponto de quebráveis com fábrica, área e periodicidade", async () => {
+    const caller = qualityRouter.createCaller(createContext());
+    const result = await caller.addFragileItem({ name: "Proteção acrílica da linha", location: "Embalamento primário", factoryId: 3, periodicity: "Q", itemType: "Plástico rígido" });
+    expect(result).toEqual({ success: true });
+    expect(dbInserts[0]).toMatchObject({ name: "Proteção acrílica da linha", location: "Embalamento primário", factoryId: 3, periodicity: "Q", itemType: "Plástico rígido", status: "active", createdBy: "quality-admin" });
   });
 });

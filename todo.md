@@ -35,3 +35,12 @@
 - [x] Validar a interface de quebráveis com os pontos importados, a periodicidade e a fábrica associada.
 - [x] Analisar e integrar os pontos de controlo e as periodicidades do ficheiro de quebráveis da Fábrica 2 (granel).
 - [x] Remover o padrão quadriculado do fundo do layout e validar a legibilidade dos ecrãs principais.
+- [x] Permitir editar o nome, a área e a fábrica de cada ponto de controlo de quebráveis.
+- [x] Permitir adicionar pontos de controlo de quebráveis numa fábrica e área selecionadas.
+- [x] Adicionar imagem de referência opcional aos pontos de controlo, com armazenamento seguro.
+- [x] Mostrar e gerir os pontos de controlo por fábrica e área no módulo de quebráveis.
+- [x] Testar a edição, a criação e a associação de imagens aos pontos de controlo.
+- [x] Adicionar teste automatizado para criar um ponto de controlo com fábrica, área e periodicidade.
+- [x] Validar explicitamente o fluxo de interface de criação, edição e associação de imagem de referência.
+- [x] Executar uma validação ponta a ponta do fluxo de criar, editar e associar imagem a um ponto de controlo de quebráveis.
+- [x] Validar com persistência real a criação, edição e imagem de referência de um ponto de controlo de quebráveis, sem mocks de dados.

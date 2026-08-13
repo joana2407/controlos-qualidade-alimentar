@@ -2,7 +2,7 @@ import { BinaryResultPicker, ResultPicker } from "@/components/quality/QualityUi
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
@@ -10,8 +10,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { MODULES, SENSORY_FIELDS, SUGGESTION_LOCATIONS } from "@/lib/quality";
 import { trpc } from "@/lib/trpc";
-import { AlertTriangle, ArrowLeft, Boxes, CheckCircle2, CircleAlert, ClipboardCheck, Factory, FilePlus2, FlaskConical, Gauge, Lightbulb, PackageSearch, Plus, ShieldCheck } from "lucide-react";
-import { FormEvent, useMemo, useState } from "react";
+import { AlertTriangle, ArrowLeft, Boxes, CheckCircle2, CircleAlert, ClipboardCheck, Factory, FilePlus2, FlaskConical, Gauge, ImagePlus, Lightbulb, MapPin, PackageSearch, Pencil, Plus, ShieldCheck } from "lucide-react";
+import React, { FormEvent, useMemo, useState } from "react";
 import { Link, useRoute } from "wouter";
 import { toast } from "sonner";
 
@@ -93,7 +93,7 @@ function FragileInspection({ createEntry }: any) {
   return <><ModuleHeader label="Quebráveis" description="Inspecione os itens do inventário e associe a ação de contenção quando existir desvio." icon={Boxes} /><div className="flex justify-end"><Dialog open={dialogOpen} onOpenChange={setDialogOpen}><DialogTrigger asChild><Button variant="outline"><Plus className="mr-2 h-4 w-4" />Adicionar ao inventário</Button></DialogTrigger><DialogContent><DialogHeader><DialogTitle>Novo item quebrável</DialogTitle></DialogHeader><form onSubmit={add} className="space-y-4"><div className="space-y-2"><Label>Item</Label><Input required value={name} onChange={(event) => setName(event.target.value)} placeholder="Ex.: Luminária de proteção" /></div><div className="space-y-2"><Label>Localização</Label><Input required value={location} onChange={(event) => setLocation(event.target.value)} placeholder="Ex.: Produção T" /></div><div className="space-y-2"><Label>Tipo</Label><Select value={type} onValueChange={(value) => setType(value as any)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{["Vidro", "Plástico rígido", "Outro"].map((item) => <SelectItem key={item} value={item}>{item}</SelectItem>)}</SelectContent></Select></div><Button className="w-full">Adicionar item</Button></form></DialogContent></Dialog></div><form onSubmit={submitInspection}><Card className="border-0 panel-shadow"><CardContent className="space-y-5 p-6"><div className="grid gap-4 md:grid-cols-2"><div className="space-y-2"><Label>Item do inventário</Label><Select value={itemId} onValueChange={setItemId}><SelectTrigger><SelectValue placeholder="Selecione o item" /></SelectTrigger><SelectContent>{items.data?.map((entry) => <SelectItem key={entry.id} value={String(entry.id)}>{entry.name} — {entry.location}</SelectItem>)}</SelectContent></Select></div><div className="space-y-2"><Label>Estado da inspeção</Label><Select value={state} onValueChange={setState}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{["Íntegro", "Danificado", "Em falta"].map((entry) => <SelectItem key={entry} value={entry}>{entry}</SelectItem>)}</SelectContent></Select></div></div><div className="space-y-2"><Label>Ação de contenção / observações</Label><Textarea value={notes} onChange={(event) => setNotes(event.target.value)} required={state !== "Íntegro"} placeholder="Obrigatório em caso de item danificado ou em falta." /></div><Button className="w-full" size="lg" variant={state === "Íntegro" ? "default" : "destructive"}>Registar inspeção</Button></CardContent></Card></form></>;
 }
 
-function FragileInspectionV2({ createEntry, factoryId }: { createEntry: any; factoryId: string }) {
+function FragileInspectionLegacy({ createEntry, factoryId }: { createEntry: any; factoryId: string }) {
   const [periodicity, setPeriodicity] = useState("all");
   const [area, setArea] = useState("all");
   const [itemId, setItemId] = useState("");
@@ -127,4 +127,89 @@ function FragileInspectionV2({ createEntry, factoryId }: { createEntry: any; fac
     setDialogOpen(false); setName(""); setNewLocation("");
   }
   return <><ModuleHeader label="Quebráveis" description="Selecione a fábrica, a periodicidade e a área para inspecionar os pontos importados dos registos operacionais." icon={Boxes} /><div className="flex flex-col gap-4 rounded-2xl border border-teal-100 bg-teal-50/70 p-5 md:flex-row md:items-end"><div className="flex-1"><p className="font-medium text-teal-950">Pontos de controlo importados</p><p className="mt-1 text-sm text-teal-800">O inventário reflete as áreas e frequências D, S, Q e M dos ficheiros de controlo de quebráveis.</p></div><Badge className="w-fit bg-teal-700 text-white hover:bg-teal-700">{factoryId ? `${inventoryCount} pontos disponíveis` : "Selecione a fábrica"}</Badge><Dialog open={dialogOpen} onOpenChange={setDialogOpen}><DialogTrigger asChild><Button variant="outline"><Plus className="mr-2 h-4 w-4" />Adicionar ponto</Button></DialogTrigger><DialogContent><DialogHeader><DialogTitle>Novo ponto quebrável</DialogTitle></DialogHeader><form onSubmit={add} className="space-y-4"><div className="space-y-2"><Label>Ponto de controlo</Label><Input required value={name} onChange={(event) => setName(event.target.value)} /></div><div className="space-y-2"><Label>Área</Label><Input required value={newLocation} onChange={(event) => setNewLocation(event.target.value)} /></div><div className="grid gap-4 sm:grid-cols-2"><div className="space-y-2"><Label>Periodicidade</Label><Select value={newPeriodicity} onValueChange={(value) => setNewPeriodicity(value as "D" | "S" | "Q" | "M")}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{Object.entries(periodLabel).map(([code, label]) => <SelectItem key={code} value={code}>{code} — {label}</SelectItem>)}</SelectContent></Select></div><div className="space-y-2"><Label>Tipo</Label><Select value={type} onValueChange={(value) => setType(value as typeof type)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{["Vidro", "Plástico rígido", "Outro"].map((itemType) => <SelectItem key={itemType} value={itemType}>{itemType}</SelectItem>)}</SelectContent></Select></div></div><Button className="w-full">Adicionar ponto</Button></form></DialogContent></Dialog></div><form onSubmit={submitInspection} className="space-y-5"><Card className="border-0 panel-shadow"><CardContent className="space-y-5 p-6"><div className="grid gap-4 md:grid-cols-3"><div className="space-y-2"><Label>Periodicidade</Label><Select value={periodicity} onValueChange={(value) => { setPeriodicity(value); setArea("all"); setItemId(""); }}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">Todas as periodicidades</SelectItem>{Object.entries(periodLabel).map(([code, label]) => <SelectItem key={code} value={code}>{code} — {label}</SelectItem>)}</SelectContent></Select></div><div className="space-y-2"><Label>Área</Label><Select value={area} onValueChange={(value) => { setArea(value); setItemId(""); }}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">Todas as áreas</SelectItem>{availableAreas.map((entry) => <SelectItem key={entry} value={entry}>{entry}</SelectItem>)}</SelectContent></Select></div><div className="space-y-2"><Label>Ponto de controlo</Label><Select value={itemId} onValueChange={setItemId}><SelectTrigger><SelectValue placeholder={factoryId ? "Selecione o ponto" : "Selecione a fábrica primeiro"} /></SelectTrigger><SelectContent>{visibleItems.map((entry) => <SelectItem key={entry.id} value={String(entry.id)}>{entry.name} · {entry.periodicity}</SelectItem>)}</SelectContent></Select></div></div>{item && <div className="flex flex-wrap items-center gap-2 rounded-xl border border-slate-100 bg-slate-50 p-4"><Badge variant="outline">{item.itemType}</Badge><Badge className="bg-slate-900 text-white hover:bg-slate-900">{item.periodicity} — {periodLabel[item.periodicity]}</Badge><span className="text-sm text-muted-foreground">{item.location}</span></div>}<div className="space-y-2"><Label>Estado da inspeção</Label><Select value={state} onValueChange={setState}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{["Íntegro", "Danificado", "Em falta"].map((entry) => <SelectItem key={entry} value={entry}>{entry}</SelectItem>)}</SelectContent></Select></div><div className="space-y-2"><Label>Ação de contenção / observações</Label><Textarea value={notes} onChange={(event) => setNotes(event.target.value)} required={state !== "Íntegro"} placeholder="Obrigatório em caso de item danificado ou em falta." /></div><Button className="w-full" size="lg" variant={state === "Íntegro" ? "default" : "destructive"} disabled={!factoryId || !item}>Registar inspeção</Button></CardContent></Card></form></>;
+}
+
+function fileAsDataUrl(file: File) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => reject(new Error("Não foi possível ler a imagem."));
+    reader.readAsDataURL(file);
+  });
+}
+
+export function FragileInspectionV2({ createEntry, factoryId }: { createEntry: any; factoryId: string }) {
+  const metadata = trpc.quality.metadata.useQuery();
+  const utils = trpc.useUtils();
+  const [periodicity, setPeriodicity] = useState("all");
+  const [area, setArea] = useState("all");
+  const [itemId, setItemId] = useState("");
+  const [state, setState] = useState("Íntegro");
+  const [notes, setNotes] = useState("");
+  const [createOpen, setCreateOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
+  const [editing, setEditing] = useState<any>(null);
+  const [name, setName] = useState("");
+  const [location, setLocation] = useState("");
+  const [selectedFactoryId, setSelectedFactoryId] = useState("");
+  const [selectedPeriodicity, setSelectedPeriodicity] = useState<"D" | "S" | "Q" | "M">("M");
+  const [selectedType, setSelectedType] = useState<"Vidro" | "Plástico rígido" | "Outro">("Outro");
+  const factoryInput = useMemo(() => factoryId ? { factoryId: Number(factoryId) } : undefined, [factoryId]);
+  const items = trpc.quality.listFragileItems.useQuery(factoryInput, { enabled: Boolean(factoryId) });
+  const addItem = trpc.quality.addFragileItem.useMutation({ onSuccess: () => { utils.quality.listFragileItems.invalidate(); toast.success("Ponto de controlo criado."); setCreateOpen(false); }, onError: (error) => toast.error(error.message) });
+  const updateItem = trpc.quality.updateFragileItem.useMutation({ onSuccess: () => { utils.quality.listFragileItems.invalidate(); toast.success("Ponto de controlo atualizado."); }, onError: (error) => toast.error(error.message) });
+  const uploadImage = trpc.quality.uploadFragileReferenceImage.useMutation({ onSuccess: () => { utils.quality.listFragileItems.invalidate(); toast.success("Imagem de referência carregada."); }, onError: (error) => toast.error(error.message) });
+  const periodLabel = { D: "Diário", S: "Semanal", Q: "Quinzenal", M: "Mensal" } as const;
+  const factoryItems = items.data ?? [];
+  const availableAreas = Array.from(new Set(factoryItems.map((entry) => entry.location))).sort();
+  const visibleItems = factoryItems.filter((entry) => (periodicity === "all" || entry.periodicity === periodicity) && (area === "all" || entry.location === area));
+  const selectedItem = visibleItems.find((entry) => String(entry.id) === itemId) ?? factoryItems.find((entry) => String(entry.id) === itemId);
+  const factories = metadata.data?.factories ?? [];
+
+  function resetEditor(entry?: any) {
+    setEditing(entry ?? null);
+    setName(entry?.name ?? "");
+    setLocation(entry?.location ?? "");
+    setSelectedFactoryId(String(entry?.factoryId ?? factoryId ?? ""));
+    setSelectedPeriodicity(entry?.periodicity ?? "M");
+    setSelectedType(entry?.itemType ?? "Outro");
+  }
+
+  function openCreate() { resetEditor(); setSelectedFactoryId(factoryId); setCreateOpen(true); }
+  function openEdit(entry: any) { resetEditor(entry); setEditOpen(true); }
+
+  function saveNew(event: FormEvent) {
+    event.preventDefault();
+    if (!selectedFactoryId) return toast.error("Selecione a fábrica do novo ponto.");
+    addItem.mutate({ name, location, factoryId: Number(selectedFactoryId), periodicity: selectedPeriodicity, itemType: selectedType });
+  }
+
+  function saveEdit(event: FormEvent) {
+    event.preventDefault();
+    if (!editing) return;
+    if (!selectedFactoryId) return toast.error("Selecione a fábrica do ponto de controlo.");
+    updateItem.mutate({ id: editing.id, name, location, factoryId: Number(selectedFactoryId), periodicity: selectedPeriodicity, itemType: selectedType }, { onSuccess: () => setEditOpen(false) });
+  }
+
+  async function addReferenceImage(file?: File) {
+    if (!file || !editing) return;
+    if (!file.type.match(/^image\/(jpeg|png|webp)$/)) return toast.error("Use uma imagem JPG, PNG ou WEBP.");
+    if (file.size > 4_500_000) return toast.error("A imagem deve ter no máximo 4,5 MB.");
+    try {
+      const dataUrl = await fileAsDataUrl(file);
+      uploadImage.mutate({ itemId: editing.id, fileName: file.name, mimeType: file.type as "image/jpeg" | "image/png" | "image/webp", dataUrl }, { onSuccess: (result) => setEditing((current: any) => current ? { ...current, referenceImageUrl: result.url, referenceImageName: file.name } : current) });
+    } catch (error) { toast.error(error instanceof Error ? error.message : "Não foi possível carregar a imagem."); }
+  }
+
+  function submitInspection(event: FormEvent) {
+    event.preventDefault();
+    if (!factoryId) return toast.error("Selecione a fábrica antes de registar a inspeção.");
+    if (!selectedItem) return toast.error("Selecione um ponto de controlo.");
+    if (state !== "Íntegro" && !notes.trim()) return toast.error("A ação de contenção é obrigatória em caso de dano ou ausência.");
+    createEntry.mutate({ module: "fragile_items", title: `Quebrável — ${selectedItem.name}`, area: selectedItem.location, result: state === "Íntegro" ? "C" : "NC", notes, payload: { fragileItemId: selectedItem.id, state, containmentAction: notes, periodicity: selectedItem.periodicity, referenceImageUrl: selectedItem.referenceImageUrl }, createNonconformity: state !== "Íntegro", severity: state === "Danificado" ? "high" : "medium" });
+  }
+
+  const pointForm = (onSubmit: (event: FormEvent) => void, submitLabel: string, includeImage = false) => <form onSubmit={onSubmit} className="space-y-4"><div className="space-y-2"><Label>Nome do ponto de controlo</Label><Input required value={name} onChange={(event) => setName(event.target.value)} placeholder="Ex.: Proteção acrílica da fatiadora" /></div><div className="grid gap-4 sm:grid-cols-2"><div className="space-y-2"><Label>Fábrica / linha</Label><Select value={selectedFactoryId} onValueChange={setSelectedFactoryId}><SelectTrigger><SelectValue placeholder="Selecione a fábrica" /></SelectTrigger><SelectContent>{factories.map((factory) => <SelectItem key={factory.id} value={String(factory.id)}>{factory.name}</SelectItem>)}</SelectContent></Select></div><div className="space-y-2"><Label>Área</Label><Input required value={location} onChange={(event) => setLocation(event.target.value)} placeholder="Ex.: Produção T" /></div></div><div className="grid gap-4 sm:grid-cols-2"><div className="space-y-2"><Label>Periodicidade</Label><Select value={selectedPeriodicity} onValueChange={(value) => setSelectedPeriodicity(value as "D" | "S" | "Q" | "M")}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{Object.entries(periodLabel).map(([code, label]) => <SelectItem key={code} value={code}>{code} — {label}</SelectItem>)}</SelectContent></Select></div><div className="space-y-2"><Label>Tipo</Label><Select value={selectedType} onValueChange={(value) => setSelectedType(value as "Vidro" | "Plástico rígido" | "Outro")}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{["Vidro", "Plástico rígido", "Outro"].map((type) => <SelectItem key={type} value={type}>{type}</SelectItem>)}</SelectContent></Select></div></div>{includeImage && <div className="space-y-3 rounded-xl border border-dashed border-teal-200 bg-teal-50/60 p-4"><div className="flex items-center gap-2 text-sm font-medium text-teal-900"><ImagePlus className="h-4 w-4" />Imagem de referência</div>{editing?.referenceImageUrl && <img src={editing.referenceImageUrl} alt={`Referência: ${editing.name}`} className="h-32 w-full rounded-lg border border-teal-100 object-cover" />}<Input type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => addReferenceImage(event.target.files?.[0])} disabled={uploadImage.isPending} /><p className="text-xs text-teal-800">JPG, PNG ou WEBP, até 4,5 MB. A imagem fica associada a este ponto de controlo.</p></div>}<Button className="w-full" disabled={addItem.isPending || updateItem.isPending}>{addItem.isPending || updateItem.isPending ? "A guardar…" : submitLabel}</Button></form>;
+
+  return <><ModuleHeader label="Quebráveis" description="Gira os pontos por fábrica e área, incluindo a periodicidade e a imagem de referência de cada inspeção." icon={Boxes} /><div className="flex flex-col gap-4 rounded-2xl border border-teal-100 bg-teal-50/70 p-5 md:flex-row md:items-end"><div className="flex-1"><p className="font-medium text-teal-950">Catálogo operacional de pontos</p><p className="mt-1 text-sm text-teal-800">Selecione uma fábrica para consultar, criar ou editar os pontos de controlo associados.</p></div><Badge className="w-fit bg-teal-700 text-white hover:bg-teal-700">{factoryId ? `${factoryItems.length} pontos na fábrica` : "Selecione a fábrica"}</Badge><Button variant="outline" onClick={openCreate}><Plus className="mr-2 h-4 w-4" />Adicionar ponto</Button></div><div className="grid gap-5 lg:grid-cols-[1.15fr_.85fr]"><Card className="border-0 panel-shadow"><CardHeader><CardTitle className="flex items-center gap-2"><MapPin className="h-5 w-5 text-teal-700" />Gerir pontos de controlo</CardTitle><CardDescription>Filtre os pontos da fábrica selecionada e edite o respetivo contexto operacional.</CardDescription></CardHeader><CardContent className="space-y-4"><div className="grid gap-3 sm:grid-cols-2"><Select value={periodicity} onValueChange={(value) => { setPeriodicity(value); setArea("all"); setItemId(""); }}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">Todas as periodicidades</SelectItem>{Object.entries(periodLabel).map(([code, label]) => <SelectItem key={code} value={code}>{code} — {label}</SelectItem>)}</SelectContent></Select><Select value={area} onValueChange={(value) => { setArea(value); setItemId(""); }}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">Todas as áreas</SelectItem>{availableAreas.map((entry) => <SelectItem key={entry} value={entry}>{entry}</SelectItem>)}</SelectContent></Select></div>{!factoryId ? <p className="rounded-xl bg-slate-50 p-4 text-sm text-muted-foreground">Selecione a fábrica no topo para listar os pontos de controlo.</p> : <div className="max-h-[420px] space-y-2 overflow-y-auto pr-1">{visibleItems.slice(0, 40).map((entry) => <div key={entry.id} className="flex items-center gap-3 rounded-xl border border-slate-100 bg-white p-3"><div className="h-11 w-11 shrink-0 overflow-hidden rounded-lg bg-teal-50 text-teal-700">{entry.referenceImageUrl ? <img src={entry.referenceImageUrl} alt="" className="h-full w-full object-cover" /> : <ImagePlus className="m-3 h-5 w-5" />}</div><div className="min-w-0 flex-1"><p className="truncate text-sm font-medium">{entry.name}</p><p className="mt-0.5 truncate text-xs text-muted-foreground">{entry.location} · {entry.periodicity} — {periodLabel[entry.periodicity]}</p></div><Button type="button" size="icon" variant="outline" aria-label={`Editar ${entry.name}`} onClick={() => openEdit(entry)}><Pencil className="h-4 w-4" /></Button></div>)}{visibleItems.length > 40 && <p className="px-2 py-1 text-xs text-muted-foreground">Mostram-se os primeiros 40 pontos. Use os filtros para restringir a lista.</p>}{!visibleItems.length && <p className="rounded-xl bg-slate-50 p-4 text-sm text-muted-foreground">Não existem pontos com estes filtros.</p>}</div>}</CardContent></Card><form onSubmit={submitInspection}><Card className="border-0 panel-shadow"><CardHeader><CardTitle>Registar inspeção</CardTitle><CardDescription>O ponto selecionado transporta a fábrica, área e periodicidade para o registo.</CardDescription></CardHeader><CardContent className="space-y-5"><div className="space-y-2"><Label>Ponto de controlo</Label><Select value={itemId} onValueChange={setItemId}><SelectTrigger><SelectValue placeholder={factoryId ? "Selecione o ponto" : "Selecione a fábrica primeiro"} /></SelectTrigger><SelectContent>{visibleItems.map((entry) => <SelectItem key={entry.id} value={String(entry.id)}>{entry.name} · {entry.periodicity}</SelectItem>)}</SelectContent></Select></div>{selectedItem && <div className="space-y-3 rounded-xl border border-teal-100 bg-teal-50/50 p-4">{selectedItem.referenceImageUrl && <img src={selectedItem.referenceImageUrl} alt={`Referência de ${selectedItem.name}`} className="h-32 w-full rounded-lg object-cover" />}<div className="flex flex-wrap gap-2"><Badge variant="outline">{selectedItem.itemType}</Badge><Badge className="bg-slate-900 text-white hover:bg-slate-900">{selectedItem.periodicity} — {periodLabel[selectedItem.periodicity]}</Badge><span className="text-sm text-muted-foreground">{selectedItem.location}</span></div></div>}<div className="space-y-2"><Label>Estado da inspeção</Label><Select value={state} onValueChange={setState}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{["Íntegro", "Danificado", "Em falta"].map((entry) => <SelectItem key={entry} value={entry}>{entry}</SelectItem>)}</SelectContent></Select></div><Notes value={notes} onChange={setNotes} required={state !== "Íntegro"} /><Button className="w-full" size="lg" variant={state === "Íntegro" ? "default" : "destructive"} disabled={!factoryId || !selectedItem}>Registar inspeção</Button></CardContent></Card></form></div><Dialog open={createOpen} onOpenChange={setCreateOpen}><DialogContent><DialogHeader><DialogTitle>Adicionar ponto de controlo</DialogTitle><DialogDescription>Crie um ponto, indicando a fábrica, área, periodicidade e tipo de material.</DialogDescription></DialogHeader>{pointForm(saveNew, "Criar ponto de controlo")}</DialogContent></Dialog><Dialog open={editOpen} onOpenChange={setEditOpen}><DialogContent className="max-h-[90vh] overflow-y-auto"><DialogHeader><DialogTitle>Editar ponto de controlo</DialogTitle><DialogDescription>Atualize os dados operacionais e associe uma imagem de referência opcional.</DialogDescription></DialogHeader>{pointForm(saveEdit, "Guardar alterações", true)}</DialogContent></Dialog></>;
 }

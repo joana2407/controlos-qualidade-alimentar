@@ -389,6 +389,45 @@ export const qualityRouter = router({
     return { success: true };
   }),
 
+  updateFragileItem: protectedProcedure.input(z.object({
+    id: z.number().int(),
+    name: z.string().min(2).max(180),
+    location: z.string().min(2).max(120),
+    factoryId: z.number().int().nullable(),
+    periodicity: z.enum(["D", "S", "Q", "M"]),
+    itemType: z.enum(["Vidro", "Plástico rígido", "Outro"]),
+  })).mutation(async ({ input }) => {
+    const db = await requireDb();
+    const item = (await db.select().from(fragileItems).where(eq(fragileItems.id, input.id)).limit(1))[0];
+    if (!item) throw new TRPCError({ code: "NOT_FOUND", message: "Ponto de controlo não encontrado." });
+    await db.update(fragileItems).set({
+      name: input.name,
+      location: input.location,
+      factoryId: input.factoryId,
+      periodicity: input.periodicity,
+      itemType: input.itemType,
+    }).where(eq(fragileItems.id, input.id));
+    return { success: true };
+  }),
+
+  uploadFragileReferenceImage: protectedProcedure.input(z.object({
+    itemId: z.number().int(),
+    fileName: z.string().min(1).max(255),
+    mimeType: z.enum(["image/jpeg", "image/png", "image/webp"]),
+    dataUrl: z.string().min(20).max(7_000_000),
+  })).mutation(async ({ ctx, input }) => {
+    const db = await requireDb();
+    const item = (await db.select().from(fragileItems).where(eq(fragileItems.id, input.itemId)).limit(1))[0];
+    if (!item) throw new TRPCError({ code: "NOT_FOUND", message: "Ponto de controlo não encontrado." });
+    const base64 = input.dataUrl.split(",")[1];
+    if (!base64) throw new TRPCError({ code: "BAD_REQUEST", message: "Imagem inválida." });
+    const safeName = input.fileName.replace(/[^a-zA-Z0-9._-]/g, "_");
+    const key = `fragile-reference/${ctx.user.id}/${input.itemId}/${Date.now()}-${safeName}`;
+    const { key: referenceImageKey, url: referenceImageUrl } = await storagePut(key, Buffer.from(base64, "base64"), input.mimeType);
+    await db.update(fragileItems).set({ referenceImageKey, referenceImageUrl, referenceImageName: input.fileName }).where(eq(fragileItems.id, input.itemId));
+    return { success: true, url: referenceImageUrl };
+  }),
+
   reports: protectedProcedure.input(z.object({ factoryId: z.number().int().optional() }).optional()).query(async ({ input }) => {
     const db = await requireDb();
     const [entries, tasks, ncs] = await Promise.all([
