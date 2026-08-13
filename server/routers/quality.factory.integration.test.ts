@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { correctiveActions, controlEntries, controlTasks, nonconformities } from "../../drizzle/schema";
+import { correctiveActions, controlEntries, controlTasks, fragileItems, nonconformities } from "../../drizzle/schema";
 import type { TrpcContext } from "../_core/context";
 import { getDb } from "../db";
 import { qualityRouter } from "./quality";
@@ -26,6 +26,11 @@ const actions = [
   { id: 1, factoryId: 1, status: "pending", dueAt: now },
   { id: 2, factoryId: 2, status: "pending", dueAt: now },
 ];
+const fragile = [
+  { id: 1, factoryId: 1, periodicity: "D", location: "Zona Tratamento Térmico", name: "Portas forno Anelar 1" },
+  { id: 2, factoryId: 1, periodicity: "S", location: "Zona Tratamento Térmico", name: "Iluminação Calhas" },
+  { id: 3, factoryId: 2, periodicity: "M", location: "Z. PRODUÇÃO", name: "Janelas-Exterior" },
+];
 
 function createContext(): TrpcContext {
   return {
@@ -41,6 +46,7 @@ function mockDatabase() {
     if (table === controlEntries) return entries;
     if (table === nonconformities) return ncs;
     if (table === correctiveActions) return actions;
+    if (table === fragileItems) return fragile;
     return [];
   };
   return {
@@ -76,5 +82,13 @@ describe("procedimentos de qualidade por fábrica", () => {
     expect(report).toMatchObject({ planCompliance: 50, openNcs: 1, criticalOpen: 1 });
     expect(report.modules.find((module) => module.module === "bphf")).toMatchObject({ total: 1, conformity: 100, nc: 0 });
     expect(report.modules.find((module) => module.module === "metal_detectors")).toMatchObject({ total: 1, conformity: 0, nc: 1 });
+  });
+
+  it("filtra os pontos de quebráveis pela fábrica e pela periodicidade", async () => {
+    const caller = qualityRouter.createCaller(createContext());
+    const factoryOneWeekly = await caller.listFragileItems({ factoryId: 1, periodicity: "S" });
+    const factoryTwo = await caller.listFragileItems({ factoryId: 2 });
+    expect(factoryOneWeekly.map((item) => item.id)).toEqual([2]);
+    expect(factoryTwo.map((item) => item.id)).toEqual([3]);
   });
 });

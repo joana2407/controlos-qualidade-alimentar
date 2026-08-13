@@ -29,3 +29,8 @@
 - [x] Registar uma validação funcional verificável da segmentação por fábrica com dados operacionais de teste controlados.
 - [x] Adicionar testes de integração dos procedimentos de painel, tarefas, NC e relatórios com filtro `factoryId`.
 - [x] Confirmar o documento de validação funcional por fábrica com evidência verificável guardada no projeto.
+- [x] Analisar o ficheiro de controlo de quebráveis e extrair pontos por aba, área e periodicidade D / S / Q / M.
+- [x] Associar os pontos da aba T à Fábrica 1 (Fatiado) e os pontos da aba SG à Fabrica 3 (Sem Gluten).
+- [x] Integrar os pontos e periodicidades extraídos no inventário e no registo operacional de quebráveis.
+- [x] Validar a interface de quebráveis com os pontos importados, a periodicidade e a fábrica associada.
+- [x] Analisar e integrar os pontos de controlo e as periodicidades do ficheiro de quebráveis da Fábrica 2 (granel).

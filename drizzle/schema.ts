@@ -150,8 +150,12 @@ export const fragileItems = mysqlTable("fragile_items", {
   id: int("id").autoincrement().primaryKey(),
   name: varchar("name", { length: 180 }).notNull(),
   location: varchar("location", { length: 120 }).notNull(),
+  factoryId: int("factoryId"),
+  periodicity: mysqlEnum("fragile_periodicity", ["D", "S", "Q", "M"]).default("M").notNull(),
+  sourceSheet: varchar("sourceSheet", { length: 160 }),
+  sortOrder: int("sortOrder").default(100).notNull(),
   itemType: mysqlEnum("fragile_type", ["Vidro", "Plástico rígido", "Outro"]).notNull(),
   status: mysqlEnum("fragile_status", ["active", "inactive"]).default("active").notNull(),
   createdBy: varchar("createdBy", { length: 64 }).notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
-}, (table) => [index("fragile_location_idx").on(table.location)]);
+}, (table) => [index("fragile_location_idx").on(table.location), index("fragile_factory_idx").on(table.factoryId), index("fragile_periodicity_idx").on(table.periodicity)]);

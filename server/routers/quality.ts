@@ -371,18 +371,21 @@ export const qualityRouter = router({
     return { success: true };
   }),
 
-  listFragileItems: protectedProcedure.query(async () => {
+  listFragileItems: protectedProcedure.input(z.object({ factoryId: z.number().int().optional(), periodicity: z.enum(["D", "S", "Q", "M"]).optional() }).optional()).query(async ({ input }) => {
     const db = await requireDb();
-    return db.select().from(fragileItems).orderBy(fragileItems.location, fragileItems.name);
+    const items = await db.select().from(fragileItems).orderBy(fragileItems.location, fragileItems.sortOrder, fragileItems.name);
+    return items.filter((item) => (!input?.factoryId || item.factoryId === input.factoryId) && (!input?.periodicity || item.periodicity === input.periodicity));
   }),
 
   addFragileItem: protectedProcedure.input(z.object({
     name: z.string().min(2).max(180),
     location: z.string().min(2).max(120),
+    factoryId: z.number().int().optional(),
+    periodicity: z.enum(["D", "S", "Q", "M"]).default("M"),
     itemType: z.enum(["Vidro", "Plástico rígido", "Outro"]),
   })).mutation(async ({ ctx, input }) => {
     const db = await requireDb();
-    await db.insert(fragileItems).values({ ...input, status: "active", createdBy: ctx.user.openId });
+    await db.insert(fragileItems).values({ ...input, factoryId: input.factoryId ?? null, status: "active", createdBy: ctx.user.openId });
     return { success: true };
   }),
 
