@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap');
 @import "tw-animate-css";
 
 @custom-variant dark (&:is(.dark *));
@@ -174,4 +175,48 @@
       max-width: 1280px; /* Standard content width */
     }
   }
+}
+@layer base {
+  :root {
+    --background: oklch(0.975 0.006 215);
+    --foreground: oklch(0.23 0.03 240);
+    --card: oklch(1 0 0);
+    --card-foreground: oklch(0.23 0.03 240);
+    --popover: oklch(1 0 0);
+    --popover-foreground: oklch(0.23 0.03 240);
+    --primary: oklch(0.5 0.105 195);
+    --primary-foreground: oklch(0.99 0.005 215);
+    --secondary: oklch(0.94 0.018 195);
+    --secondary-foreground: oklch(0.31 0.07 195);
+    --muted: oklch(0.95 0.008 230);
+    --muted-foreground: oklch(0.51 0.025 240);
+    --accent: oklch(0.93 0.028 195);
+    --accent-foreground: oklch(0.32 0.075 195);
+    --destructive: oklch(0.57 0.21 28);
+    --destructive-foreground: oklch(0.99 0.005 215);
+    --border: oklch(0.89 0.011 225);
+    --input: oklch(0.89 0.011 225);
+    --ring: oklch(0.5 0.105 195);
+    --sidebar: oklch(0.985 0.004 215);
+    --sidebar-foreground: oklch(0.23 0.03 240);
+    --sidebar-primary: oklch(0.5 0.105 195);
+    --sidebar-primary-foreground: oklch(0.99 0.005 215);
+    --sidebar-accent: oklch(0.93 0.028 195);
+    --sidebar-accent-foreground: oklch(0.32 0.075 195);
+    --sidebar-border: oklch(0.89 0.011 225);
+    --sidebar-ring: oklch(0.5 0.105 195);
+    --radius: 0.8rem;
+  }
+  body { font-family: 'DM Sans', sans-serif; }
+}
+
+@layer utilities {
+  .font-mono-ui { font-family: 'IBM Plex Mono', monospace; }
+  .app-grid { background-image: linear-gradient(rgba(13, 83, 98, 0.035) 1px, transparent 1px), linear-gradient(90deg, rgba(13, 83, 98, 0.035) 1px, transparent 1px); background-size: 24px 24px; }
+  .panel-shadow { box-shadow: 0 12px 28px rgba(24, 44, 58, 0.07); }
+  button.bg-primary { background-color: #0a8588 !important; color: #f5fffe !important; }
+  button.bg-primary:hover { background-color: #066b70 !important; }
+  .result-c { background: rgb(209 250 229); border-color: rgb(52 211 153); color: rgb(6 95 70); }
+  .result-nc { background: rgb(254 226 226); border-color: rgb(248 113 113); color: rgb(153 27 27); }
+  .result-na { background: rgb(241 245 249); border-color: rgb(148 163 184); color: rgb(51 65 85); }
 }

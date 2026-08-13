@@ -21,15 +21,18 @@ import {
 } from "@/components/ui/sidebar";
 import { startLogin } from "@/const";
 import { useIsMobile } from "@/hooks/useMobile";
-import { LayoutDashboard, LogOut, PanelLeft, Users } from "lucide-react";
+import { AlertTriangle, BarChart3, ClipboardCheck, FileWarning, LayoutDashboard, LogOut, PanelLeft, Settings2 } from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { DashboardLayoutSkeleton } from './DashboardLayoutSkeleton';
 import { Button } from "./ui/button";
 
 const menuItems = [
-  { icon: LayoutDashboard, label: "Page 1", path: "/" },
-  { icon: Users, label: "Page 2", path: "/some-path" },
+  { icon: LayoutDashboard, label: "Hoje", path: "/" },
+  { icon: ClipboardCheck, label: "Controlos", path: "/controlos" },
+  { icon: FileWarning, label: "Não conformidades", path: "/nao-conformidades" },
+  { icon: BarChart3, label: "Relatórios", path: "/relatorios" },
+  { icon: Settings2, label: "Configuração", path: "/configuracao" },
 ];
 
 const SIDEBAR_WIDTH_KEY = "sidebar-width";
@@ -168,9 +171,10 @@ function DashboardLayoutContent({
               </button>
               {!isCollapsed ? (
                 <div className="flex items-center gap-2 min-w-0">
-                  <span className="font-semibold tracking-tight truncate">
-                    Navigation
-                  </span>
+                  <div className="flex flex-col leading-tight">
+                    <span className="font-semibold tracking-tight truncate">QualiControl</span>
+                    <span className="text-[10px] font-medium uppercase tracking-[0.18em] text-muted-foreground">Segurança alimentar</span>
+                  </div>
                 </div>
               ) : null}
             </div>
@@ -179,7 +183,7 @@ function DashboardLayoutContent({
           <SidebarContent className="gap-0">
             <SidebarMenu className="px-2 py-1">
               {menuItems.map(item => {
-                const isActive = location === item.path;
+                const isActive = item.path === "/controlos" ? location.startsWith("/controlos") : location === item.path;
                 return (
                   <SidebarMenuItem key={item.path}>
                     <SidebarMenuButton
@@ -224,7 +228,7 @@ function DashboardLayoutContent({
                   className="cursor-pointer text-destructive focus:text-destructive"
                 >
                   <LogOut className="mr-2 h-4 w-4" />
-                  <span>Sign out</span>
+                  <span>Terminar sessão</span>
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>

@@ -4,13 +4,24 @@ import NotFound from "@/pages/NotFound";
 import { Route, Switch } from "wouter";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { ThemeProvider } from "./contexts/ThemeContext";
-import Home from "./pages/Home";
+import DashboardLayout from "./components/DashboardLayout";
+import Controls from "./pages/Controls";
+import ModuleControl from "./pages/ModuleControl";
+import Nonconformities from "./pages/Nonconformities";
+import QualityDashboard from "./pages/QualityDashboard";
+import Reports from "./pages/Reports";
+import Configuration from "./pages/Configuration";
 
 function Router() {
   // make sure to consider if you need authentication for certain routes
   return (
     <Switch>
-      <Route path={"/"} component={Home} />
+      <Route path={"/"} component={() => <DashboardLayout><QualityDashboard /></DashboardLayout>} />
+      <Route path={"/controlos"} component={() => <DashboardLayout><Controls /></DashboardLayout>} />
+      <Route path={"/controlos/:module"} component={() => <DashboardLayout><ModuleControl /></DashboardLayout>} />
+      <Route path={"/nao-conformidades"} component={() => <DashboardLayout><Nonconformities /></DashboardLayout>} />
+      <Route path={"/relatorios"} component={() => <DashboardLayout><Reports /></DashboardLayout>} />
+      <Route path={"/configuracao"} component={() => <DashboardLayout><Configuration /></DashboardLayout>} />
       <Route path={"/404"} component={NotFound} />
       {/* Final fallback route */}
       <Route component={NotFound} />

@@ -1,0 +1,1 @@
+ALTER TABLE `nonconformities` ADD `validatedByOpenId` varchar(64);

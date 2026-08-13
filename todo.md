@@ -1,0 +1,22 @@
+# Project TODO
+
+- [x] Definir modelo de dados para áreas, planos, tarefas, respostas, não conformidades, ações e evidências.
+- [x] Implementar painel «Hoje» com tarefas pendentes, atrasadas, NC críticas abertas e execução diária.
+- [x] Implementar módulo BPHF para Embalagem T, Produção T, Embalagem SG e Produção SG, com C / NC / N/A e observações.
+- [x] Implementar módulo de detetores de metais para SG, Tradicional 1, Tradicional 2, Granel e Fábrica II, com alerta crítico automático para NC.
+- [x] Implementar módulo sensorial com parâmetros e pesos fixos, escala de 1 a 5 e cálculo ponderado automático.
+- [x] Implementar módulo de shelf-life com produto, lote, validade, observações diárias, C / NC e conclusão final.
+- [x] Implementar checklist mensal configurável por administrador, com C / NC / N/A e taxa automática de conformidade por área.
+- [x] Implementar verificação de caixas de sugestões nas cinco localizações, incluindo contagem e triagem.
+- [x] Implementar inventário e inspeções de quebráveis com estado e ação de contenção.
+- [x] Implementar gestão transversal de não conformidades, ações corretivas, responsáveis, prazos, evidências e fecho por validador.
+- [x] Implementar relatórios de cumprimento, conformidade, NC abertas e tendências, com exportação de listas.
+- [x] Criar uma interface responsiva de estilo industrial, com elevada legibilidade e navegação operacional.
+- [x] Criar testes Vitest para cálculos sensoriais, taxas de conformidade e regra crítica de detetores de metais.
+- [x] Validar fluxos, erros, responsividade e acessibilidade antes da entrega.
+- [x] Criar entidades persistidas para áreas e planos de controlo, substituindo listas hardcoded no backend e frontend.
+- [x] Impor o fecho de NC por validador real e permitir anexar evidências diretamente a correções e ações corretivas na interface.
+- [x] Adicionar exportação para listas de NC abertas, cumprimento do plano, conformidade por área e tendências.
+- [x] Executar e documentar uma validação explícita de acessibilidade, incluindo foco, labels, contraste e navegação por teclado.
+- [x] Associar o fecho de NC ao utilizador autenticado e preencher automaticamente o validador, sem texto livre.
+- [x] Executar uma validação de acessibilidade verificável nos ecrãs principais e registar resultados concretos por página.
