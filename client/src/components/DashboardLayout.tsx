@@ -20,12 +20,14 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 import { startLogin } from "@/const";
+import { ControlScopeProvider, useControlScope } from "@/contexts/ControlScopeContext";
 import { useIsMobile } from "@/hooks/useMobile";
-import { AlertTriangle, BarChart3, Boxes, ClipboardCheck, FileWarning, FlaskConical, LayoutDashboard, ListChecks, LogOut, Magnet, MessageSquareMore, PanelLeft, Settings2, ShieldCheck, TimerReset } from "lucide-react";
+import { AlertTriangle, BarChart3, Boxes, ClipboardCheck, Factory, FileWarning, FlaskConical, LayoutDashboard, ListChecks, LogOut, Magnet, MessageSquareMore, PanelLeft, Settings2, ShieldCheck, TimerReset } from "lucide-react";
 import React, { CSSProperties, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { DashboardLayoutSkeleton } from './DashboardLayoutSkeleton';
 import { Button } from "./ui/button";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 
 const menuItems = [
   { icon: LayoutDashboard, label: "Hoje", path: "/" },
@@ -101,9 +103,11 @@ export default function DashboardLayout({
         } as CSSProperties
       }
     >
-      <DashboardLayoutContent setSidebarWidth={setSidebarWidth}>
-        {children}
-      </DashboardLayoutContent>
+      <ControlScopeProvider>
+        <DashboardLayoutContent setSidebarWidth={setSidebarWidth}>
+          {children}
+        </DashboardLayoutContent>
+      </ControlScopeProvider>
     </SidebarProvider>
   );
 }
@@ -125,6 +129,8 @@ function DashboardLayoutContent({
   const sidebarRef = useRef<HTMLDivElement>(null);
   const activeMenuItem = [...menuItems, ...controlPanels].find(item => item.path === location);
   const isMobile = useIsMobile();
+  const { factoryId, setFactoryId, factories, selectedFactoryName } = useControlScope();
+  const activeControlPanel = controlPanels.find((item) => item.path === location);
 
   useEffect(() => {
     if (isCollapsed) {
@@ -230,6 +236,18 @@ function DashboardLayoutContent({
                 );
               })}
             </SidebarMenu>
+            {activeControlPanel && <div className="mx-3 mt-3 rounded-xl border border-teal-100 bg-teal-50/70 p-3 group-data-[collapsible=icon]:hidden">
+              <div className="flex items-center gap-2 text-teal-900"><Factory className="h-4 w-4" /><p className="text-xs font-semibold uppercase tracking-[0.12em]">Contexto do painel</p></div>
+              <p className="mt-2 text-sm font-medium text-slate-900">{activeControlPanel.label}</p>
+              <p className="mt-1 text-xs text-teal-800">{selectedFactoryName ? `Filtros aplicados a ${selectedFactoryName}.` : "Selecione a fábrica ou linha para registar e consultar este controlo."}</p>
+              <Select value={factoryId || "none"} onValueChange={(value) => setFactoryId(value === "none" ? "" : value)}>
+                <SelectTrigger className="mt-3 h-9 w-full bg-white text-xs"><SelectValue placeholder="Selecione a fábrica" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Selecionar fábrica / linha</SelectItem>
+                  {factories.map((factory) => <SelectItem key={factory.id} value={String(factory.id)}>{factory.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>}
           </SidebarContent>
 
           <SidebarFooter className="p-3">
