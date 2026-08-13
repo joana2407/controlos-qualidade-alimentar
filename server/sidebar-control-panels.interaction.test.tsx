@@ -10,13 +10,6 @@ const setLocation = vi.fn();
 vi.mock("@/_core/hooks/useAuth", () => ({
   useAuth: () => ({ loading: false, user: { name: "Joana Pina", email: "joana@example.com" }, logout: vi.fn() }),
 }));
-vi.mock("@/lib/trpc", () => ({
-  trpc: {
-    quality: {
-      metadata: { useQuery: () => ({ data: { factories: [{ id: 1, name: "Fábrica 1 (Fatiado)" }, { id: 2, name: "Fábrica 2 (granel)" }] } }) },
-    },
-  },
-}));
 vi.mock("@/hooks/useMobile", () => ({ useIsMobile: () => isMobile }));
 vi.mock("@/const", () => ({ startLogin: vi.fn() }));
 vi.mock("wouter", () => ({ useLocation: () => [currentLocation, setLocation] }));
@@ -40,12 +33,6 @@ describe("atalhos laterais dos painéis de controlo", () => {
     const fragile = screen.getByRole("button", { name: "Quebráveis" });
     expect(fragile.getAttribute("data-active")).toBe("true");
     expect(screen.getByText("Painéis de controlo")).toBeTruthy();
-    expect(screen.getByText("Contexto do painel")).toBeTruthy();
-    expect(screen.getAllByText("Quebráveis").length).toBeGreaterThan(1);
-    fireEvent.click(screen.getByRole("combobox"));
-    fireEvent.click(screen.getByText("Fábrica 2 (granel)"));
-    expect(localStorage.getItem("quality-control-factory-id")).toBe("2");
-    expect(screen.getByText("Filtros aplicados a Fábrica 2 (granel).")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "BPHF" }));
     expect(setLocation).toHaveBeenLastCalledWith("/controlos/bphf");
 

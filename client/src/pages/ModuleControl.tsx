@@ -11,8 +11,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { MODULES, SENSORY_FIELDS, SUGGESTION_LOCATIONS } from "@/lib/quality";
 import { trpc } from "@/lib/trpc";
 import { FragileOperationsPanel } from "@/components/quality/FragileOperationsPanel";
-import { useControlScope } from "@/contexts/ControlScopeContext";
-import { AlertTriangle, ArrowLeft, Boxes, CalendarClock, CheckCircle2, CircleAlert, ClipboardCheck, FilePlus2, FlaskConical, Gauge, ImagePlus, Lightbulb, MapPin, PackageSearch, Pencil, Plus, ShieldCheck } from "lucide-react";
+import { AlertTriangle, ArrowLeft, Boxes, CalendarClock, CheckCircle2, CircleAlert, ClipboardCheck, Factory, FilePlus2, FlaskConical, Gauge, ImagePlus, Lightbulb, MapPin, PackageSearch, Pencil, Plus, ShieldCheck } from "lucide-react";
 import React, { FormEvent, useMemo, useState } from "react";
 import { Link, useRoute } from "wouter";
 import { toast } from "sonner";
@@ -33,7 +32,8 @@ export default function ModuleControl() {
   const metadata = trpc.quality.metadata.useQuery();
   const bphfAreas = metadata.data?.areas.filter((area) => area.group === "bphf").map((area) => area.name) ?? [];
   const metalAreas = metadata.data?.areas.filter((area) => area.group === "metal").map((area) => area.name) ?? [];
-  const { factoryId } = useControlScope();
+  const factories = metadata.data?.factories ?? [];
+  const [factoryId, setFactoryId] = useState("");
   const utils = trpc.useUtils();
   const createEntry = trpc.quality.createEntry.useMutation({ onSuccess: (data) => { utils.quality.dashboard.invalidate(); utils.quality.reports.invalidate(); utils.quality.listNcs.invalidate(); utils.quality.fragilePending.invalidate(); toast[data.critical ? "error" : "success"](data.critical ? "NC crítica criada automaticamente: verifique as não conformidades." : "Controlo registado com sucesso."); }, onError: (error) => toast.error(error.message) });
   if (!config) return <div className="p-8">Módulo não encontrado.</div>;
@@ -43,7 +43,7 @@ export default function ModuleControl() {
     mutateAsync: async (input: any) => { if (!factoryId) { toast.error("Selecione a fábrica ou linha antes de registar o controlo."); throw new Error("Fábrica obrigatória"); } return createEntry.mutateAsync({ ...input, factoryId: Number(factoryId) }); },
   };
   const props = { createEntry: scopedCreateEntry };
-  return <div className="app-grid min-h-full -m-4 p-4 md:-m-6 md:p-6"><section className="mx-auto max-w-5xl space-y-6">{module === "bphf" && <Bphf {...props} areas={bphfAreas} />}{module === "metal_detectors" && <MetalDetectors {...props} areas={metalAreas} />}{module === "sensory" && <Sensory {...props} areas={bphfAreas} />}{module === "shelf_life" && <ShelfLife {...props} areas={bphfAreas} />}{module === "monthly_checklist" && <MonthlyChecklist {...props} />}{module === "suggestion_boxes" && <SuggestionBoxes {...props} />}{module === "fragile_items" && <FragileOperationsPanel {...props} factoryId={factoryId} />}</section></div>;
+  return <div className="app-grid min-h-full -m-4 p-4 md:-m-6 md:p-6"><section className="mx-auto max-w-5xl space-y-6"><Card className="border-0 panel-shadow"><CardContent className="flex flex-col gap-4 p-5 md:flex-row md:items-center"><div className="rounded-xl bg-teal-50 p-3 text-teal-700"><Factory className="h-5 w-5" /></div><div className="min-w-0 flex-1"><Label>Fábrica / linha produtiva</Label><p className="mt-1 text-sm text-muted-foreground">A unidade selecionada será associada ao controlo, a eventuais NC e às ações corretivas.</p></div><Select value={factoryId} onValueChange={setFactoryId}><SelectTrigger className="w-full md:w-72"><SelectValue placeholder="Selecione a fábrica" /></SelectTrigger><SelectContent>{factories.map((factory) => <SelectItem key={factory.id} value={String(factory.id)}>{factory.name}</SelectItem>)}</SelectContent></Select></CardContent></Card>{module === "bphf" && <Bphf {...props} areas={bphfAreas} />}{module === "metal_detectors" && <MetalDetectors {...props} areas={metalAreas} />}{module === "sensory" && <Sensory {...props} areas={bphfAreas} />}{module === "shelf_life" && <ShelfLife {...props} areas={bphfAreas} />}{module === "monthly_checklist" && <MonthlyChecklist {...props} />}{module === "suggestion_boxes" && <SuggestionBoxes {...props} />}{module === "fragile_items" && <FragileOperationsPanel {...props} factoryId={factoryId} />}</section></div>;
 }
 
 function Bphf({ createEntry, areas }: any) {
