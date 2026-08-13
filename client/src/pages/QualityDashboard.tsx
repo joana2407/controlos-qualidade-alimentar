@@ -43,7 +43,8 @@ export default function QualityDashboard() {
         {metricCards.map((metric) => {
           const Icon = metric.icon;
           const tone = { teal: "border-teal-200 bg-teal-50 text-teal-700", amber: "border-amber-200 bg-amber-50 text-amber-700", red: "border-red-200 bg-red-50 text-red-700", emerald: "border-emerald-200 bg-emerald-50 text-emerald-700" }[metric.tone];
-          return <Card key={metric.key} className="border-0 panel-shadow"><CardContent className="flex items-center gap-4 p-5"><div className={`rounded-xl border p-3 ${tone}`}><Icon className="h-5 w-5" /></div><div><p className="text-sm text-muted-foreground">{metric.label}</p>{dashboard.isLoading ? <Skeleton className="mt-2 h-8 w-12" /> : <p className="font-mono-ui mt-1 text-3xl font-semibold">{data?.metrics[metric.key] ?? 0}</p>}</div></CardContent></Card>;
+          const card = <Card className={`border-0 panel-shadow ${metric.key === "fragilePending" ? "transition-all hover:-translate-y-0.5 hover:ring-2 hover:ring-teal-300 focus-within:ring-2 focus-within:ring-teal-500" : ""}`}><CardContent className="flex items-center gap-4 p-5"><div className={`rounded-xl border p-3 ${tone}`}><Icon className="h-5 w-5" /></div><div><p className="text-sm text-muted-foreground">{metric.label}</p>{dashboard.isLoading ? <Skeleton className="mt-2 h-8 w-12" /> : <p className="font-mono-ui mt-1 text-3xl font-semibold">{data?.metrics[metric.key] ?? 0}</p>}{metric.key === "fragilePending" && <p className="mt-1 text-xs font-medium text-teal-700">Abrir painel de controlo →</p>}</div></CardContent></Card>;
+          return metric.key === "fragilePending" ? <Link key={metric.key} href="/controlos/fragile_items" aria-label="Abrir painel de controlo de quebráveis pendentes" className="block rounded-xl focus-visible:outline-none">{card}</Link> : <React.Fragment key={metric.key}>{card}</React.Fragment>;
         })}
       </div>
 

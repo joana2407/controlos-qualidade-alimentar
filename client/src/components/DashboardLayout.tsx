@@ -21,8 +21,8 @@ import {
 } from "@/components/ui/sidebar";
 import { startLogin } from "@/const";
 import { useIsMobile } from "@/hooks/useMobile";
-import { AlertTriangle, BarChart3, ClipboardCheck, FileWarning, LayoutDashboard, LogOut, PanelLeft, Settings2 } from "lucide-react";
-import { CSSProperties, useEffect, useRef, useState } from "react";
+import { AlertTriangle, BarChart3, Boxes, ClipboardCheck, FileWarning, FlaskConical, LayoutDashboard, ListChecks, LogOut, Magnet, MessageSquareMore, PanelLeft, Settings2, ShieldCheck, TimerReset } from "lucide-react";
+import React, { CSSProperties, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { DashboardLayoutSkeleton } from './DashboardLayoutSkeleton';
 import { Button } from "./ui/button";
@@ -33,6 +33,16 @@ const menuItems = [
   { icon: FileWarning, label: "Não conformidades", path: "/nao-conformidades" },
   { icon: BarChart3, label: "Relatórios", path: "/relatorios" },
   { icon: Settings2, label: "Configuração", path: "/configuracao" },
+];
+
+const controlPanels = [
+  { icon: ShieldCheck, label: "BPHF", path: "/controlos/bphf" },
+  { icon: Magnet, label: "Detetores de metais", path: "/controlos/metal_detectors" },
+  { icon: FlaskConical, label: "Controlo sensorial", path: "/controlos/sensory" },
+  { icon: TimerReset, label: "Shelf-life", path: "/controlos/shelf_life" },
+  { icon: ListChecks, label: "Checklist mensal", path: "/controlos/monthly_checklist" },
+  { icon: MessageSquareMore, label: "Caixas de sugestões", path: "/controlos/suggestion_boxes" },
+  { icon: Boxes, label: "Quebráveis", path: "/controlos/fragile_items" },
 ];
 
 const SIDEBAR_WIDTH_KEY = "sidebar-width";
@@ -113,7 +123,7 @@ function DashboardLayoutContent({
   const isCollapsed = state === "collapsed";
   const [isResizing, setIsResizing] = useState(false);
   const sidebarRef = useRef<HTMLDivElement>(null);
-  const activeMenuItem = menuItems.find(item => item.path === location);
+  const activeMenuItem = [...menuItems, ...controlPanels].find(item => item.path === location);
   const isMobile = useIsMobile();
 
   useEffect(() => {
@@ -183,7 +193,7 @@ function DashboardLayoutContent({
           <SidebarContent className="gap-0">
             <SidebarMenu className="px-2 py-1">
               {menuItems.map(item => {
-                const isActive = item.path === "/controlos" ? location.startsWith("/controlos") : location === item.path;
+                const isActive = location === item.path;
                 return (
                   <SidebarMenuItem key={item.path}>
                     <SidebarMenuButton
@@ -195,6 +205,25 @@ function DashboardLayoutContent({
                       <item.icon
                         className={`h-4 w-4 ${isActive ? "text-primary" : ""}`}
                       />
+                      <span>{item.label}</span>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                );
+              })}
+            </SidebarMenu>
+            <div className="px-4 pb-1 pt-4 text-[10px] font-medium uppercase tracking-[0.16em] text-muted-foreground group-data-[collapsible=icon]:hidden">Painéis de controlo</div>
+            <SidebarMenu className="px-2 py-1">
+              {controlPanels.map(item => {
+                const isActive = location === item.path;
+                return (
+                  <SidebarMenuItem key={item.path}>
+                    <SidebarMenuButton
+                      isActive={isActive}
+                      onClick={() => setLocation(item.path)}
+                      tooltip={item.label}
+                      className="h-9 text-sm transition-all font-normal"
+                    >
+                      <item.icon className={`h-4 w-4 ${isActive ? "text-primary" : ""}`} />
                       <span>{item.label}</span>
                     </SidebarMenuButton>
                   </SidebarMenuItem>

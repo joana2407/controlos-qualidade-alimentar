@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import React from "react";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("@/lib/trpc", () => ({
@@ -13,14 +14,24 @@ vi.mock("@/lib/trpc", () => ({
 }));
 
 vi.mock("@/components/quality/QualityUi", () => ({ SeverityBadge: () => <span>Severidade</span>, StatusBadge: () => <span>Estado</span> }));
-vi.mock("wouter", () => ({ Link: ({ children }: { children: React.ReactNode }) => <a href="#">{children}</a> }));
+vi.mock("wouter", () => ({ Link: ({ children, href, ...props }: { children: React.ReactNode; href: string }) => <a href={href} {...props}>{children}</a> }));
 
 import QualityDashboard from "../client/src/pages/QualityDashboard";
 
 describe("painel Hoje — indicador de quebráveis", () => {
-  it("apresenta o cartão de quebráveis pendentes com o total devolvido pelo painel", () => {
+  it("apresenta o cartão de quebráveis pendentes com o total devolvido pelo painel e aceita ativação por teclado", async () => {
+    const user = userEvent.setup();
     render(<QualityDashboard />);
     expect(screen.getByText("Quebráveis pendentes")).toBeTruthy();
     expect(screen.getByText("7")).toBeTruthy();
+    const link = screen.getByRole("link", { name: /abrir painel de controlo de quebráveis pendentes/i });
+    expect(link.getAttribute("href")).toBe("/controlos/fragile_items");
+    link.focus();
+    expect(document.activeElement).toBe(link);
+    expect(link.tabIndex).toBe(0);
+    const onActivate = vi.fn((event: MouseEvent) => event.preventDefault());
+    link.addEventListener("click", onActivate, { once: true });
+    await user.keyboard("{Enter}");
+    expect(onActivate).toHaveBeenCalledTimes(1);
   });
 });

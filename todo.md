@@ -56,3 +56,12 @@
 - [x] Validar a navegação, os filtros, as pendências e a edição de pontos na interface consolidada.
 - [x] Adicionar teste de interface do painel único de quebráveis para filtros, pendências, seleção de ponto e edição.
 - [x] Registar validação verificável da navegação para inspeção e do fluxo de edição na interface consolidada.
+- [x] Tornar o cartão «Quebráveis pendentes» do painel «Hoje» navegável para o painel consolidado de quebráveis.
+- [x] Validar a acessibilidade e a interação por rato e teclado do cartão navegável.
+- [x] Adicionar à navegação lateral atalhos diretos para BPHF, detetores de metais, controlo sensorial, shelf-life, checklist mensal, caixas de sugestões e quebráveis.
+- [x] Validar a hierarquia, os estados ativos e a utilização em ecrãs de produção da navegação lateral alargada.
+- [x] Adicionar teste de interface do cartão «Quebráveis pendentes» para foco por teclado, ativação e destino de navegação.
+- [x] Adicionar teste de interface da navegação lateral para atalhos, estado ativo e comportamento em ecrã móvel.
+- [x] Validar por teclado a ativação do cartão «Quebráveis pendentes» e o respetivo destino operacional.
+- [x] Validar em ecrã móvel a abertura da sidebar, a presença dos atalhos e a navegação por pelo menos um painel de controlo.
+- [x] Confirmar em ecrã móvel a presença dos sete atalhos dos painéis de controlo e a navegação de um deles.
