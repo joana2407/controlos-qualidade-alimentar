@@ -78,7 +78,7 @@ describe("procedimentos de qualidade por fábrica", () => {
     const dashboard = await caller.dashboard({ factoryId: 1 });
     const filteredTasks = await caller.listTasks({ factoryId: 1 });
     expect(dashboard.tasks.map((task) => task.id)).toEqual([1, 2]);
-    expect(dashboard.metrics).toMatchObject({ pending: 1, criticalOpen: 1, completedToday: 3, dailyExecutionRate: 50 });
+    expect(dashboard.metrics).toMatchObject({ pending: 1, criticalOpen: 1, completedToday: 3, fragilePending: 1, dailyExecutionRate: 50 });
     expect(filteredTasks.map((task) => task.id)).toEqual([1, 2]);
   });
 

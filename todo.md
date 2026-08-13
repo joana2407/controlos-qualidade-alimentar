@@ -49,3 +49,6 @@
 - [x] Adicionar um painel de pontos pendentes de inspeção no módulo de quebráveis, com filtros por fábrica e periodicidade.
 - [x] Permitir abrir diretamente o registo de inspeção a partir de cada ponto pendente.
 - [x] Validar os cálculos de pendência e a interface do painel de controlo de quebráveis.
+- [x] Incluir no painel «Hoje» o total de inspeções de quebráveis pendentes por fábrica ou linha selecionada.
+- [x] Testar o cálculo e a apresentação do indicador de pendências de quebráveis no painel principal.
+- [x] Adicionar teste de interface que confirme o cartão «Quebráveis pendentes» e o valor devolvido pelo painel «Hoje».

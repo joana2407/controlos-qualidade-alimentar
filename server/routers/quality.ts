@@ -128,16 +128,18 @@ export const qualityRouter = router({
 
   dashboard: protectedProcedure.input(z.object({ factoryId: z.number().int().optional() }).optional()).query(async ({ input }) => {
     const db = await requireDb();
-    const [tasks, ncs, entries, actions] = await Promise.all([
+    const [tasks, ncs, entries, actions, fragileCatalog] = await Promise.all([
       db.select().from(controlTasks).orderBy(controlTasks.dueAt),
       db.select().from(nonconformities).orderBy(desc(nonconformities.detectedAt)),
       db.select().from(controlEntries).orderBy(desc(controlEntries.completedAt)),
       db.select().from(correctiveActions).orderBy(correctiveActions.dueAt),
+      db.select().from(fragileItems).orderBy(fragileItems.location, fragileItems.sortOrder, fragileItems.name),
     ]);
     const scopedTasks = scopeToFactory(tasks, input?.factoryId);
     const scopedNcs = scopeToFactory(ncs, input?.factoryId);
     const scopedEntries = scopeToFactory(entries, input?.factoryId);
     const scopedActions = scopeToFactory(actions, input?.factoryId);
+    const scopedFragileCatalog = scopeToFactory(fragileCatalog, input?.factoryId);
     const now = new Date();
     const { start, end } = asDateRange(now);
     const pending = scopedTasks.filter((task) => task.status === "pending");
@@ -147,6 +149,13 @@ export const qualityRouter = router({
     const completedTasksToday = todayTasks.filter((task) => task.status === "completed" && task.completedAt && task.completedAt >= start && task.completedAt < end);
     const critical = scopedNcs.filter((nc) => nc.status !== "closed" && nc.severity === "critical");
     const openActions = scopedActions.filter((action) => action.status !== "verified");
+    const lastFragileInspections = new Map<number, Date>();
+    scopedEntries.filter((entry) => entry.module === "fragile_items").forEach((entry) => {
+      const payload = entry.payload;
+      const fragileItemId = payload && typeof payload === "object" && !Array.isArray(payload) ? (payload as { fragileItemId?: unknown }).fragileItemId : null;
+      if (typeof fragileItemId === "number" && !lastFragileInspections.has(fragileItemId)) lastFragileInspections.set(fragileItemId, entry.completedAt);
+    });
+    const fragilePending = scopedFragileCatalog.filter((item) => item.status === "active" && isFragileInspectionPending(item.periodicity, lastFragileInspections.get(item.id), now));
 
     return {
       tasks: scopedTasks.slice(0, 20),
@@ -157,6 +166,7 @@ export const qualityRouter = router({
         overdue: overdue.length,
         criticalOpen: critical.length,
         completedToday: completedToday.length,
+        fragilePending: fragilePending.length,
         dailyExecutionRate: todayTasks.length ? Number(((completedTasksToday.length / todayTasks.length) * 100).toFixed(1)) : 0,
       },
     };

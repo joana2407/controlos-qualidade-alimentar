@@ -5,14 +5,15 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Skeleton } from "@/components/ui/skeleton";
 import { dateFormat, moduleLabel } from "@/lib/quality";
 import { trpc } from "@/lib/trpc";
-import { Activity, AlertTriangle, ArrowRight, CalendarClock, CheckCircle2, ClipboardList, Factory, TimerReset } from "lucide-react";
+import { Activity, AlertTriangle, ArrowRight, Boxes, CalendarClock, CheckCircle2, ClipboardList, Factory, TimerReset } from "lucide-react";
 import { Link } from "wouter";
-import { useMemo, useState } from "react";
+import React, { useMemo, useState } from "react";
 
 const metricCards = [
   { key: "pending", label: "Tarefas pendentes", icon: ClipboardList, tone: "teal" },
   { key: "overdue", label: "Tarefas atrasadas", icon: TimerReset, tone: "amber" },
   { key: "criticalOpen", label: "NC críticas abertas", icon: AlertTriangle, tone: "red" },
+  { key: "fragilePending", label: "Quebráveis pendentes", icon: Boxes, tone: "amber" },
   { key: "completedToday", label: "Concluídas hoje", icon: CheckCircle2, tone: "emerald" },
 ] as const;
 
@@ -38,7 +39,7 @@ export default function QualityDashboard() {
         </div>
       </header>
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
         {metricCards.map((metric) => {
           const Icon = metric.icon;
           const tone = { teal: "border-teal-200 bg-teal-50 text-teal-700", amber: "border-amber-200 bg-amber-50 text-amber-700", red: "border-red-200 bg-red-50 text-red-700", emerald: "border-emerald-200 bg-emerald-50 text-emerald-700" }[metric.tone];
