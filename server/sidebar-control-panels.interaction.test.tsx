@@ -13,6 +13,15 @@ vi.mock("@/_core/hooks/useAuth", () => ({
 vi.mock("@/hooks/useMobile", () => ({ useIsMobile: () => isMobile }));
 vi.mock("@/const", () => ({ startLogin: vi.fn() }));
 vi.mock("wouter", () => ({ useLocation: () => [currentLocation, setLocation] }));
+vi.mock("@/lib/trpc", () => ({
+  trpc: {
+    useUtils: () => ({ quality: { accessStatus: { invalidate: vi.fn() } } }),
+    quality: {
+      accessStatus: { useQuery: () => ({ isLoading: false, data: { activeProfile: { id: 3, name: "Joana Pina", title: "Resp. Qualidade", role: "manager" }, canManage: true, profiles: [], canBootstrap: false, needsInitialSetup: false } }) },
+      deactivatePinProfile: { useMutation: () => ({ mutate: vi.fn() }) },
+    },
+  },
+}));
 
 import DashboardLayout from "../client/src/components/DashboardLayout";
 

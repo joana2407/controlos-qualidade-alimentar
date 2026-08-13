@@ -15,13 +15,13 @@ const tasks = [
   { id: 3, factoryId: 2, status: "completed", dueAt: now, completedAt: now, module: "bphf", area: "Granel", title: "BPHF F2", responsible: "Bruno" },
 ];
 const entries = [
-  { id: 1, factoryId: 1, module: "bphf", area: "Produção T", result: "C", completedAt: now },
+  { id: 1, factoryId: 1, module: "bphf", area: "Produção T", result: "C", completedAt: now, registeredByProfileId: 3, registeredByName: "Joana Pina", registeredByTitle: "Resp. Qualidade" },
   { id: 2, factoryId: 1, module: "metal_detectors", area: "Tradicional 1", result: "NC", completedAt: now },
   { id: 3, factoryId: 2, module: "bphf", area: "Granel", result: "C", completedAt: now },
   { id: 4, factoryId: 1, module: "fragile_items", area: "Zona Tratamento Térmico", result: "C", completedAt: now, payload: { fragileItemId: 1 } },
 ];
 const ncs = [
-  { id: 1, factoryId: 1, status: "open", severity: "critical", module: "metal_detectors", area: "Tradicional 1", title: "NC F1", detectedAt: now },
+  { id: 1, factoryId: 1, status: "open", severity: "critical", module: "metal_detectors", area: "Tradicional 1", title: "NC F1", detectedAt: now, reportedByProfileId: 1, reportedByName: "Sabrina Esteves", reportedByTitle: "Tec. Qualidade" },
   { id: 2, factoryId: 1, status: "closed", severity: "medium", module: "bphf", area: "Produção T", title: "NC fechada F1", detectedAt: now },
   { id: 3, factoryId: 2, status: "open", severity: "high", module: "bphf", area: "Granel", title: "NC F2", detectedAt: now },
 ];
@@ -42,9 +42,10 @@ const fragile = [
 const dbUpdates: Record<string, unknown>[] = [];
 const dbInserts: Record<string, unknown>[] = [];
 
-function createContext(): TrpcContext {
+function createContext(operatorProfile: TrpcContext["operatorProfile"] = { id: 3, name: "Joana Pina", title: "Resp. Qualidade", role: "manager" }): TrpcContext {
   return {
     user: { id: 1, openId: "quality-admin", name: "Ana", email: "ana@example.com", loginMethod: "manus", role: "admin", createdAt: now, updatedAt: now, lastSignedIn: now },
+    operatorProfile,
     req: {} as TrpcContext["req"],
     res: {} as TrpcContext["res"],
   };
@@ -96,6 +97,7 @@ describe("procedimentos de qualidade por fábrica", () => {
     expect(report).toMatchObject({ planCompliance: 50, openNcs: 1, criticalOpen: 1 });
     expect(report.modules.find((module) => module.module === "bphf")).toMatchObject({ total: 1, conformity: 100, nc: 0 });
     expect(report.modules.find((module) => module.module === "metal_detectors")).toMatchObject({ total: 1, conformity: 0, nc: 1 });
+    expect(report.recentEntries[0]).toMatchObject({ registeredByName: "Joana Pina", registeredByTitle: "Resp. Qualidade" });
   });
 
   it("gera uma incidência shelf-life e apresenta o relatório diário por fábrica", async () => {
@@ -111,12 +113,29 @@ describe("procedimentos de qualidade por fábrica", () => {
       severity: "medium",
       factoryId: 2,
     });
-    expect(dbInserts[1]).toMatchObject({ module: "shelf_life", title: "Incidência shelf-life — Pão de forma", factoryId: 2, status: "open", severity: "medium" });
+    expect(dbInserts[0]).toMatchObject({ module: "shelf_life", registeredByProfileId: 3, registeredByName: "Joana Pina", registeredByTitle: "Resp. Qualidade" });
+    expect(dbInserts[1]).toMatchObject({ module: "shelf_life", title: "Incidência shelf-life — Pão de forma", factoryId: 2, status: "open", severity: "medium", reportedByProfileId: 3, reportedByName: "Joana Pina" });
 
     const daily = await caller.dailyIncidences({ date: now, factoryId: 1 });
     expect(daily.total).toBe(2);
     expect(daily.byFactory).toEqual([{ factoryName: "Fábrica 1 (Fatiado)", total: 2 }]);
     expect(daily.incidences.map((incidence) => incidence.id)).toEqual([1, 2]);
+  });
+
+  it("exige um perfil PIN ativo para registar controlos e reserva as tarefas à Responsável", async () => {
+    const noOperator = qualityRouter.createCaller(createContext(null));
+    await expect(noOperator.createEntry({ module: "bphf", title: "Verificação BPHF", area: "Produção", result: "C" })).rejects.toMatchObject({ code: "FORBIDDEN" });
+
+    const technician = qualityRouter.createCaller(createContext({ id: 1, name: "Sabrina Esteves", title: "Tec. Qualidade", role: "technician" }));
+    await expect(technician.createTask({ title: "Tarefa pontual", module: "bphf", area: "Produção", factoryId: 1, dueAt: now, responsible: "Sabrina Esteves" })).rejects.toMatchObject({ code: "FORBIDDEN" });
+    await expect(technician.addArea({ name: "Área reservada", module: "bphf", factoryId: 1 })).rejects.toMatchObject({ code: "FORBIDDEN" });
+  });
+
+  it("guarda o perfil que concluiu a tarefa e cria o respetivo registo de controlo", async () => {
+    const caller = qualityRouter.createCaller(createContext({ id: 2, name: "Neuza Antunes", title: "Tec. Qualidade", role: "technician" }));
+    await caller.completeTask({ id: 2, result: "C" });
+    expect(dbUpdates[0]).toMatchObject({ status: "completed", completedByProfileId: 2, completedByName: "Neuza Antunes", completedByTitle: "Tec. Qualidade" });
+    expect(dbInserts[0]).toMatchObject({ registeredByProfileId: 2, registeredByName: "Neuza Antunes", registeredByTitle: "Tec. Qualidade" });
   });
 
   it("filtra os pontos de quebráveis pela fábrica e pela periodicidade", async () => {

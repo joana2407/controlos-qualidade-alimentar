@@ -78,3 +78,21 @@
 - [x] Gerar automaticamente uma incidência do dia quando shelf-life for NC.
 - [x] Criar relatório diário de incidências por fábrica ou linha, com filtro de data e exportação.
 - [x] Testar a criação de incidências shelf-life e o relatório diário segmentado por fábrica ou linha.
+- [x] Criar perfis de acesso por PIN para Sabrina Esteves e Neuza Antunes como Técnicas de Qualidade e Joana Pina como Responsável de Qualidade.
+- [x] Guardar PINs de forma protegida, sem armazenamento em texto simples, e permitir a sua gestão apenas à Responsável de Qualidade.
+- [x] Restringir Configuração e criação de tarefas pontuais ao perfil Responsável de Qualidade.
+- [x] Criar uma experiência de entrada por PIN com identificação clara do perfil ativo.
+- [x] Permitir à Responsável de Qualidade criar tarefas por fábrica ou linha e por data específica.
+- [x] Testar a validação do PIN, as permissões de configuração e a criação de tarefas por fábrica e data.
+- [x] Integrar a seleção de fábrica ou linha no cabeçalho colorido de cada painel de controlo, no mesmo padrão visual do painel «Hoje».
+- [x] Aplicar a fábrica ou linha selecionada no cabeçalho aos registos e às áreas disponíveis em cada módulo de controlo.
+- [x] Validar a persistência visual e funcional da seleção de fábrica ou linha nos painéis de controlo.
+- [x] Guardar o perfil operacional ativo que registou cada controlo, tarefa concluída e incidência criada.
+- [x] Apresentar o nome e a função de quem registou os controlos nas listas operacionais e relatórios.
+- [x] Testar a autoria registada com os acessos PIN e a respetiva apresentação na interface.
+- [x] Persistir a seleção de fábrica ou linha dos painéis de controlo entre navegações e sessões, com teste verificável.
+- [x] Guardar o perfil que conclui cada tarefa, além da autoria do registo e da incidência gerada.
+- [x] Mostrar quem registou ou concluiu o controlo nas listas operacionais relevantes.
+- [x] Adicionar teste de interface para validar a apresentação de nome e função do perfil PIN nas listas operacionais e relatórios.
+- [x] Adicionar teste de interface da lista de tarefas para validar quem concluiu cada tarefa.
+- [x] Adicionar teste de interface dos relatórios para validar autoria em registos recentes e incidências diárias.

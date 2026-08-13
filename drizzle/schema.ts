@@ -30,6 +30,29 @@ export const resultValues = ["C", "NC", "N/A"] as const;
 
 const qualityModule = mysqlEnum("quality_module", qualityModuleValues);
 const controlResult = mysqlEnum("control_result", resultValues);
+const qualityProfileRole = mysqlEnum("quality_profile_role", ["technician", "manager"]);
+
+export const qualityPinProfiles = mysqlTable("quality_pin_profiles", {
+  id: int("id").autoincrement().primaryKey(),
+  code: varchar("code", { length: 48 }).notNull().unique(),
+  name: varchar("name", { length: 160 }).notNull().unique(),
+  title: varchar("title", { length: 160 }).notNull(),
+  role: qualityProfileRole.notNull(),
+  pinHash: varchar("pinHash", { length: 512 }),
+  active: mysqlEnum("quality_profile_active", ["true", "false"]).default("true").notNull(),
+  createdBy: varchar("createdBy", { length: 64 }).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, (table) => [index("quality_profile_role_idx").on(table.role)]);
+
+export const qualityPinSessions = mysqlTable("quality_pin_sessions", {
+  id: int("id").autoincrement().primaryKey(),
+  profileId: int("profileId").notNull(),
+  tokenHash: varchar("tokenHash", { length: 128 }).notNull().unique(),
+  oauthOpenId: varchar("oauthOpenId", { length: 64 }).notNull(),
+  expiresAt: timestamp("expiresAt").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (table) => [index("quality_session_profile_idx").on(table.profileId), index("quality_session_expiry_idx").on(table.expiresAt)]);
 
 export const areas = mysqlTable("areas", {
   id: int("id").autoincrement().primaryKey(),
@@ -73,9 +96,12 @@ export const controlTasks = mysqlTable("control_tasks", {
   responsible: varchar("responsible", { length: 120 }).notNull(),
   status: mysqlEnum("task_status", ["pending", "completed", "cancelled"]).default("pending").notNull(),
   completedAt: timestamp("completedAt"),
+  completedByProfileId: int("completedByProfileId"),
+  completedByName: varchar("completedByName", { length: 160 }),
+  completedByTitle: varchar("completedByTitle", { length: 160 }),
   createdBy: varchar("createdBy", { length: 64 }).notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
-}, (table) => [index("task_due_idx").on(table.dueAt), index("task_module_idx").on(table.module), index("task_factory_idx").on(table.factoryId)]);
+}, (table) => [index("task_due_idx").on(table.dueAt), index("task_module_idx").on(table.module), index("task_factory_idx").on(table.factoryId), index("task_operator_idx").on(table.completedByProfileId)]);
 
 export const controlEntries = mysqlTable("control_entries", {
   id: int("id").autoincrement().primaryKey(),
@@ -86,10 +112,13 @@ export const controlEntries = mysqlTable("control_entries", {
   result: controlResult,
   notes: text("notes"),
   payload: json("payload").$type<Record<string, unknown>>().notNull(),
+  registeredByProfileId: int("registeredByProfileId"),
+  registeredByName: varchar("registeredByName", { length: 160 }),
+  registeredByTitle: varchar("registeredByTitle", { length: 160 }),
   completedAt: timestamp("completedAt").defaultNow().notNull(),
   createdBy: varchar("createdBy", { length: 64 }).notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
-}, (table) => [index("entry_module_idx").on(table.module), index("entry_area_idx").on(table.area), index("entry_completed_idx").on(table.completedAt), index("entry_factory_idx").on(table.factoryId)]);
+}, (table) => [index("entry_module_idx").on(table.module), index("entry_area_idx").on(table.area), index("entry_completed_idx").on(table.completedAt), index("entry_factory_idx").on(table.factoryId), index("entry_operator_idx").on(table.registeredByProfileId)]);
 
 export const nonconformities = mysqlTable("nonconformities", {
   id: int("id").autoincrement().primaryKey(),
@@ -106,9 +135,12 @@ export const nonconformities = mysqlTable("nonconformities", {
   closedAt: timestamp("closedAt"),
   validatedBy: varchar("validatedBy", { length: 120 }),
   validatedByOpenId: varchar("validatedByOpenId", { length: 64 }),
+  reportedByProfileId: int("reportedByProfileId"),
+  reportedByName: varchar("reportedByName", { length: 160 }),
+  reportedByTitle: varchar("reportedByTitle", { length: 160 }),
   createdBy: varchar("createdBy", { length: 64 }).notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
-}, (table) => [index("nc_status_idx").on(table.status), index("nc_severity_idx").on(table.severity), index("nc_factory_idx").on(table.factoryId)]);
+}, (table) => [index("nc_status_idx").on(table.status), index("nc_severity_idx").on(table.severity), index("nc_factory_idx").on(table.factoryId), index("nc_reporter_idx").on(table.reportedByProfileId)]);
 
 export const correctiveActions = mysqlTable("corrective_actions", {
   id: int("id").autoincrement().primaryKey(),

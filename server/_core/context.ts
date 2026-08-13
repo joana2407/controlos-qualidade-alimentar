@@ -1,17 +1,30 @@
 import type { CreateExpressContextOptions } from "@trpc/server/adapters/express";
-import type { User } from "../../drizzle/schema";
+import { and, eq, gt } from "drizzle-orm";
+import { parse as parseCookie } from "cookie";
+import { qualityPinProfiles, qualityPinSessions, type User } from "../../drizzle/schema";
+import { getDb } from "../db";
+import { hashSessionToken, QUALITY_OPERATOR_COOKIE } from "../team-access";
 import { sdk } from "./sdk";
+
+export type QualityOperator = {
+  id: number;
+  name: string;
+  title: string;
+  role: "technician" | "manager";
+};
 
 export type TrpcContext = {
   req: CreateExpressContextOptions["req"];
   res: CreateExpressContextOptions["res"];
   user: User | null;
+  operatorProfile: QualityOperator | null;
 };
 
 export async function createContext(
   opts: CreateExpressContextOptions
 ): Promise<TrpcContext> {
   let user: User | null = null;
+  let operatorProfile: QualityOperator | null = null;
 
   try {
     user = await sdk.authenticateRequest(opts.req);
@@ -20,9 +33,30 @@ export async function createContext(
     user = null;
   }
 
+  if (user) {
+    try {
+      const token = parseCookie(opts.req.headers.cookie ?? "")[QUALITY_OPERATOR_COOKIE];
+      const db = await getDb();
+      if (token && db) {
+        const session = (await db.select().from(qualityPinSessions).where(and(
+          eq(qualityPinSessions.tokenHash, hashSessionToken(token)),
+          eq(qualityPinSessions.oauthOpenId, user.openId),
+          gt(qualityPinSessions.expiresAt, new Date()),
+        )).limit(1))[0];
+        if (session) {
+          const profile = (await db.select().from(qualityPinProfiles).where(eq(qualityPinProfiles.id, session.profileId)).limit(1))[0];
+          if (profile?.active === "true") operatorProfile = { id: profile.id, name: profile.name, title: profile.title, role: profile.role };
+        }
+      }
+    } catch (error) {
+      operatorProfile = null;
+    }
+  }
+
   return {
     req: opts.req,
     res: opts.res,
     user,
+    operatorProfile,
   };
 }

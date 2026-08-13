@@ -12,6 +12,8 @@ import {
   evidences,
   fragileItems,
   nonconformities,
+  qualityPinProfiles,
+  qualityPinSessions,
   qualityModuleValues,
   resultValues,
 } from "../../drizzle/schema";
@@ -19,7 +21,9 @@ import { getDb } from "../db";
 import { calculateConformityRate, calculateSensoryScore, isFragileInspectionPending, shouldCreateCriticalMetalAlert } from "../quality.logic";
 import { calculatePlanCompliance, countOpenNonconformities, scopeToFactory } from "../factory.scope.logic";
 import { storagePut } from "../storage";
-import { protectedProcedure, router } from "../_core/trpc";
+import { createSessionToken, hashPin, hashSessionToken, QUALITY_OPERATOR_COOKIE, QUALITY_SESSION_HOURS, QUALITY_TEAM_DEFAULTS, validatePin, verifyPin } from "../team-access";
+import { getSessionCookieOptions } from "../_core/cookies";
+import { protectedProcedure, qualityManagerProcedure, qualityOperatorProcedure, router } from "../_core/trpc";
 
 const qualityModuleSchema = z.enum(qualityModuleValues);
 const resultSchema = z.enum(resultValues);
@@ -40,13 +44,62 @@ async function requireDb() {
   return db;
 }
 
-function requireAdmin(role: string) {
-  if (role !== "admin") {
-    throw new TRPCError({ code: "FORBIDDEN", message: "Apenas administradores podem alterar a checklist mensal." });
-  }
-}
-
 export const qualityRouter = router({
+  accessStatus: protectedProcedure.query(async ({ ctx }) => {
+    const db = await requireDb();
+    const existing = await db.select().from(qualityPinProfiles).orderBy(qualityPinProfiles.id);
+    const existingCodes = new Set(existing.map((profile) => profile.code));
+    const missing = QUALITY_TEAM_DEFAULTS.filter((profile) => !existingCodes.has(profile.code));
+    if (missing.length) {
+      await db.insert(qualityPinProfiles).values(missing.map((profile) => ({ ...profile, active: "true" as const, pinHash: null, createdBy: ctx.user.openId })));
+    }
+    const profiles = missing.length ? await db.select().from(qualityPinProfiles).orderBy(qualityPinProfiles.id) : existing;
+    const managerProfile = profiles.find((profile) => profile.role === "manager");
+    return {
+      profiles: profiles.map((profile) => ({ id: profile.id, code: profile.code, name: profile.name, title: profile.title, role: profile.role, isConfigured: Boolean(profile.pinHash), active: profile.active === "true" })),
+      activeProfile: ctx.operatorProfile,
+      canManage: ctx.operatorProfile?.role === "manager",
+      canBootstrap: ctx.user.role === "admin" && !managerProfile?.pinHash,
+      needsInitialSetup: !profiles.every((profile) => Boolean(profile.pinHash)),
+    };
+  }),
+
+  configureTeamPins: protectedProcedure.input(z.object({
+    pins: z.array(z.object({ code: z.string().min(3).max(48), pin: z.string().regex(/^\d{4,8}$/) })).min(1).max(3),
+  })).mutation(async ({ ctx, input }) => {
+    const db = await requireDb();
+    const profiles = await db.select().from(qualityPinProfiles);
+    const managerConfigured = profiles.some((profile) => profile.role === "manager" && Boolean(profile.pinHash));
+    if (ctx.operatorProfile?.role !== "manager" && !(ctx.user.role === "admin" && !managerConfigured)) {
+      throw new TRPCError({ code: "FORBIDDEN", message: "Apenas a Responsável de Qualidade pode definir PINs." });
+    }
+    for (const { code, pin } of input.pins) {
+      if (!validatePin(pin)) throw new TRPCError({ code: "BAD_REQUEST", message: "Cada PIN deve ter entre 4 e 8 algarismos." });
+      const profile = profiles.find((item) => item.code === code);
+      if (!profile) throw new TRPCError({ code: "NOT_FOUND", message: "Perfil de equipa não encontrado." });
+      await db.update(qualityPinProfiles).set({ pinHash: hashPin(pin) }).where(eq(qualityPinProfiles.id, profile.id));
+    }
+    return { success: true };
+  }),
+
+  activatePinProfile: protectedProcedure.input(z.object({ profileId: z.number().int(), pin: z.string().regex(/^\d{4,8}$/) })).mutation(async ({ ctx, input }) => {
+    const db = await requireDb();
+    const profile = (await db.select().from(qualityPinProfiles).where(eq(qualityPinProfiles.id, input.profileId)).limit(1))[0];
+    if (!profile || profile.active !== "true" || !verifyPin(input.pin, profile.pinHash)) {
+      throw new TRPCError({ code: "UNAUTHORIZED", message: "PIN inválido ou perfil indisponível." });
+    }
+    const token = createSessionToken();
+    const expiresAt = new Date(Date.now() + QUALITY_SESSION_HOURS * 60 * 60 * 1000);
+    await db.insert(qualityPinSessions).values({ profileId: profile.id, tokenHash: hashSessionToken(token), oauthOpenId: ctx.user.openId, expiresAt });
+    ctx.res.cookie(QUALITY_OPERATOR_COOKIE, token, { ...getSessionCookieOptions(ctx.req), maxAge: QUALITY_SESSION_HOURS * 60 * 60 * 1000 });
+    return { success: true, profile: { id: profile.id, name: profile.name, title: profile.title, role: profile.role } };
+  }),
+
+  deactivatePinProfile: protectedProcedure.mutation(({ ctx }) => {
+    ctx.res.clearCookie(QUALITY_OPERATOR_COOKIE, { ...getSessionCookieOptions(ctx.req), maxAge: -1 });
+    return { success: true };
+  }),
+
   metadata: protectedProcedure.query(async () => {
     const db = await requireDb();
     const [persistedAreas, persistedFactories] = await Promise.all([
@@ -78,14 +131,13 @@ export const qualityRouter = router({
     return db.select().from(factories).orderBy(factories.name);
   }),
 
-  addArea: protectedProcedure.input(z.object({
+  addArea: qualityManagerProcedure.input(z.object({
     name: z.string().min(2).max(120),
     group: z.enum(["bphf", "metal", "general"]),
     factoryId: z.number().int().optional(),
   })).mutation(async ({ ctx, input }) => {
-    requireAdmin(ctx.user.role);
     const db = await requireDb();
-    await db.insert(areas).values({ ...input, factoryId: input.factoryId ?? null, active: "true", createdBy: ctx.user.openId });
+    await db.insert(areas).values({ ...input, factoryId: input.factoryId ?? null, active: "true", createdBy: ctx.user!.openId });
     return { success: true };
   }),
 
@@ -94,7 +146,7 @@ export const qualityRouter = router({
     return db.select().from(controlPlans).orderBy(controlPlans.module, controlPlans.title);
   }),
 
-  addPlan: protectedProcedure.input(z.object({
+  addPlan: qualityManagerProcedure.input(z.object({
     title: z.string().min(2).max(180),
     module: qualityModuleSchema,
     areaId: z.number().int(),
@@ -102,14 +154,12 @@ export const qualityRouter = router({
     frequency: z.enum(["daily", "weekly", "monthly", "per_shift", "per_lot"]),
     critical: z.boolean().default(false),
   })).mutation(async ({ ctx, input }) => {
-    requireAdmin(ctx.user.role);
     const db = await requireDb();
-    await db.insert(controlPlans).values({ ...input, factoryId: input.factoryId ?? null, critical: input.critical ? "true" : "false", active: "true", createdBy: ctx.user.openId });
+    await db.insert(controlPlans).values({ ...input, factoryId: input.factoryId ?? null, critical: input.critical ? "true" : "false", active: "true", createdBy: ctx.user!.openId });
     return { success: true };
   }),
 
-  initializeMasterData: protectedProcedure.mutation(async ({ ctx }) => {
-    requireAdmin(ctx.user.role);
+  initializeMasterData: qualityManagerProcedure.mutation(async ({ ctx }) => {
     const db = await requireDb();
     const [existingAreas, existingFactories] = await Promise.all([db.select().from(areas).limit(1), db.select().from(factories).limit(1)]);
     const defaultAreas = [
@@ -123,13 +173,13 @@ export const qualityRouter = router({
       { code: "LINHA_CROUTONS", name: "Linha Croutons" },
     ];
     let created = 0;
-    if (!existingAreas.length) { await db.insert(areas).values(defaultAreas.map((area) => ({ ...area, factoryId: null, active: "true" as const, createdBy: ctx.user.openId }))); created += defaultAreas.length; }
-    if (!existingFactories.length) { await db.insert(factories).values(defaultFactories.map((factory) => ({ ...factory, active: "true" as const, createdBy: ctx.user.openId }))); created += defaultFactories.length; }
+    if (!existingAreas.length) { await db.insert(areas).values(defaultAreas.map((area) => ({ ...area, factoryId: null, active: "true" as const, createdBy: ctx.user!.openId }))); created += defaultAreas.length; }
+    if (!existingFactories.length) { await db.insert(factories).values(defaultFactories.map((factory) => ({ ...factory, active: "true" as const, createdBy: ctx.user!.openId }))); created += defaultFactories.length; }
     const currentFactories = await db.select().from(factories);
     const existingBphfAreas = await db.select().from(areas).where(eq(areas.group, "bphf"));
     const bphfAreasToCreate = currentFactories.flatMap((factory) => BPHF_AREA_NAMES
       .filter((name) => !existingBphfAreas.some((area) => area.factoryId === factory.id && area.name === name))
-      .map((name) => ({ name, group: "bphf" as const, factoryId: factory.id, active: "true" as const, createdBy: ctx.user.openId })));
+      .map((name) => ({ name, group: "bphf" as const, factoryId: factory.id, active: "true" as const, createdBy: ctx.user!.openId })));
     if (bphfAreasToCreate.length) { await db.insert(areas).values(bphfAreasToCreate); created += bphfAreasToCreate.length; }
     return { success: true, created };
   }),
@@ -186,7 +236,7 @@ export const qualityRouter = router({
     return scopeToFactory(tasks, input?.factoryId);
   }),
 
-  createTask: protectedProcedure.input(z.object({
+  createTask: qualityManagerProcedure.input(z.object({
     title: z.string().min(2).max(180),
     module: qualityModuleSchema,
     area: z.string().min(2).max(120),
@@ -195,11 +245,11 @@ export const qualityRouter = router({
     responsible: z.string().min(2).max(120),
   })).mutation(async ({ ctx, input }) => {
     const db = await requireDb();
-    await db.insert(controlTasks).values({ ...input, factoryId: input.factoryId ?? null, createdBy: ctx.user.openId });
+    await db.insert(controlTasks).values({ ...input, factoryId: input.factoryId ?? null, createdBy: ctx.user!.openId });
     return { success: true };
   }),
 
-  completeTask: protectedProcedure.input(z.object({
+  completeTask: qualityOperatorProcedure.input(z.object({
     id: z.number().int(),
     result: resultSchema,
     notes: z.string().max(3000).optional(),
@@ -208,7 +258,7 @@ export const qualityRouter = router({
     const task = (await db.select().from(controlTasks).where(eq(controlTasks.id, input.id)).limit(1))[0];
     if (!task) throw new TRPCError({ code: "NOT_FOUND", message: "Tarefa não encontrada." });
     const completedAt = new Date();
-    await db.update(controlTasks).set({ status: "completed", completedAt }).where(eq(controlTasks.id, input.id));
+    await db.update(controlTasks).set({ status: "completed", completedAt, completedByProfileId: ctx.operatorProfile!.id, completedByName: ctx.operatorProfile!.name, completedByTitle: ctx.operatorProfile!.title }).where(eq(controlTasks.id, input.id));
     await db.insert(controlEntries).values({
       module: task.module,
       title: task.title,
@@ -218,7 +268,10 @@ export const qualityRouter = router({
       notes: input.notes ?? null,
       payload: { taskId: task.id },
       completedAt,
-      createdBy: ctx.user.openId,
+      registeredByProfileId: ctx.operatorProfile!.id,
+      registeredByName: ctx.operatorProfile!.name,
+      registeredByTitle: ctx.operatorProfile!.title,
+      createdBy: ctx.user!.openId,
     });
     if (shouldCreateCriticalMetalAlert(task.module, input.result)) {
       await db.insert(nonconformities).values({
@@ -230,13 +283,16 @@ export const qualityRouter = router({
         severity: "critical",
         status: "open",
         detectedAt: completedAt,
-        createdBy: ctx.user.openId,
+        reportedByProfileId: ctx.operatorProfile!.id,
+        reportedByName: ctx.operatorProfile!.name,
+        reportedByTitle: ctx.operatorProfile!.title,
+        createdBy: ctx.user!.openId,
       });
     }
     return { success: true };
   }),
 
-  createEntry: protectedProcedure.input(z.object({
+  createEntry: qualityOperatorProcedure.input(z.object({
     module: qualityModuleSchema,
     title: z.string().min(2).max(180),
     area: z.string().min(2).max(120),
@@ -258,7 +314,10 @@ export const qualityRouter = router({
       notes: input.notes ?? null,
       payload: input.payload,
       completedAt,
-      createdBy: ctx.user.openId,
+      registeredByProfileId: ctx.operatorProfile!.id,
+      registeredByName: ctx.operatorProfile!.name,
+      registeredByTitle: ctx.operatorProfile!.title,
+      createdBy: ctx.user!.openId,
     });
     const isCriticalMetal = shouldCreateCriticalMetalAlert(input.module, input.result);
     if (input.createNonconformity || isCriticalMetal) {
@@ -271,7 +330,10 @@ export const qualityRouter = router({
         severity: isCriticalMetal ? "critical" : input.severity,
         status: "open",
         detectedAt: completedAt,
-        createdBy: ctx.user.openId,
+        reportedByProfileId: ctx.operatorProfile!.id,
+        reportedByName: ctx.operatorProfile!.name,
+        reportedByTitle: ctx.operatorProfile!.title,
+        createdBy: ctx.user!.openId,
       });
     }
     return { success: true, critical: isCriticalMetal };
@@ -323,8 +385,8 @@ export const qualityRouter = router({
     assignedTo: z.string().max(120).optional(),
     dueAt: dateInput.optional(),
   })).mutation(async ({ ctx, input }) => {
-    if (input.status === "closed") {
-      requireAdmin(ctx.user.role);
+    if (input.status === "closed" && ctx.operatorProfile?.role !== "manager") {
+      throw new TRPCError({ code: "FORBIDDEN", message: "Apenas a Responsável de Qualidade pode fechar não conformidades." });
     }
     const db = await requireDb();
     const validatorName = ctx.user.name?.trim() || ctx.user.email?.trim() || ctx.user.openId;
@@ -404,13 +466,12 @@ export const qualityRouter = router({
     return db.select().from(checklistItems).orderBy(checklistItems.area, checklistItems.sortOrder);
   }),
 
-  addChecklistItem: protectedProcedure.input(z.object({
+  addChecklistItem: qualityManagerProcedure.input(z.object({
     area: z.string().min(2).max(120),
     label: z.string().min(3).max(500),
   })).mutation(async ({ ctx, input }) => {
-    requireAdmin(ctx.user.role);
     const db = await requireDb();
-    await db.insert(checklistItems).values({ ...input, createdBy: ctx.user.openId, sortOrder: 100, active: "true" });
+    await db.insert(checklistItems).values({ ...input, createdBy: ctx.user!.openId, sortOrder: 100, active: "true" });
     return { success: true };
   }),
 
@@ -440,7 +501,7 @@ export const qualityRouter = router({
       .sort((left, right) => (left.lastInspectionAt?.getTime() ?? 0) - (right.lastInspectionAt?.getTime() ?? 0));
   }),
 
-  addFragileItem: protectedProcedure.input(z.object({
+  addFragileItem: qualityManagerProcedure.input(z.object({
     name: z.string().min(2).max(180),
     location: z.string().min(2).max(120),
     factoryId: z.number().int().optional(),
@@ -448,11 +509,11 @@ export const qualityRouter = router({
     itemType: z.enum(["Vidro", "Plástico rígido", "Outro"]),
   })).mutation(async ({ ctx, input }) => {
     const db = await requireDb();
-    await db.insert(fragileItems).values({ ...input, factoryId: input.factoryId ?? null, status: "active", createdBy: ctx.user.openId });
+    await db.insert(fragileItems).values({ ...input, factoryId: input.factoryId ?? null, status: "active", createdBy: ctx.user!.openId });
     return { success: true };
   }),
 
-  updateFragileItem: protectedProcedure.input(z.object({
+  updateFragileItem: qualityManagerProcedure.input(z.object({
     id: z.number().int(),
     name: z.string().min(2).max(180),
     location: z.string().min(2).max(120),
@@ -473,7 +534,7 @@ export const qualityRouter = router({
     return { success: true };
   }),
 
-  uploadFragileReferenceImage: protectedProcedure.input(z.object({
+  uploadFragileReferenceImage: qualityManagerProcedure.input(z.object({
     itemId: z.number().int(),
     fileName: z.string().min(1).max(255),
     mimeType: z.enum(["image/jpeg", "image/png", "image/webp"]),
@@ -485,7 +546,7 @@ export const qualityRouter = router({
     const base64 = input.dataUrl.split(",")[1];
     if (!base64) throw new TRPCError({ code: "BAD_REQUEST", message: "Imagem inválida." });
     const safeName = input.fileName.replace(/[^a-zA-Z0-9._-]/g, "_");
-    const key = `fragile-reference/${ctx.user.id}/${input.itemId}/${Date.now()}-${safeName}`;
+    const key = `fragile-reference/${input.itemId}/${Date.now()}-${safeName}`;
     const { key: referenceImageKey, url: referenceImageUrl } = await storagePut(key, Buffer.from(base64, "base64"), input.mimeType);
     await db.update(fragileItems).set({ referenceImageKey, referenceImageUrl, referenceImageName: input.fileName }).where(eq(fragileItems.id, input.itemId));
     return { success: true, url: referenceImageUrl };
@@ -533,14 +594,14 @@ export const qualityRouter = router({
       modules,
       areas,
       trends,
+      recentEntries: scopedEntries.slice(0, 12),
       planCompliance: calculatePlanCompliance(scopedTasks),
       openNcs: countOpenNonconformities(scopedNcs).open,
       criticalOpen: countOpenNonconformities(scopedNcs).criticalOpen,
     };
   }),
 
-  initializeChecklist: protectedProcedure.mutation(async ({ ctx }) => {
-    requireAdmin(ctx.user.role);
+  initializeChecklist: qualityManagerProcedure.mutation(async ({ ctx }) => {
     const db = await requireDb();
     const existing = await db.select().from(checklistItems).limit(1);
     if (existing.length) return { success: true, created: 0 };
@@ -558,7 +619,7 @@ export const qualityRouter = router({
       label,
       sortOrder: index + 1,
       active: "true" as const,
-      createdBy: ctx.user.openId,
+      createdBy: ctx.user!.openId,
     })));
     return { success: true, created: defaults.length };
   }),

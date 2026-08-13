@@ -27,6 +27,24 @@ const requireUser = t.middleware(async opts => {
 
 export const protectedProcedure = t.procedure.use(requireUser);
 
+export const qualityOperatorProcedure = protectedProcedure.use(
+  t.middleware(async ({ ctx, next }) => {
+    if (!ctx.operatorProfile) {
+      throw new TRPCError({ code: "FORBIDDEN", message: "Selecione o perfil operacional e introduza o respetivo PIN." });
+    }
+    return next({ ctx: { ...ctx, operatorProfile: ctx.operatorProfile } });
+  }),
+);
+
+export const qualityManagerProcedure = protectedProcedure.use(
+  t.middleware(async ({ ctx, next }) => {
+    if (ctx.operatorProfile?.role !== "manager") {
+      throw new TRPCError({ code: "FORBIDDEN", message: "Apenas a Responsável de Qualidade pode executar esta ação." });
+    }
+    return next({ ctx: { ...ctx, operatorProfile: ctx.operatorProfile } });
+  }),
+);
+
 export const adminProcedure = t.procedure.use(
   t.middleware(async opts => {
     const { ctx, next } = opts;
