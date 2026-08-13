@@ -20,3 +20,12 @@
 - [x] Executar e documentar uma validação explícita de acessibilidade, incluindo foco, labels, contraste e navegação por teclado.
 - [x] Associar o fecho de NC ao utilizador autenticado e preencher automaticamente o validador, sem texto livre.
 - [x] Executar uma validação de acessibilidade verificável nos ecrãs principais e registar resultados concretos por página.
+- [x] Criar e configurar as unidades produtivas Fábrica 1 (Fatiado), Fábrica 2 (granel), Fabrica 3 (Sem Gluten) e Linha Croutons.
+- [x] Associar tarefas, planos, controlos, não conformidades e ações corretivas à fábrica ou linha produtiva aplicável.
+- [x] Adicionar seleção e filtros por fábrica nos formulários, painel «Hoje», listas operacionais e relatórios.
+- [x] Validar a segmentação por fábrica e a apresentação de indicadores agregados por unidade produtiva.
+- [x] Inicializar os dados-base de fábricas e confirmar que as quatro unidades produtivas estão disponíveis na aplicação.
+- [x] Criar testes automatizados para verificar filtros e agregações por fábrica no painel, tarefas, NC e relatórios.
+- [x] Registar uma validação funcional verificável da segmentação por fábrica com dados operacionais de teste controlados.
+- [x] Adicionar testes de integração dos procedimentos de painel, tarefas, NC e relatórios com filtro `factoryId`.
+- [x] Confirmar o documento de validação funcional por fábrica com evidência verificável guardada no projeto.

@@ -3,6 +3,7 @@ import { desc, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
 import {
   areas,
+  factories,
   checklistItems,
   controlPlans,
   controlEntries,
@@ -16,6 +17,7 @@ import {
 } from "../../drizzle/schema";
 import { getDb } from "../db";
 import { calculateConformityRate, calculateSensoryScore, shouldCreateCriticalMetalAlert } from "../quality.logic";
+import { calculatePlanCompliance, countOpenNonconformities, scopeToFactory } from "../factory.scope.logic";
 import { storagePut } from "../storage";
 import { protectedProcedure, router } from "../_core/trpc";
 
@@ -46,9 +48,13 @@ function requireAdmin(role: string) {
 export const qualityRouter = router({
   metadata: protectedProcedure.query(async () => {
     const db = await requireDb();
-    const persistedAreas = await db.select().from(areas).orderBy(areas.group, areas.name);
+    const [persistedAreas, persistedFactories] = await Promise.all([
+      db.select().from(areas).orderBy(areas.group, areas.name),
+      db.select().from(factories).orderBy(factories.name),
+    ]);
     return {
       areas: persistedAreas.map((area) => ({ id: area.id, name: area.name, group: area.group })),
+      factories: persistedFactories.map((factory) => ({ id: factory.id, code: factory.code, name: factory.name })),
       modules: [
       { id: "bphf", label: "Verificação de BPHF" },
       { id: "metal_detectors", label: "Verificação de detetores de metais" },
@@ -64,6 +70,11 @@ export const qualityRouter = router({
   listAreas: protectedProcedure.query(async () => {
     const db = await requireDb();
     return db.select().from(areas).orderBy(areas.group, areas.name);
+  }),
+
+  listFactories: protectedProcedure.query(async () => {
+    const db = await requireDb();
+    return db.select().from(factories).orderBy(factories.name);
   }),
 
   addArea: protectedProcedure.input(z.object({
@@ -85,29 +96,37 @@ export const qualityRouter = router({
     title: z.string().min(2).max(180),
     module: qualityModuleSchema,
     areaId: z.number().int(),
+    factoryId: z.number().int().optional(),
     frequency: z.enum(["daily", "weekly", "monthly", "per_shift", "per_lot"]),
     critical: z.boolean().default(false),
   })).mutation(async ({ ctx, input }) => {
     requireAdmin(ctx.user.role);
     const db = await requireDb();
-    await db.insert(controlPlans).values({ ...input, critical: input.critical ? "true" : "false", active: "true", createdBy: ctx.user.openId });
+    await db.insert(controlPlans).values({ ...input, factoryId: input.factoryId ?? null, critical: input.critical ? "true" : "false", active: "true", createdBy: ctx.user.openId });
     return { success: true };
   }),
 
   initializeMasterData: protectedProcedure.mutation(async ({ ctx }) => {
     requireAdmin(ctx.user.role);
     const db = await requireDb();
-    const existing = await db.select().from(areas).limit(1);
-    if (existing.length) return { success: true, created: 0 };
-    const defaults = [
+    const [existingAreas, existingFactories] = await Promise.all([db.select().from(areas).limit(1), db.select().from(factories).limit(1)]);
+    const defaultAreas = [
       { name: "Embalagem T", group: "bphf" as const }, { name: "Produção T", group: "bphf" as const }, { name: "Embalagem SG", group: "bphf" as const }, { name: "Produção SG", group: "bphf" as const },
       { name: "SG", group: "metal" as const }, { name: "Tradicional 1", group: "metal" as const }, { name: "Tradicional 2", group: "metal" as const }, { name: "Granel", group: "metal" as const }, { name: "Fábrica II", group: "metal" as const },
     ];
-    await db.insert(areas).values(defaults.map((area) => ({ ...area, active: "true" as const, createdBy: ctx.user.openId })));
-    return { success: true, created: defaults.length };
+    const defaultFactories = [
+      { code: "F1_FATIADO", name: "Fábrica 1 (Fatiado)" },
+      { code: "F2_GRANEL", name: "Fábrica 2 (granel)" },
+      { code: "F3_SEM_GLUTEN", name: "Fabrica 3 (Sem Gluten)" },
+      { code: "LINHA_CROUTONS", name: "Linha Croutons" },
+    ];
+    let created = 0;
+    if (!existingAreas.length) { await db.insert(areas).values(defaultAreas.map((area) => ({ ...area, active: "true" as const, createdBy: ctx.user.openId }))); created += defaultAreas.length; }
+    if (!existingFactories.length) { await db.insert(factories).values(defaultFactories.map((factory) => ({ ...factory, active: "true" as const, createdBy: ctx.user.openId }))); created += defaultFactories.length; }
+    return { success: true, created };
   }),
 
-  dashboard: protectedProcedure.query(async () => {
+  dashboard: protectedProcedure.input(z.object({ factoryId: z.number().int().optional() }).optional()).query(async ({ input }) => {
     const db = await requireDb();
     const [tasks, ncs, entries, actions] = await Promise.all([
       db.select().from(controlTasks).orderBy(controlTasks.dueAt),
@@ -115,18 +134,22 @@ export const qualityRouter = router({
       db.select().from(controlEntries).orderBy(desc(controlEntries.completedAt)),
       db.select().from(correctiveActions).orderBy(correctiveActions.dueAt),
     ]);
+    const scopedTasks = scopeToFactory(tasks, input?.factoryId);
+    const scopedNcs = scopeToFactory(ncs, input?.factoryId);
+    const scopedEntries = scopeToFactory(entries, input?.factoryId);
+    const scopedActions = scopeToFactory(actions, input?.factoryId);
     const now = new Date();
     const { start, end } = asDateRange(now);
-    const pending = tasks.filter((task) => task.status === "pending");
+    const pending = scopedTasks.filter((task) => task.status === "pending");
     const overdue = pending.filter((task) => task.dueAt < now);
-    const completedToday = entries.filter((entry) => entry.completedAt >= start && entry.completedAt < end);
-    const todayTasks = tasks.filter((task) => task.dueAt >= start && task.dueAt < end);
+    const completedToday = scopedEntries.filter((entry) => entry.completedAt >= start && entry.completedAt < end);
+    const todayTasks = scopedTasks.filter((task) => task.dueAt >= start && task.dueAt < end);
     const completedTasksToday = todayTasks.filter((task) => task.status === "completed" && task.completedAt && task.completedAt >= start && task.completedAt < end);
-    const critical = ncs.filter((nc) => nc.status !== "closed" && nc.severity === "critical");
-    const openActions = actions.filter((action) => action.status !== "verified");
+    const critical = scopedNcs.filter((nc) => nc.status !== "closed" && nc.severity === "critical");
+    const openActions = scopedActions.filter((action) => action.status !== "verified");
 
     return {
-      tasks: tasks.slice(0, 20),
+      tasks: scopedTasks.slice(0, 20),
       criticalNcs: critical.slice(0, 6),
       dueActions: openActions.filter((action) => action.dueAt && action.dueAt < now).slice(0, 6),
       metrics: {
@@ -139,20 +162,22 @@ export const qualityRouter = router({
     };
   }),
 
-  listTasks: protectedProcedure.query(async () => {
+  listTasks: protectedProcedure.input(z.object({ factoryId: z.number().int().optional() }).optional()).query(async ({ input }) => {
     const db = await requireDb();
-    return db.select().from(controlTasks).orderBy(controlTasks.dueAt);
+    const tasks = await db.select().from(controlTasks).orderBy(controlTasks.dueAt);
+    return scopeToFactory(tasks, input?.factoryId);
   }),
 
   createTask: protectedProcedure.input(z.object({
     title: z.string().min(2).max(180),
     module: qualityModuleSchema,
     area: z.string().min(2).max(120),
+    factoryId: z.number().int().optional(),
     dueAt: dateInput,
     responsible: z.string().min(2).max(120),
   })).mutation(async ({ ctx, input }) => {
     const db = await requireDb();
-    await db.insert(controlTasks).values({ ...input, createdBy: ctx.user.openId });
+    await db.insert(controlTasks).values({ ...input, factoryId: input.factoryId ?? null, createdBy: ctx.user.openId });
     return { success: true };
   }),
 
@@ -170,6 +195,7 @@ export const qualityRouter = router({
       module: task.module,
       title: task.title,
       area: task.area,
+      factoryId: task.factoryId,
       result: input.result,
       notes: input.notes ?? null,
       payload: { taskId: task.id },
@@ -182,6 +208,7 @@ export const qualityRouter = router({
         title: `Falha no detetor de metais — ${task.area}`,
         description: input.notes || "Resultado NC registado na verificação do detetor de metais.",
         area: task.area,
+        factoryId: task.factoryId,
         severity: "critical",
         status: "open",
         detectedAt: completedAt,
@@ -195,6 +222,7 @@ export const qualityRouter = router({
     module: qualityModuleSchema,
     title: z.string().min(2).max(180),
     area: z.string().min(2).max(120),
+    factoryId: z.number().int().optional(),
     result: resultSchema.optional(),
     notes: z.string().max(3000).optional(),
     payload: z.record(z.string(), z.unknown()).default({}),
@@ -207,6 +235,7 @@ export const qualityRouter = router({
       module: input.module,
       title: input.title,
       area: input.area,
+      factoryId: input.factoryId ?? null,
       result: input.result ?? null,
       notes: input.notes ?? null,
       payload: input.payload,
@@ -220,6 +249,7 @@ export const qualityRouter = router({
         title: isCriticalMetal ? `Alerta crítico — ${input.title}` : input.title,
         description: input.notes || "Não conformidade registada a partir de um controlo operacional.",
         area: input.area,
+        factoryId: input.factoryId ?? null,
         severity: isCriticalMetal ? "critical" : input.severity,
         status: "open",
         detectedAt: completedAt,
@@ -238,9 +268,10 @@ export const qualityRouter = router({
     sabor: z.number().int().min(1).max(5),
   })).query(({ input }) => calculateSensoryScore(input)),
 
-  listNcs: protectedProcedure.query(async () => {
+  listNcs: protectedProcedure.input(z.object({ factoryId: z.number().int().optional() }).optional()).query(async ({ input }) => {
     const db = await requireDb();
-    return db.select().from(nonconformities).orderBy(desc(nonconformities.detectedAt));
+    const ncs = await db.select().from(nonconformities).orderBy(desc(nonconformities.detectedAt));
+    return scopeToFactory(ncs, input?.factoryId);
   }),
 
   updateNc: protectedProcedure.input(z.object({
@@ -273,7 +304,9 @@ export const qualityRouter = router({
     dueAt: dateInput.optional(),
   })).mutation(async ({ ctx, input }) => {
     const db = await requireDb();
-    await db.insert(correctiveActions).values({ ...input, createdBy: ctx.user.openId, status: "pending" });
+    const parentNc = (await db.select().from(nonconformities).where(eq(nonconformities.id, input.nonconformityId)).limit(1))[0];
+    if (!parentNc) throw new TRPCError({ code: "NOT_FOUND", message: "Não conformidade não encontrada." });
+    await db.insert(correctiveActions).values({ ...input, factoryId: parentNc.factoryId, createdBy: ctx.user.openId, status: "pending" });
     await db.update(nonconformities).set({ status: "in_progress" }).where(eq(nonconformities.id, input.nonconformityId));
     return { success: true };
   }),
@@ -353,15 +386,18 @@ export const qualityRouter = router({
     return { success: true };
   }),
 
-  reports: protectedProcedure.query(async () => {
+  reports: protectedProcedure.input(z.object({ factoryId: z.number().int().optional() }).optional()).query(async ({ input }) => {
     const db = await requireDb();
     const [entries, tasks, ncs] = await Promise.all([
       db.select().from(controlEntries).orderBy(desc(controlEntries.completedAt)),
       db.select().from(controlTasks),
       db.select().from(nonconformities),
     ]);
+    const scopedEntries = scopeToFactory(entries, input?.factoryId);
+    const scopedTasks = scopeToFactory(tasks, input?.factoryId);
+    const scopedNcs = scopeToFactory(ncs, input?.factoryId);
     const modules = qualityModuleValues.map((module) => {
-      const moduleEntries = entries.filter((entry) => entry.module === module);
+      const moduleEntries = scopedEntries.filter((entry) => entry.module === module);
       return {
         module,
         total: moduleEntries.length,
@@ -369,9 +405,9 @@ export const qualityRouter = router({
         nc: moduleEntries.filter((entry) => entry.result === "NC").length,
       };
     });
-    const areaNames = Array.from(new Set(entries.map((entry) => entry.area)));
+    const areaNames = Array.from(new Set(scopedEntries.map((entry) => entry.area)));
     const areas = areaNames.map((area) => {
-      const areaEntries = entries.filter((entry) => entry.area === area);
+      const areaEntries = scopedEntries.filter((entry) => entry.area === area);
       return { area, total: areaEntries.length, conformity: calculateConformityRate(areaEntries.map((entry) => entry.result)) };
     });
     const now = new Date();
@@ -381,7 +417,7 @@ export const qualityRouter = router({
       start.setDate(start.getDate() - (5 - index) * 7 - 6);
       const end = new Date(start);
       end.setDate(end.getDate() + 7);
-      const weeklyEntries = entries.filter((entry) => entry.completedAt >= start && entry.completedAt < end);
+      const weeklyEntries = scopedEntries.filter((entry) => entry.completedAt >= start && entry.completedAt < end);
       return {
         label: `S${index + 1}`,
         entries: weeklyEntries.length,
@@ -392,9 +428,9 @@ export const qualityRouter = router({
       modules,
       areas,
       trends,
-      planCompliance: tasks.length ? Number(((tasks.filter((task) => task.status === "completed").length / tasks.length) * 100).toFixed(1)) : 0,
-      openNcs: ncs.filter((nc) => nc.status !== "closed").length,
-      criticalOpen: ncs.filter((nc) => nc.status !== "closed" && nc.severity === "critical").length,
+      planCompliance: calculatePlanCompliance(scopedTasks),
+      openNcs: countOpenNonconformities(scopedNcs).open,
+      criticalOpen: countOpenNonconformities(scopedNcs).criticalOpen,
     };
   }),
 

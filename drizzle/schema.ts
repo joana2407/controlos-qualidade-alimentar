@@ -40,43 +40,55 @@ export const areas = mysqlTable("areas", {
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
 
+export const factories = mysqlTable("factories", {
+  id: int("id").autoincrement().primaryKey(),
+  code: varchar("code", { length: 40 }).notNull().unique(),
+  name: varchar("name", { length: 160 }).notNull().unique(),
+  active: mysqlEnum("factory_active", ["true", "false"]).default("true").notNull(),
+  createdBy: varchar("createdBy", { length: 64 }).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
 export const controlPlans = mysqlTable("control_plans", {
   id: int("id").autoincrement().primaryKey(),
   title: varchar("title", { length: 180 }).notNull(),
   module: qualityModule.notNull(),
   areaId: int("areaId").notNull(),
+  factoryId: int("factoryId"),
   frequency: mysqlEnum("plan_frequency", ["daily", "weekly", "monthly", "per_shift", "per_lot"]).notNull(),
   critical: mysqlEnum("plan_critical", ["true", "false"]).default("false").notNull(),
   active: mysqlEnum("plan_active", ["true", "false"]).default("true").notNull(),
   createdBy: varchar("createdBy", { length: 64 }).notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
-}, (table) => [index("plan_module_idx").on(table.module), index("plan_area_idx").on(table.areaId)]);
+}, (table) => [index("plan_module_idx").on(table.module), index("plan_area_idx").on(table.areaId), index("plan_factory_idx").on(table.factoryId)]);
 
 export const controlTasks = mysqlTable("control_tasks", {
   id: int("id").autoincrement().primaryKey(),
   title: varchar("title", { length: 180 }).notNull(),
   module: qualityModule.notNull(),
   area: varchar("area", { length: 120 }).notNull(),
+  factoryId: int("factoryId"),
   dueAt: timestamp("dueAt").notNull(),
   responsible: varchar("responsible", { length: 120 }).notNull(),
   status: mysqlEnum("task_status", ["pending", "completed", "cancelled"]).default("pending").notNull(),
   completedAt: timestamp("completedAt"),
   createdBy: varchar("createdBy", { length: 64 }).notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
-}, (table) => [index("task_due_idx").on(table.dueAt), index("task_module_idx").on(table.module)]);
+}, (table) => [index("task_due_idx").on(table.dueAt), index("task_module_idx").on(table.module), index("task_factory_idx").on(table.factoryId)]);
 
 export const controlEntries = mysqlTable("control_entries", {
   id: int("id").autoincrement().primaryKey(),
   module: qualityModule.notNull(),
   title: varchar("title", { length: 180 }).notNull(),
   area: varchar("area", { length: 120 }).notNull(),
+  factoryId: int("factoryId"),
   result: controlResult,
   notes: text("notes"),
   payload: json("payload").$type<Record<string, unknown>>().notNull(),
   completedAt: timestamp("completedAt").defaultNow().notNull(),
   createdBy: varchar("createdBy", { length: 64 }).notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
-}, (table) => [index("entry_module_idx").on(table.module), index("entry_area_idx").on(table.area), index("entry_completed_idx").on(table.completedAt)]);
+}, (table) => [index("entry_module_idx").on(table.module), index("entry_area_idx").on(table.area), index("entry_completed_idx").on(table.completedAt), index("entry_factory_idx").on(table.factoryId)]);
 
 export const nonconformities = mysqlTable("nonconformities", {
   id: int("id").autoincrement().primaryKey(),
@@ -84,6 +96,7 @@ export const nonconformities = mysqlTable("nonconformities", {
   title: varchar("title", { length: 180 }).notNull(),
   description: text("description").notNull(),
   area: varchar("area", { length: 120 }).notNull(),
+  factoryId: int("factoryId"),
   severity: mysqlEnum("nc_severity", ["critical", "high", "medium", "low"]).default("medium").notNull(),
   status: mysqlEnum("nc_status", ["open", "in_progress", "awaiting_validation", "closed"]).default("open").notNull(),
   assignedTo: varchar("assignedTo", { length: 120 }),
@@ -94,11 +107,12 @@ export const nonconformities = mysqlTable("nonconformities", {
   validatedByOpenId: varchar("validatedByOpenId", { length: 64 }),
   createdBy: varchar("createdBy", { length: 64 }).notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
-}, (table) => [index("nc_status_idx").on(table.status), index("nc_severity_idx").on(table.severity)]);
+}, (table) => [index("nc_status_idx").on(table.status), index("nc_severity_idx").on(table.severity), index("nc_factory_idx").on(table.factoryId)]);
 
 export const correctiveActions = mysqlTable("corrective_actions", {
   id: int("id").autoincrement().primaryKey(),
   nonconformityId: int("nonconformityId").notNull(),
+  factoryId: int("factoryId"),
   actionType: mysqlEnum("action_type", ["correction", "corrective"]).notNull(),
   description: text("description").notNull(),
   responsible: varchar("responsible", { length: 120 }).notNull(),
@@ -108,7 +122,7 @@ export const correctiveActions = mysqlTable("corrective_actions", {
   completedAt: timestamp("completedAt"),
   createdBy: varchar("createdBy", { length: 64 }).notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
-}, (table) => [index("action_nc_idx").on(table.nonconformityId), index("action_due_idx").on(table.dueAt)]);
+}, (table) => [index("action_nc_idx").on(table.nonconformityId), index("action_due_idx").on(table.dueAt), index("action_factory_idx").on(table.factoryId)]);
 
 export const evidences = mysqlTable("evidences", {
   id: int("id").autoincrement().primaryKey(),
