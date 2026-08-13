@@ -44,3 +44,8 @@
 - [x] Validar explicitamente o fluxo de interface de criação, edição e associação de imagem de referência.
 - [x] Executar uma validação ponta a ponta do fluxo de criar, editar e associar imagem a um ponto de controlo de quebráveis.
 - [x] Validar com persistência real a criação, edição e imagem de referência de um ponto de controlo de quebráveis, sem mocks de dados.
+- [x] Definir e testar o vencimento de inspeções de quebráveis com periodicidade D, S, Q e M.
+- [x] Criar um endpoint de pendências que relacione o último registo de cada ponto com a periodicidade e fábrica.
+- [x] Adicionar um painel de pontos pendentes de inspeção no módulo de quebráveis, com filtros por fábrica e periodicidade.
+- [x] Permitir abrir diretamente o registo de inspeção a partir de cada ponto pendente.
+- [x] Validar os cálculos de pendência e a interface do painel de controlo de quebráveis.

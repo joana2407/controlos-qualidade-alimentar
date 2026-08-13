@@ -16,7 +16,7 @@ import {
   resultValues,
 } from "../../drizzle/schema";
 import { getDb } from "../db";
-import { calculateConformityRate, calculateSensoryScore, shouldCreateCriticalMetalAlert } from "../quality.logic";
+import { calculateConformityRate, calculateSensoryScore, isFragileInspectionPending, shouldCreateCriticalMetalAlert } from "../quality.logic";
 import { calculatePlanCompliance, countOpenNonconformities, scopeToFactory } from "../factory.scope.logic";
 import { storagePut } from "../storage";
 import { protectedProcedure, router } from "../_core/trpc";
@@ -375,6 +375,26 @@ export const qualityRouter = router({
     const db = await requireDb();
     const items = await db.select().from(fragileItems).orderBy(fragileItems.location, fragileItems.sortOrder, fragileItems.name);
     return items.filter((item) => (!input?.factoryId || item.factoryId === input.factoryId) && (!input?.periodicity || item.periodicity === input.periodicity));
+  }),
+
+  fragilePending: protectedProcedure.input(z.object({ factoryId: z.number().int().optional(), periodicity: z.enum(["D", "S", "Q", "M"]).optional() }).optional()).query(async ({ input }) => {
+    const db = await requireDb();
+    const [items, entries] = await Promise.all([
+      db.select().from(fragileItems).orderBy(fragileItems.location, fragileItems.sortOrder, fragileItems.name),
+      db.select().from(controlEntries).where(eq(controlEntries.module, "fragile_items")).orderBy(desc(controlEntries.completedAt)),
+    ]);
+    const lastInspections = new Map<number, Date>();
+    entries.forEach((entry) => {
+      const payload = entry.payload;
+      const fragileItemId = payload && typeof payload === "object" && !Array.isArray(payload) ? (payload as { fragileItemId?: unknown }).fragileItemId : null;
+      if (typeof fragileItemId === "number" && !lastInspections.has(fragileItemId)) lastInspections.set(fragileItemId, entry.completedAt);
+    });
+    const now = new Date();
+    return items
+      .filter((item) => item.status === "active" && (!input?.factoryId || item.factoryId === input.factoryId) && (!input?.periodicity || item.periodicity === input.periodicity))
+      .map((item) => ({ ...item, lastInspectionAt: lastInspections.get(item.id) ?? null }))
+      .filter((item) => isFragileInspectionPending(item.periodicity, item.lastInspectionAt, now))
+      .sort((left, right) => (left.lastInspectionAt?.getTime() ?? 0) - (right.lastInspectionAt?.getTime() ?? 0));
   }),
 
   addFragileItem: protectedProcedure.input(z.object({

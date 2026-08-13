@@ -40,3 +40,31 @@ export function calculateConformityRate(results: Array<"C" | "NC" | "N/A" | null
 export function shouldCreateCriticalMetalAlert(module: string, result: string | null | undefined) {
   return module === "metal_detectors" && result === "NC";
 }
+
+export type FragilePeriodicity = "D" | "S" | "Q" | "M";
+
+function startOfDay(date: Date) {
+  const result = new Date(date);
+  result.setHours(0, 0, 0, 0);
+  return result;
+}
+
+function startOfWeek(date: Date) {
+  const result = startOfDay(date);
+  const offset = (result.getDay() + 6) % 7;
+  result.setDate(result.getDate() - offset);
+  return result;
+}
+
+/**
+ * Indica se um ponto de controlo de quebráveis deve ser inspecionado na data de referência.
+ * D e S seguem períodos de calendário; Q vence 14 dias após a última inspeção;
+ * M vence no primeiro dia de um novo mês civil.
+ */
+export function isFragileInspectionPending(periodicity: FragilePeriodicity, lastInspectionAt: Date | null | undefined, referenceDate = new Date()) {
+  if (!lastInspectionAt) return true;
+  if (periodicity === "D") return startOfDay(lastInspectionAt) < startOfDay(referenceDate);
+  if (periodicity === "S") return startOfWeek(lastInspectionAt) < startOfWeek(referenceDate);
+  if (periodicity === "Q") return referenceDate.getTime() - lastInspectionAt.getTime() >= 14 * 24 * 60 * 60 * 1000;
+  return lastInspectionAt.getFullYear() !== referenceDate.getFullYear() || lastInspectionAt.getMonth() !== referenceDate.getMonth();
+}

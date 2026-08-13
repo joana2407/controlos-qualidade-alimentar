@@ -18,6 +18,7 @@ const entries = [
   { id: 1, factoryId: 1, module: "bphf", area: "Produção T", result: "C", completedAt: now },
   { id: 2, factoryId: 1, module: "metal_detectors", area: "Tradicional 1", result: "NC", completedAt: now },
   { id: 3, factoryId: 2, module: "bphf", area: "Granel", result: "C", completedAt: now },
+  { id: 4, factoryId: 1, module: "fragile_items", area: "Zona Tratamento Térmico", result: "C", completedAt: now, payload: { fragileItemId: 1 } },
 ];
 const ncs = [
   { id: 1, factoryId: 1, status: "open", severity: "critical", module: "metal_detectors", area: "Tradicional 1", title: "NC F1", detectedAt: now },
@@ -29,9 +30,9 @@ const actions = [
   { id: 2, factoryId: 2, status: "pending", dueAt: now },
 ];
 const fragile = [
-  { id: 1, factoryId: 1, periodicity: "D", location: "Zona Tratamento Térmico", name: "Portas forno Anelar 1" },
-  { id: 2, factoryId: 1, periodicity: "S", location: "Zona Tratamento Térmico", name: "Iluminação Calhas" },
-  { id: 3, factoryId: 2, periodicity: "M", location: "Z. PRODUÇÃO", name: "Janelas-Exterior" },
+  { id: 1, factoryId: 1, periodicity: "D", location: "Zona Tratamento Térmico", name: "Portas forno Anelar 1", status: "active" },
+  { id: 2, factoryId: 1, periodicity: "S", location: "Zona Tratamento Térmico", name: "Iluminação Calhas", status: "active" },
+  { id: 3, factoryId: 2, periodicity: "M", location: "Z. PRODUÇÃO", name: "Janelas-Exterior", status: "active" },
 ];
 const dbUpdates: Record<string, unknown>[] = [];
 const dbInserts: Record<string, unknown>[] = [];
@@ -60,7 +61,7 @@ function mockDatabase() {
         return {
           orderBy: async () => records,
           then: <T>(resolve: (value: unknown[]) => T | PromiseLike<T>) => Promise.resolve(records).then(resolve),
-          where: () => ({ limit: async () => records }),
+          where: () => ({ limit: async () => records, orderBy: async () => records }),
         };
       },
     }),
@@ -77,7 +78,7 @@ describe("procedimentos de qualidade por fábrica", () => {
     const dashboard = await caller.dashboard({ factoryId: 1 });
     const filteredTasks = await caller.listTasks({ factoryId: 1 });
     expect(dashboard.tasks.map((task) => task.id)).toEqual([1, 2]);
-    expect(dashboard.metrics).toMatchObject({ pending: 1, criticalOpen: 1, completedToday: 2, dailyExecutionRate: 50 });
+    expect(dashboard.metrics).toMatchObject({ pending: 1, criticalOpen: 1, completedToday: 3, dailyExecutionRate: 50 });
     expect(filteredTasks.map((task) => task.id)).toEqual([1, 2]);
   });
 
@@ -97,6 +98,15 @@ describe("procedimentos de qualidade por fábrica", () => {
     const factoryTwo = await caller.listFragileItems({ factoryId: 2 });
     expect(factoryOneWeekly.map((item) => item.id)).toEqual([2]);
     expect(factoryTwo.map((item) => item.id)).toEqual([3]);
+  });
+
+  it("calcula as pendências de quebráveis a partir da última inspeção de cada ponto", async () => {
+    const caller = qualityRouter.createCaller(createContext());
+    const factoryOne = await caller.fragilePending({ factoryId: 1 });
+    const factoryTwoMonthly = await caller.fragilePending({ factoryId: 2, periodicity: "M" });
+    expect(factoryOne.map((item) => item.id)).toEqual([2]);
+    expect(factoryTwoMonthly.map((item) => item.id)).toEqual([3]);
+    expect(factoryOne[0]?.lastInspectionAt).toBeNull();
   });
 
   it("atualiza o ponto de quebráveis e guarda a imagem de referência associada", async () => {
