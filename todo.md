@@ -34,3 +34,4 @@
 - [x] Integrar os pontos e periodicidades extraídos no inventário e no registo operacional de quebráveis.
 - [x] Validar a interface de quebráveis com os pontos importados, a periodicidade e a fábrica associada.
 - [x] Analisar e integrar os pontos de controlo e as periodicidades do ficheiro de quebráveis da Fábrica 2 (granel).
+- [x] Remover o padrão quadriculado do fundo do layout e validar a legibilidade dos ecrãs principais.
