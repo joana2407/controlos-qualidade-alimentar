@@ -2,6 +2,7 @@ import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import NotFound from "@/pages/NotFound";
 import { Route, Switch } from "wouter";
+import React from "react";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { ThemeProvider } from "./contexts/ThemeContext";
 import DashboardLayout from "./components/DashboardLayout";
@@ -11,12 +12,14 @@ import Nonconformities from "./pages/Nonconformities";
 import QualityDashboard from "./pages/QualityDashboard";
 import Reports from "./pages/Reports";
 import Configuration from "./pages/Configuration";
+import PlatformOverview from "./pages/PlatformOverview";
 
 function Router() {
   // make sure to consider if you need authentication for certain routes
   return (
     <Switch>
       <Route path={"/"} component={() => <DashboardLayout><QualityDashboard /></DashboardLayout>} />
+      <Route path={"/plataforma"} component={() => <DashboardLayout><PlatformOverview /></DashboardLayout>} />
       <Route path={"/controlos"} component={() => <DashboardLayout><Controls /></DashboardLayout>} />
       <Route path={"/controlos/:module"} component={() => <DashboardLayout><ModuleControl /></DashboardLayout>} />
       <Route path={"/nao-conformidades"} component={() => <DashboardLayout><Nonconformities /></DashboardLayout>} />

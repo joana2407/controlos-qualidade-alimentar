@@ -96,3 +96,13 @@
 - [x] Adicionar teste de interface para validar a apresentação de nome e função do perfil PIN nas listas operacionais e relatórios.
 - [x] Adicionar teste de interface da lista de tarefas para validar quem concluiu cada tarefa.
 - [x] Adicionar teste de interface dos relatórios para validar autoria em registos recentes e incidências diárias.
+- [x] Analisar a proposta de arquitetura anexada e mapear os conteúdos a apresentar no site.
+- [x] Criar uma estrutura web de apresentação e orientação para os módulos de qualidade alimentar.
+- [x] Integrar atalhos e contextualização dos módulos operacionais existentes na nova experiência.
+- [x] Validar a navegação, a responsividade e a coerência com a proposta arquitetural.
+- [x] Validar visualmente a página «Plataforma» em desktop e em ecrã móvel.
+- [x] Adicionar teste de navegação para a rota «Plataforma» e os atalhos principais da página.
+- [x] Registar uma revisão verificável dos blocos da página face à proposta arquitetural e aos destinos operacionais.
+- [x] Adicionar um teste de interação que valide os CTAs e atalhos principais da página «Plataforma» e o acesso pela navegação lateral.
+- [x] Criar um registo verificável que relacione cada bloco da página «Plataforma» com a proposta arquitetural e os respetivos destinos operacionais.
+- [x] Adicionar um teste de navegação que confirme o acesso à página «Plataforma» a partir da sidebar.

@@ -24,7 +24,7 @@ import {
 } from "@/components/ui/sidebar";
 import { startLogin } from "@/const";
 import { useIsMobile } from "@/hooks/useMobile";
-import { AlertTriangle, BarChart3, Boxes, ClipboardCheck, FileWarning, FlaskConical, KeyRound, LayoutDashboard, ListChecks, LogOut, Magnet, MessageSquareMore, PanelLeft, Settings2, ShieldCheck, TimerReset } from "lucide-react";
+import { AlertTriangle, BarChart3, BookOpenCheck, Boxes, ClipboardCheck, FileWarning, FlaskConical, KeyRound, LayoutDashboard, ListChecks, LogOut, Magnet, MessageSquareMore, PanelLeft, Settings2, ShieldCheck, TimerReset } from "lucide-react";
 import React, { CSSProperties, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { DashboardLayoutSkeleton } from './DashboardLayoutSkeleton';
@@ -32,6 +32,7 @@ import { Button } from "./ui/button";
 
 const menuItems = [
   { icon: LayoutDashboard, label: "Hoje", path: "/" },
+  { icon: BookOpenCheck, label: "Plataforma", path: "/plataforma" },
   { icon: ClipboardCheck, label: "Controlos", path: "/controlos" },
   { icon: FileWarning, label: "Não conformidades", path: "/nao-conformidades" },
   { icon: BarChart3, label: "Relatórios", path: "/relatorios" },
@@ -62,6 +63,7 @@ export default function DashboardLayout({
     const saved = localStorage.getItem(SIDEBAR_WIDTH_KEY);
     return saved ? parseInt(saved, 10) : DEFAULT_WIDTH;
   });
+  const [location] = useLocation();
   const { loading, user } = useAuth();
   const access = trpc.quality.accessStatus.useQuery(undefined, { enabled: Boolean(user) });
 
@@ -72,6 +74,8 @@ export default function DashboardLayout({
   if (loading) {
     return <DashboardLayoutSkeleton />
   }
+
+  if (location === "/plataforma") return <>{children}</>;
 
   if (!user) {
     return (

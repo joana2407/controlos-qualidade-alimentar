@@ -50,6 +50,9 @@ describe("atalhos laterais dos painéis de controlo", () => {
     expect(fragile.tagName).toBe("BUTTON");
     fireEvent.click(fragile);
     expect(setLocation).toHaveBeenLastCalledWith("/controlos/fragile_items");
+
+    fireEvent.click(screen.getByRole("button", { name: "Plataforma" }));
+    expect(setLocation).toHaveBeenLastCalledWith("/plataforma");
   });
 
   it("abre os atalhos e permite navegar para um painel no fluxo de ecrã móvel", async () => {
