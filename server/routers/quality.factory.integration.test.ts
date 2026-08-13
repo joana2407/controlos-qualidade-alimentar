@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { correctiveActions, controlEntries, controlTasks, fragileItems, nonconformities } from "../../drizzle/schema";
+import { correctiveActions, controlEntries, controlTasks, factories, fragileItems, nonconformities } from "../../drizzle/schema";
 import type { TrpcContext } from "../_core/context";
 import { getDb } from "../db";
 import { storagePut } from "../storage";
@@ -29,6 +29,11 @@ const actions = [
   { id: 1, factoryId: 1, status: "pending", dueAt: now },
   { id: 2, factoryId: 2, status: "pending", dueAt: now },
 ];
+const factoryRows = [
+  { id: 1, name: "Fábrica 1 (Fatiado)" },
+  { id: 2, name: "Fábrica 2 (granel)" },
+  { id: 3, name: "Fabrica 3 (Sem Gluten)" },
+];
 const fragile = [
   { id: 1, factoryId: 1, periodicity: "D", location: "Zona Tratamento Térmico", name: "Portas forno Anelar 1", status: "active" },
   { id: 2, factoryId: 1, periodicity: "S", location: "Zona Tratamento Térmico", name: "Iluminação Calhas", status: "active" },
@@ -51,6 +56,7 @@ function mockDatabase() {
     if (table === controlEntries) return entries;
     if (table === nonconformities) return ncs;
     if (table === correctiveActions) return actions;
+    if (table === factories) return factoryRows;
     if (table === fragileItems) return fragile;
     return [];
   };
@@ -90,6 +96,27 @@ describe("procedimentos de qualidade por fábrica", () => {
     expect(report).toMatchObject({ planCompliance: 50, openNcs: 1, criticalOpen: 1 });
     expect(report.modules.find((module) => module.module === "bphf")).toMatchObject({ total: 1, conformity: 100, nc: 0 });
     expect(report.modules.find((module) => module.module === "metal_detectors")).toMatchObject({ total: 1, conformity: 0, nc: 1 });
+  });
+
+  it("gera uma incidência shelf-life e apresenta o relatório diário por fábrica", async () => {
+    const caller = qualityRouter.createCaller(createContext());
+    await caller.createEntry({
+      module: "shelf_life",
+      title: "Incidência shelf-life — Pão de forma",
+      area: "Shelf-life",
+      result: "NC",
+      notes: "Bolor identificado na amostra.",
+      payload: { product: "Pão de forma", lot: "L-001", validity: "2026-08-13", reason: "Bolor identificado" },
+      createNonconformity: true,
+      severity: "medium",
+      factoryId: 2,
+    });
+    expect(dbInserts[1]).toMatchObject({ module: "shelf_life", title: "Incidência shelf-life — Pão de forma", factoryId: 2, status: "open", severity: "medium" });
+
+    const daily = await caller.dailyIncidences({ date: now, factoryId: 1 });
+    expect(daily.total).toBe(2);
+    expect(daily.byFactory).toEqual([{ factoryName: "Fábrica 1 (Fatiado)", total: 2 }]);
+    expect(daily.incidences.map((incidence) => incidence.id)).toEqual([1, 2]);
   });
 
   it("filtra os pontos de quebráveis pela fábrica e pela periodicidade", async () => {

@@ -24,6 +24,7 @@ import { protectedProcedure, router } from "../_core/trpc";
 const qualityModuleSchema = z.enum(qualityModuleValues);
 const resultSchema = z.enum(resultValues);
 const dateInput = z.coerce.date();
+const BPHF_AREA_NAMES = ["Produção", "Embalagem", "Logística", "Manutenção", "Limpeza", "Outros"] as const;
 
 function asDateRange(date: Date) {
   const start = new Date(date);
@@ -53,7 +54,7 @@ export const qualityRouter = router({
       db.select().from(factories).orderBy(factories.name),
     ]);
     return {
-      areas: persistedAreas.map((area) => ({ id: area.id, name: area.name, group: area.group })),
+      areas: persistedAreas.map((area) => ({ id: area.id, name: area.name, group: area.group, factoryId: area.factoryId })),
       factories: persistedFactories.map((factory) => ({ id: factory.id, code: factory.code, name: factory.name })),
       modules: [
       { id: "bphf", label: "Verificação de BPHF" },
@@ -80,10 +81,11 @@ export const qualityRouter = router({
   addArea: protectedProcedure.input(z.object({
     name: z.string().min(2).max(120),
     group: z.enum(["bphf", "metal", "general"]),
+    factoryId: z.number().int().optional(),
   })).mutation(async ({ ctx, input }) => {
     requireAdmin(ctx.user.role);
     const db = await requireDb();
-    await db.insert(areas).values({ ...input, active: "true", createdBy: ctx.user.openId });
+    await db.insert(areas).values({ ...input, factoryId: input.factoryId ?? null, active: "true", createdBy: ctx.user.openId });
     return { success: true };
   }),
 
@@ -121,8 +123,14 @@ export const qualityRouter = router({
       { code: "LINHA_CROUTONS", name: "Linha Croutons" },
     ];
     let created = 0;
-    if (!existingAreas.length) { await db.insert(areas).values(defaultAreas.map((area) => ({ ...area, active: "true" as const, createdBy: ctx.user.openId }))); created += defaultAreas.length; }
+    if (!existingAreas.length) { await db.insert(areas).values(defaultAreas.map((area) => ({ ...area, factoryId: null, active: "true" as const, createdBy: ctx.user.openId }))); created += defaultAreas.length; }
     if (!existingFactories.length) { await db.insert(factories).values(defaultFactories.map((factory) => ({ ...factory, active: "true" as const, createdBy: ctx.user.openId }))); created += defaultFactories.length; }
+    const currentFactories = await db.select().from(factories);
+    const existingBphfAreas = await db.select().from(areas).where(eq(areas.group, "bphf"));
+    const bphfAreasToCreate = currentFactories.flatMap((factory) => BPHF_AREA_NAMES
+      .filter((name) => !existingBphfAreas.some((area) => area.factoryId === factory.id && area.name === name))
+      .map((name) => ({ name, group: "bphf" as const, factoryId: factory.id, active: "true" as const, createdBy: ctx.user.openId })));
+    if (bphfAreasToCreate.length) { await db.insert(areas).values(bphfAreasToCreate); created += bphfAreasToCreate.length; }
     return { success: true, created };
   }),
 
@@ -282,6 +290,31 @@ export const qualityRouter = router({
     const db = await requireDb();
     const ncs = await db.select().from(nonconformities).orderBy(desc(nonconformities.detectedAt));
     return scopeToFactory(ncs, input?.factoryId);
+  }),
+
+  dailyIncidences: protectedProcedure.input(z.object({
+    date: dateInput.optional(),
+    factoryId: z.number().int().optional(),
+  }).optional()).query(async ({ input }) => {
+    const db = await requireDb();
+    const referenceDate = input?.date ?? new Date();
+    const { start, end } = asDateRange(referenceDate);
+    const [ncs, factoryRows] = await Promise.all([
+      db.select().from(nonconformities).orderBy(desc(nonconformities.detectedAt)),
+      db.select().from(factories).orderBy(factories.name),
+    ]);
+    const factoryNames = new Map(factoryRows.map((factory) => [factory.id, factory.name]));
+    const incidences = scopeToFactory(ncs, input?.factoryId)
+      .filter((incidence) => incidence.detectedAt >= start && incidence.detectedAt < end)
+      .map((incidence) => ({ ...incidence, factoryName: incidence.factoryId ? factoryNames.get(incidence.factoryId) ?? "Fábrica não identificada" : "Sem fábrica/linha" }));
+    const grouped = new Map<string, number>();
+    incidences.forEach((incidence) => grouped.set(incidence.factoryName, (grouped.get(incidence.factoryName) ?? 0) + 1));
+    return {
+      date: start,
+      total: incidences.length,
+      byFactory: Array.from(grouped, ([factoryName, total]) => ({ factoryName, total })).sort((left, right) => right.total - left.total),
+      incidences,
+    };
   }),
 
   updateNc: protectedProcedure.input(z.object({

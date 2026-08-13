@@ -2,6 +2,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { Check, Minus, X } from "lucide-react";
+import React from "react";
 
 export function ResultPicker({ value, onChange, compact = false }: { value: "C" | "NC" | "N/A"; onChange: (value: "C" | "NC" | "N/A") => void; compact?: boolean }) {
   const choices = [

@@ -33,12 +33,13 @@ const controlResult = mysqlEnum("control_result", resultValues);
 
 export const areas = mysqlTable("areas", {
   id: int("id").autoincrement().primaryKey(),
-  name: varchar("name", { length: 120 }).notNull().unique(),
+  name: varchar("name", { length: 120 }).notNull(),
   group: mysqlEnum("area_group", ["bphf", "metal", "general"]).default("general").notNull(),
+  factoryId: int("factoryId"),
   active: mysqlEnum("area_active", ["true", "false"]).default("true").notNull(),
   createdBy: varchar("createdBy", { length: 64 }).notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
-});
+}, (table) => [index("area_group_idx").on(table.group), index("area_factory_idx").on(table.factoryId)]);
 
 export const factories = mysqlTable("factories", {
   id: int("id").autoincrement().primaryKey(),

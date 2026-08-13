@@ -69,3 +69,12 @@
 - [x] Aplicar apenas o cabeçalho em flex e os ajustes de texto solicitados, preservando a responsividade do painel.
 - [x] Validar visualmente o painel de quebráveis após a correção da edição.
 - [x] Adicionar validação de interface verificável para confirmar a estrutura visual revista do painel de quebráveis.
+- [x] Criar o catálogo de áreas BPHF Produção, Embalagem, Logística, Manutenção, Limpeza e Outros para cada fábrica ou linha produtiva.
+- [x] Associar cada área BPHF à fábrica ou linha correspondente no modelo de dados e na configuração.
+- [x] Filtrar o seletor BPHF pelas áreas da fábrica ou linha escolhida no formulário.
+- [x] Testar a associação e a apresentação das áreas BPHF por fábrica ou linha.
+- [x] Simplificar shelf-life para registo inicial C ou NC com observação obrigatória apenas em NC.
+- [x] Mostrar campos de produto, lote, validade e motivo apenas quando shelf-life for registado como NC.
+- [x] Gerar automaticamente uma incidência do dia quando shelf-life for NC.
+- [x] Criar relatório diário de incidências por fábrica ou linha, com filtro de data e exportação.
+- [x] Testar a criação de incidências shelf-life e o relatório diário segmentado por fábrica ou linha.
