@@ -124,3 +124,4 @@
 - [x] Adicionar teste verificável para a configuração do catálogo de expedição.
 - [x] Criar carregador verificável que converte a estrutura extraída do Excel no catálogo estático de expedição.
 - [x] Cobrir o carregador de catálogo de expedição com teste de importação/configuração.
+- [x] Verificar e validar o novo rótulo «Resultado da verificação global:» no controlo shelf-life.
