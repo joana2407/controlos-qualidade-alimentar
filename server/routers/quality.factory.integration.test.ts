@@ -165,6 +165,15 @@ describe("procedimentos de qualidade por fábrica", () => {
     expect(dbUpdates[1]).toMatchObject({ referenceImageKey: "fragile-reference/1.png", referenceImageUrl: "/manus-storage/fragile-reference/1.png", referenceImageName: "porta.png" });
   });
 
+  it("permite a um técnico editar e eliminar um ponto de quebráveis", async () => {
+    const caller = qualityRouter.createCaller(createContext({ id: 1, name: "Sabrina Esteves", title: "Tec. Qualidade", role: "technician" }));
+    await caller.updateFragileItem({ id: 1, name: "Portas forno anelar — revista", location: "Produção", factoryId: 1, periodicity: "D", itemType: "Vidro" });
+    await caller.deleteFragileItem({ id: 1 });
+
+    expect(dbUpdates[0]).toMatchObject({ name: "Portas forno anelar — revista", location: "Produção", factoryId: 1 });
+    expect(dbUpdates[1]).toEqual({ status: "inactive" });
+  });
+
   it("cria um ponto de quebráveis com fábrica, área e periodicidade", async () => {
     const caller = qualityRouter.createCaller(createContext());
     const result = await caller.addFragileItem({ name: "Proteção acrílica da linha", location: "Embalamento primário", factoryId: 3, periodicity: "Q", itemType: "Plástico rígido" });

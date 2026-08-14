@@ -136,3 +136,5 @@
 - [x] Auditar o painel de Quebráveis para identificar informação repetida e passos desnecessários.
 - [x] Simplificar a navegação e a apresentação das pendências, catálogo e formulário de inspeção.
 - [x] Agrupar os atalhos dos módulos no separador «Controlos» da barra lateral e manter o «Painel de Controlos» como visão geral.
+- [x] Abrir a verificação de quebráveis num painel próprio ao selecionar «Inspecionar», sem deslocação da página.
+- [x] Permitir a qualquer elemento da equipa editar e eliminar pontos de controlo de Quebráveis.

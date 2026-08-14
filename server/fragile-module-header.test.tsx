@@ -19,6 +19,7 @@ vi.mock("@/lib/trpc", () => ({
       fragilePending: { useQuery: (input?: { factoryId?: number }) => ({ data: input?.factoryId === 1 ? [{ id: 101, name: "Ponto F1", location: "Produção", periodicity: "D", itemType: "Vidro", lastInspectionAt: null }] : [], isLoading: false }) },
       addFragileItem: { useMutation: () => noopMutation },
       updateFragileItem: { useMutation: () => noopMutation },
+      deleteFragileItem: { useMutation: () => noopMutation },
       uploadFragileReferenceImage: { useMutation: () => noopMutation },
     },
   },

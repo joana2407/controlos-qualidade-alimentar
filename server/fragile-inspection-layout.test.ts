@@ -6,9 +6,11 @@ const panelPath = fileURLToPath(new URL("../client/src/components/quality/Fragil
 const panel = readFileSync(panelPath, "utf8");
 
 describe("disposição da inspeção de quebráveis", () => {
-  it("mantém o formulário acessível pelo botão Inspecionar e fora da coluna lateral", () => {
-    expect(panel).toContain('id="registo-inspecao-quebraveis"');
+  it("abre a inspeção num painel próprio e sem deslocar a página", () => {
     expect(panel).toContain("function openInspection(item: any)");
+    expect(panel).toContain("setInspectionOpen(true)");
+    expect(panel).toContain("<Dialog open={inspectionOpen}");
+    expect(panel).not.toContain("scrollIntoView");
     expect(panel).not.toContain("lg:grid-cols-[1.1fr_.9fr]");
   });
 });

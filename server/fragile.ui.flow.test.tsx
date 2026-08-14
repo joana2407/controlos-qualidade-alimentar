@@ -6,6 +6,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const addMutate = vi.fn();
 const updateMutate = vi.fn();
+const deleteMutate = vi.fn();
 const uploadMutate = vi.fn();
 const invalidate = vi.fn();
 
@@ -18,6 +19,7 @@ vi.mock("@/lib/trpc", () => ({
       fragilePending: { useQuery: () => ({ isLoading: false, data: [{ id: 9, name: "Proteção acrílica", location: "Embalamento", factoryId: 1, periodicity: "S", itemType: "Plástico rígido", referenceImageUrl: null, lastInspectionAt: null }] }) },
       addFragileItem: { useMutation: (options?: { onSuccess?: () => void }) => ({ isPending: false, mutate: (input: unknown) => { addMutate(input); options?.onSuccess?.(); } }) },
       updateFragileItem: { useMutation: () => ({ isPending: false, mutate: (input: unknown, options?: { onSuccess?: () => void }) => { updateMutate(input); options?.onSuccess?.(); } }) },
+      deleteFragileItem: { useMutation: (options?: { onSuccess?: () => void }) => ({ isPending: false, mutate: (input: unknown) => { deleteMutate(input); options?.onSuccess?.(); } }) },
       uploadFragileReferenceImage: { useMutation: () => ({ isPending: false, mutate: (input: unknown, options?: { onSuccess?: (result: { url: string }) => void }) => { uploadMutate(input); options?.onSuccess?.({ url: "/manus-storage/referencia.png" }); } }) },
     },
   },
@@ -29,7 +31,7 @@ import { FragileInspectionV2 } from "../client/src/pages/ModuleControl";
 import { FragileOperationsPanel } from "../client/src/components/quality/FragileOperationsPanel";
 
 describe("fluxo de interface de pontos de controlo de quebráveis", () => {
-  beforeEach(() => { cleanup(); addMutate.mockClear(); updateMutate.mockClear(); uploadMutate.mockClear(); invalidate.mockClear(); });
+  beforeEach(() => { cleanup(); addMutate.mockClear(); updateMutate.mockClear(); deleteMutate.mockClear(); uploadMutate.mockClear(); invalidate.mockClear(); });
 
   it("permite criar, editar e carregar uma imagem de referência", async () => {
     const user = userEvent.setup();
@@ -56,8 +58,7 @@ describe("fluxo de interface de pontos de controlo de quebráveis", () => {
     await waitFor(() => expect(uploadMutate).toHaveBeenCalledWith(expect.objectContaining({ itemId: 9, fileName: "referencia.png", mimeType: "image/png" })));
   });
 
-  it("leva a pendência selecionada ao formulário de inspeção abaixo do painel", async () => {
-    const user = userEvent.setup();
+  it("abre a pendência selecionada num painel próprio de inspeção", () => {
     const createEntry = { mutate: vi.fn(), isPending: false };
     render(<FragileOperationsPanel createEntry={createEntry} factoryId="1" />);
 
@@ -66,15 +67,25 @@ describe("fluxo de interface de pontos de controlo de quebráveis", () => {
     expect(screen.getByRole("button", { name: /gerir pontos/i })).toBeTruthy();
     expect(screen.getAllByText("Proteção acrílica").length).toBeGreaterThan(0);
 
-    const form = document.getElementById("registo-inspecao-quebraveis") as HTMLFormElement;
-    const scrollIntoView = vi.fn();
-    Object.defineProperty(form, "scrollIntoView", { value: scrollIntoView, configurable: true });
     fireEvent.click(screen.getByRole("button", { name: /inspecionar/i }));
-    expect(scrollIntoView).toHaveBeenCalledWith({ behavior: "smooth", block: "center" });
-    expect(form).toBeTruthy();
+    expect(screen.getByRole("dialog")).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Registar inspeção" })).toBeTruthy();
+    expect(screen.getByRole("dialog").textContent).toContain("Verificação de Proteção acrílica.");
+  });
+
+  it("permite editar e eliminar um ponto no gestor por qualquer operador", async () => {
+    const user = userEvent.setup();
+    render(<FragileOperationsPanel createEntry={{ mutate: vi.fn(), isPending: false }} factoryId="1" />);
     await user.click(screen.getByRole("button", { name: /gerir pontos/i }));
     fireEvent.click(screen.getByRole("button", { name: /editar proteção acrílica/i }));
     expect(screen.getAllByText("Editar ponto de controlo").length).toBeGreaterThan(0);
+
+    fireEvent.keyDown(document, { key: "Escape" });
+    await user.click(screen.getByRole("button", { name: /gerir pontos/i }));
+    await user.click(screen.getByRole("button", { name: /eliminar proteção acrílica/i }));
+    expect(screen.getByText(/Pretende eliminar «Proteção acrílica»/)).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "Eliminar ponto" }));
+    expect(deleteMutate).toHaveBeenCalledWith({ id: 9 });
   });
 
   it("mantém o cabeçalho revisto e a descrição operacional sem texto duplicado", () => {

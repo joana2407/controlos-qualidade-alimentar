@@ -533,7 +533,7 @@ export const qualityRouter = router({
   listFragileItems: protectedProcedure.input(z.object({ factoryId: z.number().int().optional(), periodicity: z.enum(["D", "S", "Q", "M"]).optional() }).optional()).query(async ({ input }) => {
     const db = await requireDb();
     const items = await db.select().from(fragileItems).orderBy(fragileItems.location, fragileItems.sortOrder, fragileItems.name);
-    return items.filter((item) => (!input?.factoryId || item.factoryId === input.factoryId) && (!input?.periodicity || item.periodicity === input.periodicity));
+    return items.filter((item) => item.status === "active" && (!input?.factoryId || item.factoryId === input.factoryId) && (!input?.periodicity || item.periodicity === input.periodicity));
   }),
 
   fragilePending: protectedProcedure.input(z.object({ factoryId: z.number().int().optional(), periodicity: z.enum(["D", "S", "Q", "M"]).optional() }).optional()).query(async ({ input }) => {
@@ -568,7 +568,7 @@ export const qualityRouter = router({
     return { success: true };
   }),
 
-  updateFragileItem: qualityManagerProcedure.input(z.object({
+  updateFragileItem: qualityOperatorProcedure.input(z.object({
     id: z.number().int(),
     name: z.string().min(2).max(180),
     location: z.string().min(2).max(120),
@@ -589,7 +589,7 @@ export const qualityRouter = router({
     return { success: true };
   }),
 
-  uploadFragileReferenceImage: qualityManagerProcedure.input(z.object({
+  uploadFragileReferenceImage: qualityOperatorProcedure.input(z.object({
     itemId: z.number().int(),
     fileName: z.string().min(1).max(255),
     mimeType: z.enum(["image/jpeg", "image/png", "image/webp"]),
@@ -605,6 +605,14 @@ export const qualityRouter = router({
     const { key: referenceImageKey, url: referenceImageUrl } = await storagePut(key, Buffer.from(base64, "base64"), input.mimeType);
     await db.update(fragileItems).set({ referenceImageKey, referenceImageUrl, referenceImageName: input.fileName }).where(eq(fragileItems.id, input.itemId));
     return { success: true, url: referenceImageUrl };
+  }),
+
+  deleteFragileItem: qualityOperatorProcedure.input(z.object({ id: z.number().int() })).mutation(async ({ input }) => {
+    const db = await requireDb();
+    const item = (await db.select().from(fragileItems).where(eq(fragileItems.id, input.id)).limit(1))[0];
+    if (!item || item.status !== "active") throw new TRPCError({ code: "NOT_FOUND", message: "Ponto de controlo não encontrado." });
+    await db.update(fragileItems).set({ status: "inactive" }).where(eq(fragileItems.id, input.id));
+    return { success: true };
   }),
 
   reports: protectedProcedure.input(z.object({ factoryId: z.number().int().optional() }).optional()).query(async ({ input }) => {
