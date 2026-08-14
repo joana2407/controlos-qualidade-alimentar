@@ -56,7 +56,7 @@ describe("fluxo de interface de pontos de controlo de quebráveis", () => {
     await waitFor(() => expect(uploadMutate).toHaveBeenCalledWith(expect.objectContaining({ itemId: 9, fileName: "referencia.png", mimeType: "image/png" })));
   });
 
-  it("reúne pendências, catálogo e inspeção num único painel operacional", async () => {
+  it("leva a pendência selecionada ao formulário de inspeção abaixo do painel", async () => {
     const user = userEvent.setup();
     const createEntry = { mutate: vi.fn(), isPending: false };
     render(<FragileOperationsPanel createEntry={createEntry} factoryId="1" />);
@@ -66,8 +66,12 @@ describe("fluxo de interface de pontos de controlo de quebráveis", () => {
     expect(screen.getByText("Catálogo de pontos")).toBeTruthy();
     expect(screen.getAllByText("Proteção acrílica").length).toBeGreaterThan(0);
 
+    const form = document.getElementById("registo-inspecao-quebraveis") as HTMLFormElement;
+    const scrollIntoView = vi.fn();
+    Object.defineProperty(form, "scrollIntoView", { value: scrollIntoView, configurable: true });
     fireEvent.click(screen.getByRole("button", { name: /inspecionar/i }));
-    expect(screen.getAllByText("Registar inspeção").length).toBeGreaterThan(0);
+    expect(scrollIntoView).toHaveBeenCalledWith({ behavior: "smooth", block: "center" });
+    expect(form).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: /editar proteção acrílica/i }));
     expect(screen.getAllByText("Editar ponto de controlo").length).toBeGreaterThan(0);
   });

@@ -131,3 +131,5 @@
 - [x] Uniformizar o ícone e a interação de ajuda nos campos de decisão C/NC aplicáveis.
 - [x] Adicionar explicação contextual específica aos três critérios BPHF junto ao respetivo texto de verificação.
 - [x] Cobrir o conteúdo das três explicações específicas BPHF com teste de interface.
+- [x] Fazer o botão «Inspecionar» das pendências de quebráveis abrir diretamente o formulário de verificação do ponto selecionado.
+- [x] Remover o formulário de verificação da zona lateral do painel de pendências de quebráveis.
