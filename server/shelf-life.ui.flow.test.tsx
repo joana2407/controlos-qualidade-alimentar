@@ -2,11 +2,34 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+
+vi.mock("@/components/ui/tooltip", () => ({
+  Tooltip: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+  TooltipTrigger: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+  TooltipContent: ({ children }: { children: React.ReactNode }) => <div role="tooltip">{children}</div>,
+}));
+
 import { ShelfLife } from "../client/src/pages/ModuleControl";
+
+class ResizeObserverMock {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+}
+
+vi.stubGlobal("ResizeObserver", ResizeObserverMock);
 
 afterEach(cleanup);
 
 describe("fluxo shelf-life", () => {
+  it("inclui ajuda contextual acessível junto ao ícone do resultado global", () => {
+    render(<ShelfLife createEntry={{ isPending: false, mutate: vi.fn() }} />);
+
+    const help = screen.getByRole("button", { name: "Explicação do resultado da verificação global" });
+    expect(help).toBeTruthy();
+    expect(screen.getByRole("tooltip").textContent).toMatch(/Selecione C quando a amostra estiver conforme/);
+  });
+
   it("mantém o registo conforme simplificado sem campos de rastreabilidade", () => {
     const mutate = vi.fn();
     render(<ShelfLife createEntry={{ isPending: false, mutate }} />);
