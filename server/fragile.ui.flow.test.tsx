@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import React from "react";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -15,7 +15,7 @@ vi.mock("@/lib/trpc", () => ({
     useUtils: () => ({ quality: { listFragileItems: { invalidate }, fragilePending: { invalidate } } }),
     quality: {
       metadata: { useQuery: () => ({ data: { factories: [{ id: 1, name: "Fábrica 1 (Fatiado)" }, { id: 2, name: "Fábrica 2 (granel)" }] } }) },
-      listFragileItems: { useQuery: () => ({ data: [{ id: 9, name: "Proteção acrílica", location: "Embalamento", factoryId: 1, periodicity: "S", itemType: "Plástico rígido", referenceImageUrl: null }] }) },
+      listFragileItems: { useQuery: () => ({ data: [{ id: 9, name: "Proteção acrílica", location: "Embalamento", factoryId: 1, periodicity: "S", itemType: "Plástico rígido", referenceImageUrl: null }, { id: 10, name: "Janelas exterior", location: "Expedição", factoryId: 2, periodicity: "M", itemType: "Vidro", referenceImageUrl: null }] }) },
       fragilePending: { useQuery: () => ({ isLoading: false, data: [{ id: 9, name: "Proteção acrílica", location: "Embalamento", factoryId: 1, periodicity: "S", itemType: "Plástico rígido", referenceImageUrl: null, lastInspectionAt: null }] }) },
       addFragileItem: { useMutation: (options?: { onSuccess?: () => void }) => ({ isPending: false, mutate: (input: unknown) => { addMutate(input); options?.onSuccess?.(); } }) },
       updateFragileItem: { useMutation: () => ({ isPending: false, mutate: (input: unknown, options?: { onSuccess?: () => void }) => { updateMutate(input); options?.onSuccess?.(); } }) },
@@ -31,7 +31,14 @@ import { FragileInspectionV2 } from "../client/src/pages/ModuleControl";
 import { FragileOperationsPanel } from "../client/src/components/quality/FragileOperationsPanel";
 
 describe("fluxo de interface de pontos de controlo de quebráveis", () => {
-  beforeEach(() => { cleanup(); addMutate.mockClear(); updateMutate.mockClear(); deleteMutate.mockClear(); uploadMutate.mockClear(); invalidate.mockClear(); });
+  beforeEach(() => {
+    cleanup();
+    addMutate.mockClear(); updateMutate.mockClear(); deleteMutate.mockClear(); uploadMutate.mockClear(); invalidate.mockClear();
+    Object.defineProperty(HTMLElement.prototype, "hasPointerCapture", { configurable: true, value: () => false });
+    Object.defineProperty(HTMLElement.prototype, "setPointerCapture", { configurable: true, value: () => undefined });
+    Object.defineProperty(HTMLElement.prototype, "releasePointerCapture", { configurable: true, value: () => undefined });
+    Object.defineProperty(HTMLElement.prototype, "scrollIntoView", { configurable: true, value: () => undefined });
+  });
 
   it("permite criar, editar e carregar uma imagem de referência", async () => {
     const user = userEvent.setup();
@@ -86,6 +93,20 @@ describe("fluxo de interface de pontos de controlo de quebráveis", () => {
     expect(screen.getByText(/Pretende eliminar «Proteção acrílica»/)).toBeTruthy();
     await user.click(screen.getByRole("button", { name: "Eliminar ponto" }));
     expect(deleteMutate).toHaveBeenCalledWith({ id: 9 });
+  });
+
+  it("filtra o catálogo por fábrica ou linha no gestor de pontos", async () => {
+    const user = userEvent.setup();
+    render(<FragileOperationsPanel createEntry={{ mutate: vi.fn(), isPending: false }} factoryId="1" />);
+    await user.click(screen.getByRole("button", { name: /gerir pontos/i }));
+
+    const dialog = screen.getByRole("dialog");
+    expect(within(dialog).getByText("Proteção acrílica")).toBeTruthy();
+    await user.click(within(dialog).getAllByRole("combobox")[0]!);
+    await user.click(screen.getByRole("option", { name: "Fábrica 2 (granel)" }));
+
+    expect(within(dialog).getByText("Janelas exterior")).toBeTruthy();
+    expect(within(dialog).queryByText("Proteção acrílica")).toBeNull();
   });
 
   it("mantém o cabeçalho revisto e a descrição operacional sem texto duplicado", () => {

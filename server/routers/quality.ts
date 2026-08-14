@@ -188,18 +188,21 @@ export const qualityRouter = router({
 
   dashboard: protectedProcedure.input(z.object({ factoryId: z.number().int().optional() }).optional()).query(async ({ input }) => {
     const db = await requireDb();
-    const [tasks, ncs, entries, actions, fragileCatalog] = await Promise.all([
+    const [tasks, ncs, entries, actions, fragileCatalog, plans, areaCatalog] = await Promise.all([
       db.select().from(controlTasks).orderBy(controlTasks.dueAt),
       db.select().from(nonconformities).orderBy(desc(nonconformities.detectedAt)),
       db.select().from(controlEntries).orderBy(desc(controlEntries.completedAt)),
       db.select().from(correctiveActions).orderBy(correctiveActions.dueAt),
       db.select().from(fragileItems).orderBy(fragileItems.location, fragileItems.sortOrder, fragileItems.name),
+      db.select().from(controlPlans).orderBy(controlPlans.module, controlPlans.title),
+      db.select().from(areas).orderBy(areas.name),
     ]);
     const scopedTasks = scopeToFactory(tasks, input?.factoryId);
     const scopedNcs = scopeToFactory(ncs, input?.factoryId);
     const scopedEntries = scopeToFactory(entries, input?.factoryId);
     const scopedActions = scopeToFactory(actions, input?.factoryId);
     const scopedFragileCatalog = scopeToFactory(fragileCatalog, input?.factoryId);
+    const scopedPlans = plans.filter((plan) => plan.active === "true" && (!input?.factoryId || plan.factoryId === input.factoryId || plan.factoryId === null));
     const now = new Date();
     const { start, end } = asDateRange(now);
     const pending = scopedTasks.filter((task) => task.status === "pending");
@@ -207,6 +210,14 @@ export const qualityRouter = router({
     const completedToday = scopedEntries.filter((entry) => entry.completedAt >= start && entry.completedAt < end);
     const todayTasks = scopedTasks.filter((task) => task.dueAt >= start && task.dueAt < end);
     const completedTasksToday = todayTasks.filter((task) => task.status === "completed" && task.completedAt && task.completedAt >= start && task.completedAt < end);
+    const dailyPlans = scopedPlans.filter((plan) => plan.frequency === "daily" || plan.frequency === "per_shift");
+    const areasById = new Map(areaCatalog.map((area) => [area.id, area.name]));
+    const completedDailyPlans = dailyPlans.filter((plan) => {
+      const planArea = areasById.get(plan.areaId);
+      return completedToday.some((entry) => entry.module === plan.module && (!plan.factoryId || entry.factoryId === plan.factoryId) && (!planArea || entry.area === planArea));
+    });
+    const dailyExpectedCount = todayTasks.length + dailyPlans.length;
+    const dailyCompletedCount = completedTasksToday.length + completedDailyPlans.length;
     const critical = scopedNcs.filter((nc) => nc.status !== "closed" && nc.severity === "critical");
     const openActions = scopedActions.filter((action) => action.status !== "verified");
     const lastFragileInspections = new Map<number, Date>();
@@ -227,7 +238,7 @@ export const qualityRouter = router({
         criticalOpen: critical.length,
         completedToday: completedToday.length,
         fragilePending: fragilePending.length,
-        dailyExecutionRate: todayTasks.length ? Number(((completedTasksToday.length / todayTasks.length) * 100).toFixed(1)) : 0,
+        dailyExecutionRate: dailyExpectedCount ? Number(((dailyCompletedCount / dailyExpectedCount) * 100).toFixed(1)) : 0,
       },
     };
   }),
@@ -241,7 +252,7 @@ export const qualityRouter = router({
   createTask: qualityManagerProcedure.input(z.object({
     title: z.string().min(2).max(180),
     module: qualityModuleSchema,
-    area: z.string().min(2).max(120),
+    area: z.string().max(120).optional().transform((value) => value?.trim() || "Sem área"),
     factoryId: z.number().int().optional(),
     dueAt: dateInput,
     responsible: z.string().min(2).max(120),

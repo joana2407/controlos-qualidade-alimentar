@@ -138,3 +138,7 @@
 - [x] Agrupar os atalhos dos módulos no separador «Controlos» da barra lateral e manter o «Painel de Controlos» como visão geral.
 - [x] Abrir a verificação de quebráveis num painel próprio ao selecionar «Inspecionar», sem deslocação da página.
 - [x] Permitir a qualquer elemento da equipa editar e eliminar pontos de controlo de Quebráveis.
+- [x] Adicionar filtro por fábrica ou linha ao painel «Gerir pontos de controlo» de Quebráveis.
+- [x] Tornar opcional a seleção de área no painel de criação de nova tarefa.
+- [x] Corrigir o cálculo da execução diária para refletir apenas os controlos efetivamente verificados.
+- [x] Avaliar a cobertura BRCGS Food Safety e priorizar melhorias de conformidade para a plataforma.

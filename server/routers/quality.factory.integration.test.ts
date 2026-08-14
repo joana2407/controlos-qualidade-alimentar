@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { correctiveActions, controlEntries, controlTasks, factories, fragileItems, nonconformities } from "../../drizzle/schema";
+import { areas, controlPlans, correctiveActions, controlEntries, controlTasks, factories, fragileItems, nonconformities } from "../../drizzle/schema";
 import type { TrpcContext } from "../_core/context";
 import { getDb } from "../db";
 import { storagePut } from "../storage";
@@ -34,6 +34,8 @@ const factoryRows = [
   { id: 2, name: "Fábrica 2 (granel)" },
   { id: 3, name: "Fabrica 3 (Sem Gluten)" },
 ];
+const areaRows = [{ id: 101, name: "Produção T", group: "bphf", factoryId: 1, active: "true" }];
+const plans: Array<{ id: number; title: string; module: "bphf"; areaId: number; factoryId: number; frequency: "daily"; active: "true" }> = [];
 const fragile = [
   { id: 1, factoryId: 1, periodicity: "D", location: "Zona Tratamento Térmico", name: "Portas forno Anelar 1", status: "active" },
   { id: 2, factoryId: 1, periodicity: "S", location: "Zona Tratamento Térmico", name: "Iluminação Calhas", status: "active" },
@@ -58,6 +60,8 @@ function mockDatabase() {
     if (table === nonconformities) return ncs;
     if (table === correctiveActions) return actions;
     if (table === factories) return factoryRows;
+    if (table === areas) return areaRows;
+    if (table === controlPlans) return plans;
     if (table === fragileItems) return fragile;
     return [];
   };
@@ -87,6 +91,15 @@ describe("procedimentos de qualidade por fábrica", () => {
     expect(dashboard.tasks.map((task) => task.id)).toEqual([1, 2]);
     expect(dashboard.metrics).toMatchObject({ pending: 1, criticalOpen: 1, completedToday: 3, fragilePending: 1, dailyExecutionRate: 50 });
     expect(filteredTasks.map((task) => task.id)).toEqual([1, 2]);
+  });
+
+  it("não apresenta 100% enquanto existir um plano diário previsto sem registo", async () => {
+    plans.push({ id: 1, title: "BPHF diário", module: "bphf", areaId: 101, factoryId: 1, frequency: "daily", active: "true" });
+    const caller = qualityRouter.createCaller(createContext());
+    const dashboard = await caller.dashboard({ factoryId: 1 });
+
+    expect(dashboard.metrics.dailyExecutionRate).toBe(66.7);
+    plans.length = 0;
   });
 
   it("filtra NC e agrega os relatórios sem misturar a fábrica 2", async () => {
@@ -129,6 +142,13 @@ describe("procedimentos de qualidade por fábrica", () => {
     const technician = qualityRouter.createCaller(createContext({ id: 1, name: "Sabrina Esteves", title: "Tec. Qualidade", role: "technician" }));
     await expect(technician.createTask({ title: "Tarefa pontual", module: "bphf", area: "Produção", factoryId: 1, dueAt: now, responsible: "Sabrina Esteves" })).rejects.toMatchObject({ code: "FORBIDDEN" });
     await expect(technician.addArea({ name: "Área reservada", module: "bphf", factoryId: 1 })).rejects.toMatchObject({ code: "FORBIDDEN" });
+  });
+
+  it("cria uma tarefa pontual sem área e guarda uma indicação neutra", async () => {
+    const caller = qualityRouter.createCaller(createContext());
+    await caller.createTask({ title: "Verificação geral", module: "bphf", factoryId: 1, dueAt: now, responsible: "Joana Pina" });
+
+    expect(dbInserts[0]).toMatchObject({ title: "Verificação geral", area: "Sem área", factoryId: 1 });
   });
 
   it("guarda o perfil que concluiu a tarefa e cria o respetivo registo de controlo", async () => {
