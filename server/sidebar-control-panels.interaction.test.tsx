@@ -72,11 +72,18 @@ describe("atalhos laterais dos painéis de controlo", () => {
 
   it("limita a navegação ao módulo de reclamações quando o âmbito do perfil é restrito", () => {
     occurrenceScope = "reclamacoes";
-    render(<DashboardLayout><div>Conteúdo</div></DashboardLayout>);
-    fireEvent.click(screen.getByRole("button", { name: "Abrir módulos de ocorrências" }));
+    currentLocation = "/reclamacoes";
+    render(<DashboardLayout workspace="occurrences"><div>Conteúdo</div></DashboardLayout>);
     expect(screen.getByRole("button", { name: "Reclamações a fornecedores" })).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Nova ocorrência" })).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "Ocorrências" }));
-    expect(setLocation).toHaveBeenLastCalledWith("/reclamacoes");
+    expect(screen.queryByRole("button", { name: "Ocorrências" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Áreas de trabalho" }));
+    expect(setLocation).toHaveBeenLastCalledWith("/");
+  });
+
+  it("não apresenta Gestão de Ocorrências dentro da navegação do QualiControl", () => {
+    render(<DashboardLayout workspace="quality"><div>Conteúdo</div></DashboardLayout>);
+    expect(screen.queryByRole("button", { name: "Ocorrências" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Reclamações a fornecedores" })).toBeNull();
   });
 });

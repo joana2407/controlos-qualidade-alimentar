@@ -22,17 +22,16 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 import { useIsMobile } from "@/hooks/useMobile";
-import { AlertTriangle, BarChart3, BookOpenCheck, Boxes, ChevronDown, ClipboardCheck, ClipboardList, FilePlus2, FileWarning, FlaskConical, HelpCircle, KeyRound, LayoutDashboard, ListChecks, Magnet, MessageSquareMore, MessageSquareWarning, PanelLeft, Settings2, ShieldCheck, TimerReset, Truck } from "lucide-react";
+import { AlertTriangle, ArrowLeft, BarChart3, BookOpenCheck, Boxes, ChevronDown, ClipboardCheck, ClipboardList, FilePlus2, FileWarning, FlaskConical, HelpCircle, KeyRound, LayoutDashboard, ListChecks, Magnet, MessageSquareMore, MessageSquareWarning, PanelLeft, Settings2, ShieldCheck, TimerReset, Truck } from "lucide-react";
 import React, { CSSProperties, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { DashboardLayoutSkeleton } from './DashboardLayoutSkeleton';
 
 const menuItems = [
-  { icon: LayoutDashboard, label: "Hoje", path: "/" },
+  { icon: LayoutDashboard, label: "Hoje", path: "/qualicontrol" },
   { icon: BookOpenCheck, label: "Plataforma", path: "/plataforma" },
   { icon: HelpCircle, label: "Ajuda", path: "/ajuda" },
   { icon: ClipboardCheck, label: "Controlos", path: "/controlos" },
-  { icon: ClipboardList, label: "Ocorrências", path: "/ocorrencias" },
   { icon: FileWarning, label: "Não conformidades", path: "/nao-conformidades" },
   { icon: BarChart3, label: "Relatórios", path: "/relatorios" },
   { icon: Settings2, label: "Configuração", path: "/configuracao" },
@@ -63,8 +62,10 @@ const MAX_WIDTH = 480;
 
 export default function DashboardLayout({
   children,
+  workspace = "quality",
 }: {
   children: React.ReactNode;
+  workspace?: "quality" | "occurrences" | "selector";
 }) {
   const [sidebarWidth, setSidebarWidth] = useState(() => {
     const saved = localStorage.getItem(SIDEBAR_WIDTH_KEY);
@@ -81,6 +82,7 @@ export default function DashboardLayout({
 
   if (access.isLoading || !access.data) return <DashboardLayoutSkeleton />;
   if (!access.data.activeProfile) return <OperatorPinGate access={access.data} />;
+  if (workspace === "selector") return <QualityAccessProvider value={{ activeProfile: access.data.activeProfile, canManage: access.data.canManage }}>{children}</QualityAccessProvider>;
 
   return (
     <QualityAccessProvider value={{ activeProfile: access.data.activeProfile, canManage: access.data.canManage }}><SidebarProvider
@@ -90,11 +92,47 @@ export default function DashboardLayout({
         } as CSSProperties
       }
     >
-      <DashboardLayoutContent setSidebarWidth={setSidebarWidth}>
-        {children}
-      </DashboardLayoutContent>
+      {workspace === "occurrences" ? <OccurrencesWorkspaceContent>{children}</OccurrencesWorkspaceContent> : <DashboardLayoutContent setSidebarWidth={setSidebarWidth}>{children}</DashboardLayoutContent>}
     </SidebarProvider></QualityAccessProvider>
   );
+}
+
+function OccurrencesWorkspaceContent({ children }: { children: React.ReactNode }) {
+  const [location, setLocation] = useLocation();
+  const { activeProfile } = useQualityAccess();
+  const utils = trpc.useUtils();
+  const access = trpc.occurrences.access.useQuery();
+  const deactivate = trpc.quality.deactivatePinProfile.useMutation({ onSuccess: () => utils.quality.accessStatus.invalidate() });
+  const panels = access.data?.scope === "reclamacoes" ? occurrencePanels.filter((panel) => panel.path === "/reclamacoes") : occurrencePanels;
+
+  return <>
+    <Sidebar collapsible="icon" className="border-r-0">
+      <SidebarHeader className="h-16 justify-center">
+        <div className="flex w-full items-center gap-2 px-3">
+          <ClipboardList className="h-5 w-5 text-blue-700" />
+          <div className="min-w-0 group-data-[collapsible=icon]:hidden"><span className="block truncate font-semibold tracking-tight">Gestão de Ocorrências</span><span className="block text-[10px] font-medium uppercase tracking-[0.18em] text-muted-foreground">Ocorrências A&S</span></div>
+        </div>
+      </SidebarHeader>
+      <SidebarContent className="gap-0">
+        <SidebarMenu className="px-2 py-1">
+          <SidebarMenuItem>
+            <SidebarMenuButton onClick={() => setLocation("/")} tooltip="Áreas de trabalho" className="h-10 transition-all font-normal"><ArrowLeft className="h-4 w-4" /><span>Áreas de trabalho</span></SidebarMenuButton>
+          </SidebarMenuItem>
+          {panels.map((panel) => {
+            const isActive = panel.path === "/ocorrencias" ? location === "/ocorrencias" : location.startsWith(panel.path);
+            return <SidebarMenuItem key={panel.path}><SidebarMenuButton isActive={isActive} onClick={() => setLocation(panel.path)} tooltip={panel.label} className="h-10 transition-all font-normal"><panel.icon className={`h-4 w-4 ${isActive ? "text-primary" : ""}`} /><span>{panel.label}</span></SidebarMenuButton></SidebarMenuItem>;
+          })}
+        </SidebarMenu>
+      </SidebarContent>
+      <SidebarFooter className="p-3">
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild><button className="flex w-full items-center gap-3 rounded-lg px-1 py-1 text-left transition-colors hover:bg-accent/50 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring group-data-[collapsible=icon]:justify-center"><Avatar className="h-9 w-9 border shrink-0"><AvatarFallback className="text-xs font-medium">{activeProfile?.name?.charAt(0).toUpperCase()}</AvatarFallback></Avatar><div className="min-w-0 flex-1 group-data-[collapsible=icon]:hidden"><p className="truncate text-sm font-medium leading-none">{activeProfile?.name || "-"}</p><p className="mt-1.5 truncate text-xs text-muted-foreground">{activeProfile?.title || "-"}</p></div></button></DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-48"><DropdownMenuItem onClick={() => deactivate.mutate()} className="cursor-pointer"><KeyRound className="mr-2 h-4 w-4" /><span>Terminar acesso PIN</span></DropdownMenuItem></DropdownMenuContent>
+        </DropdownMenu>
+      </SidebarFooter>
+    </Sidebar>
+    <SidebarInset><main className="flex-1 p-4">{children}</main></SidebarInset>
+  </>;
 }
 
 type DashboardLayoutContentProps = {

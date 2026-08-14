@@ -155,3 +155,7 @@
 - [x] Cobrir na interface a eficácia para `admin` de ocorrências e a consulta para `gestao`.
 - [x] Inventariar e importar todos os registos históricos, reclamações e evidências do dashboard de Ocorrências de origem.
 - [x] Reconciliar os totais e validar a integridade dos dados importados no QualiControl.
+- [x] Comparar todos os filtros, layout e fluxos de navegação do dashboard de Ocorrências com o projeto de origem.
+- [x] Restaurar no QualiControl quaisquer filtros, elementos visuais ou fluxos do dashboard original que estejam em falta.
+- [x] Criar no acesso inicial entradas separadas para QualiControl e Gestão de Ocorrências após validação do PIN.
+- [x] Remover a Gestão de Ocorrências da navegação interna do QualiControl e manter a sua navegação própria.
