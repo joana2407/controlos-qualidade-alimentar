@@ -1,7 +1,9 @@
 import { OperatorPinGate } from "@/components/OperatorPinGate";
 import { QualityAccessProvider, useQualityAccess } from "@/contexts/QualityAccessContext";
 import { trpc } from "@/lib/trpc";
+import { canAccessWorkspace } from "@/lib/workspaceAccess";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -52,7 +54,9 @@ const occurrencePanels = [
   { icon: BarChart3, label: "Dashboard", path: "/ocorrencias" },
   { icon: ClipboardList, label: "Ocorrências", path: "/ocorrencias/lista" },
   { icon: FilePlus2, label: "Nova ocorrência", path: "/ocorrencias/nova" },
-  { icon: MessageSquareWarning, label: "Reclamações a fornecedores", path: "/reclamacoes" },
+  { icon: MessageSquareWarning, label: "Dashboard de reclamações", path: "/reclamacoes" },
+  { icon: ClipboardList, label: "Reclamações a fornecedores", path: "/reclamacoes/lista" },
+  { icon: FilePlus2, label: "Nova reclamação", path: "/reclamacoes/nova" },
 ];
 
 const SIDEBAR_WIDTH_KEY = "sidebar-width";
@@ -83,6 +87,7 @@ export default function DashboardLayout({
   if (access.isLoading || !access.data) return <DashboardLayoutSkeleton />;
   if (!access.data.activeProfile) return <OperatorPinGate access={access.data} />;
   if (workspace === "selector") return <QualityAccessProvider value={{ activeProfile: access.data.activeProfile, canManage: access.data.canManage }}>{children}</QualityAccessProvider>;
+  if ((workspace === "quality" || workspace === "occurrences") && !canAccessWorkspace(access.data.activeProfile, workspace)) return <QualityAccessProvider value={{ activeProfile: access.data.activeProfile, canManage: access.data.canManage }}><main className="grid min-h-screen place-items-center bg-slate-50 p-6"><section className="max-w-md rounded-3xl border border-slate-200 bg-white p-8 text-center shadow-sm"><p className="text-xs font-semibold uppercase tracking-[0.18em] text-red-700">Acesso restrito</p><h1 className="mt-3 text-2xl font-bold text-slate-950">Esta área não está autorizada para o seu perfil.</h1><p className="mt-3 text-sm leading-6 text-slate-600">Regresse à escolha de área de trabalho para aceder apenas aos painéis atribuídos a {access.data.activeProfile.name}.</p><Button className="mt-6" onClick={() => window.location.assign("/")}>Voltar às áreas de trabalho</Button></section></main></QualityAccessProvider>;
 
   return (
     <QualityAccessProvider value={{ activeProfile: access.data.activeProfile, canManage: access.data.canManage }}><SidebarProvider
@@ -103,7 +108,7 @@ function OccurrencesWorkspaceContent({ children }: { children: React.ReactNode }
   const utils = trpc.useUtils();
   const access = trpc.occurrences.access.useQuery();
   const deactivate = trpc.quality.deactivatePinProfile.useMutation({ onSuccess: () => utils.quality.accessStatus.invalidate() });
-  const panels = access.data?.scope === "reclamacoes" ? occurrencePanels.filter((panel) => panel.path === "/reclamacoes") : occurrencePanels;
+  const panels = access.data?.scope === "reclamacoes" ? occurrencePanels.filter((panel) => panel.path.startsWith("/reclamacoes")) : occurrencePanels;
 
   return <>
     <Sidebar collapsible="icon" className="border-r-0">

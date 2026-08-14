@@ -2,12 +2,14 @@ import { useQualityAccess } from "@/contexts/QualityAccessContext";
 import { ArrowRight, ClipboardList, ShieldCheck } from "lucide-react";
 import React from "react";
 import { Link } from "wouter";
+import { canAccessWorkspace, type WorkspaceKey } from "@/lib/workspaceAccess";
 
 const workspaces = [
   {
     title: "QualiControl",
     description: "Controlos de qualidade, verificações diárias, não conformidades, relatórios e gestão operacional.",
     path: "/qualicontrol",
+    workspace: "quality" as WorkspaceKey,
     icon: ShieldCheck,
     accent: "from-teal-600 to-cyan-600",
     eyebrow: "Segurança alimentar",
@@ -16,6 +18,7 @@ const workspaces = [
     title: "Gestão de Ocorrências",
     description: "Ocorrências, ações corretivas, avaliação de eficácia e reclamações a fornecedores.",
     path: "/ocorrencias",
+    workspace: "occurrences" as WorkspaceKey,
     icon: ClipboardList,
     accent: "from-blue-700 to-indigo-700",
     eyebrow: "Sistema de ocorrências A&S",
@@ -41,7 +44,7 @@ export default function WorkspaceSelector() {
       </div>
 
       <div className="mt-6 grid gap-5 md:grid-cols-2">
-        {workspaces.map(({ title, description, path, icon: Icon, accent, eyebrow }) => <Link key={path} href={path} className="group block rounded-3xl focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600 focus-visible:ring-offset-2">
+        {workspaces.filter((workspace) => canAccessWorkspace(activeProfile, workspace.workspace)).map(({ title, description, path, icon: Icon, accent, eyebrow }) => <Link key={path} href={path} className="group block rounded-3xl focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600 focus-visible:ring-offset-2">
           <article className="h-full overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm transition duration-200 group-hover:-translate-y-1 group-hover:shadow-lg">
             <div className={`flex h-28 items-start justify-between bg-gradient-to-br ${accent} p-6 text-white`}>
               <div>

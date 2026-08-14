@@ -18,6 +18,9 @@ import OccurrencesDashboard from "./pages/OccurrencesDashboard";
 import OccurrenceEditor from "./pages/OccurrenceEditor";
 import OccurrencesList from "./pages/OccurrencesList";
 import SupplierComplaints from "./pages/SupplierComplaints";
+import SupplierComplaintsList from "./pages/SupplierComplaintsList";
+import SupplierComplaintEditor from "./pages/SupplierComplaintEditor";
+import SupplierComplaintDetail from "./pages/SupplierComplaintDetail";
 import OccurrenceDetail from "./pages/OccurrenceDetail";
 import WorkspaceSelector from "./pages/WorkspaceSelector";
 
@@ -37,6 +40,10 @@ function Router() {
       <Route path={"/ocorrencias/:id/editar"} component={() => <DashboardLayout workspace="occurrences"><OccurrenceEditor /></DashboardLayout>} />
       <Route path={"/ocorrencias/:id"} component={() => <DashboardLayout workspace="occurrences"><OccurrenceDetail /></DashboardLayout>} />
       <Route path={"/ocorrencias"} component={() => <DashboardLayout workspace="occurrences"><OccurrencesDashboard /></DashboardLayout>} />
+      <Route path={"/reclamacoes/lista"} component={() => <DashboardLayout workspace="occurrences"><SupplierComplaintsList /></DashboardLayout>} />
+      <Route path={"/reclamacoes/nova"} component={() => <DashboardLayout workspace="occurrences"><SupplierComplaintEditor /></DashboardLayout>} />
+      <Route path={"/reclamacoes/:id/editar"} component={() => <DashboardLayout workspace="occurrences"><SupplierComplaintEditor /></DashboardLayout>} />
+      <Route path={"/reclamacoes/:id"} component={() => <DashboardLayout workspace="occurrences"><SupplierComplaintDetail /></DashboardLayout>} />
       <Route path={"/reclamacoes"} component={() => <DashboardLayout workspace="occurrences"><SupplierComplaints /></DashboardLayout>} />
       <Route path={"/relatorios"} component={() => <DashboardLayout><Reports /></DashboardLayout>} />
       <Route path={"/configuracao"} component={() => <DashboardLayout><Configuration /></DashboardLayout>} />

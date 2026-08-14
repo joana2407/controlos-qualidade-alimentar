@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { occurrenceAccessProfiles, occurrences } from "../drizzle/schema";
+import { occurrenceAccessProfiles, occurrences, supplierComplaints } from "../drizzle/schema";
 import type { TrpcContext } from "./_core/context";
 import { invokeLLM } from "./_core/llm";
 import { getDb } from "./db";
@@ -16,12 +16,16 @@ const rows = [
   { id: 3, number: 3, occurredOn: new Date("2026-08-12"), factoryCode: "F1_FATIADO", type: "NC", origin: "AI", description: "Auditoria interna", status: "FECHADO", implementationDueOn: new Date("2026-08-25"), effectiveness: "Satisfatória", createdBy: "operator", updatedBy: "operator", recurrent: false },
 ] as any[];
 const accessRows: any[] = [];
+const complaintRows = [
+  { id: 11, number: "REC-011", complaintOn: new Date("2026-08-01"), supplier: "Vallispack", sector: "Embalagem", category: "PRODUTO", description: "Embalagem deformada", status: "ABERTO", recurrent: false, createdBy: "operator", updatedBy: "operator" },
+  { id: 12, number: "REC-012", complaintOn: new Date("2026-08-07"), supplier: "Vallispack", sector: "Matéria-prima", category: "SERVICO", description: "Atraso na entrega", status: "FECHADO", recurrent: true, recurrenceOfId: 11, createdBy: "operator", updatedBy: "operator" },
+] as any[];
 
 const user = { id: 1, openId: "quality-pin-1", name: "Joana", email: null, loginMethod: "quality-pin", role: "admin" as const, createdAt: today, updatedAt: today, lastSignedIn: today };
 function context(role: "technician" | "manager"): TrpcContext { return { user, operatorProfile: { id: role === "manager" ? 3 : 1, name: role === "manager" ? "Joana Pina" : "Sabrina Esteves", title: role === "manager" ? "Resp. Qualidade" : "Tec. Qualidade", role }, req: {} as TrpcContext["req"], res: {} as TrpcContext["res"] }; }
 function mockDatabase() {
   return {
-    select: () => ({ from: (table: unknown) => { const source = table === occurrences ? rows : table === occurrenceAccessProfiles ? accessRows : []; const query = { limit: async () => source, then: (resolve: (value: unknown[]) => unknown) => Promise.resolve(source).then(resolve) }; return { orderBy: () => query, then: query.then, where: () => query }; } }),
+    select: () => ({ from: (table: unknown) => { const source = table === occurrences ? rows : table === occurrenceAccessProfiles ? accessRows : table === supplierComplaints ? complaintRows : []; const query = { limit: async () => source, then: (resolve: (value: unknown[]) => unknown) => Promise.resolve(source).then(resolve) }; return { orderBy: () => query, then: query.then, where: () => query }; } }),
     insert: () => ({ values: () => ({ $returningId: async () => [{ id: 4 }], onDuplicateKeyUpdate: async () => [] }) }),
     update: () => ({ set: () => ({ where: async () => ({ success: true }) }) }),
     delete: () => ({ where: async () => ({ success: true }) }),
@@ -71,5 +75,22 @@ describe("router de ocorrências integrado", () => {
 
   it("permite à Responsável configurar papel e âmbito preservados", async () => {
     await expect(occurrencesRouter.createCaller(context("manager")).updateAccessProfile({ qualityProfileId: 1, role: "gestao", scope: "reclamacoes" })).resolves.toEqual({ success: true });
+  });
+
+  it("preserva filtros e indicadores completos de reclamações a fornecedores", async () => {
+    const caller = occurrencesRouter.createCaller(context("technician"));
+    const filtered = await caller.listSupplierComplaints({ supplier: "Vallis", category: "PRODUTO" });
+    expect(filtered).toHaveLength(1);
+    expect(filtered[0].number).toBe("REC-011");
+    const stats = await caller.supplierComplaintStats({ supplier: "Vallispack" });
+    expect(stats).toMatchObject({ total: 2, open: 1, closed: 1 });
+    expect(stats.bySupplier).toEqual(expect.arrayContaining([expect.objectContaining({ supplier: "Vallispack", total: 2 })]));
+  });
+
+  it("permite tratamento de reclamações a perfil operacional e bloqueia escrita à Gestão", async () => {
+    const technician = occurrencesRouter.createCaller(context("technician"));
+    await expect(technician.updateSupplierComplaint({ id: 11, data: { correction: "Segregar lote", correctiveAction: "Rever fornecedor" } })).resolves.toEqual({ success: true });
+    accessRows.push({ qualityProfileId: 1, role: "gestao", scope: "reclamacoes" });
+    await expect(technician.createSupplierComplaint({ complaintOn: "2026-08-14", supplier: "Novo fornecedor", description: "Reclamação bloqueada" })).rejects.toMatchObject({ code: "FORBIDDEN" });
   });
 });

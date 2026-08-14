@@ -107,6 +107,11 @@ const filtersInput = z.object({
   responsible: z.string().optional(), dueStatus: z.string().optional(), brcRequirement: z.string().optional(), hazardType: z.string().optional(), sgsqaScope: z.string().optional(),
 }).optional();
 
+const complaintFiltersInput = z.object({
+  search: z.string().optional(), supplier: z.string().optional(), status: z.enum(occurrenceStates).optional(),
+  category: z.enum(["PRODUTO", "SERVICO"]).optional(), dataInicio: z.string().date().optional(), dataFim: z.string().date().optional(),
+}).optional();
+
 function asDate(value?: string | null) { return value ? new Date(`${value}T00:00:00`) : null; }
 function toDateString(value: Date | string | null | undefined) { return value ? new Date(value).toISOString().slice(0, 10) : null; }
 function normalized<T extends Record<string, unknown>>(data: T) { return Object.fromEntries(Object.entries(data).map(([key, value]) => [key, value === "" ? null : value])) as T; }
@@ -139,6 +144,9 @@ function ensureOccurrenceWrite(access: OccurrenceAccess) {
 function ensureOccurrenceAdmin(access: OccurrenceAccess) {
   ensureOccurrencesScope(access);
   if (access.role !== "admin") throw new TRPCError({ code: "FORBIDDEN", message: "Esta ação requer perfil de administração de ocorrências." });
+}
+function ensureComplaintWrite(access: OccurrenceAccess) {
+  if (access.role === "gestao") throw new TRPCError({ code: "FORBIDDEN", message: "O perfil de Gestão tem acesso apenas de consulta." });
 }
 
 function applyFilters(rows: (typeof occurrences.$inferSelect)[], filters: NonNullable<z.infer<typeof filtersInput>>) {
@@ -198,6 +206,34 @@ function occurrenceToInput(item: typeof occurrences.$inferSelect): z.infer<typeo
     assessmentMethod: item.assessmentMethod, effectiveness: item.effectiveness, recurrent: item.recurrent,
     recurrenceOfId: item.recurrenceOfId, impactsObjectives: item.impactsObjectives, effect: item.effect, observations: item.observations,
   };
+}
+
+function applyComplaintFilters(rows: (typeof supplierComplaints.$inferSelect)[], filters: NonNullable<z.infer<typeof complaintFiltersInput>>) {
+  return rows.filter((item) => {
+    const date = toDateString(item.complaintOn) ?? "";
+    const search = filters.search?.trim().toLowerCase();
+    const content = [item.number, item.supplier, item.sector, item.affectedProducts, item.lots, item.description, item.responsible].join(" ").toLowerCase();
+    return (!filters.supplier || item.supplier.toLowerCase().includes(filters.supplier.toLowerCase()))
+      && (!filters.status || item.status === filters.status)
+      && (!filters.category || item.category === filters.category)
+      && (!filters.dataInicio || date >= filters.dataInicio)
+      && (!filters.dataFim || date <= filters.dataFim)
+      && (!search || content.includes(search));
+  });
+}
+
+function complaintRecord(data: z.infer<typeof complaintInput>, userOpenId: string) {
+  return normalized({ ...data, complaintOn: asDate(data.complaintOn)!, correctionImplementedOn: asDate(data.correctionImplementedOn), correctiveActionDueOn: asDate(data.correctiveActionDueOn), correctiveActionClosedOn: asDate(data.correctiveActionClosedOn), closedOn: asDate(data.closedOn), recurrent: data.recurrent ?? false, status: data.status ?? "ABERTO", createdBy: userOpenId, updatedBy: userOpenId });
+}
+
+async function nextComplaintNumber(db: Awaited<ReturnType<typeof requireDb>>, complaintOn: string) {
+  const year = new Date(`${complaintOn}T00:00:00`).getFullYear();
+  const rows = await db.select({ number: supplierComplaints.number }).from(supplierComplaints);
+  const highest = rows.reduce((current, row) => {
+    const match = row.number?.match(new RegExp(`^(\\d+)[./]${year}$`));
+    return match ? Math.max(current, Number(match[1])) : current;
+  }, 0);
+  return `${highest + 1}/${year}`;
 }
 
 export const occurrencesRouter = router({
@@ -295,6 +331,14 @@ export const occurrencesRouter = router({
     const { url } = await storagePut(`occurrences/${ctx.operatorProfile!.id}/${Date.now()}-${safeName}`, Buffer.from(base64, "base64"), input.mimeType);
     return { url };
   }),
+  uploadComplaintImage: qualityOperatorProcedure.input(z.object({ fileName: z.string().min(1).max(255), mimeType: z.string().regex(/^image\//), dataUrl: z.string().min(20).max(7_000_000) })).mutation(async ({ ctx, input }) => {
+    ensureComplaintWrite(await getOccurrenceAccess(ctx));
+    const base64 = input.dataUrl.split(",")[1];
+    if (!base64) throw new TRPCError({ code: "BAD_REQUEST", message: "Imagem inválida." });
+    const safeName = input.fileName.replace(/[^a-zA-Z0-9._-]/g, "_");
+    const { url } = await storagePut(`supplier-complaints/${ctx.operatorProfile!.id}/${Date.now()}-${safeName}`, Buffer.from(base64, "base64"), input.mimeType);
+    return { url };
+  }),
 
   suggestTreatment: qualityOperatorProcedure.input(z.object({ kind: z.enum(["correction", "correctiveAction"]), description: z.string().min(12).max(12_000), type: z.enum(occurrenceTypes).optional(), origin: z.enum(occurrenceOrigins).optional(), sgsqaScope: z.string().max(255).optional(), affectedProduct: z.string().max(255).optional(), hazardType: z.string().max(255).optional(), rootCauseAnalysis: z.string().max(12_000).optional(), existingCorrection: z.string().max(12_000).optional() })).mutation(async ({ ctx, input }) => {
     ensureOccurrenceWrite(await getOccurrenceAccess(ctx));
@@ -314,10 +358,49 @@ export const occurrencesRouter = router({
     } catch { throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "A sugestão BRC não ficou disponível. Tente novamente." }); }
   }),
 
-  listSupplierComplaints: qualitySessionProcedure.query(async () => (await requireDb()).select().from(supplierComplaints).orderBy(desc(supplierComplaints.complaintOn))),
+  listSupplierComplaints: qualitySessionProcedure.input(complaintFiltersInput).query(async ({ ctx, input }) => {
+    await getOccurrenceAccess(ctx);
+    return applyComplaintFilters(await (await requireDb()).select().from(supplierComplaints).orderBy(desc(supplierComplaints.complaintOn)), input ?? {});
+  }),
+  getSupplierComplaint: qualitySessionProcedure.input(z.object({ id: z.number().int() })).query(async ({ ctx, input }) => {
+    await getOccurrenceAccess(ctx);
+    const complaint = (await (await requireDb()).select().from(supplierComplaints).where(eq(supplierComplaints.id, input.id)).limit(1))[0];
+    if (!complaint) throw new TRPCError({ code: "NOT_FOUND", message: "Reclamação a fornecedor não encontrada." });
+    return complaint;
+  }),
+  supplierComplaintStats: qualitySessionProcedure.input(complaintFiltersInput).query(async ({ ctx, input }) => {
+    await getOccurrenceAccess(ctx);
+    const rows = applyComplaintFilters(await (await requireDb()).select().from(supplierComplaints), input ?? {});
+    const bySupplier = Object.values(rows.reduce<Record<string, { supplier: string; total: number; open: number; closed: number }>>((acc, row) => { const key = row.supplier || "Não especificado"; const group = acc[key] ?? { supplier: key, total: 0, open: 0, closed: 0 }; group.total += 1; if (row.status === "ABERTO") group.open += 1; else group.closed += 1; acc[key] = group; return acc; }, {}));
+    const byMonth = Object.values(rows.reduce<Record<string, { month: string; open: number; closed: number }>>((acc, row) => { const month = (toDateString(row.complaintOn) ?? "").slice(0, 7); const group = acc[month] ?? { month, open: 0, closed: 0 }; if (row.status === "ABERTO") group.open += 1; else group.closed += 1; acc[month] = group; return acc; }, {})).sort((a, b) => a.month.localeCompare(b.month));
+    const bySupplierCategory = Object.values(rows.reduce<Record<string, { supplier: string; produto: number; servico: number; noCategory: number }>>((acc, row) => { const key = row.supplier || "Não especificado"; const group = acc[key] ?? { supplier: key, produto: 0, servico: 0, noCategory: 0 }; if (row.category === "PRODUTO") group.produto += 1; else if (row.category === "SERVICO") group.servico += 1; else group.noCategory += 1; acc[key] = group; return acc; }, {}));
+    return { total: rows.length, open: rows.filter((row) => row.status === "ABERTO").length, closed: rows.filter((row) => row.status === "FECHADO").length, bySupplier, byMonth, bySupplierCategory };
+  }),
+  listComplaintSuppliers: qualitySessionProcedure.query(async ({ ctx }) => {
+    await getOccurrenceAccess(ctx);
+    return Array.from(new Set((await (await requireDb()).select({ supplier: supplierComplaints.supplier }).from(supplierComplaints)).map((row) => row.supplier).filter(Boolean))).sort((a, b) => a.localeCompare(b));
+  }),
   createSupplierComplaint: qualityOperatorProcedure.input(complaintInput).mutation(async ({ ctx, input }) => {
+    ensureComplaintWrite(await getOccurrenceAccess(ctx));
     const db = await requireDb();
-    const [created] = await db.insert(supplierComplaints).values(normalized({ ...input, complaintOn: asDate(input.complaintOn)!, correctionImplementedOn: asDate(input.correctionImplementedOn), correctiveActionDueOn: asDate(input.correctiveActionDueOn), correctiveActionClosedOn: asDate(input.correctiveActionClosedOn), closedOn: asDate(input.closedOn), recurrent: input.recurrent ?? false, status: input.status ?? "ABERTO", createdBy: ctx.user!.openId, updatedBy: ctx.user!.openId })).$returningId();
+    const [created] = await db.insert(supplierComplaints).values({ ...complaintRecord(input, ctx.user!.openId), number: await nextComplaintNumber(db, input.complaintOn) }).$returningId();
     return { id: created.id };
+  }),
+  updateSupplierComplaint: qualityOperatorProcedure.input(z.object({ id: z.number().int(), data: complaintInput.partial() })).mutation(async ({ ctx, input }) => {
+    ensureComplaintWrite(await getOccurrenceAccess(ctx));
+    const db = await requireDb();
+    const existing = (await db.select().from(supplierComplaints).where(eq(supplierComplaints.id, input.id)).limit(1))[0];
+    if (!existing) throw new TRPCError({ code: "NOT_FOUND", message: "Reclamação a fornecedor não encontrada." });
+    const merged = { ...existing, ...input.data, complaintOn: input.data.complaintOn ?? toDateString(existing.complaintOn)! } as z.infer<typeof complaintInput>;
+    const record = complaintRecord(merged, ctx.user!.openId);
+    const { createdBy, ...update } = record;
+    await db.update(supplierComplaints).set(update).where(eq(supplierComplaints.id, input.id));
+    return { success: true };
+  }),
+  deleteSupplierComplaint: qualityOperatorProcedure.input(z.object({ id: z.number().int() })).mutation(async ({ ctx, input }) => {
+    const access = await getOccurrenceAccess(ctx);
+    if (access.role !== "admin") throw new TRPCError({ code: "FORBIDDEN", message: "A eliminação requer perfil de administração de ocorrências." });
+    await (await requireDb()).delete(supplierComplaints).where(eq(supplierComplaints.id, input.id));
+    return { success: true };
   }),
 });
