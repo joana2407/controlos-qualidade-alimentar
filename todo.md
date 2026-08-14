@@ -153,3 +153,5 @@
 - [x] Documentar a matriz final de permissões de ocorrências e validar as regras por integração e interface.
 - [x] Alinhar o ecrã de edição de ocorrências com o papel configurável `admin` para avaliação de eficácia.
 - [x] Cobrir na interface a eficácia para `admin` de ocorrências e a consulta para `gestao`.
+- [x] Inventariar e importar todos os registos históricos, reclamações e evidências do dashboard de Ocorrências de origem.
+- [x] Reconciliar os totais e validar a integridade dos dados importados no QualiControl.
