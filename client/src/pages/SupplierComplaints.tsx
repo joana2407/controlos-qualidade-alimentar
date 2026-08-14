@@ -1,0 +1,24 @@
+import React, { FormEvent, useState } from "react";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { useQualityAccess } from "@/contexts/QualityAccessContext";
+import { trpc } from "@/lib/trpc";
+import { FilePlus2, MessageSquareWarning } from "lucide-react";
+import { toast } from "sonner";
+
+export default function SupplierComplaints() {
+  const { activeProfile } = useQualityAccess();
+  const utils = trpc.useUtils();
+  const access = trpc.occurrences.access.useQuery();
+  const complaints = trpc.occurrences.listSupplierComplaints.useQuery(undefined, { enabled: access.data?.scope === "reclamacoes" || access.data?.scope === "all" });
+  const create = trpc.occurrences.createSupplierComplaint.useMutation({ onSuccess: () => { utils.occurrences.listSupplierComplaints.invalidate(); toast.success("Reclamação a fornecedor registada."); }, onError: (error) => toast.error(error.message) });
+  const readOnly = access.data?.role === "gestao";
+  const [open, setOpen] = useState(false); const [supplier, setSupplier] = useState(""); const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10)); const [description, setDescription] = useState("");
+  const submit = (event: FormEvent) => { event.preventDefault(); create.mutate({ complaintOn: date, supplier, description, responsible: activeProfile?.name ?? null }); setOpen(false); setSupplier(""); setDescription(""); };
+  return <div className="min-h-full -m-4 bg-slate-50 p-4 md:-m-6 md:p-6"><section className="mx-auto max-w-7xl space-y-6"><header className="flex flex-col justify-between gap-4 md:flex-row md:items-end"><div><p className="text-xs font-semibold uppercase tracking-[0.18em] text-teal-700">Ocorrências A&S</p><h1 className="mt-1 text-3xl font-bold tracking-tight text-slate-950">Reclamações a fornecedores</h1><p className="mt-1 text-sm text-slate-600">Registo, tratamento e evidências de reclamações relacionadas com fornecedores.</p></div>{!readOnly && <Dialog open={open} onOpenChange={setOpen}><DialogTrigger asChild><Button className="gap-2"><FilePlus2 className="h-4 w-4" />Nova reclamação</Button></DialogTrigger><DialogContent><DialogHeader><DialogTitle>Nova reclamação a fornecedor</DialogTitle><DialogDescription>Registe o fornecedor, a data e a descrição inicial. O tratamento fica disponível no registo.</DialogDescription></DialogHeader><form onSubmit={submit} className="space-y-4"><div className="space-y-2"><Label htmlFor="complaint-supplier">Fornecedor</Label><Input id="complaint-supplier" required value={supplier} onChange={(event) => setSupplier(event.target.value)} /></div><div className="space-y-2"><Label htmlFor="complaint-date">Data</Label><Input id="complaint-date" required type="date" value={date} onChange={(event) => setDate(event.target.value)} /></div><div className="space-y-2"><Label htmlFor="complaint-description">Descrição</Label><Textarea id="complaint-description" value={description} onChange={(event) => setDescription(event.target.value)} /></div><Button className="w-full" disabled={create.isPending}>{create.isPending ? "A registar…" : "Registar reclamação"}</Button></form></DialogContent></Dialog>}</header>{readOnly && <div className="rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-800">Perfil de Gestão: acesso de consulta às reclamações.</div>}<Card className="border-0 shadow-sm"><CardHeader><CardTitle className="flex items-center gap-2"><MessageSquareWarning className="h-5 w-5 text-amber-600" />Registos de fornecedores</CardTitle><CardDescription>{complaints.data?.length ?? 0} reclamações registadas.</CardDescription></CardHeader><CardContent>{complaints.isLoading ? <p className="text-sm text-muted-foreground">A carregar…</p> : !complaints.data?.length ? <p className="rounded-xl border border-dashed p-8 text-center text-sm text-muted-foreground">Ainda não existem reclamações a fornecedores.</p> : <div className="space-y-2">{complaints.data.map((item) => <div className="flex flex-col gap-2 rounded-xl border border-slate-200 p-4 md:flex-row md:items-center" key={item.id}><div className="min-w-0 flex-1"><p className="font-semibold text-slate-900">{item.supplier}</p><p className="mt-1 text-sm text-slate-600">{item.description || "Sem descrição."}</p></div><p className="text-xs text-slate-500">{new Date(item.complaintOn).toLocaleDateString("pt-PT")}</p><Badge variant={item.status === "FECHADO" ? "secondary" : "default"}>{item.status}</Badge></div>)}</div>}</CardContent></Card></section></div>;
+}

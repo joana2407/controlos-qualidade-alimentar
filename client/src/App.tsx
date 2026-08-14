@@ -14,6 +14,11 @@ import Reports from "./pages/Reports";
 import Configuration from "./pages/Configuration";
 import PlatformOverview from "./pages/PlatformOverview";
 import HelpCenter from "./pages/HelpCenter";
+import OccurrencesDashboard from "./pages/OccurrencesDashboard";
+import OccurrenceEditor from "./pages/OccurrenceEditor";
+import OccurrencesList from "./pages/OccurrencesList";
+import SupplierComplaints from "./pages/SupplierComplaints";
+import OccurrenceDetail from "./pages/OccurrenceDetail";
 
 function Router() {
   // make sure to consider if you need authentication for certain routes
@@ -25,6 +30,12 @@ function Router() {
       <Route path={"/controlos"} component={() => <DashboardLayout><Controls /></DashboardLayout>} />
       <Route path={"/controlos/:module"} component={() => <DashboardLayout><ModuleControl /></DashboardLayout>} />
       <Route path={"/nao-conformidades"} component={() => <DashboardLayout><Nonconformities /></DashboardLayout>} />
+      <Route path={"/ocorrencias/lista"} component={() => <DashboardLayout><OccurrencesList /></DashboardLayout>} />
+      <Route path={"/ocorrencias/nova"} component={() => <DashboardLayout><OccurrenceEditor /></DashboardLayout>} />
+      <Route path={"/ocorrencias/:id/editar"} component={() => <DashboardLayout><OccurrenceEditor /></DashboardLayout>} />
+      <Route path={"/ocorrencias/:id"} component={() => <DashboardLayout><OccurrenceDetail /></DashboardLayout>} />
+      <Route path={"/ocorrencias"} component={() => <DashboardLayout><OccurrencesDashboard /></DashboardLayout>} />
+      <Route path={"/reclamacoes"} component={() => <DashboardLayout><SupplierComplaints /></DashboardLayout>} />
       <Route path={"/relatorios"} component={() => <DashboardLayout><Reports /></DashboardLayout>} />
       <Route path={"/configuracao"} component={() => <DashboardLayout><Configuration /></DashboardLayout>} />
       <Route path={"/404"} component={NotFound} />

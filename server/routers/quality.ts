@@ -23,7 +23,7 @@ import { calculatePlanCompliance, countOpenNonconformities, scopeToFactory } fro
 import { storagePut } from "../storage";
 import { createSessionToken, hashPin, hashSessionToken, QUALITY_OPERATOR_COOKIE, QUALITY_SESSION_HOURS, QUALITY_TEAM_DEFAULTS, validatePin, verifyPin } from "../team-access";
 import { getSessionCookieOptions } from "../_core/cookies";
-import { protectedProcedure, qualityManagerProcedure, qualityOperatorProcedure, router } from "../_core/trpc";
+import { protectedProcedure, publicProcedure, qualityManagerProcedure, qualityOperatorProcedure, qualitySessionProcedure, router } from "../_core/trpc";
 import { getDispatchProfile } from "../../shared/dispatch-control";
 
 const qualityModuleSchema = z.enum(qualityModuleValues);
@@ -46,13 +46,13 @@ async function requireDb() {
 }
 
 export const qualityRouter = router({
-  accessStatus: protectedProcedure.query(async ({ ctx }) => {
+  accessStatus: publicProcedure.query(async ({ ctx }) => {
     const db = await requireDb();
     const existing = await db.select().from(qualityPinProfiles).orderBy(qualityPinProfiles.id);
     const existingCodes = new Set(existing.map((profile) => profile.code));
     const missing = QUALITY_TEAM_DEFAULTS.filter((profile) => !existingCodes.has(profile.code));
     if (missing.length) {
-      await db.insert(qualityPinProfiles).values(missing.map((profile) => ({ ...profile, active: "true" as const, pinHash: null, createdBy: ctx.user.openId })));
+      await db.insert(qualityPinProfiles).values(missing.map((profile) => ({ ...profile, active: "true" as const, pinHash: null, createdBy: ctx.user?.openId ?? "system-quality" })));
     }
     const profiles = missing.length ? await db.select().from(qualityPinProfiles).orderBy(qualityPinProfiles.id) : existing;
     const managerProfile = profiles.find((profile) => profile.role === "manager");
@@ -60,7 +60,7 @@ export const qualityRouter = router({
       profiles: profiles.map((profile) => ({ id: profile.id, code: profile.code, name: profile.name, title: profile.title, role: profile.role, isConfigured: Boolean(profile.pinHash), active: profile.active === "true" })),
       activeProfile: ctx.operatorProfile,
       canManage: ctx.operatorProfile?.role === "manager",
-      canBootstrap: ctx.user.role === "admin" && !managerProfile?.pinHash,
+      canBootstrap: ctx.user?.role === "admin" && !managerProfile?.pinHash,
       needsInitialSetup: !profiles.every((profile) => Boolean(profile.pinHash)),
     };
   }),
@@ -83,7 +83,7 @@ export const qualityRouter = router({
     return { success: true };
   }),
 
-  activatePinProfile: protectedProcedure.input(z.object({ profileId: z.number().int(), pin: z.string().regex(/^\d{4,8}$/) })).mutation(async ({ ctx, input }) => {
+  activatePinProfile: publicProcedure.input(z.object({ profileId: z.number().int(), pin: z.string().regex(/^\d{4,8}$/) })).mutation(async ({ ctx, input }) => {
     const db = await requireDb();
     const profile = (await db.select().from(qualityPinProfiles).where(eq(qualityPinProfiles.id, input.profileId)).limit(1))[0];
     if (!profile || profile.active !== "true" || !verifyPin(input.pin, profile.pinHash)) {
@@ -91,17 +91,17 @@ export const qualityRouter = router({
     }
     const token = createSessionToken();
     const expiresAt = new Date(Date.now() + QUALITY_SESSION_HOURS * 60 * 60 * 1000);
-    await db.insert(qualityPinSessions).values({ profileId: profile.id, tokenHash: hashSessionToken(token), oauthOpenId: ctx.user.openId, expiresAt });
+    await db.insert(qualityPinSessions).values({ profileId: profile.id, tokenHash: hashSessionToken(token), oauthOpenId: ctx.user?.openId ?? "pin-only", expiresAt });
     ctx.res.cookie(QUALITY_OPERATOR_COOKIE, token, { ...getSessionCookieOptions(ctx.req), maxAge: QUALITY_SESSION_HOURS * 60 * 60 * 1000 });
     return { success: true, profile: { id: profile.id, name: profile.name, title: profile.title, role: profile.role } };
   }),
 
-  deactivatePinProfile: protectedProcedure.mutation(({ ctx }) => {
+  deactivatePinProfile: publicProcedure.mutation(({ ctx }) => {
     ctx.res.clearCookie(QUALITY_OPERATOR_COOKIE, { ...getSessionCookieOptions(ctx.req), maxAge: -1 });
     return { success: true };
   }),
 
-  metadata: protectedProcedure.query(async () => {
+  metadata: qualitySessionProcedure.query(async () => {
     const db = await requireDb();
     const [persistedAreas, persistedFactories] = await Promise.all([
       db.select().from(areas).orderBy(areas.group, areas.name),
@@ -123,12 +123,12 @@ export const qualityRouter = router({
     };
   }),
 
-  listAreas: protectedProcedure.query(async () => {
+  listAreas: qualitySessionProcedure.query(async () => {
     const db = await requireDb();
     return db.select().from(areas).orderBy(areas.group, areas.name);
   }),
 
-  listFactories: protectedProcedure.query(async () => {
+  listFactories: qualitySessionProcedure.query(async () => {
     const db = await requireDb();
     return db.select().from(factories).orderBy(factories.name);
   }),
@@ -143,7 +143,7 @@ export const qualityRouter = router({
     return { success: true };
   }),
 
-  listPlans: protectedProcedure.query(async () => {
+  listPlans: qualitySessionProcedure.query(async () => {
     const db = await requireDb();
     return db.select().from(controlPlans).orderBy(controlPlans.module, controlPlans.title);
   }),
@@ -186,7 +186,7 @@ export const qualityRouter = router({
     return { success: true, created };
   }),
 
-  dashboard: protectedProcedure.input(z.object({ factoryId: z.number().int().optional() }).optional()).query(async ({ input }) => {
+  dashboard: qualitySessionProcedure.input(z.object({ factoryId: z.number().int().optional() }).optional()).query(async ({ input }) => {
     const db = await requireDb();
     const [tasks, ncs, entries, actions, fragileCatalog, plans, areaCatalog] = await Promise.all([
       db.select().from(controlTasks).orderBy(controlTasks.dueAt),
@@ -243,7 +243,7 @@ export const qualityRouter = router({
     };
   }),
 
-  listTasks: protectedProcedure.input(z.object({ factoryId: z.number().int().optional() }).optional()).query(async ({ input }) => {
+  listTasks: qualitySessionProcedure.input(z.object({ factoryId: z.number().int().optional() }).optional()).query(async ({ input }) => {
     const db = await requireDb();
     const tasks = await db.select().from(controlTasks).orderBy(controlTasks.dueAt);
     return scopeToFactory(tasks, input?.factoryId);
@@ -352,7 +352,7 @@ export const qualityRouter = router({
     return { success: true, critical: isCriticalMetal };
   }),
 
-  calculateSensory: protectedProcedure.input(z.object({
+  calculateSensory: qualitySessionProcedure.input(z.object({
     aspeto: z.number().int().min(1).max(5),
     fimDeBoca: z.number().int().min(1).max(5),
     cor: z.number().int().min(1).max(5),
@@ -361,7 +361,7 @@ export const qualityRouter = router({
     sabor: z.number().int().min(1).max(5),
   })).query(({ input }) => calculateSensoryScore(input)),
 
-  calculateDispatchConformity: protectedProcedure.input(z.object({
+  calculateDispatchConformity: qualitySessionProcedure.input(z.object({
     orderedBoxes: z.number().int().min(0),
     dispatchedBoxes: z.number().int().min(0),
     productLabelResult: z.enum(["C", "NC"]),
@@ -414,13 +414,13 @@ export const qualityRouter = router({
     return { success: true, conformity, limits };
   }),
 
-  listNcs: protectedProcedure.input(z.object({ factoryId: z.number().int().optional() }).optional()).query(async ({ input }) => {
+  listNcs: qualitySessionProcedure.input(z.object({ factoryId: z.number().int().optional() }).optional()).query(async ({ input }) => {
     const db = await requireDb();
     const ncs = await db.select().from(nonconformities).orderBy(desc(nonconformities.detectedAt));
     return scopeToFactory(ncs, input?.factoryId);
   }),
 
-  dailyIncidences: protectedProcedure.input(z.object({
+  dailyIncidences: qualitySessionProcedure.input(z.object({
     date: dateInput.optional(),
     factoryId: z.number().int().optional(),
   }).optional()).query(async ({ input }) => {
@@ -445,7 +445,7 @@ export const qualityRouter = router({
     };
   }),
 
-  updateNc: protectedProcedure.input(z.object({
+  updateNc: qualitySessionProcedure.input(z.object({
     id: z.number().int(),
     status: z.enum(["open", "in_progress", "awaiting_validation", "closed"]),
     assignedTo: z.string().max(120).optional(),
@@ -467,7 +467,7 @@ export const qualityRouter = router({
     return { success: true };
   }),
 
-  addCorrectiveAction: protectedProcedure.input(z.object({
+  addCorrectiveAction: qualitySessionProcedure.input(z.object({
     nonconformityId: z.number().int(),
     actionType: z.enum(["correction", "corrective"]),
     description: z.string().min(3).max(3000),
@@ -482,18 +482,18 @@ export const qualityRouter = router({
     return { success: true };
   }),
 
-  listActions: protectedProcedure.input(z.object({ nonconformityId: z.number().int() })).query(async ({ input }) => {
+  listActions: qualitySessionProcedure.input(z.object({ nonconformityId: z.number().int() })).query(async ({ input }) => {
     const db = await requireDb();
     return db.select().from(correctiveActions).where(eq(correctiveActions.nonconformityId, input.nonconformityId)).orderBy(desc(correctiveActions.createdAt));
   }),
 
-  completeAction: protectedProcedure.input(z.object({ id: z.number().int(), notes: z.string().max(3000).optional() })).mutation(async ({ input }) => {
+  completeAction: qualitySessionProcedure.input(z.object({ id: z.number().int(), notes: z.string().max(3000).optional() })).mutation(async ({ input }) => {
     const db = await requireDb();
     await db.update(correctiveActions).set({ status: "completed", completedAt: new Date(), completionNotes: input.notes ?? null }).where(eq(correctiveActions.id, input.id));
     return { success: true };
   }),
 
-  uploadEvidence: protectedProcedure.input(z.object({
+  uploadEvidence: qualitySessionProcedure.input(z.object({
     nonconformityId: z.number().int().optional(),
     correctiveActionId: z.number().int().optional(),
     fileName: z.string().min(1).max(255),
@@ -518,7 +518,7 @@ export const qualityRouter = router({
     return { success: true, url };
   }),
 
-  listEvidences: protectedProcedure.input(z.object({ nonconformityId: z.number().int() })).query(async ({ input }) => {
+  listEvidences: qualitySessionProcedure.input(z.object({ nonconformityId: z.number().int() })).query(async ({ input }) => {
     const db = await requireDb();
     const actions = await db.select().from(correctiveActions).where(eq(correctiveActions.nonconformityId, input.nonconformityId));
     const direct = await db.select().from(evidences).where(eq(evidences.nonconformityId, input.nonconformityId));
@@ -527,7 +527,7 @@ export const qualityRouter = router({
     return [...direct, ...actionEvidence].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
   }),
 
-  listChecklistItems: protectedProcedure.query(async () => {
+  listChecklistItems: qualitySessionProcedure.query(async () => {
     const db = await requireDb();
     return db.select().from(checklistItems).orderBy(checklistItems.area, checklistItems.sortOrder);
   }),
@@ -541,13 +541,13 @@ export const qualityRouter = router({
     return { success: true };
   }),
 
-  listFragileItems: protectedProcedure.input(z.object({ factoryId: z.number().int().optional(), periodicity: z.enum(["D", "S", "Q", "M"]).optional() }).optional()).query(async ({ input }) => {
+  listFragileItems: qualitySessionProcedure.input(z.object({ factoryId: z.number().int().optional(), periodicity: z.enum(["D", "S", "Q", "M"]).optional() }).optional()).query(async ({ input }) => {
     const db = await requireDb();
     const items = await db.select().from(fragileItems).orderBy(fragileItems.location, fragileItems.sortOrder, fragileItems.name);
     return items.filter((item) => item.status === "active" && (!input?.factoryId || item.factoryId === input.factoryId) && (!input?.periodicity || item.periodicity === input.periodicity));
   }),
 
-  fragilePending: protectedProcedure.input(z.object({ factoryId: z.number().int().optional(), periodicity: z.enum(["D", "S", "Q", "M"]).optional() }).optional()).query(async ({ input }) => {
+  fragilePending: qualitySessionProcedure.input(z.object({ factoryId: z.number().int().optional(), periodicity: z.enum(["D", "S", "Q", "M"]).optional() }).optional()).query(async ({ input }) => {
     const db = await requireDb();
     const [items, entries] = await Promise.all([
       db.select().from(fragileItems).orderBy(fragileItems.location, fragileItems.sortOrder, fragileItems.name),
@@ -626,7 +626,7 @@ export const qualityRouter = router({
     return { success: true };
   }),
 
-  reports: protectedProcedure.input(z.object({ factoryId: z.number().int().optional() }).optional()).query(async ({ input }) => {
+  reports: qualitySessionProcedure.input(z.object({ factoryId: z.number().int().optional() }).optional()).query(async ({ input }) => {
     const db = await requireDb();
     const [entries, tasks, ncs] = await Promise.all([
       db.select().from(controlEntries).orderBy(desc(controlEntries.completedAt)),

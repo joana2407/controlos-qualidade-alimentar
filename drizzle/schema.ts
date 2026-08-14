@@ -1,4 +1,4 @@
-import { index, int, json, mysqlEnum, mysqlTable, text, timestamp, varchar } from "drizzle-orm/mysql-core";
+import { boolean, date, index, int, json, mysqlEnum, mysqlTable, text, timestamp, varchar } from "drizzle-orm/mysql-core";
 
 /**
  * Core user table backing auth flow.
@@ -141,6 +141,134 @@ export const nonconformities = mysqlTable("nonconformities", {
   createdBy: varchar("createdBy", { length: 64 }).notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 }, (table) => [index("nc_status_idx").on(table.status), index("nc_severity_idx").on(table.severity), index("nc_factory_idx").on(table.factoryId), index("nc_reporter_idx").on(table.reportedByProfileId)]);
+
+const occurrenceType = mysqlEnum("occurrence_type", ["NC", "Nnc"]);
+const occurrenceOrigin = mysqlEnum("occurrence_origin", ["I", "R", "F", "AI", "AE"]);
+const occurrenceStatus = mysqlEnum("occurrence_status", ["ABERTO", "FECHADO"]);
+const occurrenceEffectiveness = mysqlEnum("occurrence_effectiveness", ["Satisfatória", "Não Satisfatória", ""]);
+const occurrenceAccessRole = mysqlEnum("occurrence_access_role", ["user", "admin", "gestao"]);
+const occurrenceAccessScope = mysqlEnum("occurrence_access_scope", ["all", "reclamacoes"]);
+
+/** Autorizações migradas do Registo de Ocorrências: papel e âmbito por perfil PIN. */
+export const occurrenceAccessProfiles = mysqlTable("occurrence_access_profiles", {
+  id: int("id").autoincrement().primaryKey(),
+  qualityProfileId: int("qualityProfileId").notNull().unique(),
+  role: occurrenceAccessRole.default("user").notNull(),
+  scope: occurrenceAccessScope.default("all").notNull(),
+  updatedBy: varchar("updatedBy", { length: 64 }).notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, (table) => [index("occurrence_access_scope_idx").on(table.scope)]);
+
+/**
+ * Registo de ocorrências BRC Food V9 migrado do projeto «Ocorrências A&S».
+ * Os valores de fábrica são guardados como código para preservar o histórico
+ * da origem e permitir o mapeamento às fábricas/linhas atuais.
+ */
+export const occurrences = mysqlTable("occurrences", {
+  id: int("id").autoincrement().primaryKey(),
+  number: int("number").notNull(),
+  factoryCode: varchar("factoryCode", { length: 48 }).default(""),
+  occurredOn: date("occurredOn").notNull(),
+  type: occurrenceType.notNull(),
+  origin: occurrenceOrigin.notNull(),
+  clientSupplierAuditor: varchar("clientSupplierAuditor", { length: 255 }),
+  brcRequirement: varchar("brcRequirement", { length: 100 }),
+  sgsqaScope: varchar("sgsqaScope", { length: 255 }),
+  affectedProduct: varchar("affectedProduct", { length: 255 }),
+  lot: varchar("lot", { length: 100 }),
+  expiry: varchar("expiry", { length: 50 }),
+  rawMaterialLot: varchar("rawMaterialLot", { length: 100 }),
+  quantity: varchar("quantity", { length: 100 }),
+  nonconformingProductClass: mysqlEnum("occurrence_pnc_class", ["PNC C1", "PNC C2", ""]).default(""),
+  description: text("description").notNull(),
+  descriptionImages: text("descriptionImages"),
+  hazardType: varchar("hazardType", { length: 255 }).default("NA"),
+  hazardDescription: text("hazardDescription"),
+  justification: text("justification"),
+  rootCauseAnalysis: text("rootCauseAnalysis"),
+  correction: text("correction"),
+  correctionResponsible: varchar("correctionResponsible", { length: 255 }),
+  correctionImplementedOn: date("correctionImplementedOn"),
+  correctionEvidence: text("correctionEvidence"),
+  correctionEvidenceImages: text("correctionEvidenceImages"),
+  correctiveAction: text("correctiveAction"),
+  correctiveActionResponsible: varchar("correctiveActionResponsible", { length: 255 }),
+  correctiveActionDueOn: date("correctiveActionDueOn"),
+  correctiveActionClosedOn: date("correctiveActionClosedOn"),
+  correctiveActionEvidence: text("correctiveActionEvidence"),
+  correctiveActionEvidenceImages: text("correctiveActionEvidenceImages"),
+  implementationDueOn: date("implementationDueOn"),
+  responsible: varchar("responsible", { length: 255 }),
+  status: occurrenceStatus.default("ABERTO").notNull(),
+  closedOn: date("closedOn"),
+  closingResponsible: varchar("closingResponsible", { length: 255 }),
+  effectivenessResponsible: varchar("effectivenessResponsible", { length: 255 }),
+  effectivenessEvidence: text("effectivenessEvidence"),
+  assessmentMethod: text("assessmentMethod"),
+  effectiveness: occurrenceEffectiveness.default("").notNull(),
+  recurrent: boolean("recurrent").default(false).notNull(),
+  recurrenceOfId: int("recurrenceOfId"),
+  impactsObjectives: mysqlEnum("occurrence_impacts_objectives", ["Sim", "Não", ""]).default(""),
+  effect: text("effect"),
+  observations: text("observations"),
+  openedByProfileId: int("openedByProfileId"),
+  treatmentByProfileId: int("treatmentByProfileId"),
+  effectivenessByProfileId: int("effectivenessByProfileId"),
+  createdBy: varchar("createdBy", { length: 64 }).notNull(),
+  updatedBy: varchar("updatedBy", { length: 64 }).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, (table) => [
+  index("occurrence_number_idx").on(table.number),
+  index("occurrence_factory_idx").on(table.factoryCode),
+  index("occurrence_status_idx").on(table.status),
+  index("occurrence_origin_idx").on(table.origin),
+  index("occurrence_brc_idx").on(table.brcRequirement),
+  index("occurrence_date_idx").on(table.occurredOn),
+]);
+
+/** Reclamações a fornecedores preservadas do projeto «Ocorrências A&S». */
+export const supplierComplaints = mysqlTable("supplier_complaints", {
+  id: int("id").autoincrement().primaryKey(),
+  number: varchar("number", { length: 50 }).unique(),
+  complaintOn: date("complaintOn").notNull(),
+  supplier: varchar("supplier", { length: 255 }).notNull(),
+  sector: varchar("sector", { length: 255 }),
+  affectedProducts: text("affectedProducts"),
+  lots: text("lots"),
+  expiry: varchar("expiry", { length: 100 }),
+  quantity: varchar("quantity", { length: 100 }),
+  category: mysqlEnum("supplier_complaint_category", ["PRODUTO", "SERVICO"]),
+  description: text("description"),
+  descriptionImages: text("descriptionImages"),
+  hazardType: varchar("hazardType", { length: 100 }),
+  correction: text("correction"),
+  correctionResponsible: varchar("correctionResponsible", { length: 255 }),
+  correctionImplementedOn: date("correctionImplementedOn"),
+  correctionEvidence: text("correctionEvidence"),
+  correctionEvidenceImages: text("correctionEvidenceImages"),
+  correctiveAction: text("correctiveAction"),
+  correctiveActionResponsible: varchar("correctiveActionResponsible", { length: 255 }),
+  correctiveActionDueOn: date("correctiveActionDueOn"),
+  correctiveActionClosedOn: date("correctiveActionClosedOn"),
+  correctiveActionEvidence: text("correctiveActionEvidence"),
+  correctiveActionEvidenceImages: text("correctiveActionEvidenceImages"),
+  preventiveAction: text("preventiveAction"),
+  implementationDueOn: varchar("implementationDueOn", { length: 100 }),
+  responsible: varchar("responsible", { length: 255 }),
+  recurrent: boolean("recurrent").default(false).notNull(),
+  recurrenceOfId: int("recurrenceOfId"),
+  status: occurrenceStatus.default("ABERTO").notNull(),
+  closedOn: date("closedOn"),
+  closingResponsible: varchar("closingResponsible", { length: 255 }),
+  closingObservations: text("closingObservations"),
+  observations: text("observations"),
+  evidence: text("evidence"),
+  createdBy: varchar("createdBy", { length: 64 }).notNull(),
+  updatedBy: varchar("updatedBy", { length: 64 }).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, (table) => [index("supplier_complaint_status_idx").on(table.status), index("supplier_complaint_supplier_idx").on(table.supplier), index("supplier_complaint_date_idx").on(table.complaintOn)]);
 
 export const correctiveActions = mysqlTable("corrective_actions", {
   id: int("id").autoincrement().primaryKey(),

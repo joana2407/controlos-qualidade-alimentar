@@ -2,6 +2,7 @@ import { COOKIE_NAME } from "@shared/const";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { publicProcedure, router } from "./_core/trpc";
+import { occurrencesRouter } from "./routers/occurrences";
 import { qualityRouter } from "./routers/quality";
 
 export const appRouter = router({
@@ -18,6 +19,7 @@ export const appRouter = router({
     }),
   }),
   quality: qualityRouter,
+  occurrences: occurrencesRouter,
 
 });
 

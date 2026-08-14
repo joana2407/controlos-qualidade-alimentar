@@ -85,6 +85,20 @@
       "when": 1786700550907,
       "tag": "0011_third_trish_tilby",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "5",
+      "when": 1786712734383,
+      "tag": "0012_dusty_spitfire",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "5",
+      "when": 1786714010859,
+      "tag": "0013_dark_rictor",
+      "breakpoints": true
     }
   ]
 }

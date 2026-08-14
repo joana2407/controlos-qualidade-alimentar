@@ -142,3 +142,14 @@
 - [x] Tornar opcional a seleção de área no painel de criação de nova tarefa.
 - [x] Corrigir o cálculo da execução diária para refletir apenas os controlos efetivamente verificados.
 - [x] Avaliar a cobertura BRCGS Food Safety e priorizar melhorias de conformidade para a plataforma.
+- [x] Permitir acesso operacional à aplicação sem ecrã de autenticação Manus, protegido por perfil e PIN da equipa.
+- [x] Avaliar e integrar no QualiControl o dashboard de registo de ocorrências de outro projeto Manus.
+- [x] Preservar e mapear as autorizações de acesso do Registo de Ocorrências para os perfis PIN do QualiControl.
+- [x] Completar a paridade funcional do Registo de Ocorrências, incluindo detalhe, ações auxiliares e parametrizações de origem ainda não evidenciadas.
+- [x] Mapear papéis, âmbitos e visibilidade de ocorrências/reclamações da origem para perfis PIN, com cobertura de integração e interface.
+- [x] Validar que os KPIs e alertas do dashboard abrem listas filtradas por estado, prazo e eficácia.
+- [x] Migrar ou justificar o ecrã de detalhe de ocorrências e validar a fidelidade funcional dos ecrãs principais face à origem.
+- [x] Adicionar testes de interface para perfis de Gestão e de Reclamações, cobrindo menus, bloqueios e ecrãs permitidos.
+- [x] Documentar a matriz final de permissões de ocorrências e validar as regras por integração e interface.
+- [x] Alinhar o ecrã de edição de ocorrências com o papel configurável `admin` para avaliação de eficácia.
+- [x] Cobrir na interface a eficácia para `admin` de ocorrências e a consulta para `gestao`.

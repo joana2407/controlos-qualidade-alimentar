@@ -1,4 +1,3 @@
-import { useAuth } from "@/_core/hooks/useAuth";
 import { OperatorPinGate } from "@/components/OperatorPinGate";
 import { QualityAccessProvider, useQualityAccess } from "@/contexts/QualityAccessContext";
 import { trpc } from "@/lib/trpc";
@@ -22,19 +21,18 @@ import {
   SidebarTrigger,
   useSidebar,
 } from "@/components/ui/sidebar";
-import { startLogin } from "@/const";
 import { useIsMobile } from "@/hooks/useMobile";
-import { AlertTriangle, BarChart3, BookOpenCheck, Boxes, ChevronDown, ClipboardCheck, FileWarning, FlaskConical, HelpCircle, KeyRound, LayoutDashboard, ListChecks, LogOut, Magnet, MessageSquareMore, PanelLeft, Settings2, ShieldCheck, TimerReset, Truck } from "lucide-react";
+import { AlertTriangle, BarChart3, BookOpenCheck, Boxes, ChevronDown, ClipboardCheck, ClipboardList, FilePlus2, FileWarning, FlaskConical, HelpCircle, KeyRound, LayoutDashboard, ListChecks, Magnet, MessageSquareMore, MessageSquareWarning, PanelLeft, Settings2, ShieldCheck, TimerReset, Truck } from "lucide-react";
 import React, { CSSProperties, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { DashboardLayoutSkeleton } from './DashboardLayoutSkeleton';
-import { Button } from "./ui/button";
 
 const menuItems = [
   { icon: LayoutDashboard, label: "Hoje", path: "/" },
   { icon: BookOpenCheck, label: "Plataforma", path: "/plataforma" },
   { icon: HelpCircle, label: "Ajuda", path: "/ajuda" },
   { icon: ClipboardCheck, label: "Controlos", path: "/controlos" },
+  { icon: ClipboardList, label: "Ocorrências", path: "/ocorrencias" },
   { icon: FileWarning, label: "Não conformidades", path: "/nao-conformidades" },
   { icon: BarChart3, label: "Relatórios", path: "/relatorios" },
   { icon: Settings2, label: "Configuração", path: "/configuracao" },
@@ -49,6 +47,13 @@ const controlPanels = [
   { icon: MessageSquareMore, label: "Caixas de sugestões", path: "/controlos/suggestion_boxes" },
   { icon: Boxes, label: "Quebráveis", path: "/controlos/fragile_items" },
   { icon: Truck, label: "Controlo à expedição", path: "/controlos/dispatch_control" },
+];
+
+const occurrencePanels = [
+  { icon: BarChart3, label: "Dashboard", path: "/ocorrencias" },
+  { icon: ClipboardList, label: "Ocorrências", path: "/ocorrencias/lista" },
+  { icon: FilePlus2, label: "Nova ocorrência", path: "/ocorrencias/nova" },
+  { icon: MessageSquareWarning, label: "Reclamações a fornecedores", path: "/reclamacoes" },
 ];
 
 const SIDEBAR_WIDTH_KEY = "sidebar-width";
@@ -66,42 +71,13 @@ export default function DashboardLayout({
     return saved ? parseInt(saved, 10) : DEFAULT_WIDTH;
   });
   const [location] = useLocation();
-  const { loading, user } = useAuth();
-  const access = trpc.quality.accessStatus.useQuery(undefined, { enabled: Boolean(user) });
+  const access = trpc.quality.accessStatus.useQuery();
 
   useEffect(() => {
     localStorage.setItem(SIDEBAR_WIDTH_KEY, sidebarWidth.toString());
   }, [sidebarWidth]);
 
-  if (loading) {
-    return <DashboardLayoutSkeleton />
-  }
-
   if (location === "/plataforma" || location === "/ajuda") return <>{children}</>;
-
-  if (!user) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="flex flex-col items-center gap-8 p-8 max-w-md w-full">
-          <div className="flex flex-col items-center gap-6">
-            <h1 className="text-2xl font-semibold tracking-tight text-center">
-              Sign in to continue
-            </h1>
-            <p className="text-sm text-muted-foreground text-center max-w-sm">
-              Access to this dashboard requires authentication. Continue to launch the login flow.
-            </p>
-          </div>
-          <Button
-            onClick={() => startLogin()}
-            size="lg"
-            className="w-full shadow-lg hover:shadow-xl transition-all"
-          >
-            Sign in
-          </Button>
-        </div>
-      </div>
-    );
-  }
 
   if (access.isLoading || !access.data) return <DashboardLayoutSkeleton />;
   if (!access.data.activeProfile) return <OperatorPinGate access={access.data} />;
@@ -130,17 +106,18 @@ function DashboardLayoutContent({
   children,
   setSidebarWidth,
 }: DashboardLayoutContentProps) {
-  const { user, logout } = useAuth();
   const [location, setLocation] = useLocation();
   const { state, toggleSidebar } = useSidebar();
   const isCollapsed = state === "collapsed";
   const [controlsOpen, setControlsOpen] = useState(() => location.startsWith("/controlos"));
+  const [occurrencesOpen, setOccurrencesOpen] = useState(() => location.startsWith("/ocorrencias") || location.startsWith("/reclamacoes"));
   const [isResizing, setIsResizing] = useState(false);
   const sidebarRef = useRef<HTMLDivElement>(null);
-  const activeMenuItem = [...menuItems, ...controlPanels].find(item => item.path === location);
+  const activeMenuItem = [...menuItems, ...controlPanels, ...occurrencePanels].find(item => item.path === location);
   const isMobile = useIsMobile();
   const { activeProfile, canManage } = useQualityAccess();
   const utils = trpc.useUtils();
+  const occurrenceAccess = trpc.occurrences.access.useQuery();
   const deactivate = trpc.quality.deactivatePinProfile.useMutation({ onSuccess: () => utils.quality.accessStatus.invalidate() });
   const visibleMenuItems = menuItems.filter((item) => item.path !== "/configuracao" || canManage);
 
@@ -152,6 +129,7 @@ function DashboardLayoutContent({
 
   useEffect(() => {
     if (location.startsWith("/controlos")) setControlsOpen(true);
+    if (location.startsWith("/ocorrencias") || location.startsWith("/reclamacoes")) setOccurrencesOpen(true);
   }, [location]);
 
   useEffect(() => {
@@ -219,6 +197,11 @@ function DashboardLayoutContent({
                 if (item.path === "/controlos") {
                   return <React.Fragment key={item.path}><SidebarMenuItem><div className="flex items-center"><SidebarMenuButton isActive={isActive} onClick={() => { setControlsOpen(true); setLocation(item.path); }} tooltip={item.label} className="h-10 flex-1 transition-all font-normal"><item.icon className={`h-4 w-4 ${isActive ? "text-primary" : ""}`} /><span>{item.label}</span></SidebarMenuButton>{!isCollapsed && <button type="button" aria-label={controlsOpen ? "Fechar módulos de controlo" : "Abrir módulos de controlo"} aria-expanded={controlsOpen} onClick={() => setControlsOpen((open) => !open)} className="mr-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"><ChevronDown className={`h-4 w-4 transition-transform ${controlsOpen ? "rotate-0" : "-rotate-90"}`} /></button>}</div></SidebarMenuItem>{controlsOpen && !isCollapsed && <div className="ml-5 border-l border-border/70 py-1"><SidebarMenu className="px-2 py-0">{controlPanels.map(panel => { const panelActive = location === panel.path; return <SidebarMenuItem key={panel.path}><SidebarMenuButton isActive={panelActive} onClick={() => setLocation(panel.path)} tooltip={panel.label} className="h-9 text-sm transition-all font-normal"><panel.icon className={`h-4 w-4 ${panelActive ? "text-primary" : ""}`} /><span>{panel.label}</span></SidebarMenuButton></SidebarMenuItem>; })}</SidebarMenu></div>}</React.Fragment>;
                 }
+                if (item.path === "/ocorrencias") {
+                  const visibleOccurrences = occurrenceAccess.data?.scope === "reclamacoes" ? occurrencePanels.filter((panel) => panel.path === "/reclamacoes") : occurrencePanels;
+                  const occurrenceActive = location.startsWith("/ocorrencias") || location.startsWith("/reclamacoes");
+                  return <React.Fragment key={item.path}><SidebarMenuItem><div className="flex items-center"><SidebarMenuButton isActive={occurrenceActive} onClick={() => { setOccurrencesOpen(true); setLocation(occurrenceAccess.data?.scope === "reclamacoes" ? "/reclamacoes" : item.path); }} tooltip={item.label} className="h-10 flex-1 transition-all font-normal"><item.icon className={`h-4 w-4 ${occurrenceActive ? "text-primary" : ""}`} /><span>{item.label}</span></SidebarMenuButton>{!isCollapsed && <button type="button" aria-label={occurrencesOpen ? "Fechar módulos de ocorrências" : "Abrir módulos de ocorrências"} aria-expanded={occurrencesOpen} onClick={() => setOccurrencesOpen((open) => !open)} className="mr-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"><ChevronDown className={`h-4 w-4 transition-transform ${occurrencesOpen ? "rotate-0" : "-rotate-90"}`} /></button>}</div></SidebarMenuItem>{occurrencesOpen && !isCollapsed && <div className="ml-5 border-l border-border/70 py-1"><SidebarMenu className="px-2 py-0">{visibleOccurrences.map(panel => { const panelActive = location === panel.path; return <SidebarMenuItem key={panel.path}><SidebarMenuButton isActive={panelActive} onClick={() => setLocation(panel.path)} tooltip={panel.label} className="h-9 text-sm transition-all font-normal"><panel.icon className={`h-4 w-4 ${panelActive ? "text-primary" : ""}`} /><span>{panel.label}</span></SidebarMenuButton></SidebarMenuItem>; })}</SidebarMenu></div>}</React.Fragment>;
+                }
                 return (
                   <SidebarMenuItem key={item.path}>
                     <SidebarMenuButton
@@ -244,15 +227,15 @@ function DashboardLayoutContent({
                 <button className="flex items-center gap-3 rounded-lg px-1 py-1 hover:bg-accent/50 transition-colors w-full text-left group-data-[collapsible=icon]:justify-center focus:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                   <Avatar className="h-9 w-9 border shrink-0">
                     <AvatarFallback className="text-xs font-medium">
-                      {user?.name?.charAt(0).toUpperCase()}
+                      {activeProfile?.name?.charAt(0).toUpperCase()}
                     </AvatarFallback>
                   </Avatar>
                   <div className="flex-1 min-w-0 group-data-[collapsible=icon]:hidden">
                     <p className="text-sm font-medium truncate leading-none">
-                      {activeProfile?.name || user?.name || "-"}
+                      {activeProfile?.name || "-"}
                     </p>
                     <p className="text-xs text-muted-foreground truncate mt-1.5">
-                      {activeProfile?.title || user?.email || "-"}
+                      {activeProfile?.title || "-"}
                     </p>
                   </div>
                 </button>
@@ -261,13 +244,6 @@ function DashboardLayoutContent({
                 <DropdownMenuItem onClick={() => deactivate.mutate()} className="cursor-pointer">
                   <KeyRound className="mr-2 h-4 w-4" />
                   <span>Terminar acesso PIN</span>
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  onClick={logout}
-                  className="cursor-pointer text-destructive focus:text-destructive"
-                >
-                  <LogOut className="mr-2 h-4 w-4" />
-                  <span>Terminar sessão</span>
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>

@@ -27,16 +27,34 @@ const requireUser = t.middleware(async opts => {
 
 export const protectedProcedure = t.procedure.use(requireUser);
 
-export const qualityOperatorProcedure = protectedProcedure.use(
+const requireQualitySession = t.middleware(async ({ ctx, next }) => {
+  if (!ctx.operatorProfile) {
+    throw new TRPCError({ code: "FORBIDDEN", message: "Selecione o perfil operacional e introduza o respetivo PIN." });
+  }
+  const now = new Date();
+  const operationalUser = ctx.user ?? {
+    id: 0,
+    openId: `quality-pin-${ctx.operatorProfile.id}`,
+    name: ctx.operatorProfile.name,
+    email: null,
+    loginMethod: "quality-pin",
+    role: ctx.operatorProfile.role === "manager" ? "admin" as const : "user" as const,
+    createdAt: now,
+    updatedAt: now,
+    lastSignedIn: now,
+  };
+  return next({ ctx: { ...ctx, user: operationalUser, operatorProfile: ctx.operatorProfile } });
+});
+
+export const qualitySessionProcedure = t.procedure.use(requireQualitySession);
+
+export const qualityOperatorProcedure = qualitySessionProcedure.use(
   t.middleware(async ({ ctx, next }) => {
-    if (!ctx.operatorProfile) {
-      throw new TRPCError({ code: "FORBIDDEN", message: "Selecione o perfil operacional e introduza o respetivo PIN." });
-    }
     return next({ ctx: { ...ctx, operatorProfile: ctx.operatorProfile } });
   }),
 );
 
-export const qualityManagerProcedure = protectedProcedure.use(
+export const qualityManagerProcedure = qualitySessionProcedure.use(
   t.middleware(async ({ ctx, next }) => {
     if (ctx.operatorProfile?.role !== "manager") {
       throw new TRPCError({ code: "FORBIDDEN", message: "Apenas a Responsável de Qualidade pode executar esta ação." });

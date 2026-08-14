@@ -33,24 +33,23 @@ export async function createContext(
     user = null;
   }
 
-  if (user) {
-    try {
-      const token = parseCookie(opts.req.headers.cookie ?? "")[QUALITY_OPERATOR_COOKIE];
-      const db = await getDb();
-      if (token && db) {
-        const session = (await db.select().from(qualityPinSessions).where(and(
-          eq(qualityPinSessions.tokenHash, hashSessionToken(token)),
-          eq(qualityPinSessions.oauthOpenId, user.openId),
-          gt(qualityPinSessions.expiresAt, new Date()),
-        )).limit(1))[0];
-        if (session) {
-          const profile = (await db.select().from(qualityPinProfiles).where(eq(qualityPinProfiles.id, session.profileId)).limit(1))[0];
-          if (profile?.active === "true") operatorProfile = { id: profile.id, name: profile.name, title: profile.title, role: profile.role };
-        }
+  try {
+    const token = parseCookie(opts.req.headers.cookie ?? "")[QUALITY_OPERATOR_COOKIE];
+    const db = await getDb();
+    if (token && db) {
+      const sessionConditions = [
+        eq(qualityPinSessions.tokenHash, hashSessionToken(token)),
+        gt(qualityPinSessions.expiresAt, new Date()),
+        eq(qualityPinSessions.oauthOpenId, user?.openId ?? "pin-only"),
+      ];
+      const session = (await db.select().from(qualityPinSessions).where(and(...sessionConditions)).limit(1))[0];
+      if (session) {
+        const profile = (await db.select().from(qualityPinProfiles).where(eq(qualityPinProfiles.id, session.profileId)).limit(1))[0];
+        if (profile?.active === "true") operatorProfile = { id: profile.id, name: profile.name, title: profile.title, role: profile.role };
       }
-    } catch (error) {
-      operatorProfile = null;
     }
+  } catch (error) {
+    operatorProfile = null;
   }
 
   return {

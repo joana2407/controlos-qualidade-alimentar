@@ -93,6 +93,14 @@ describe("procedimentos de qualidade por fábrica", () => {
     expect(filteredTasks.map((task) => task.id)).toEqual([1, 2]);
   });
 
+  it("permite consultar a operação com um perfil PIN mesmo sem conta Manus", async () => {
+    const pinOnlyContext = { ...createContext(), user: null, operatorProfile: { id: 1, name: "Sabrina Esteves", title: "Tec. Qualidade", role: "technician" as const } };
+    const caller = qualityRouter.createCaller(pinOnlyContext);
+
+    await expect(caller.metadata()).resolves.toMatchObject({ factories: factoryRows });
+    await expect(caller.dashboard({ factoryId: 1 })).resolves.toMatchObject({ metrics: { dailyExecutionRate: 50 } });
+  });
+
   it("não apresenta 100% enquanto existir um plano diário previsto sem registo", async () => {
     plans.push({ id: 1, title: "BPHF diário", module: "bphf", areaId: 101, factoryId: 1, frequency: "daily", active: "true" });
     const caller = qualityRouter.createCaller(createContext());

@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 let currentLocation = "/controlos/fragile_items";
 let isMobile = false;
+let occurrenceScope = "all";
 const setLocation = vi.fn();
 
 vi.mock("@/_core/hooks/useAuth", () => ({
@@ -20,6 +21,7 @@ vi.mock("@/lib/trpc", () => ({
       accessStatus: { useQuery: () => ({ isLoading: false, data: { activeProfile: { id: 3, name: "Joana Pina", title: "Resp. Qualidade", role: "manager" }, canManage: true, profiles: [], canBootstrap: false, needsInitialSetup: false } }) },
       deactivatePinProfile: { useMutation: () => ({ mutate: vi.fn() }) },
     },
+    occurrences: { access: { useQuery: () => ({ data: { role: "admin", scope: occurrenceScope } }) } },
   },
 }));
 
@@ -30,6 +32,7 @@ describe("atalhos laterais dos painéis de controlo", () => {
     cleanup();
     currentLocation = "/controlos/fragile_items";
     isMobile = false;
+    occurrenceScope = "all";
     setLocation.mockClear();
     Object.defineProperty(window, "matchMedia", { writable: true, value: vi.fn(() => ({ matches: false, addEventListener: vi.fn(), removeEventListener: vi.fn() })) });
     class ResizeObserverMock { observe() {} unobserve() {} disconnect() {} }
@@ -65,5 +68,15 @@ describe("atalhos laterais dos painéis de controlo", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: "Quebráveis" }));
     expect(setLocation).toHaveBeenLastCalledWith("/controlos/fragile_items");
+  });
+
+  it("limita a navegação ao módulo de reclamações quando o âmbito do perfil é restrito", () => {
+    occurrenceScope = "reclamacoes";
+    render(<DashboardLayout><div>Conteúdo</div></DashboardLayout>);
+    fireEvent.click(screen.getByRole("button", { name: "Abrir módulos de ocorrências" }));
+    expect(screen.getByRole("button", { name: "Reclamações a fornecedores" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Nova ocorrência" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Ocorrências" }));
+    expect(setLocation).toHaveBeenLastCalledWith("/reclamacoes");
   });
 });
