@@ -111,3 +111,6 @@
 - [x] Adicionar atalhos para a ajuda na navegação e em cada módulo de controlo.
 - [x] Testar a apresentação dos guias e as ligações para os módulos operacionais.
 - [x] Detalhar em cada guia as regras de resultado aplicáveis, indicando C/NC/N/A ou C/NC conforme o módulo.
+- [x] Mostrar no cabeçalho do painel de quebráveis o seletor de fábrica ou linha utilizado pelos restantes módulos.
+- [x] Validar a seleção de fábrica e o carregamento dos pontos de quebráveis no painel corrigido.
+- [x] Adicionar teste runtime que selecione uma fábrica no cabeçalho de quebráveis e confirme o carregamento de pontos e pendências dessa fábrica.
