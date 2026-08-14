@@ -6,6 +6,7 @@ export const MODULES = [
   { id: "monthly_checklist", label: "Checklist mensal por área", shortLabel: "Checklist", description: "Inspeção configurável por zona", color: "blue" },
   { id: "suggestion_boxes", label: "Verificação de caixas de sugestões", shortLabel: "Sugestões", description: "Recolha e triagem de registos", color: "lime" },
   { id: "fragile_items", label: "Verificação de quebráveis", shortLabel: "Quebráveis", description: "Inventário e inspeção de integridade", color: "orange" },
+  { id: "dispatch_control", label: "Controlo à expedição", shortLabel: "Expedição", description: "Encomenda, rotulagem, quantidades e temperaturas", color: "teal" },
 ] as const;
 
 export const BPHF_AREAS = ["Embalagem T", "Produção T", "Embalagem SG", "Produção SG"] as const;

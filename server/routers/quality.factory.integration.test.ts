@@ -171,4 +171,19 @@ describe("procedimentos de qualidade por fábrica", () => {
     expect(result).toEqual({ success: true });
     expect(dbInserts[0]).toMatchObject({ name: "Proteção acrílica da linha", location: "Embalamento primário", factoryId: 3, periodicity: "Q", itemType: "Plástico rígido", status: "active", createdBy: "quality-admin" });
   });
+
+  it("regista a expedição e cria NC de gravidade alta quando a temperatura falha", async () => {
+    const caller = qualityRouter.createCaller(createContext());
+    const result = await caller.registerDispatchControl({ factoryId: 1, profile: "congelado", orderNumber: "ENC-100", customer: "Cliente Norte", deliveryNote: "GR-50", product: "Pão congelado", lot: "L-100", orderedBoxes: 24, dispatchedBoxes: 24, productLabelResult: "C", boxLabelResult: "C", productTemperature: -17, vehicleTemperature: -18, observations: "Produto acima do limite para congelados." });
+    expect(result.conformity).toMatchObject({ result: "NC", productTemperatureResult: "NC", vehicleTemperatureResult: "C" });
+    expect(dbInserts[0]).toMatchObject({ module: "dispatch_control", result: "NC", factoryId: 1, area: "Expedição congelado", registeredByName: "Joana Pina" });
+    expect(dbInserts[1]).toMatchObject({ module: "dispatch_control", severity: "high", status: "open", factoryId: 1, reportedByTitle: "Resp. Qualidade" });
+  });
+
+  it("atribui gravidade média aos desvios de expedição sem falha de temperatura", async () => {
+    const caller = qualityRouter.createCaller(createContext());
+    await caller.registerDispatchControl({ factoryId: 2, profile: "ambiente", orderNumber: "ENC-101", customer: "Cliente Centro", product: "Pão de forma", lot: "L-101", orderedBoxes: 25, dispatchedBoxes: 24, productLabelResult: "NC", boxLabelResult: "C", productTemperature: 18, vehicleTemperature: 20, observations: "Quantidade e rotulagem do produto divergentes." });
+    expect(dbInserts[0]).toMatchObject({ module: "dispatch_control", result: "NC", factoryId: 2, area: "Expedição ambiente" });
+    expect(dbInserts[1]).toMatchObject({ module: "dispatch_control", severity: "medium", status: "open", factoryId: 2 });
+  });
 });

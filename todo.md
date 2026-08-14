@@ -114,3 +114,13 @@
 - [x] Mostrar no cabeçalho do painel de quebráveis o seletor de fábrica ou linha utilizado pelos restantes módulos.
 - [x] Validar a seleção de fábrica e o carregamento dos pontos de quebráveis no painel corrigido.
 - [x] Adicionar teste runtime que selecione uma fábrica no cabeçalho de quebráveis e confirme o carregamento de pontos e pendências dessa fábrica.
+- [x] Analisar o ficheiro de conformidade à expedição e extrair os pontos, critérios e campos de controlo.
+- [x] Criar e importar o catálogo de pontos do novo módulo Controlo à expedição.
+- [x] Implementar o formulário de Controlo à expedição com seleção de fábrica ou linha, resultados e tratamento de NC.
+- [x] Adicionar o novo módulo à navegação, plataforma e ajuda.
+- [x] Testar a importação, o preenchimento e as incidências do controlo à expedição.
+- [x] Definir um catálogo explícito dos perfis, limites e critérios do controlo à expedição, baseado no ficheiro analisado.
+- [x] Adicionar teste de interface para os perfis, o cálculo e as regras de observação do formulário de expedição.
+- [x] Adicionar teste verificável para a configuração do catálogo de expedição.
+- [x] Criar carregador verificável que converte a estrutura extraída do Excel no catálogo estático de expedição.
+- [x] Cobrir o carregador de catálogo de expedição com teste de importação/configuração.

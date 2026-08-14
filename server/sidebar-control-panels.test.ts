@@ -14,6 +14,7 @@ describe("navegação lateral dos painéis de controlo", () => {
       "/controlos/monthly_checklist",
       "/controlos/suggestion_boxes",
       "/controlos/fragile_items",
+      "/controlos/dispatch_control",
     ].forEach((path) => expect(source).toContain(path));
   });
 });

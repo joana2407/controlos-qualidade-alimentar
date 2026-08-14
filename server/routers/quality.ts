@@ -18,12 +18,13 @@ import {
   resultValues,
 } from "../../drizzle/schema";
 import { getDb } from "../db";
-import { calculateConformityRate, calculateSensoryScore, isFragileInspectionPending, shouldCreateCriticalMetalAlert } from "../quality.logic";
+import { calculateConformityRate, calculateDispatchConformity, calculateSensoryScore, isFragileInspectionPending, shouldCreateCriticalMetalAlert } from "../quality.logic";
 import { calculatePlanCompliance, countOpenNonconformities, scopeToFactory } from "../factory.scope.logic";
 import { storagePut } from "../storage";
 import { createSessionToken, hashPin, hashSessionToken, QUALITY_OPERATOR_COOKIE, QUALITY_SESSION_HOURS, QUALITY_TEAM_DEFAULTS, validatePin, verifyPin } from "../team-access";
 import { getSessionCookieOptions } from "../_core/cookies";
 import { protectedProcedure, qualityManagerProcedure, qualityOperatorProcedure, router } from "../_core/trpc";
+import { getDispatchProfile } from "../../shared/dispatch-control";
 
 const qualityModuleSchema = z.enum(qualityModuleValues);
 const resultSchema = z.enum(resultValues);
@@ -117,6 +118,7 @@ export const qualityRouter = router({
       { id: "monthly_checklist", label: "Checklist mensal por área" },
       { id: "suggestion_boxes", label: "Verificação de caixas de sugestões" },
       { id: "fragile_items", label: "Verificação de quebráveis" },
+      { id: "dispatch_control", label: "Controlo à expedição" },
       ],
     };
   }),
@@ -347,6 +349,59 @@ export const qualityRouter = router({
     textura: z.number().int().min(1).max(5),
     sabor: z.number().int().min(1).max(5),
   })).query(({ input }) => calculateSensoryScore(input)),
+
+  calculateDispatchConformity: protectedProcedure.input(z.object({
+    orderedBoxes: z.number().int().min(0),
+    dispatchedBoxes: z.number().int().min(0),
+    productLabelResult: z.enum(["C", "NC"]),
+    boxLabelResult: z.enum(["C", "NC"]),
+    productTemperature: z.number().min(-100).max(100),
+    vehicleTemperature: z.number().min(-100).max(100),
+    productTemperatureLimit: z.number().min(-100).max(100),
+    vehicleTemperatureLimit: z.number().min(-100).max(100),
+  })).query(({ input }) => calculateDispatchConformity(input)),
+
+  registerDispatchControl: qualityOperatorProcedure.input(z.object({
+    factoryId: z.number().int(),
+    profile: z.enum(["ambiente", "congelado"]),
+    orderNumber: z.string().min(1).max(80),
+    customer: z.string().min(2).max(160),
+    deliveryNote: z.string().max(120).optional(),
+    product: z.string().min(2).max(180),
+    lot: z.string().min(1).max(120),
+    orderedBoxes: z.number().int().min(0),
+    dispatchedBoxes: z.number().int().min(0),
+    productLabelResult: z.enum(["C", "NC"]),
+    boxLabelResult: z.enum(["C", "NC"]),
+    productTemperature: z.number().min(-100).max(100),
+    vehicleTemperature: z.number().min(-100).max(100),
+    observations: z.string().max(3000).optional(),
+  })).mutation(async ({ ctx, input }) => {
+    const profile = getDispatchProfile(input.profile);
+    const limits = { product: profile.productTemperatureLimit, vehicle: profile.vehicleTemperatureLimit };
+    const conformity = calculateDispatchConformity({
+      orderedBoxes: input.orderedBoxes,
+      dispatchedBoxes: input.dispatchedBoxes,
+      productLabelResult: input.productLabelResult,
+      boxLabelResult: input.boxLabelResult,
+      productTemperature: input.productTemperature,
+      vehicleTemperature: input.vehicleTemperature,
+      productTemperatureLimit: limits.product,
+      vehicleTemperatureLimit: limits.vehicle,
+    });
+    if (conformity.result === "NC" && !input.observations?.trim()) throw new TRPCError({ code: "BAD_REQUEST", message: "As observações são obrigatórias quando a expedição não está conforme." });
+    const db = await requireDb();
+    const completedAt = new Date();
+    const title = `Expedição ${input.orderNumber} — ${input.customer}`;
+    const area = `Expedição ${input.profile}`;
+    const payload = { ...input, profileLabel: profile.label, temperatureLimits: limits, ...conformity };
+    await db.insert(controlEntries).values({ module: "dispatch_control", title, area, factoryId: input.factoryId, result: conformity.result, notes: input.observations ?? null, payload, completedAt, registeredByProfileId: ctx.operatorProfile!.id, registeredByName: ctx.operatorProfile!.name, registeredByTitle: ctx.operatorProfile!.title, createdBy: ctx.user!.openId });
+    if (conformity.result === "NC") {
+      const temperatureFailure = conformity.productTemperatureResult === "NC" || conformity.vehicleTemperatureResult === "NC";
+      await db.insert(nonconformities).values({ module: "dispatch_control", title: `NC à expedição — ${input.orderNumber}`, description: input.observations!.trim(), area, factoryId: input.factoryId, severity: temperatureFailure ? "high" : "medium", status: "open", detectedAt: completedAt, reportedByProfileId: ctx.operatorProfile!.id, reportedByName: ctx.operatorProfile!.name, reportedByTitle: ctx.operatorProfile!.title, createdBy: ctx.user!.openId });
+    }
+    return { success: true, conformity, limits };
+  }),
 
   listNcs: protectedProcedure.input(z.object({ factoryId: z.number().int().optional() }).optional()).query(async ({ input }) => {
     const db = await requireDb();

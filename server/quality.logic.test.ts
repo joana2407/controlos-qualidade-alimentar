@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { calculateConformityRate, calculateSensoryScore, isFragileInspectionPending, shouldCreateCriticalMetalAlert } from "./quality.logic";
+import { calculateConformityRate, calculateDispatchConformity, calculateSensoryScore, isFragileInspectionPending, shouldCreateCriticalMetalAlert } from "./quality.logic";
 
 describe("quality calculations", () => {
   it("applies the fixed sensory weights and converts the result to percentage", () => {
@@ -29,5 +29,14 @@ describe("quality calculations", () => {
     expect(isFragileInspectionPending("M", new Date(2026, 7, 1, 8, 0, 0), reference)).toBe(false);
     expect(isFragileInspectionPending("M", new Date(2026, 6, 31, 8, 0, 0), reference)).toBe(true);
     expect(isFragileInspectionPending("M", null, reference)).toBe(true);
+  });
+
+  it("calcula C para a expedição apenas quando os cinco critérios estão conformes", () => {
+    expect(calculateDispatchConformity({ orderedBoxes: 24, dispatchedBoxes: 24, productLabelResult: "C", boxLabelResult: "C", productTemperature: 24.7, vehicleTemperature: 25, productTemperatureLimit: 25, vehicleTemperatureLimit: 25 })).toEqual({ result: "C", quantityResult: "C", productTemperatureResult: "C", vehicleTemperatureResult: "C" });
+  });
+
+  it("calcula NC para temperaturas acima do limite e para divergências de quantidade ou rótulo", () => {
+    expect(calculateDispatchConformity({ orderedBoxes: 24, dispatchedBoxes: 24, productLabelResult: "C", boxLabelResult: "C", productTemperature: -17.9, vehicleTemperature: -18, productTemperatureLimit: -18, vehicleTemperatureLimit: -18 })).toMatchObject({ result: "NC", productTemperatureResult: "NC", vehicleTemperatureResult: "C" });
+    expect(calculateDispatchConformity({ orderedBoxes: 25, dispatchedBoxes: 24, productLabelResult: "NC", boxLabelResult: "C", productTemperature: 12, vehicleTemperature: 10, productTemperatureLimit: 25, vehicleTemperatureLimit: 25 })).toMatchObject({ result: "NC", quantityResult: "NC" });
   });
 });

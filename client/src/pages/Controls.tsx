@@ -9,12 +9,12 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { dateFormat, moduleLabel, MODULES } from "@/lib/quality";
 import { trpc } from "@/lib/trpc";
-import { Boxes, Check, ChevronRight, ClipboardPlus, FlaskConical, Gauge, HeartPulse, ListChecks, ListTodo, MessageSquareText, ShieldCheck, X } from "lucide-react";
+import { Boxes, Check, ChevronRight, ClipboardPlus, FlaskConical, Gauge, HeartPulse, ListChecks, ListTodo, MessageSquareText, ShieldCheck, Truck, X } from "lucide-react";
 import React, { FormEvent, useMemo, useState } from "react";
 import { Link } from "wouter";
 import { toast } from "sonner";
 
-const icons = { bphf: ShieldCheck, metal_detectors: Gauge, sensory: FlaskConical, shelf_life: HeartPulse, monthly_checklist: ListChecks, suggestion_boxes: MessageSquareText, fragile_items: Boxes } as const;
+const icons = { bphf: ShieldCheck, metal_detectors: Gauge, sensory: FlaskConical, shelf_life: HeartPulse, monthly_checklist: ListChecks, suggestion_boxes: MessageSquareText, fragile_items: Boxes, dispatch_control: Truck } as const;
 
 export default function Controls() {
   const [open, setOpen] = useState(false);

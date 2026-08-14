@@ -24,7 +24,7 @@ import {
 } from "@/components/ui/sidebar";
 import { startLogin } from "@/const";
 import { useIsMobile } from "@/hooks/useMobile";
-import { AlertTriangle, BarChart3, BookOpenCheck, Boxes, ClipboardCheck, FileWarning, FlaskConical, HelpCircle, KeyRound, LayoutDashboard, ListChecks, LogOut, Magnet, MessageSquareMore, PanelLeft, Settings2, ShieldCheck, TimerReset } from "lucide-react";
+import { AlertTriangle, BarChart3, BookOpenCheck, Boxes, ClipboardCheck, FileWarning, FlaskConical, HelpCircle, KeyRound, LayoutDashboard, ListChecks, LogOut, Magnet, MessageSquareMore, PanelLeft, Settings2, ShieldCheck, TimerReset, Truck } from "lucide-react";
 import React, { CSSProperties, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { DashboardLayoutSkeleton } from './DashboardLayoutSkeleton';
@@ -48,6 +48,7 @@ const controlPanels = [
   { icon: ListChecks, label: "Checklist mensal", path: "/controlos/monthly_checklist" },
   { icon: MessageSquareMore, label: "Caixas de sugestões", path: "/controlos/suggestion_boxes" },
   { icon: Boxes, label: "Quebráveis", path: "/controlos/fragile_items" },
+  { icon: Truck, label: "Controlo à expedição", path: "/controlos/dispatch_control" },
 ];
 
 const SIDEBAR_WIDTH_KEY = "sidebar-width";

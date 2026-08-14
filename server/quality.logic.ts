@@ -41,6 +41,26 @@ export function shouldCreateCriticalMetalAlert(module: string, result: string | 
   return module === "metal_detectors" && result === "NC";
 }
 
+export type DispatchControlInput = {
+  orderedBoxes: number;
+  dispatchedBoxes: number;
+  productLabelResult: "C" | "NC";
+  boxLabelResult: "C" | "NC";
+  productTemperature: number;
+  vehicleTemperature: number;
+  productTemperatureLimit: number;
+  vehicleTemperatureLimit: number;
+};
+
+/** Calcula os cinco critérios e a conformidade global do registo de expedição. */
+export function calculateDispatchConformity(input: DispatchControlInput) {
+  const quantityResult = input.orderedBoxes === input.dispatchedBoxes ? "C" : "NC";
+  const productTemperatureResult = input.productTemperature <= input.productTemperatureLimit ? "C" : "NC";
+  const vehicleTemperatureResult = input.vehicleTemperature <= input.vehicleTemperatureLimit ? "C" : "NC";
+  const result = [quantityResult, input.productLabelResult, input.boxLabelResult, productTemperatureResult, vehicleTemperatureResult].every((item) => item === "C") ? "C" : "NC";
+  return { result, quantityResult, productTemperatureResult, vehicleTemperatureResult } as const;
+}
+
 export type FragilePeriodicity = "D" | "S" | "Q" | "M";
 
 function startOfDay(date: Date) {
