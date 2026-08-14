@@ -61,9 +61,9 @@ describe("fluxo de interface de pontos de controlo de quebráveis", () => {
     const createEntry = { mutate: vi.fn(), isPending: false };
     render(<FragileOperationsPanel createEntry={createEntry} factoryId="1" />);
 
-    expect(screen.getByText("Pendências e catálogo")).toBeTruthy();
+    expect(screen.getByText("Operação diária")).toBeTruthy();
     expect(screen.getByText("Inspeções pendentes")).toBeTruthy();
-    expect(screen.getByText("Catálogo de pontos")).toBeTruthy();
+    expect(screen.getByRole("button", { name: /gerir pontos/i })).toBeTruthy();
     expect(screen.getAllByText("Proteção acrílica").length).toBeGreaterThan(0);
 
     const form = document.getElementById("registo-inspecao-quebraveis") as HTMLFormElement;
@@ -72,6 +72,7 @@ describe("fluxo de interface de pontos de controlo de quebráveis", () => {
     fireEvent.click(screen.getByRole("button", { name: /inspecionar/i }));
     expect(scrollIntoView).toHaveBeenCalledWith({ behavior: "smooth", block: "center" });
     expect(form).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: /gerir pontos/i }));
     fireEvent.click(screen.getByRole("button", { name: /editar proteção acrílica/i }));
     expect(screen.getAllByText("Editar ponto de controlo").length).toBeGreaterThan(0);
   });
@@ -80,7 +81,7 @@ describe("fluxo de interface de pontos de controlo de quebráveis", () => {
     render(<FragileOperationsPanel createEntry={{ mutate: vi.fn(), isPending: false }} factoryId="1" />);
     const title = screen.getByRole("heading", { name: "Quebráveis" });
     expect(title.closest("header")?.className).toContain("flex");
-    expect(screen.getByText("Filtre a periodicidade, registe inspeções e atualize os pontos de controlo da fábrica selecionada.")).toBeTruthy();
-    expect(screen.queryByText("Pendências, catálogo, edição e registo de inspeções num único painel operacional.")).toBeNull();
+    expect(screen.getByText("Escolha uma pendência e registe a verificação. A gestão dos pontos está concentrada num único local.")).toBeTruthy();
+    expect(screen.queryByText("Pendências e catálogo")).toBeNull();
   });
 });

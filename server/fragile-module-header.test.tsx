@@ -34,7 +34,7 @@ describe("cabeçalho de quebráveis", () => {
     expect(screen.getByText("Fábrica / linha")).toBeTruthy();
     expect(screen.getByText("Quebráveis")).toBeTruthy();
     expect(screen.getAllByText("Quebráveis")).toHaveLength(1);
-    expect(screen.getByText("Pendências e catálogo")).toBeTruthy();
+    expect(screen.getByText("Inspeções pendentes")).toBeTruthy();
   });
 
   it("carrega pontos e pendências quando a fábrica é selecionada no cabeçalho", async () => {

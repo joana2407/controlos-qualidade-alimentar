@@ -24,7 +24,7 @@ import {
 } from "@/components/ui/sidebar";
 import { startLogin } from "@/const";
 import { useIsMobile } from "@/hooks/useMobile";
-import { AlertTriangle, BarChart3, BookOpenCheck, Boxes, ClipboardCheck, FileWarning, FlaskConical, HelpCircle, KeyRound, LayoutDashboard, ListChecks, LogOut, Magnet, MessageSquareMore, PanelLeft, Settings2, ShieldCheck, TimerReset, Truck } from "lucide-react";
+import { AlertTriangle, BarChart3, BookOpenCheck, Boxes, ChevronDown, ClipboardCheck, FileWarning, FlaskConical, HelpCircle, KeyRound, LayoutDashboard, ListChecks, LogOut, Magnet, MessageSquareMore, PanelLeft, Settings2, ShieldCheck, TimerReset, Truck } from "lucide-react";
 import React, { CSSProperties, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { DashboardLayoutSkeleton } from './DashboardLayoutSkeleton';
@@ -134,6 +134,7 @@ function DashboardLayoutContent({
   const [location, setLocation] = useLocation();
   const { state, toggleSidebar } = useSidebar();
   const isCollapsed = state === "collapsed";
+  const [controlsOpen, setControlsOpen] = useState(() => location.startsWith("/controlos"));
   const [isResizing, setIsResizing] = useState(false);
   const sidebarRef = useRef<HTMLDivElement>(null);
   const activeMenuItem = [...menuItems, ...controlPanels].find(item => item.path === location);
@@ -148,6 +149,10 @@ function DashboardLayoutContent({
       setIsResizing(false);
     }
   }, [isCollapsed]);
+
+  useEffect(() => {
+    if (location.startsWith("/controlos")) setControlsOpen(true);
+  }, [location]);
 
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
@@ -211,6 +216,9 @@ function DashboardLayoutContent({
             <SidebarMenu className="px-2 py-1">
               {visibleMenuItems.map(item => {
                 const isActive = location === item.path;
+                if (item.path === "/controlos") {
+                  return <React.Fragment key={item.path}><SidebarMenuItem><div className="flex items-center"><SidebarMenuButton isActive={isActive} onClick={() => { setControlsOpen(true); setLocation(item.path); }} tooltip={item.label} className="h-10 flex-1 transition-all font-normal"><item.icon className={`h-4 w-4 ${isActive ? "text-primary" : ""}`} /><span>{item.label}</span></SidebarMenuButton>{!isCollapsed && <button type="button" aria-label={controlsOpen ? "Fechar módulos de controlo" : "Abrir módulos de controlo"} aria-expanded={controlsOpen} onClick={() => setControlsOpen((open) => !open)} className="mr-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"><ChevronDown className={`h-4 w-4 transition-transform ${controlsOpen ? "rotate-0" : "-rotate-90"}`} /></button>}</div></SidebarMenuItem>{controlsOpen && !isCollapsed && <div className="ml-5 border-l border-border/70 py-1"><SidebarMenu className="px-2 py-0">{controlPanels.map(panel => { const panelActive = location === panel.path; return <SidebarMenuItem key={panel.path}><SidebarMenuButton isActive={panelActive} onClick={() => setLocation(panel.path)} tooltip={panel.label} className="h-9 text-sm transition-all font-normal"><panel.icon className={`h-4 w-4 ${panelActive ? "text-primary" : ""}`} /><span>{panel.label}</span></SidebarMenuButton></SidebarMenuItem>; })}</SidebarMenu></div>}</React.Fragment>;
+                }
                 return (
                   <SidebarMenuItem key={item.path}>
                     <SidebarMenuButton
@@ -222,25 +230,6 @@ function DashboardLayoutContent({
                       <item.icon
                         className={`h-4 w-4 ${isActive ? "text-primary" : ""}`}
                       />
-                      <span>{item.label}</span>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                );
-              })}
-            </SidebarMenu>
-            <div className="px-4 pb-1 pt-4 text-[10px] font-medium uppercase tracking-[0.16em] text-muted-foreground group-data-[collapsible=icon]:hidden">Painéis de controlo</div>
-            <SidebarMenu className="px-2 py-1">
-              {controlPanels.map(item => {
-                const isActive = location === item.path;
-                return (
-                  <SidebarMenuItem key={item.path}>
-                    <SidebarMenuButton
-                      isActive={isActive}
-                      onClick={() => setLocation(item.path)}
-                      tooltip={item.label}
-                      className="h-9 text-sm transition-all font-normal"
-                    >
-                      <item.icon className={`h-4 w-4 ${isActive ? "text-primary" : ""}`} />
                       <span>{item.label}</span>
                     </SidebarMenuButton>
                   </SidebarMenuItem>

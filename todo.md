@@ -133,3 +133,6 @@
 - [x] Cobrir o conteúdo das três explicações específicas BPHF com teste de interface.
 - [x] Fazer o botão «Inspecionar» das pendências de quebráveis abrir diretamente o formulário de verificação do ponto selecionado.
 - [x] Remover o formulário de verificação da zona lateral do painel de pendências de quebráveis.
+- [x] Auditar o painel de Quebráveis para identificar informação repetida e passos desnecessários.
+- [x] Simplificar a navegação e a apresentação das pendências, catálogo e formulário de inspeção.
+- [x] Agrupar os atalhos dos módulos no separador «Controlos» da barra lateral e manter o «Painel de Controlos» como visão geral.

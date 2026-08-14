@@ -41,7 +41,7 @@ describe("atalhos laterais dos painéis de controlo", () => {
 
     const fragile = screen.getByRole("button", { name: "Quebráveis" });
     expect(fragile.getAttribute("data-active")).toBe("true");
-    expect(screen.getByText("Painéis de controlo")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Controlos" })).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "BPHF" }));
     expect(setLocation).toHaveBeenLastCalledWith("/controlos/bphf");
 
@@ -59,7 +59,7 @@ describe("atalhos laterais dos painéis de controlo", () => {
     isMobile = true;
     render(<DashboardLayout><div>Conteúdo</div></DashboardLayout>);
     fireEvent.click(screen.getByRole("button", { name: /toggle sidebar/i }));
-    await waitFor(() => expect(screen.getByText("Painéis de controlo")).toBeTruthy());
+    await waitFor(() => expect(screen.getByRole("button", { name: "Controlos" })).toBeTruthy());
     ["BPHF", "Detetores de metais", "Controlo sensorial", "Shelf-life", "Checklist mensal", "Caixas de sugestões", "Quebráveis"].forEach((label) => {
       expect(screen.getByRole("button", { name: label })).toBeTruthy();
     });

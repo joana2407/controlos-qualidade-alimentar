@@ -5,7 +5,9 @@ describe("navegação lateral dos painéis de controlo", () => {
   it("expõe atalhos para todos os módulos operacionais", async () => {
     const source = await readFile(new URL("../client/src/components/DashboardLayout.tsx", import.meta.url), "utf8");
 
-    expect(source).toContain("Painéis de controlo");
+    expect(source).toContain('label: "Controlos"');
+    expect(source).toContain("Abrir módulos de controlo");
+    expect(source).not.toContain("Painéis de controlo");
     [
       "/controlos/bphf",
       "/controlos/metal_detectors",
