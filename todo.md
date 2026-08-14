@@ -126,3 +126,8 @@
 - [x] Cobrir o carregador de catálogo de expedição com teste de importação/configuração.
 - [x] Verificar e validar o novo rótulo «Resultado da verificação global:» no controlo shelf-life.
 - [x] Adicionar ícone de ajuda contextual ao rótulo do resultado global de shelf-life, com explicação ao passar o rato e por teclado.
+- [x] Aplicar ajuda contextual aos campos de temperatura do controlo à expedição.
+- [x] Adicionar dicas contextuais aos critérios da verificação BPHF.
+- [x] Uniformizar o ícone e a interação de ajuda nos campos de decisão C/NC aplicáveis.
+- [x] Adicionar explicação contextual específica aos três critérios BPHF junto ao respetivo texto de verificação.
+- [x] Cobrir o conteúdo das três explicações específicas BPHF com teste de interface.

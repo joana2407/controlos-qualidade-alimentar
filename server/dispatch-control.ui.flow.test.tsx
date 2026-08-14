@@ -29,6 +29,8 @@ describe("fluxo de interface do controlo à expedição", () => {
     expect(screen.getAllByText("Validação Expedição ambiente").length).toBeGreaterThan(0);
     expect(screen.getByText("Produto e veículo ≤ 25 °C")).toBeTruthy();
     expect(screen.getByText("Conformidade global")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Ajuda sobre a temperatura do produto" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Ajuda sobre a temperatura do veículo" })).toBeTruthy();
   });
 
   it("exige observações quando uma rotulagem NC torna a expedição não conforme", () => {

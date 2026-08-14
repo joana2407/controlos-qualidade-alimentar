@@ -1,8 +1,13 @@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
-import { Check, Minus, X } from "lucide-react";
+import { Check, CircleHelp, Minus, X } from "lucide-react";
 import React from "react";
+
+export function ContextualHelpIcon({ label, children, className }: { label: string; children: React.ReactNode; className?: string }) {
+  return <Tooltip><TooltipTrigger asChild><button type="button" aria-label={label} className={cn("rounded-full text-teal-700 transition-colors hover:text-teal-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600 focus-visible:ring-offset-2", className)}><CircleHelp className="h-4 w-4" /></button></TooltipTrigger><TooltipContent side="right" sideOffset={8} className="max-w-xs leading-5">{children}</TooltipContent></Tooltip>;
+}
 
 export function ResultPicker({ value, onChange, compact = false }: { value: "C" | "NC" | "N/A"; onChange: (value: "C" | "NC" | "N/A") => void; compact?: boolean }) {
   const choices = [
@@ -11,24 +16,24 @@ export function ResultPicker({ value, onChange, compact = false }: { value: "C" 
     { value: "N/A" as const, label: "N/A", icon: Minus, className: "result-na" },
   ];
   return (
-    <div className={cn("grid gap-2", compact ? "grid-cols-3" : "grid-cols-3 sm:flex")}> 
+    <div className="flex flex-wrap items-center gap-2"><div className={cn("grid min-w-0 flex-1 gap-2", compact ? "grid-cols-3" : "grid-cols-3 sm:flex")}> 
       {choices.map((choice) => {
         const Icon = choice.icon;
         return <Button type="button" key={choice.value} variant="outline" onClick={() => onChange(choice.value)} className={cn("h-10 gap-1.5 border font-semibold", value === choice.value && choice.className)}><Icon className="h-4 w-4" />{choice.label}</Button>;
       })}
-    </div>
+    </div><ContextualHelpIcon label="Ajuda sobre os resultados C, NC e N/A">C confirma que o critério cumpre o requisito. NC assinala um desvio e exige observação. N/A deve ser usado apenas quando o critério não se aplica.</ContextualHelpIcon></div>
   );
 }
 
-export function BinaryResultPicker({ value, onChange }: { value: "C" | "NC"; onChange: (value: "C" | "NC") => void }) {
+export function BinaryResultPicker({ value, onChange, showHelp = true }: { value: "C" | "NC"; onChange: (value: "C" | "NC") => void; showHelp?: boolean }) {
   const choices = [
     { value: "C" as const, label: "C", icon: Check, className: "result-c" },
     { value: "NC" as const, label: "NC", icon: X, className: "result-nc" },
   ];
-  return <div className="grid grid-cols-2 gap-2 sm:flex">{choices.map((choice) => {
+  return <div className="flex flex-wrap items-center gap-2"><div className="grid min-w-0 flex-1 grid-cols-2 gap-2 sm:flex">{choices.map((choice) => {
     const Icon = choice.icon;
     return <Button type="button" key={choice.value} variant="outline" onClick={() => onChange(choice.value)} className={cn("h-10 gap-1.5 border font-semibold", value === choice.value && choice.className)}><Icon className="h-4 w-4" />{choice.label}</Button>;
-  })}</div>;
+  })}</div>{showHelp && <ContextualHelpIcon label="Ajuda sobre os resultados C e NC">C confirma que o critério está conforme. NC indica um desvio e requer o respetivo registo e seguimento.</ContextualHelpIcon>}</div>;
 }
 
 export function ResultBadge({ value }: { value: string | null | undefined }) {
