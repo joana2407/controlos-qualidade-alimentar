@@ -160,9 +160,11 @@
 - [x] Criar no acesso inicial entradas separadas para QualiControl e Gestão de Ocorrências após validação do PIN.
 - [x] Remover a Gestão de Ocorrências da navegação interna do QualiControl e manter a sua navegação própria.
 - [x] Configurar o acesso a QualiControl para Sabrina, Neuza e Joana.
-- [ ] Configurar o acesso à Gestão de Ocorrências para Sabrina, Joana, Nuno e o perfil Gestão.
-- [ ] Limitar Nuno Matias e Gestão exclusivamente à área Gestão de Ocorrências, sem acesso ao QualiControl.
-- [ ] Criar ou ativar os perfis PIN de Nuno Matias e Gestão para efetivar as permissões já configuradas no seletor e nas rotas.
+- [x] Configurar o acesso à Gestão de Ocorrências para Sabrina, Joana, Nuno e o perfil Gestão — cancelado pela reversão da integração.
+- [x] Limitar Nuno Matias e Gestão exclusivamente à área Gestão de Ocorrências, sem acesso ao QualiControl — cancelado pela reversão da integração.
+- [x] Criar ou ativar os perfis PIN de Nuno Matias e Gestão para efetivar as permissões já configuradas no seletor e nas rotas — cancelado pela reversão da integração.
+- [x] Remover a integração ativa de Gestão de Ocorrências e manter apenas o painel QualiControl.
+- [x] Atualizar a cobertura de navegação para confirmar a ausência da área de Ocorrências após a reversão.
 - [x] Aplicar bloqueio também nas rotas diretas de cada área de trabalho e validar os perfis autorizados.
 - [x] Inventariar a plataforma original de Ocorrências e Reclamações a Fornecedores, incluindo todos os ecrãs, filtros, dados, layouts e parametrizações.
 - [x] Migrar para o QualiControl todas as funcionalidades e dados de Reclamações a Fornecedores que não tenham paridade com a plataforma original.

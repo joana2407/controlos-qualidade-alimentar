@@ -70,15 +70,13 @@ describe("atalhos laterais dos painéis de controlo", () => {
     expect(setLocation).toHaveBeenLastCalledWith("/controlos/fragile_items");
   });
 
-  it("limita a navegação ao módulo de reclamações quando o âmbito do perfil é restrito", () => {
+  it("não disponibiliza a área de Ocorrências nem para perfis com âmbito histórico de reclamações", () => {
     occurrenceScope = "reclamacoes";
-    currentLocation = "/reclamacoes";
-    render(<DashboardLayout workspace="occurrences"><div>Conteúdo</div></DashboardLayout>);
-    expect(screen.getByRole("button", { name: "Reclamações a fornecedores" })).toBeTruthy();
-    expect(screen.queryByRole("button", { name: "Nova ocorrência" })).toBeNull();
+    currentLocation = "/qualicontrol";
+    render(<DashboardLayout workspace="quality"><div>Conteúdo</div></DashboardLayout>);
     expect(screen.queryByRole("button", { name: "Ocorrências" })).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "Áreas de trabalho" }));
-    expect(setLocation).toHaveBeenLastCalledWith("/");
+    expect(screen.queryByRole("button", { name: "Reclamações a fornecedores" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Nova reclamação" })).toBeNull();
   });
 
   it("não apresenta Gestão de Ocorrências dentro da navegação do QualiControl", () => {

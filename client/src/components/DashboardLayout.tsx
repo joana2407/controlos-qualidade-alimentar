@@ -87,7 +87,7 @@ export default function DashboardLayout({
   if (access.isLoading || !access.data) return <DashboardLayoutSkeleton />;
   if (!access.data.activeProfile) return <OperatorPinGate access={access.data} />;
   if (workspace === "selector") return <QualityAccessProvider value={{ activeProfile: access.data.activeProfile, canManage: access.data.canManage }}>{children}</QualityAccessProvider>;
-  if ((workspace === "quality" || workspace === "occurrences") && !canAccessWorkspace(access.data.activeProfile, workspace)) return <QualityAccessProvider value={{ activeProfile: access.data.activeProfile, canManage: access.data.canManage }}><main className="grid min-h-screen place-items-center bg-slate-50 p-6"><section className="max-w-md rounded-3xl border border-slate-200 bg-white p-8 text-center shadow-sm"><p className="text-xs font-semibold uppercase tracking-[0.18em] text-red-700">Acesso restrito</p><h1 className="mt-3 text-2xl font-bold text-slate-950">Esta área não está autorizada para o seu perfil.</h1><p className="mt-3 text-sm leading-6 text-slate-600">Regresse à escolha de área de trabalho para aceder apenas aos painéis atribuídos a {access.data.activeProfile.name}.</p><Button className="mt-6" onClick={() => window.location.assign("/")}>Voltar às áreas de trabalho</Button></section></main></QualityAccessProvider>;
+  if (workspace === "quality" && !canAccessWorkspace(access.data.activeProfile, workspace)) return <QualityAccessProvider value={{ activeProfile: access.data.activeProfile, canManage: access.data.canManage }}><main className="grid min-h-screen place-items-center bg-slate-50 p-6"><section className="max-w-md rounded-3xl border border-slate-200 bg-white p-8 text-center shadow-sm"><p className="text-xs font-semibold uppercase tracking-[0.18em] text-red-700">Acesso restrito</p><h1 className="mt-3 text-2xl font-bold text-slate-950">O QualiControl não está autorizado para o seu perfil.</h1><p className="mt-3 text-sm leading-6 text-slate-600">Contacte a Responsável de Qualidade para rever as permissões do seu perfil PIN.</p><Button className="mt-6" onClick={() => window.location.assign("/")}>Voltar ao início</Button></section></main></QualityAccessProvider>;
 
   return (
     <QualityAccessProvider value={{ activeProfile: access.data.activeProfile, canManage: access.data.canManage }}><SidebarProvider
@@ -97,7 +97,7 @@ export default function DashboardLayout({
         } as CSSProperties
       }
     >
-      {workspace === "occurrences" ? <OccurrencesWorkspaceContent>{children}</OccurrencesWorkspaceContent> : <DashboardLayoutContent setSidebarWidth={setSidebarWidth}>{children}</DashboardLayoutContent>}
+      <DashboardLayoutContent setSidebarWidth={setSidebarWidth}>{children}</DashboardLayoutContent>
     </SidebarProvider></QualityAccessProvider>
   );
 }
@@ -153,14 +153,12 @@ function DashboardLayoutContent({
   const { state, toggleSidebar } = useSidebar();
   const isCollapsed = state === "collapsed";
   const [controlsOpen, setControlsOpen] = useState(() => location.startsWith("/controlos"));
-  const [occurrencesOpen, setOccurrencesOpen] = useState(() => location.startsWith("/ocorrencias") || location.startsWith("/reclamacoes"));
   const [isResizing, setIsResizing] = useState(false);
   const sidebarRef = useRef<HTMLDivElement>(null);
-  const activeMenuItem = [...menuItems, ...controlPanels, ...occurrencePanels].find(item => item.path === location);
+  const activeMenuItem = [...menuItems, ...controlPanels].find(item => item.path === location);
   const isMobile = useIsMobile();
   const { activeProfile, canManage } = useQualityAccess();
   const utils = trpc.useUtils();
-  const occurrenceAccess = trpc.occurrences.access.useQuery();
   const deactivate = trpc.quality.deactivatePinProfile.useMutation({ onSuccess: () => utils.quality.accessStatus.invalidate() });
   const visibleMenuItems = menuItems.filter((item) => item.path !== "/configuracao" || canManage);
 
@@ -172,7 +170,6 @@ function DashboardLayoutContent({
 
   useEffect(() => {
     if (location.startsWith("/controlos")) setControlsOpen(true);
-    if (location.startsWith("/ocorrencias") || location.startsWith("/reclamacoes")) setOccurrencesOpen(true);
   }, [location]);
 
   useEffect(() => {
@@ -239,11 +236,6 @@ function DashboardLayoutContent({
                 const isActive = location === item.path;
                 if (item.path === "/controlos") {
                   return <React.Fragment key={item.path}><SidebarMenuItem><div className="flex items-center"><SidebarMenuButton isActive={isActive} onClick={() => { setControlsOpen(true); setLocation(item.path); }} tooltip={item.label} className="h-10 flex-1 transition-all font-normal"><item.icon className={`h-4 w-4 ${isActive ? "text-primary" : ""}`} /><span>{item.label}</span></SidebarMenuButton>{!isCollapsed && <button type="button" aria-label={controlsOpen ? "Fechar módulos de controlo" : "Abrir módulos de controlo"} aria-expanded={controlsOpen} onClick={() => setControlsOpen((open) => !open)} className="mr-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"><ChevronDown className={`h-4 w-4 transition-transform ${controlsOpen ? "rotate-0" : "-rotate-90"}`} /></button>}</div></SidebarMenuItem>{controlsOpen && !isCollapsed && <div className="ml-5 border-l border-border/70 py-1"><SidebarMenu className="px-2 py-0">{controlPanels.map(panel => { const panelActive = location === panel.path; return <SidebarMenuItem key={panel.path}><SidebarMenuButton isActive={panelActive} onClick={() => setLocation(panel.path)} tooltip={panel.label} className="h-9 text-sm transition-all font-normal"><panel.icon className={`h-4 w-4 ${panelActive ? "text-primary" : ""}`} /><span>{panel.label}</span></SidebarMenuButton></SidebarMenuItem>; })}</SidebarMenu></div>}</React.Fragment>;
-                }
-                if (item.path === "/ocorrencias") {
-                  const visibleOccurrences = occurrenceAccess.data?.scope === "reclamacoes" ? occurrencePanels.filter((panel) => panel.path === "/reclamacoes") : occurrencePanels;
-                  const occurrenceActive = location.startsWith("/ocorrencias") || location.startsWith("/reclamacoes");
-                  return <React.Fragment key={item.path}><SidebarMenuItem><div className="flex items-center"><SidebarMenuButton isActive={occurrenceActive} onClick={() => { setOccurrencesOpen(true); setLocation(occurrenceAccess.data?.scope === "reclamacoes" ? "/reclamacoes" : item.path); }} tooltip={item.label} className="h-10 flex-1 transition-all font-normal"><item.icon className={`h-4 w-4 ${occurrenceActive ? "text-primary" : ""}`} /><span>{item.label}</span></SidebarMenuButton>{!isCollapsed && <button type="button" aria-label={occurrencesOpen ? "Fechar módulos de ocorrências" : "Abrir módulos de ocorrências"} aria-expanded={occurrencesOpen} onClick={() => setOccurrencesOpen((open) => !open)} className="mr-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"><ChevronDown className={`h-4 w-4 transition-transform ${occurrencesOpen ? "rotate-0" : "-rotate-90"}`} /></button>}</div></SidebarMenuItem>{occurrencesOpen && !isCollapsed && <div className="ml-5 border-l border-border/70 py-1"><SidebarMenu className="px-2 py-0">{visibleOccurrences.map(panel => { const panelActive = location === panel.path; return <SidebarMenuItem key={panel.path}><SidebarMenuButton isActive={panelActive} onClick={() => setLocation(panel.path)} tooltip={panel.label} className="h-9 text-sm transition-all font-normal"><panel.icon className={`h-4 w-4 ${panelActive ? "text-primary" : ""}`} /><span>{panel.label}</span></SidebarMenuButton></SidebarMenuItem>; })}</SidebarMenu></div>}</React.Fragment>;
                 }
                 return (
                   <SidebarMenuItem key={item.path}>
