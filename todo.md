@@ -169,3 +169,9 @@
 - [x] Inventariar a plataforma original de Ocorrências e Reclamações a Fornecedores, incluindo todos os ecrãs, filtros, dados, layouts e parametrizações.
 - [x] Migrar para o QualiControl todas as funcionalidades e dados de Reclamações a Fornecedores que não tenham paridade com a plataforma original.
 - [x] Validar a fidelidade integral de filtros, layouts, parametrizações e autorizações em Ocorrências e Reclamações.
+- [x] Considerar apenas dias úteis no planeamento e cálculo dos controlos operacionais.
+- [x] Apresentar no painel Hoje a data e as tarefas agrupadas em Hoje, amanhã e esta semana.
+- [x] Permitir selecionar uma data e exportar o relatório diário correspondente.
+- [x] Criar resumo diário de incidências por data, com espaço de anotação operacional.
+- [x] Indicar em cada incidência do resumo diário se gerou uma Não Conformidade.
+- [x] Propor melhorias do QualiControl alinhadas com os requisitos BRCGS Food Safety.

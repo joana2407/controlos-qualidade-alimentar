@@ -41,6 +41,27 @@ export function shouldCreateCriticalMetalAlert(module: string, result: string | 
   return module === "metal_detectors" && result === "NC";
 }
 
+/** O planeamento operacional considera de segunda a sexta-feira; feriados podem ser tratados numa evolução posterior. */
+export function isBusinessDay(date: Date) {
+  const day = date.getDay();
+  return day !== 0 && day !== 6;
+}
+
+/** Devolve o próprio dia quando útil ou o próximo dia útil quando a referência cai no fim de semana. */
+export function nextBusinessDay(date: Date) {
+  const result = new Date(date);
+  result.setHours(0, 0, 0, 0);
+  while (!isBusinessDay(result)) result.setDate(result.getDate() + 1);
+  return result;
+}
+
+export function businessDayAfter(date: Date) {
+  const result = new Date(date);
+  result.setHours(0, 0, 0, 0);
+  do result.setDate(result.getDate() + 1); while (!isBusinessDay(result));
+  return result;
+}
+
 export type DispatchControlInput = {
   orderedBoxes: number;
   dispatchedBoxes: number;

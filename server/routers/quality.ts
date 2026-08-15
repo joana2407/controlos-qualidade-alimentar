@@ -1,5 +1,5 @@
 import { TRPCError } from "@trpc/server";
-import { desc, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
 import {
   areas,
@@ -8,6 +8,7 @@ import {
   controlPlans,
   controlEntries,
   controlTasks,
+  dailyIncidenceSummaries,
   correctiveActions,
   evidences,
   fragileItems,
@@ -18,7 +19,7 @@ import {
   resultValues,
 } from "../../drizzle/schema";
 import { getDb } from "../db";
-import { calculateConformityRate, calculateDispatchConformity, calculateSensoryScore, isFragileInspectionPending, shouldCreateCriticalMetalAlert } from "../quality.logic";
+import { businessDayAfter, calculateConformityRate, calculateDispatchConformity, calculateSensoryScore, isBusinessDay, isFragileInspectionPending, nextBusinessDay, shouldCreateCriticalMetalAlert } from "../quality.logic";
 import { calculatePlanCompliance, countOpenNonconformities, scopeToFactory } from "../factory.scope.logic";
 import { storagePut } from "../storage";
 import { createSessionToken, hashPin, hashSessionToken, QUALITY_OPERATOR_COOKIE, QUALITY_SESSION_HOURS, QUALITY_TEAM_DEFAULTS, validatePin, verifyPin } from "../team-access";
@@ -37,6 +38,18 @@ function asDateRange(date: Date) {
   const end = new Date(start);
   end.setDate(end.getDate() + 1);
   return { start, end };
+}
+
+function localDateKey(date: Date) {
+  const local = new Date(date);
+  return `${local.getFullYear()}-${String(local.getMonth() + 1).padStart(2, "0")}-${String(local.getDate()).padStart(2, "0")}`;
+}
+
+function startOfWorkingWeek(date: Date) {
+  const result = new Date(date);
+  result.setHours(0, 0, 0, 0);
+  result.setDate(result.getDate() - ((result.getDay() + 6) % 7));
+  return result;
 }
 
 async function requireDb() {
@@ -204,11 +217,18 @@ export const qualityRouter = router({
     const scopedFragileCatalog = scopeToFactory(fragileCatalog, input?.factoryId);
     const scopedPlans = plans.filter((plan) => plan.active === "true" && (!input?.factoryId || plan.factoryId === input.factoryId || plan.factoryId === null));
     const now = new Date();
-    const { start, end } = asDateRange(now);
-    const pending = scopedTasks.filter((task) => task.status === "pending");
-    const overdue = pending.filter((task) => task.dueAt < now);
+    const operationalDate = nextBusinessDay(now);
+    const { start, end } = asDateRange(operationalDate);
+    const tomorrowDate = businessDayAfter(operationalDate);
+    const { start: tomorrowStart, end: tomorrowEnd } = asDateRange(tomorrowDate);
+    const workingWeekStart = startOfWorkingWeek(operationalDate);
+    const workingWeekEnd = new Date(workingWeekStart);
+    workingWeekEnd.setDate(workingWeekEnd.getDate() + 5);
+    const businessTasks = scopedTasks.filter((task) => isBusinessDay(task.dueAt));
+    const pending = businessTasks.filter((task) => task.status === "pending");
+    const overdue = pending.filter((task) => task.dueAt < start);
     const completedToday = scopedEntries.filter((entry) => entry.completedAt >= start && entry.completedAt < end);
-    const todayTasks = scopedTasks.filter((task) => task.dueAt >= start && task.dueAt < end);
+    const todayTasks = businessTasks.filter((task) => task.dueAt >= start && task.dueAt < end);
     const completedTasksToday = todayTasks.filter((task) => task.status === "completed" && task.completedAt && task.completedAt >= start && task.completedAt < end);
     const dailyPlans = scopedPlans.filter((plan) => plan.frequency === "daily" || plan.frequency === "per_shift");
     const areasById = new Map(areaCatalog.map((area) => [area.id, area.name]));
@@ -229,7 +249,13 @@ export const qualityRouter = router({
     const fragilePending = scopedFragileCatalog.filter((item) => item.status === "active" && isFragileInspectionPending(item.periodicity, lastFragileInspections.get(item.id), now));
 
     return {
-      tasks: scopedTasks.slice(0, 20),
+      tasks: businessTasks.slice(0, 20),
+      operationalDate,
+      taskGroups: {
+        today: businessTasks.filter((task) => task.dueAt >= start && task.dueAt < end),
+        tomorrow: businessTasks.filter((task) => task.dueAt >= tomorrowStart && task.dueAt < tomorrowEnd),
+        thisWeek: businessTasks.filter((task) => task.dueAt >= workingWeekStart && task.dueAt < workingWeekEnd && !(task.dueAt >= start && task.dueAt < tomorrowEnd)),
+      },
       criticalNcs: critical.slice(0, 6),
       dueActions: openActions.filter((action) => action.dueAt && action.dueAt < now).slice(0, 6),
       metrics: {
@@ -246,7 +272,7 @@ export const qualityRouter = router({
   listTasks: qualitySessionProcedure.input(z.object({ factoryId: z.number().int().optional() }).optional()).query(async ({ input }) => {
     const db = await requireDb();
     const tasks = await db.select().from(controlTasks).orderBy(controlTasks.dueAt);
-    return scopeToFactory(tasks, input?.factoryId);
+    return scopeToFactory(tasks, input?.factoryId).filter((task) => isBusinessDay(task.dueAt));
   }),
 
   createTask: qualityManagerProcedure.input(z.object({
@@ -257,6 +283,7 @@ export const qualityRouter = router({
     dueAt: dateInput,
     responsible: z.string().min(2).max(120),
   })).mutation(async ({ ctx, input }) => {
+    if (!isBusinessDay(input.dueAt)) throw new TRPCError({ code: "BAD_REQUEST", message: "As tarefas de controlo só podem ser agendadas em dias úteis, de segunda a sexta-feira." });
     const db = await requireDb();
     await db.insert(controlTasks).values({ ...input, factoryId: input.factoryId ?? null, createdBy: ctx.user!.openId });
     return { success: true };
@@ -272,7 +299,7 @@ export const qualityRouter = router({
     if (!task) throw new TRPCError({ code: "NOT_FOUND", message: "Tarefa não encontrada." });
     const completedAt = new Date();
     await db.update(controlTasks).set({ status: "completed", completedAt, completedByProfileId: ctx.operatorProfile!.id, completedByName: ctx.operatorProfile!.name, completedByTitle: ctx.operatorProfile!.title }).where(eq(controlTasks.id, input.id));
-    await db.insert(controlEntries).values({
+    const [entry] = await db.insert(controlEntries).values({
       module: task.module,
       title: task.title,
       area: task.area,
@@ -285,9 +312,10 @@ export const qualityRouter = router({
       registeredByName: ctx.operatorProfile!.name,
       registeredByTitle: ctx.operatorProfile!.title,
       createdBy: ctx.user!.openId,
-    });
+    }).$returningId();
     if (shouldCreateCriticalMetalAlert(task.module, input.result)) {
       await db.insert(nonconformities).values({
+        sourceEntryId: entry.id,
         module: "metal_detectors",
         title: `Falha no detetor de metais — ${task.area}`,
         description: input.notes || "Resultado NC registado na verificação do detetor de metais.",
@@ -318,7 +346,7 @@ export const qualityRouter = router({
   })).mutation(async ({ ctx, input }) => {
     const db = await requireDb();
     const completedAt = new Date();
-    await db.insert(controlEntries).values({
+    const [entry] = await db.insert(controlEntries).values({
       module: input.module,
       title: input.title,
       area: input.area,
@@ -331,10 +359,11 @@ export const qualityRouter = router({
       registeredByName: ctx.operatorProfile!.name,
       registeredByTitle: ctx.operatorProfile!.title,
       createdBy: ctx.user!.openId,
-    });
+    }).$returningId();
     const isCriticalMetal = shouldCreateCriticalMetalAlert(input.module, input.result);
     if (input.createNonconformity || isCriticalMetal) {
       await db.insert(nonconformities).values({
+        sourceEntryId: entry.id,
         module: input.module,
         title: isCriticalMetal ? `Alerta crítico — ${input.title}` : input.title,
         description: input.notes || "Não conformidade registada a partir de um controlo operacional.",
@@ -406,10 +435,10 @@ export const qualityRouter = router({
     const title = `Expedição ${input.orderNumber} — ${input.customer}`;
     const area = `Expedição ${input.profile}`;
     const payload = { ...input, profileLabel: profile.label, temperatureLimits: limits, ...conformity };
-    await db.insert(controlEntries).values({ module: "dispatch_control", title, area, factoryId: input.factoryId, result: conformity.result, notes: input.observations ?? null, payload, completedAt, registeredByProfileId: ctx.operatorProfile!.id, registeredByName: ctx.operatorProfile!.name, registeredByTitle: ctx.operatorProfile!.title, createdBy: ctx.user!.openId });
+    const [entry] = await db.insert(controlEntries).values({ module: "dispatch_control", title, area, factoryId: input.factoryId, result: conformity.result, notes: input.observations ?? null, payload, completedAt, registeredByProfileId: ctx.operatorProfile!.id, registeredByName: ctx.operatorProfile!.name, registeredByTitle: ctx.operatorProfile!.title, createdBy: ctx.user!.openId }).$returningId();
     if (conformity.result === "NC") {
       const temperatureFailure = conformity.productTemperatureResult === "NC" || conformity.vehicleTemperatureResult === "NC";
-      await db.insert(nonconformities).values({ module: "dispatch_control", title: `NC à expedição — ${input.orderNumber}`, description: input.observations!.trim(), area, factoryId: input.factoryId, severity: temperatureFailure ? "high" : "medium", status: "open", detectedAt: completedAt, reportedByProfileId: ctx.operatorProfile!.id, reportedByName: ctx.operatorProfile!.name, reportedByTitle: ctx.operatorProfile!.title, createdBy: ctx.user!.openId });
+      await db.insert(nonconformities).values({ sourceEntryId: entry.id, module: "dispatch_control", title: `NC à expedição — ${input.orderNumber}`, description: input.observations!.trim(), area, factoryId: input.factoryId, severity: temperatureFailure ? "high" : "medium", status: "open", detectedAt: completedAt, reportedByProfileId: ctx.operatorProfile!.id, reportedByName: ctx.operatorProfile!.name, reportedByTitle: ctx.operatorProfile!.title, createdBy: ctx.user!.openId });
     }
     return { success: true, conformity, limits };
   }),
@@ -443,6 +472,79 @@ export const qualityRouter = router({
       byFactory: Array.from(grouped, ([factoryName, total]) => ({ factoryName, total })).sort((left, right) => right.total - left.total),
       incidences,
     };
+  }),
+
+  dailyIncidenceSummary: qualitySessionProcedure.input(z.object({
+    date: dateInput,
+    factoryId: z.number().int().optional(),
+  })).query(async ({ input }) => {
+    const db = await requireDb();
+    const { start, end } = asDateRange(input.date);
+    const scopeId = input.factoryId ?? 0;
+    const [entryRows, ncRows, factoryRows, savedNotes] = await Promise.all([
+      db.select().from(controlEntries).orderBy(desc(controlEntries.completedAt)),
+      db.select().from(nonconformities).orderBy(desc(nonconformities.detectedAt)),
+      db.select().from(factories).orderBy(factories.name),
+      db.select().from(dailyIncidenceSummaries).where(and(eq(dailyIncidenceSummaries.referenceDate, start), eq(dailyIncidenceSummaries.factoryId, scopeId))).limit(1),
+    ]);
+    const factoryNames = new Map(factoryRows.map((factory) => [factory.id, factory.name]));
+    const scopedEntries = entryRows.filter((entry) => (!input.factoryId || entry.factoryId === input.factoryId))
+      .filter((entry) => entry.result === "NC" && entry.completedAt >= start && entry.completedAt < end);
+    const scopedNcs = ncRows.filter((nc) => (!input.factoryId || nc.factoryId === input.factoryId))
+      .filter((nc) => nc.detectedAt >= start && nc.detectedAt < end);
+    const incidences = scopedEntries.map((entry) => {
+      const linked = scopedNcs.find((nc) => nc.sourceEntryId === entry.id) ?? scopedNcs.find((nc) => !nc.sourceEntryId && nc.module === entry.module && nc.factoryId === entry.factoryId && nc.area === entry.area);
+      return {
+        id: entry.id,
+        title: entry.title,
+        module: entry.module,
+        area: entry.area,
+        factoryId: entry.factoryId,
+        factoryName: entry.factoryId ? factoryNames.get(entry.factoryId) ?? "Fábrica não identificada" : "Sem fábrica/linha",
+        completedAt: entry.completedAt,
+        notes: entry.notes,
+        registeredByName: entry.registeredByName,
+        registeredByTitle: entry.registeredByTitle,
+        generatedNonconformity: Boolean(linked),
+        nonconformityId: linked?.id ?? null,
+        nonconformitySeverity: linked?.severity ?? null,
+        nonconformityStatus: linked?.status ?? null,
+      };
+    });
+    return {
+      date: start,
+      total: incidences.length,
+      withNonconformity: incidences.filter((item) => item.generatedNonconformity).length,
+      withoutNonconformity: incidences.filter((item) => !item.generatedNonconformity).length,
+      note: savedNotes[0]?.note ?? "",
+      noteUpdatedByName: savedNotes[0]?.updatedByName ?? null,
+      noteUpdatedAt: savedNotes[0]?.updatedAt ?? null,
+      incidences,
+    };
+  }),
+
+  saveDailyIncidenceNote: qualityOperatorProcedure.input(z.object({
+    date: dateInput,
+    factoryId: z.number().int().optional(),
+    note: z.string().max(4000),
+  })).mutation(async ({ ctx, input }) => {
+    const db = await requireDb();
+    const factoryId = input.factoryId ?? 0;
+    await db.insert(dailyIncidenceSummaries).values({
+      referenceDate: asDateRange(input.date).start,
+      factoryId,
+      note: input.note.trim(),
+      updatedByProfileId: ctx.operatorProfile!.id,
+      updatedByName: ctx.operatorProfile!.name,
+      updatedByTitle: ctx.operatorProfile!.title,
+      createdBy: ctx.user!.openId,
+    }).onDuplicateKeyUpdate({ set: {
+      note: input.note.trim(),
+      updatedByProfileId: ctx.operatorProfile!.id,
+      updatedByName: ctx.operatorProfile!.name,
+      updatedByTitle: ctx.operatorProfile!.title,
+    } });
+    return { success: true };
   }),
 
   updateNc: qualitySessionProcedure.input(z.object({

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { calculateConformityRate, calculateDispatchConformity, calculateSensoryScore, isFragileInspectionPending, shouldCreateCriticalMetalAlert } from "./quality.logic";
+import { businessDayAfter, calculateConformityRate, calculateDispatchConformity, calculateSensoryScore, isBusinessDay, isFragileInspectionPending, nextBusinessDay, shouldCreateCriticalMetalAlert } from "./quality.logic";
 
 describe("quality calculations", () => {
   it("applies the fixed sensory weights and converts the result to percentage", () => {
@@ -16,6 +16,15 @@ describe("quality calculations", () => {
     expect(shouldCreateCriticalMetalAlert("metal_detectors", "NC")).toBe(true);
     expect(shouldCreateCriticalMetalAlert("bphf", "NC")).toBe(false);
     expect(shouldCreateCriticalMetalAlert("metal_detectors", "C")).toBe(false);
+  });
+
+  it("considera apenas segunda a sexta-feira no calendário operacional", () => {
+    const friday = new Date(2026, 7, 14, 10, 0, 0);
+    const saturday = new Date(2026, 7, 15, 10, 0, 0);
+    expect(isBusinessDay(friday)).toBe(true);
+    expect(isBusinessDay(saturday)).toBe(false);
+    expect(nextBusinessDay(saturday)).toMatchObject(new Date(2026, 7, 17, 0, 0, 0));
+    expect(businessDayAfter(friday)).toMatchObject(new Date(2026, 7, 17, 0, 0, 0));
   });
 
   it("identifies pending fragile inspections by daily, weekly, fortnightly and monthly periodicity", () => {

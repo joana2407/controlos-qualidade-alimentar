@@ -8,7 +8,7 @@ import { qualityRouter } from "./quality";
 vi.mock("../db", () => ({ getDb: vi.fn() }));
 vi.mock("../storage", () => ({ storagePut: vi.fn() }));
 
-const now = new Date();
+const now = new Date(2026, 7, 14, 10, 0, 0);
 const tasks = [
   { id: 1, factoryId: 1, status: "completed", dueAt: now, completedAt: now, module: "bphf", area: "Produção T", title: "BPHF F1", responsible: "Ana" },
   { id: 2, factoryId: 1, status: "pending", dueAt: now, completedAt: null, module: "metal_detectors", area: "Tradicional 1", title: "Metal F1", responsible: "Ana" },
@@ -77,12 +77,12 @@ function mockDatabase() {
       },
     }),
     update: () => ({ set: (values: Record<string, unknown>) => ({ where: async () => { dbUpdates.push(values); return { success: true }; } }) }),
-    insert: () => ({ values: async (values: Record<string, unknown>) => { dbInserts.push(values); return { success: true }; } }),
+    insert: () => ({ values: (values: Record<string, unknown>) => { dbInserts.push(values); return { $returningId: async () => [{ id: dbInserts.length }], success: true }; } }),
   };
 }
 
 describe("procedimentos de qualidade por fábrica", () => {
-  beforeEach(() => { dbUpdates.length = 0; dbInserts.length = 0; vi.clearAllMocks(); vi.mocked(getDb).mockResolvedValue(mockDatabase() as any); });
+  beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(now); dbUpdates.length = 0; dbInserts.length = 0; vi.clearAllMocks(); vi.mocked(getDb).mockResolvedValue(mockDatabase() as any); });
 
   it("filtra o painel e as tarefas pela fábrica selecionada", async () => {
     const caller = qualityRouter.createCaller(createContext());

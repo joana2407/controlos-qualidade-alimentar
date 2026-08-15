@@ -1,4 +1,4 @@
-import { boolean, date, index, int, json, mysqlEnum, mysqlTable, text, timestamp, varchar } from "drizzle-orm/mysql-core";
+import { boolean, date, index, int, json, mysqlEnum, mysqlTable, text, timestamp, uniqueIndex, varchar } from "drizzle-orm/mysql-core";
 
 /**
  * Core user table backing auth flow.
@@ -122,6 +122,7 @@ export const controlEntries = mysqlTable("control_entries", {
 
 export const nonconformities = mysqlTable("nonconformities", {
   id: int("id").autoincrement().primaryKey(),
+  sourceEntryId: int("sourceEntryId"),
   module: qualityModule.notNull(),
   title: varchar("title", { length: 180 }).notNull(),
   description: text("description").notNull(),
@@ -140,7 +141,21 @@ export const nonconformities = mysqlTable("nonconformities", {
   reportedByTitle: varchar("reportedByTitle", { length: 160 }),
   createdBy: varchar("createdBy", { length: 64 }).notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
-}, (table) => [index("nc_status_idx").on(table.status), index("nc_severity_idx").on(table.severity), index("nc_factory_idx").on(table.factoryId), index("nc_reporter_idx").on(table.reportedByProfileId)]);
+}, (table) => [index("nc_status_idx").on(table.status), index("nc_severity_idx").on(table.severity), index("nc_factory_idx").on(table.factoryId), index("nc_reporter_idx").on(table.reportedByProfileId), index("nc_source_entry_idx").on(table.sourceEntryId)]);
+
+/** Nota de turno diária por fábrica/linha; a fábrica 0 representa a visão consolidada. */
+export const dailyIncidenceSummaries = mysqlTable("daily_incidence_summaries", {
+  id: int("id").autoincrement().primaryKey(),
+  referenceDate: date("referenceDate").notNull(),
+  factoryId: int("factoryId").notNull().default(0),
+  note: text("note").notNull(),
+  updatedByProfileId: int("updatedByProfileId"),
+  updatedByName: varchar("updatedByName", { length: 160 }),
+  updatedByTitle: varchar("updatedByTitle", { length: 160 }),
+  createdBy: varchar("createdBy", { length: 64 }).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, (table) => [uniqueIndex("daily_incidence_summary_scope_idx").on(table.referenceDate, table.factoryId), index("daily_incidence_summary_date_idx").on(table.referenceDate)]);
 
 const occurrenceType = mysqlEnum("occurrence_type", ["NC", "Nnc"]);
 const occurrenceOrigin = mysqlEnum("occurrence_origin", ["I", "R", "F", "AI", "AE"]);
