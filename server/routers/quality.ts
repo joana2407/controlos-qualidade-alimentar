@@ -301,7 +301,9 @@ export const qualityRouter = router({
       return isBusinessDay(task.dueAt) && task.status !== "cancelled" && (profile.role === "manager" || assignees.includes(profile.id));
     }).map((task) => {
       const report = entries.find((entry) => entry.payload?.taskId === task.id);
-      return report ? { ...task, executionReport: { result: report.result, notes: report.notes, completedAt: report.completedAt, registeredByName: report.registeredByName, registeredByTitle: report.registeredByTitle } } : { ...task, executionReport: null };
+      const storedPhotos = report?.payload && typeof report.payload.executionReport === "object" && report.payload.executionReport && !Array.isArray(report.payload.executionReport) ? (report.payload.executionReport as { evidencePhotos?: unknown }).evidencePhotos : [];
+      const evidencePhotos = Array.isArray(storedPhotos) ? storedPhotos.filter((photo): photo is { url: string; fileName: string; mimeType: string } => Boolean(photo && typeof photo === "object" && typeof (photo as { url?: unknown }).url === "string" && typeof (photo as { fileName?: unknown }).fileName === "string" && typeof (photo as { mimeType?: unknown }).mimeType === "string")) : [];
+      return report ? { ...task, executionReport: { result: report.result, notes: report.notes, completedAt: report.completedAt, registeredByName: report.registeredByName, registeredByTitle: report.registeredByTitle, evidencePhotos } } : { ...task, executionReport: null };
     });
   }),
 
@@ -350,10 +352,29 @@ export const qualityRouter = router({
     return { success: true };
   }),
 
+  uploadTaskReportPhoto: qualityOperatorProcedure.input(z.object({
+    taskId: z.number().int(),
+    fileName: z.string().min(1).max(255),
+    mimeType: z.enum(["image/jpeg", "image/png", "image/webp"]),
+    dataUrl: z.string().min(20).max(7_000_000),
+  })).mutation(async ({ ctx, input }) => {
+    const db = await requireDb();
+    const task = (await db.select().from(controlTasks).where(eq(controlTasks.id, input.taskId)).limit(1))[0];
+    if (!task || task.status !== "pending") throw new TRPCError({ code: "NOT_FOUND", message: "Tarefa pendente não encontrada." });
+    const assignees = Array.isArray(task.assigneeProfileIds) ? task.assigneeProfileIds : [];
+    if (ctx.operatorProfile!.role !== "manager" && (!assignees.length || !assignees.includes(ctx.operatorProfile!.id))) throw new TRPCError({ code: "FORBIDDEN", message: "Esta tarefa está atribuída a outro utilizador." });
+    const base64 = input.dataUrl.split(",")[1];
+    if (!base64) throw new TRPCError({ code: "BAD_REQUEST", message: "Imagem inválida." });
+    const safeName = input.fileName.replace(/[^a-zA-Z0-9._-]/g, "_");
+    const { key, url } = await storagePut(`task-reports/${input.taskId}/${ctx.operatorProfile!.id}/${Date.now()}-${safeName}`, Buffer.from(base64, "base64"), input.mimeType);
+    return { key, url, fileName: input.fileName, mimeType: input.mimeType };
+  }),
+
   completeTask: qualityOperatorProcedure.input(z.object({
     id: z.number().int(),
     result: resultSchema,
     notes: z.string().trim().min(3).max(3000),
+    evidencePhotos: z.array(z.object({ url: z.string().startsWith("/manus-storage/task-reports/"), fileName: z.string().min(1).max(255), mimeType: z.enum(["image/jpeg", "image/png", "image/webp"]) })).max(5).optional(),
   })).mutation(async ({ ctx, input }) => {
     const db = await requireDb();
     const task = (await db.select().from(controlTasks).where(eq(controlTasks.id, input.id)).limit(1))[0];
@@ -370,7 +391,7 @@ export const qualityRouter = router({
       factoryId: task.factoryId,
       result: input.result,
       notes: input.notes,
-      payload: { taskId: task.id },
+      payload: { taskId: task.id, executionReport: { evidencePhotos: input.evidencePhotos ?? [] } },
       completedAt,
       registeredByProfileId: ctx.operatorProfile!.id,
       registeredByName: ctx.operatorProfile!.name,
@@ -813,16 +834,27 @@ export const qualityRouter = router({
     return { success: true };
   }),
 
-  reports: qualitySessionProcedure.input(z.object({ factoryId: z.number().int().optional() }).optional()).query(async ({ input }) => {
+  reports: qualitySessionProcedure.input(z.object({
+    factoryId: z.number().int().optional(),
+    startDate: dateInput.optional(),
+    endDate: dateInput.optional(),
+    module: qualityModuleSchema.optional(),
+    result: resultSchema.optional(),
+    ncStatus: z.enum(["open", "in_progress", "awaiting_validation", "closed"]).optional(),
+  }).optional()).query(async ({ input }) => {
     const db = await requireDb();
     const [entries, tasks, ncs] = await Promise.all([
       db.select().from(controlEntries).orderBy(desc(controlEntries.completedAt)),
       db.select().from(controlTasks),
       db.select().from(nonconformities),
     ]);
-    const scopedEntries = scopeToFactory(entries, input?.factoryId);
-    const scopedTasks = scopeToFactory(tasks, input?.factoryId);
-    const scopedNcs = scopeToFactory(ncs, input?.factoryId);
+    const start = input?.startDate ? asDateRange(input.startDate).start : null;
+    const end = input?.endDate ? asDateRange(input.endDate).end : null;
+    if (start && end && start >= end) throw new TRPCError({ code: "BAD_REQUEST", message: "A data final deve ser posterior à data inicial." });
+    const withinPeriod = (date: Date) => (!start || date >= start) && (!end || date < end);
+    const scopedEntries = scopeToFactory(entries, input?.factoryId).filter((entry) => withinPeriod(entry.completedAt) && (!input?.module || entry.module === input.module) && (!input?.result || entry.result === input.result));
+    const scopedTasks = scopeToFactory(tasks, input?.factoryId).filter((task) => task.status !== "cancelled" && withinPeriod(task.dueAt));
+    const scopedNcs = scopeToFactory(ncs, input?.factoryId).filter((nc) => withinPeriod(nc.detectedAt) && (!input?.module || nc.module === input.module) && (!input?.ncStatus || nc.status === input.ncStatus));
     const modules = qualityModuleValues.map((module) => {
       const moduleEntries = scopedEntries.filter((entry) => entry.module === module);
       return {
@@ -859,6 +891,7 @@ export const qualityRouter = router({
       planCompliance: calculatePlanCompliance(scopedTasks),
       openNcs: countOpenNonconformities(scopedNcs).open,
       criticalOpen: countOpenNonconformities(scopedNcs).criticalOpen,
+      filters: { startDate: start, endDate: end, module: input?.module ?? null, result: input?.result ?? null, ncStatus: input?.ncStatus ?? null },
     };
   }),
 

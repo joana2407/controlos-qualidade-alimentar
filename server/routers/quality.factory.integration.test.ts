@@ -136,6 +136,16 @@ describe("procedimentos de qualidade por fábrica", () => {
     expect(report.recentEntries[0]).toMatchObject({ registeredByName: "Joana Pina", registeredByTitle: "Resp. Qualidade" });
   });
 
+  it("filtra o dashboard analítico por período, módulo, resultado e estado de NC", async () => {
+    const caller = qualityRouter.createCaller(createContext());
+    const report = await caller.reports({ factoryId: 1, startDate: new Date(2026, 7, 14), endDate: new Date(2026, 7, 15), module: "bphf", result: "C", ncStatus: "open" });
+
+    expect(report.modules.find((module) => module.module === "bphf")).toMatchObject({ total: 1, conformity: 100, nc: 0 });
+    expect(report.modules.find((module) => module.module === "metal_detectors")).toMatchObject({ total: 0, conformity: 0, nc: 0 });
+    expect(report.openNcs).toBe(0);
+    expect(report.filters).toMatchObject({ module: "bphf", result: "C", ncStatus: "open" });
+  });
+
   it("gera uma incidência shelf-life e apresenta o relatório diário por fábrica", async () => {
     const caller = qualityRouter.createCaller(createContext());
     await caller.createEntry({
@@ -206,9 +216,25 @@ describe("procedimentos de qualidade por fábrica", () => {
     tasks[0]!.status = "pending";
     tasks[0]!.assigneeProfileIds = [2];
     const caller = qualityRouter.createCaller(createContext({ id: 2, name: "Neuza Antunes", title: "Tec. Qualidade", role: "technician" }));
-    await caller.completeTask({ id: 1, result: "C", notes: "Verificação concluída sem desvios." });
+    await caller.completeTask({ id: 1, result: "C", notes: "Verificação concluída sem desvios.", evidencePhotos: [{ url: "/manus-storage/task-reports/1/2/evidencia.png", fileName: "evidencia.png", mimeType: "image/png" }] });
     expect(dbUpdates[0]).toMatchObject({ status: "completed", completedByProfileId: 2, completedByName: "Neuza Antunes", completedByTitle: "Tec. Qualidade" });
-    expect(dbInserts[0]).toMatchObject({ registeredByProfileId: 2, registeredByName: "Neuza Antunes", registeredByTitle: "Tec. Qualidade", notes: "Verificação concluída sem desvios." });
+    expect(dbInserts[0]).toMatchObject({ registeredByProfileId: 2, registeredByName: "Neuza Antunes", registeredByTitle: "Tec. Qualidade", notes: "Verificação concluída sem desvios.", payload: { taskId: 1, executionReport: { evidencePhotos: [{ url: "/manus-storage/task-reports/1/2/evidencia.png", fileName: "evidencia.png", mimeType: "image/png" }] } } });
+    tasks[0]!.status = originalStatus;
+    tasks[0]!.assigneeProfileIds = originalAssignees;
+  });
+
+  it("aceita evidência fotográfica apenas do responsável atribuído ou da Responsável", async () => {
+    const originalStatus = tasks[0]!.status;
+    const originalAssignees = tasks[0]!.assigneeProfileIds;
+    tasks[0]!.status = "pending";
+    tasks[0]!.assigneeProfileIds = [1];
+    const assignee = qualityRouter.createCaller(createContext({ id: 1, name: "Sabrina Esteves", title: "Tec. Qualidade", role: "technician" }));
+    const otherTechnician = qualityRouter.createCaller(createContext({ id: 2, name: "Neuza Antunes", title: "Tec. Qualidade", role: "technician" }));
+
+    vi.mocked(storagePut).mockResolvedValue({ key: "task-reports/1/1/evidencia.png", url: "/manus-storage/task-reports/1/1/evidencia.png" });
+    await expect(otherTechnician.uploadTaskReportPhoto({ taskId: 1, fileName: "evidencia.png", mimeType: "image/png", dataUrl: "data:image/png;base64,aGVsbG8=" })).rejects.toMatchObject({ code: "FORBIDDEN" });
+    await assignee.uploadTaskReportPhoto({ taskId: 1, fileName: "evidencia.png", mimeType: "image/png", dataUrl: "data:image/png;base64,aGVsbG8=" });
+    expect(storagePut).toHaveBeenCalledWith(expect.stringContaining("task-reports/1/1/"), expect.any(Buffer), "image/png");
     tasks[0]!.status = originalStatus;
     tasks[0]!.assigneeProfileIds = originalAssignees;
   });

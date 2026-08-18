@@ -5,7 +5,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Skeleton } from "@/components/ui/skeleton";
 import { dateFormat, moduleLabel } from "@/lib/quality";
 import { trpc } from "@/lib/trpc";
-import { Activity, AlertTriangle, ArrowRight, Boxes, CalendarClock, CalendarDays, CheckCircle2, ClipboardList, Factory, TimerReset } from "lucide-react";
+import { Activity, AlertTriangle, ArrowRight, Boxes, CalendarClock, CalendarDays, CheckCircle2, ClipboardList, Factory, FileText, TimerReset } from "lucide-react";
 import { Link } from "wouter";
 import React, { useMemo, useState } from "react";
 
@@ -23,6 +23,8 @@ export default function QualityDashboard() {
   const dashboardInput = useMemo(() => factoryId ? { factoryId: Number(factoryId) } : undefined, [factoryId]);
   const dashboard = trpc.quality.dashboard.useQuery(dashboardInput);
   const data = dashboard.data;
+  const dailySummaryInput = useMemo(() => ({ date: data?.operationalDate ?? new Date(), factoryId: factoryId ? Number(factoryId) : undefined }), [data?.operationalDate, factoryId]);
+  const dailySummary = trpc.quality.dailyIncidenceSummary.useQuery(dailySummaryInput, { enabled: Boolean(data?.operationalDate) });
   const factoryName = (id: number | null) => metadata.data?.factories.find((factory) => factory.id === id)?.name ?? "Sem fábrica";
   return <div className="app-grid min-h-full -m-4 p-4 md:-m-6 md:p-6">
     <section className="mx-auto max-w-7xl space-y-6">
@@ -47,6 +49,8 @@ export default function QualityDashboard() {
           return metric.key === "fragilePending" ? <Link key={metric.key} href="/controlos/fragile_items" aria-label="Abrir painel de controlo de quebráveis pendentes" className="block rounded-xl focus-visible:outline-none">{card}</Link> : <React.Fragment key={metric.key}>{card}</React.Fragment>;
         })}
       </div>
+
+      <Card className="border-0 panel-shadow"><CardHeader className="flex flex-col gap-3 border-b border-slate-100 pb-4 sm:flex-row sm:items-center sm:justify-between"><div><p className="font-mono-ui text-[11px] uppercase tracking-[0.16em] text-teal-700">Fecho operacional</p><CardTitle className="mt-1 flex items-center gap-2"><FileText className="h-5 w-5 text-teal-700" />Relatório do dia</CardTitle><p className="mt-1 text-sm text-muted-foreground">Resumo de incidências e decisões registadas para {data?.operationalDate ? dateFormat(data.operationalDate, false) : "o dia operacional"}.</p></div><Link href="/relatorios"><Button variant="outline" size="sm">Abrir relatório <ArrowRight className="ml-1 h-4 w-4" /></Button></Link></CardHeader><CardContent className="grid gap-3 pt-5 sm:grid-cols-3 lg:grid-cols-4"><div className="rounded-xl border border-amber-100 bg-amber-50 p-4"><p className="text-xs font-medium text-amber-800">Incidências do dia</p><p className="mt-1 font-mono-ui text-2xl font-semibold text-amber-950">{dailySummary.data?.total ?? 0}</p></div><div className="rounded-xl border border-red-100 bg-red-50 p-4"><p className="text-xs font-medium text-red-800">Geraram NC</p><p className="mt-1 font-mono-ui text-2xl font-semibold text-red-950">{dailySummary.data?.withNonconformity ?? 0}</p></div><div className="rounded-xl border border-emerald-100 bg-emerald-50 p-4"><p className="text-xs font-medium text-emerald-800">Sem NC gerada</p><p className="mt-1 font-mono-ui text-2xl font-semibold text-emerald-950">{dailySummary.data?.withoutNonconformity ?? 0}</p></div><div className="rounded-xl border border-slate-100 bg-slate-50 p-4"><p className="text-xs font-medium text-slate-700">Anotação do dia</p><p className="mt-1 line-clamp-3 text-sm text-slate-900">{dailySummary.data?.note || "Sem anotação operacional registada."}</p></div></CardContent></Card>
 
       <div className="grid gap-6 xl:grid-cols-[1.45fr_0.8fr]">
         <Card className="border-0 panel-shadow">

@@ -203,3 +203,6 @@
 - [x] Diferenciar visualmente as categorias de tarefas Em atraso, Esta semana e Próximos dias por código de cores.
 - [x] Permitir ao responsável atribuído preencher um relatório de execução da tarefa, visível também à Responsável de Qualidade.
 - [x] Mostrar por fábrica ou linha os estados de execução de todas as verificações diárias e periódicas previstas, para evitar registos esquecidos.
+- [x] Permitir anexar evidências fotográficas ao relatório de execução das tarefas, com acesso restrito aos responsáveis e à Responsável de Qualidade.
+- [x] Mostrar no painel Hoje o relatório diário de execução dos controlos e das tarefas.
+- [x] Criar dashboards de relatórios com filtros por período, fábrica ou linha, módulo, resultado e estado.
