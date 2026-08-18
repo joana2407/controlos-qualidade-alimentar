@@ -175,3 +175,7 @@
 - [x] Criar resumo diário de incidências por data, com espaço de anotação operacional.
 - [x] Indicar em cada incidência do resumo diário se gerou uma Não Conformidade.
 - [x] Propor melhorias do QualiControl alinhadas com os requisitos BRCGS Food Safety.
+- [x] Mostrar estado «Concluído» e impedir nova submissão involuntária após terminar uma verificação BPHF.
+- [x] Permitir editar incidências diárias como registos autónomos, sem criar automaticamente uma Não Conformidade.
+- [x] Indicar em cada incidência se originou uma Não Conformidade registada no formulário próprio.
+- [x] Disponibilizar linhas/áreas da fábrica selecionada no controlo de detetores de metais e permitir o registo.

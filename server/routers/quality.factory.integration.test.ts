@@ -130,17 +130,17 @@ describe("procedimentos de qualidade por fábrica", () => {
       result: "NC",
       notes: "Bolor identificado na amostra.",
       payload: { product: "Pão de forma", lot: "L-001", validity: "2026-08-13", reason: "Bolor identificado" },
-      createNonconformity: true,
+      createNonconformity: false,
       severity: "medium",
       factoryId: 2,
     });
     expect(dbInserts[0]).toMatchObject({ module: "shelf_life", registeredByProfileId: 3, registeredByName: "Joana Pina", registeredByTitle: "Resp. Qualidade" });
-    expect(dbInserts[1]).toMatchObject({ module: "shelf_life", title: "Incidência shelf-life — Pão de forma", factoryId: 2, status: "open", severity: "medium", reportedByProfileId: 3, reportedByName: "Joana Pina" });
+    expect(dbInserts).toHaveLength(1);
 
     const daily = await caller.dailyIncidences({ date: now, factoryId: 1 });
-    expect(daily.total).toBe(2);
-    expect(daily.byFactory).toEqual([{ factoryName: "Fábrica 1 (Fatiado)", total: 2 }]);
-    expect(daily.incidences.map((incidence) => incidence.id)).toEqual([1, 2]);
+    expect(daily.total).toBe(1);
+    expect(daily.byFactory).toEqual([{ factoryName: "Fábrica 1 (Fatiado)", total: 1 }]);
+    expect(daily.incidences.map((incidence) => incidence.id)).toEqual([2]);
   });
 
   it("exige um perfil PIN ativo para registar controlos e reserva as tarefas à Responsável", async () => {
@@ -209,18 +209,19 @@ describe("procedimentos de qualidade por fábrica", () => {
     expect(dbInserts[0]).toMatchObject({ name: "Proteção acrílica da linha", location: "Embalamento primário", factoryId: 3, periodicity: "Q", itemType: "Plástico rígido", status: "active", createdBy: "quality-admin" });
   });
 
-  it("regista a expedição e cria NC de gravidade alta quando a temperatura falha", async () => {
+  it("regista a expedição como incidência quando a temperatura falha", async () => {
     const caller = qualityRouter.createCaller(createContext());
     const result = await caller.registerDispatchControl({ factoryId: 1, profile: "congelado", orderNumber: "ENC-100", customer: "Cliente Norte", deliveryNote: "GR-50", product: "Pão congelado", lot: "L-100", orderedBoxes: 24, dispatchedBoxes: 24, productLabelResult: "C", boxLabelResult: "C", productTemperature: -17, vehicleTemperature: -18, observations: "Produto acima do limite para congelados." });
     expect(result.conformity).toMatchObject({ result: "NC", productTemperatureResult: "NC", vehicleTemperatureResult: "C" });
+    expect(result.incidence).toBe(true);
     expect(dbInserts[0]).toMatchObject({ module: "dispatch_control", result: "NC", factoryId: 1, area: "Expedição congelado", registeredByName: "Joana Pina" });
-    expect(dbInserts[1]).toMatchObject({ module: "dispatch_control", severity: "high", status: "open", factoryId: 1, reportedByTitle: "Resp. Qualidade" });
+    expect(dbInserts).toHaveLength(1);
   });
 
-  it("atribui gravidade média aos desvios de expedição sem falha de temperatura", async () => {
+  it("regista desvios de expedição sem criar NC automática", async () => {
     const caller = qualityRouter.createCaller(createContext());
     await caller.registerDispatchControl({ factoryId: 2, profile: "ambiente", orderNumber: "ENC-101", customer: "Cliente Centro", product: "Pão de forma", lot: "L-101", orderedBoxes: 25, dispatchedBoxes: 24, productLabelResult: "NC", boxLabelResult: "C", productTemperature: 18, vehicleTemperature: 20, observations: "Quantidade e rotulagem do produto divergentes." });
     expect(dbInserts[0]).toMatchObject({ module: "dispatch_control", result: "NC", factoryId: 2, area: "Expedição ambiente" });
-    expect(dbInserts[1]).toMatchObject({ module: "dispatch_control", severity: "medium", status: "open", factoryId: 2 });
+    expect(dbInserts).toHaveLength(1);
   });
 });

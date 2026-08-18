@@ -51,7 +51,7 @@ describe("fluxo de interface do controlo à expedição", () => {
     const observations = textboxes[5] as HTMLTextAreaElement;
     expect(observations.required).toBe(true);
     fireEvent.change(observations, { target: { value: "Rótulo do produto não conforme." } });
-    fireEvent.click(screen.getByRole("button", { name: "Registar NC à expedição" }));
+    fireEvent.click(screen.getByRole("button", { name: "Registar incidência à expedição" }));
     expect(mutate).toHaveBeenCalledWith(expect.objectContaining({ factoryId: 1, profile: "ambiente", orderNumber: "ENC-001", productLabelResult: "NC", observations: "Rótulo do produto não conforme." }));
   });
 });

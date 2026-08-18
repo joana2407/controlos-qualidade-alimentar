@@ -20,6 +20,7 @@ vi.mock("@/lib/trpc", () => ({
       dailyIncidences: { useQuery: () => ({ isLoading: false, data: { total: 1, byFactory: [{ factoryName: "Fábrica 1 (Fatiado)", total: 1 }], incidences: [{ id: 3, title: "Incidência shelf-life", module: "shelf_life", area: "Shelf-life", factoryName: "Fábrica 1 (Fatiado)", severity: "medium", status: "open", detectedAt: now, reportedByName: "Joana Pina", reportedByTitle: "Resp. Qualidade" }] } }) },
       dailyIncidenceSummary: { useQuery: () => ({ isLoading: false, refetch: vi.fn(), data: { date: now, total: 1, withNonconformity: 1, withoutNonconformity: 0, note: "", noteUpdatedByName: null, incidences: [{ id: 3, title: "Incidência shelf-life", module: "shelf_life", area: "Shelf-life", factoryName: "Fábrica 1 (Fatiado)", generatedNonconformity: true, registeredByName: "Joana Pina", registeredByTitle: "Resp. Qualidade" }] } }) },
       saveDailyIncidenceNote: { useMutation: () => ({ isPending: false, mutate: vi.fn() }) },
+      updateIncidence: { useMutation: () => ({ isPending: false, mutate: vi.fn() }) },
     },
   },
 }));

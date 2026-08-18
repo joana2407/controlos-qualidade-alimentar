@@ -14,6 +14,7 @@ vi.mock("@/lib/trpc", () => ({
       dailyIncidences: { useQuery: () => ({ data: { incidences: [], total: 0, byFactory: [] } }) },
       dailyIncidenceSummary: { useQuery: () => ({ data: { date: day, total: 1, withNonconformity: 1, withoutNonconformity: 0, note: "Aguardar confirmação do fornecedor.", noteUpdatedByName: "Sabrina Esteves", incidences: [{ id: 12, title: "Embalagem danificada", module: "bphf", area: "Embalagem", factoryName: "Fábrica 1", generatedNonconformity: true, registeredByName: "Sabrina Esteves", registeredByTitle: "Tec. Qualidade" }] }, isLoading: false, refetch: vi.fn() }) },
       saveDailyIncidenceNote: { useMutation: () => ({ isPending: false, mutate: vi.fn() }) },
+      updateIncidence: { useMutation: () => ({ isPending: false, mutate: vi.fn() }) },
     },
   },
 }));

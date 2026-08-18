@@ -19,22 +19,29 @@ export default function Nonconformities() {
   const utils = trpc.useUtils();
   const [factoryId, setFactoryId] = useState("");
   const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [sourceIncidenceId, setSourceIncidenceId] = useState("manual");
+  const [newTitle, setNewTitle] = useState(""); const [newDescription, setNewDescription] = useState(""); const [newArea, setNewArea] = useState(""); const [newSeverity, setNewSeverity] = useState<"critical" | "high" | "medium" | "low">("medium");
   const [actionOpen, setActionOpen] = useState(false);
   const [assignedTo, setAssignedTo] = useState(""); const [status, setStatus] = useState("in_progress"); const [dueAt, setDueAt] = useState("");
   const [actionType, setActionType] = useState<"correction" | "corrective">("correction"); const [description, setDescription] = useState(""); const [responsible, setResponsible] = useState(""); const [actionDue, setActionDue] = useState("");
   const factoryQuery = useMemo(() => factoryId ? { factoryId: Number(factoryId) } : undefined, [factoryId]);
   const metadata = trpc.quality.metadata.useQuery();
   const ncs = trpc.quality.listNcs.useQuery(factoryQuery);
+  const incidences = trpc.quality.listIncidences.useQuery(factoryQuery);
   const selected = ncs.data?.find((item) => item.id === selectedId) ?? null;
   const actions = trpc.quality.listActions.useQuery({ nonconformityId: selectedId ?? -1 });
   const evidences = trpc.quality.listEvidences.useQuery({ nonconformityId: selectedId ?? -1 });
   const factoryName = (id: number | null) => metadata.data?.factories.find((factory) => factory.id === id)?.name ?? "Sem fábrica";
   const updateNc = trpc.quality.updateNc.useMutation({ onSuccess: () => { utils.quality.listNcs.invalidate(); utils.quality.dashboard.invalidate(); utils.quality.reports.invalidate(); toast.success("Não conformidade atualizada."); }, onError: (error) => toast.error(error.message) });
+  const createNc = trpc.quality.createNonconformity.useMutation({ onSuccess: () => { utils.quality.listNcs.invalidate(); utils.quality.dailyIncidenceSummary.invalidate(); utils.quality.dailyIncidences.invalidate(); setCreateOpen(false); setSourceIncidenceId("manual"); setNewTitle(""); setNewDescription(""); setNewArea(""); toast.success("Não Conformidade registada."); }, onError: (error) => toast.error(error.message) });
   const addAction = trpc.quality.addCorrectiveAction.useMutation({ onSuccess: () => { actions.refetch(); utils.quality.listNcs.invalidate(); setActionOpen(false); setDescription(""); toast.success("Ação registada."); }, onError: (error) => toast.error(error.message) });
   const completeAction = trpc.quality.completeAction.useMutation({ onSuccess: () => { actions.refetch(); toast.success("Ação marcada como implementada."); }, onError: (error) => toast.error(error.message) });
   const upload = trpc.quality.uploadEvidence.useMutation({ onSuccess: () => { evidences.refetch(); toast.success("Evidência anexada."); }, onError: (error) => toast.error(error.message) });
   function selectNc(id: number) { const current = ncs.data?.find((item) => item.id === id); setSelectedId(id); setAssignedTo(current?.assignedTo ?? ""); setStatus(current?.status ?? "in_progress"); setDueAt(current?.dueAt ? new Date(current.dueAt).toISOString().slice(0, 10) : ""); }
   function update(event: FormEvent) { event.preventDefault(); if (!selected) return; updateNc.mutate({ id: selected.id, status: status as any, assignedTo: assignedTo || undefined, dueAt: dueAt ? new Date(`${dueAt}T12:00:00`) : undefined }); }
+  function chooseIncidence(value: string) { setSourceIncidenceId(value); const incidence = incidences.data?.find((item) => String(item.id) === value); if (incidence) { setNewTitle(incidence.title); setNewDescription(incidence.notes ?? ""); setNewArea(incidence.area); } }
+  function create(event: FormEvent) { event.preventDefault(); const source = incidences.data?.find((item) => String(item.id) === sourceIncidenceId); createNc.mutate({ sourceEntryId: source ? source.id : undefined, module: (source?.module ?? "bphf") as any, title: newTitle, description: newDescription, area: newArea, factoryId: source?.factoryId ?? (factoryId ? Number(factoryId) : undefined), severity: newSeverity }); }
   function action(event: FormEvent) { event.preventDefault(); if (!selected) return; addAction.mutate({ nonconformityId: selected.id, actionType, description, responsible, dueAt: actionDue ? new Date(`${actionDue}T12:00:00`) : undefined }); }
   function uploadFile(event: ChangeEvent<HTMLInputElement>, correctiveActionId?: number) { const file = event.target.files?.[0]; if (!file || !selected) return; if (file.size > 5 * 1024 * 1024) return toast.error("O anexo não pode exceder 5 MB."); const reader = new FileReader(); reader.onload = () => upload.mutate({ nonconformityId: correctiveActionId ? undefined : selected.id, correctiveActionId, fileName: file.name, mimeType: file.type || "application/octet-stream", dataUrl: String(reader.result) }); reader.readAsDataURL(file); }
   const criticalCount = ncs.data?.filter((item) => item.status !== "closed" && item.severity === "critical").length ?? 0;

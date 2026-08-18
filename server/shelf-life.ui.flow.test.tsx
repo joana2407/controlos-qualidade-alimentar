@@ -63,11 +63,11 @@ describe("fluxo shelf-life", () => {
     fireEvent.change(lot, { target: { value: "L-2026" } });
     fireEvent.change(validity, { target: { value: "2026-08-20" } });
     fireEvent.change(reason, { target: { value: "Bolor identificado." } });
-    fireEvent.click(screen.getByRole("button", { name: "Registar NC e criar incidência" }));
+    fireEvent.click(screen.getByRole("button", { name: "Registar incidência" }));
 
     expect(mutate).toHaveBeenCalledWith(expect.objectContaining({
       result: "NC",
-      createNonconformity: true,
+      createNonconformity: false,
       title: "Incidência shelf-life — Pão de forma",
       payload: expect.objectContaining({ product: "Pão de forma", lot: "L-2026", dailyIncidenceGenerated: true }),
     }));

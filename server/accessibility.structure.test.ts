@@ -28,6 +28,6 @@ describe("estrutura de acessibilidade dos ecrãs operacionais", () => {
     expect(ui).toContain('label: "C"');
     expect(ui).toContain('label: "NC"');
     expect(moduleControl).toContain("Regra crítica ativa");
-    expect(moduleControl).toContain("não conformidade crítica");
+    expect(moduleControl).toContain("incidência crítica");
   });
 });

@@ -299,7 +299,7 @@ export const qualityRouter = router({
     if (!task) throw new TRPCError({ code: "NOT_FOUND", message: "Tarefa não encontrada." });
     const completedAt = new Date();
     await db.update(controlTasks).set({ status: "completed", completedAt, completedByProfileId: ctx.operatorProfile!.id, completedByName: ctx.operatorProfile!.name, completedByTitle: ctx.operatorProfile!.title }).where(eq(controlTasks.id, input.id));
-    const [entry] = await db.insert(controlEntries).values({
+    await db.insert(controlEntries).values({
       module: task.module,
       title: task.title,
       area: task.area,
@@ -312,25 +312,8 @@ export const qualityRouter = router({
       registeredByName: ctx.operatorProfile!.name,
       registeredByTitle: ctx.operatorProfile!.title,
       createdBy: ctx.user!.openId,
-    }).$returningId();
-    if (shouldCreateCriticalMetalAlert(task.module, input.result)) {
-      await db.insert(nonconformities).values({
-        sourceEntryId: entry.id,
-        module: "metal_detectors",
-        title: `Falha no detetor de metais — ${task.area}`,
-        description: input.notes || "Resultado NC registado na verificação do detetor de metais.",
-        area: task.area,
-        factoryId: task.factoryId,
-        severity: "critical",
-        status: "open",
-        detectedAt: completedAt,
-        reportedByProfileId: ctx.operatorProfile!.id,
-        reportedByName: ctx.operatorProfile!.name,
-        reportedByTitle: ctx.operatorProfile!.title,
-        createdBy: ctx.user!.openId,
-      });
-    }
-    return { success: true };
+    });
+    return { success: true, critical: shouldCreateCriticalMetalAlert(task.module, input.result), incidence: input.result === "NC" };
   }),
 
   createEntry: qualityOperatorProcedure.input(z.object({
@@ -346,7 +329,7 @@ export const qualityRouter = router({
   })).mutation(async ({ ctx, input }) => {
     const db = await requireDb();
     const completedAt = new Date();
-    const [entry] = await db.insert(controlEntries).values({
+    await db.insert(controlEntries).values({
       module: input.module,
       title: input.title,
       area: input.area,
@@ -359,26 +342,9 @@ export const qualityRouter = router({
       registeredByName: ctx.operatorProfile!.name,
       registeredByTitle: ctx.operatorProfile!.title,
       createdBy: ctx.user!.openId,
-    }).$returningId();
+    });
     const isCriticalMetal = shouldCreateCriticalMetalAlert(input.module, input.result);
-    if (input.createNonconformity || isCriticalMetal) {
-      await db.insert(nonconformities).values({
-        sourceEntryId: entry.id,
-        module: input.module,
-        title: isCriticalMetal ? `Alerta crítico — ${input.title}` : input.title,
-        description: input.notes || "Não conformidade registada a partir de um controlo operacional.",
-        area: input.area,
-        factoryId: input.factoryId ?? null,
-        severity: isCriticalMetal ? "critical" : input.severity,
-        status: "open",
-        detectedAt: completedAt,
-        reportedByProfileId: ctx.operatorProfile!.id,
-        reportedByName: ctx.operatorProfile!.name,
-        reportedByTitle: ctx.operatorProfile!.title,
-        createdBy: ctx.user!.openId,
-      });
-    }
-    return { success: true, critical: isCriticalMetal };
+    return { success: true, critical: isCriticalMetal, incidence: input.result === "NC" };
   }),
 
   calculateSensory: qualitySessionProcedure.input(z.object({
@@ -435,12 +401,60 @@ export const qualityRouter = router({
     const title = `Expedição ${input.orderNumber} — ${input.customer}`;
     const area = `Expedição ${input.profile}`;
     const payload = { ...input, profileLabel: profile.label, temperatureLimits: limits, ...conformity };
-    const [entry] = await db.insert(controlEntries).values({ module: "dispatch_control", title, area, factoryId: input.factoryId, result: conformity.result, notes: input.observations ?? null, payload, completedAt, registeredByProfileId: ctx.operatorProfile!.id, registeredByName: ctx.operatorProfile!.name, registeredByTitle: ctx.operatorProfile!.title, createdBy: ctx.user!.openId }).$returningId();
-    if (conformity.result === "NC") {
-      const temperatureFailure = conformity.productTemperatureResult === "NC" || conformity.vehicleTemperatureResult === "NC";
-      await db.insert(nonconformities).values({ sourceEntryId: entry.id, module: "dispatch_control", title: `NC à expedição — ${input.orderNumber}`, description: input.observations!.trim(), area, factoryId: input.factoryId, severity: temperatureFailure ? "high" : "medium", status: "open", detectedAt: completedAt, reportedByProfileId: ctx.operatorProfile!.id, reportedByName: ctx.operatorProfile!.name, reportedByTitle: ctx.operatorProfile!.title, createdBy: ctx.user!.openId });
+    await db.insert(controlEntries).values({ module: "dispatch_control", title, area, factoryId: input.factoryId, result: conformity.result, notes: input.observations ?? null, payload, completedAt, registeredByProfileId: ctx.operatorProfile!.id, registeredByName: ctx.operatorProfile!.name, registeredByTitle: ctx.operatorProfile!.title, createdBy: ctx.user!.openId });
+    return { success: true, conformity, limits, incidence: conformity.result === "NC" };
+  }),
+
+  listIncidences: qualitySessionProcedure.input(z.object({
+    date: dateInput.optional(),
+    factoryId: z.number().int().optional(),
+  }).optional()).query(async ({ input }) => {
+    const db = await requireDb();
+    const reference = input?.date ?? new Date();
+    const { start, end } = asDateRange(reference);
+    const [entries, factoryRows, ncRows] = await Promise.all([
+      db.select().from(controlEntries).orderBy(desc(controlEntries.completedAt)),
+      db.select().from(factories).orderBy(factories.name),
+      db.select().from(nonconformities).orderBy(desc(nonconformities.detectedAt)),
+    ]);
+    const factoryNames = new Map(factoryRows.map((factory) => [factory.id, factory.name]));
+    return entries.filter((entry) => entry.result === "NC" && entry.completedAt >= start && entry.completedAt < end && (!input?.factoryId || entry.factoryId === input.factoryId)).map((entry) => {
+      const linked = ncRows.find((nc) => nc.sourceEntryId === entry.id);
+      return { ...entry, factoryName: entry.factoryId ? factoryNames.get(entry.factoryId) ?? "Fábrica não identificada" : "Sem fábrica/linha", generatedNonconformity: Boolean(linked), nonconformityId: linked?.id ?? null };
+    });
+  }),
+
+  updateIncidence: qualityOperatorProcedure.input(z.object({
+    id: z.number().int(),
+    title: z.string().min(2).max(180),
+    area: z.string().min(2).max(120),
+    notes: z.string().max(3000).optional(),
+  })).mutation(async ({ input }) => {
+    const db = await requireDb();
+    const entry = (await db.select().from(controlEntries).where(eq(controlEntries.id, input.id)).limit(1))[0];
+    if (!entry || entry.result !== "NC") throw new TRPCError({ code: "NOT_FOUND", message: "Incidência diária não encontrada." });
+    await db.update(controlEntries).set({ title: input.title, area: input.area, notes: input.notes?.trim() || null }).where(eq(controlEntries.id, input.id));
+    return { success: true };
+  }),
+
+  createNonconformity: qualityOperatorProcedure.input(z.object({
+    sourceEntryId: z.number().int().optional(),
+    module: qualityModuleSchema,
+    title: z.string().min(2).max(180),
+    description: z.string().min(2).max(5000),
+    area: z.string().min(2).max(120),
+    factoryId: z.number().int().optional(),
+    severity: z.enum(["critical", "high", "medium", "low"]).default("medium"),
+  })).mutation(async ({ ctx, input }) => {
+    const db = await requireDb();
+    if (input.sourceEntryId) {
+      const source = (await db.select().from(controlEntries).where(eq(controlEntries.id, input.sourceEntryId)).limit(1))[0];
+      if (!source || source.result !== "NC") throw new TRPCError({ code: "BAD_REQUEST", message: "Selecione uma incidência diária NC válida para associar à Não Conformidade." });
+      const existing = (await db.select().from(nonconformities).where(eq(nonconformities.sourceEntryId, source.id)).limit(1))[0];
+      if (existing) throw new TRPCError({ code: "CONFLICT", message: "Esta incidência já está associada a uma Não Conformidade." });
     }
-    return { success: true, conformity, limits };
+    await db.insert(nonconformities).values({ ...input, sourceEntryId: input.sourceEntryId ?? null, factoryId: input.factoryId ?? null, status: "open", detectedAt: new Date(), reportedByProfileId: ctx.operatorProfile!.id, reportedByName: ctx.operatorProfile!.name, reportedByTitle: ctx.operatorProfile!.title, createdBy: ctx.user!.openId });
+    return { success: true };
   }),
 
   listNcs: qualitySessionProcedure.input(z.object({ factoryId: z.number().int().optional() }).optional()).query(async ({ input }) => {
@@ -456,14 +470,18 @@ export const qualityRouter = router({
     const db = await requireDb();
     const referenceDate = input?.date ?? new Date();
     const { start, end } = asDateRange(referenceDate);
-    const [ncs, factoryRows] = await Promise.all([
-      db.select().from(nonconformities).orderBy(desc(nonconformities.detectedAt)),
+    const [entries, factoryRows, ncRows] = await Promise.all([
+      db.select().from(controlEntries).orderBy(desc(controlEntries.completedAt)),
       db.select().from(factories).orderBy(factories.name),
+      db.select().from(nonconformities).orderBy(desc(nonconformities.detectedAt)),
     ]);
     const factoryNames = new Map(factoryRows.map((factory) => [factory.id, factory.name]));
-    const incidences = scopeToFactory(ncs, input?.factoryId)
-      .filter((incidence) => incidence.detectedAt >= start && incidence.detectedAt < end)
-      .map((incidence) => ({ ...incidence, factoryName: incidence.factoryId ? factoryNames.get(incidence.factoryId) ?? "Fábrica não identificada" : "Sem fábrica/linha" }));
+    const incidences = scopeToFactory(entries, input?.factoryId)
+      .filter((entry) => entry.result === "NC" && entry.completedAt >= start && entry.completedAt < end)
+      .map((entry) => {
+        const linked = ncRows.find((nc) => nc.sourceEntryId === entry.id);
+        return { ...entry, detectedAt: entry.completedAt, factoryName: entry.factoryId ? factoryNames.get(entry.factoryId) ?? "Fábrica não identificada" : "Sem fábrica/linha", generatedNonconformity: Boolean(linked), nonconformityId: linked?.id ?? null };
+      });
     const grouped = new Map<string, number>();
     incidences.forEach((incidence) => grouped.set(incidence.factoryName, (grouped.get(incidence.factoryName) ?? 0) + 1));
     return {
