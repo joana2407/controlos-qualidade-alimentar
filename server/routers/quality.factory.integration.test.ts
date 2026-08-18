@@ -10,9 +10,9 @@ vi.mock("../storage", () => ({ storagePut: vi.fn() }));
 
 const now = new Date(2026, 7, 14, 10, 0, 0);
 const tasks = [
-  { id: 1, factoryId: 1, status: "completed", dueAt: now, completedAt: now, module: "bphf", area: "Produção T", title: "BPHF F1", responsible: "Ana" },
-  { id: 2, factoryId: 1, status: "pending", dueAt: now, completedAt: null, module: "metal_detectors", area: "Tradicional 1", title: "Metal F1", responsible: "Ana" },
-  { id: 3, factoryId: 2, status: "completed", dueAt: now, completedAt: now, module: "bphf", area: "Granel", title: "BPHF F2", responsible: "Bruno" },
+  { id: 1, factoryId: 1, status: "completed", dueAt: now, completedAt: now, module: "bphf", area: "Produção T", title: "BPHF F1", responsible: "Ana", assigneeProfileIds: [1] },
+  { id: 2, factoryId: 1, status: "pending", dueAt: now, completedAt: null, module: "metal_detectors", area: "Tradicional 1", title: "Metal F1", responsible: "Ana", assigneeProfileIds: [2] },
+  { id: 3, factoryId: 2, status: "completed", dueAt: now, completedAt: now, module: "bphf", area: "Granel", title: "BPHF F2", responsible: "Bruno", assigneeProfileIds: [1] },
 ];
 const entries = [
   { id: 1, factoryId: 1, module: "bphf", area: "Produção T", result: "C", completedAt: now, registeredByProfileId: 3, registeredByName: "Joana Pina", registeredByTitle: "Resp. Qualidade" },
@@ -174,11 +174,43 @@ describe("procedimentos de qualidade por fábrica", () => {
     expect(dbInserts[0]).toMatchObject({ title: "Verificação geral", description: "Confirmar a condição da área.", area: "Sem área", factoryId: 1, assigneeProfileIds: [1, 2], responsible: "Sabrina Esteves, Neuza Antunes" });
   });
 
+  it("reserva a consulta e a conclusão das tarefas aos responsáveis atribuídos ou à Responsável", async () => {
+    const originalAssignees = tasks[1]!.assigneeProfileIds;
+    tasks[1]!.assigneeProfileIds = [1];
+    const assignee = qualityRouter.createCaller(createContext({ id: 1, name: "Sabrina Esteves", title: "Tec. Qualidade", role: "technician" }));
+    const otherTechnician = qualityRouter.createCaller(createContext({ id: 2, name: "Neuza Antunes", title: "Tec. Qualidade", role: "technician" }));
+
+    await expect(assignee.listTasks({ factoryId: 1 })).resolves.toEqual(expect.arrayContaining([expect.objectContaining({ id: 2 })]));
+    await expect(otherTechnician.listTasks({ factoryId: 1 })).resolves.not.toEqual(expect.arrayContaining([expect.objectContaining({ id: 2 })]));
+    await expect(otherTechnician.completeTask({ id: 2, result: "C", notes: "Relatório executado." })).rejects.toMatchObject({ code: "FORBIDDEN" });
+    tasks[1]!.assigneeProfileIds = originalAssignees;
+  });
+
+  it("permite apenas à Responsável atualizar ou eliminar tarefas pendentes", async () => {
+    const originalStatus = tasks[0]!.status;
+    tasks[0]!.status = "pending";
+    const manager = qualityRouter.createCaller(createContext());
+    const technician = qualityRouter.createCaller(createContext({ id: 1, name: "Sabrina Esteves", title: "Tec. Qualidade", role: "technician" }));
+
+    await expect(technician.updateTask({ id: 1, title: "Tarefa revista", description: "Descrição revista", factoryId: 1, dueAt: now, assigneeProfileIds: [1] })).rejects.toMatchObject({ code: "FORBIDDEN" });
+    await manager.updateTask({ id: 1, title: "Tarefa revista", description: "Descrição revista", factoryId: 1, dueAt: now, assigneeProfileIds: [1] });
+    expect(dbUpdates[0]).toMatchObject({ title: "Tarefa revista", description: "Descrição revista", assigneeProfileIds: [1] });
+    await manager.deleteTask({ id: 1 });
+    expect(dbUpdates[1]).toMatchObject({ status: "cancelled" });
+    tasks[0]!.status = originalStatus;
+  });
+
   it("guarda o perfil que concluiu a tarefa e cria o respetivo registo de controlo", async () => {
+    const originalStatus = tasks[0]!.status;
+    const originalAssignees = tasks[0]!.assigneeProfileIds;
+    tasks[0]!.status = "pending";
+    tasks[0]!.assigneeProfileIds = [2];
     const caller = qualityRouter.createCaller(createContext({ id: 2, name: "Neuza Antunes", title: "Tec. Qualidade", role: "technician" }));
-    await caller.completeTask({ id: 2, result: "C" });
+    await caller.completeTask({ id: 1, result: "C", notes: "Verificação concluída sem desvios." });
     expect(dbUpdates[0]).toMatchObject({ status: "completed", completedByProfileId: 2, completedByName: "Neuza Antunes", completedByTitle: "Tec. Qualidade" });
-    expect(dbInserts[0]).toMatchObject({ registeredByProfileId: 2, registeredByName: "Neuza Antunes", registeredByTitle: "Tec. Qualidade" });
+    expect(dbInserts[0]).toMatchObject({ registeredByProfileId: 2, registeredByName: "Neuza Antunes", registeredByTitle: "Tec. Qualidade", notes: "Verificação concluída sem desvios." });
+    tasks[0]!.status = originalStatus;
+    tasks[0]!.assigneeProfileIds = originalAssignees;
   });
 
   it("filtra os pontos de quebráveis pela fábrica e pela periodicidade", async () => {

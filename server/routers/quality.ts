@@ -224,7 +224,7 @@ export const qualityRouter = router({
     const workingWeekStart = startOfWorkingWeek(operationalDate);
     const workingWeekEnd = new Date(workingWeekStart);
     workingWeekEnd.setDate(workingWeekEnd.getDate() + 5);
-    const businessTasks = scopedTasks.filter((task) => isBusinessDay(task.dueAt));
+    const businessTasks = scopedTasks.filter((task) => isBusinessDay(task.dueAt) && task.status !== "cancelled");
     const pending = businessTasks.filter((task) => task.status === "pending");
     const overdue = pending.filter((task) => task.dueAt < start);
     const completedToday = scopedEntries.filter((entry) => entry.completedAt >= start && entry.completedAt < end);
@@ -291,11 +291,17 @@ export const qualityRouter = router({
 
   listTasks: qualitySessionProcedure.input(z.object({ factoryId: z.number().int().optional() }).optional()).query(async ({ ctx, input }) => {
     const db = await requireDb();
-    const tasks = await db.select().from(controlTasks).orderBy(controlTasks.dueAt);
+    const [tasks, entries] = await Promise.all([
+      db.select().from(controlTasks).orderBy(controlTasks.dueAt),
+      db.select().from(controlEntries).orderBy(desc(controlEntries.completedAt)),
+    ]);
     const profile = ctx.operatorProfile!;
     return scopeToFactory(tasks, input?.factoryId).filter((task) => {
       const assignees = Array.isArray(task.assigneeProfileIds) ? task.assigneeProfileIds : [];
-      return isBusinessDay(task.dueAt) && (profile.role === "manager" || !assignees.length || assignees.includes(profile.id));
+      return isBusinessDay(task.dueAt) && task.status !== "cancelled" && (profile.role === "manager" || assignees.includes(profile.id));
+    }).map((task) => {
+      const report = entries.find((entry) => entry.payload?.taskId === task.id);
+      return report ? { ...task, executionReport: { result: report.result, notes: report.notes, completedAt: report.completedAt, registeredByName: report.registeredByName, registeredByTitle: report.registeredByTitle } } : { ...task, executionReport: null };
     });
   }),
 
@@ -315,16 +321,46 @@ export const qualityRouter = router({
     return { success: true };
   }),
 
+  updateTask: qualityManagerProcedure.input(z.object({
+    id: z.number().int(),
+    title: z.string().min(2).max(180),
+    description: z.string().max(3000).optional(),
+    factoryId: z.number().int().optional(),
+    dueAt: dateInput,
+    assigneeProfileIds: z.array(z.number().int()).min(1).max(10),
+  })).mutation(async ({ input }) => {
+    if (!isBusinessDay(input.dueAt)) throw new TRPCError({ code: "BAD_REQUEST", message: "As tarefas de controlo só podem ser agendadas em dias úteis, de segunda a sexta-feira." });
+    const db = await requireDb();
+    const task = (await db.select().from(controlTasks).where(eq(controlTasks.id, input.id)).limit(1))[0];
+    if (!task) throw new TRPCError({ code: "NOT_FOUND", message: "Tarefa não encontrada." });
+    if (task.status !== "pending") throw new TRPCError({ code: "BAD_REQUEST", message: "Só é possível editar tarefas ainda pendentes." });
+    const selectedProfiles = await db.select().from(qualityPinProfiles).where(inArray(qualityPinProfiles.id, input.assigneeProfileIds)).orderBy(qualityPinProfiles.id);
+    const profiles = selectedProfiles.filter((profile) => input.assigneeProfileIds.includes(profile.id));
+    if (profiles.length !== input.assigneeProfileIds.length || profiles.some((profile) => profile.active !== "true")) throw new TRPCError({ code: "BAD_REQUEST", message: "Selecione utilizadores ativos para a tarefa." });
+    await db.update(controlTasks).set({ title: input.title.trim(), description: input.description?.trim() || null, factoryId: input.factoryId ?? null, dueAt: input.dueAt, responsible: profiles.map((profile) => profile.name).join(", "), assigneeProfileIds: input.assigneeProfileIds }).where(eq(controlTasks.id, input.id));
+    return { success: true };
+  }),
+
+  deleteTask: qualityManagerProcedure.input(z.object({ id: z.number().int() })).mutation(async ({ input }) => {
+    const db = await requireDb();
+    const task = (await db.select().from(controlTasks).where(eq(controlTasks.id, input.id)).limit(1))[0];
+    if (!task) throw new TRPCError({ code: "NOT_FOUND", message: "Tarefa não encontrada." });
+    if (task.status !== "pending") throw new TRPCError({ code: "BAD_REQUEST", message: "Só é possível eliminar tarefas ainda pendentes." });
+    await db.update(controlTasks).set({ status: "cancelled" }).where(eq(controlTasks.id, input.id));
+    return { success: true };
+  }),
+
   completeTask: qualityOperatorProcedure.input(z.object({
     id: z.number().int(),
     result: resultSchema,
-    notes: z.string().max(3000).optional(),
+    notes: z.string().trim().min(3).max(3000),
   })).mutation(async ({ ctx, input }) => {
     const db = await requireDb();
     const task = (await db.select().from(controlTasks).where(eq(controlTasks.id, input.id)).limit(1))[0];
     const assignees = Array.isArray(task?.assigneeProfileIds) ? task.assigneeProfileIds : [];
-    if (task && ctx.operatorProfile!.role !== "manager" && assignees.length && !assignees.includes(ctx.operatorProfile!.id)) throw new TRPCError({ code: "FORBIDDEN", message: "Esta tarefa está atribuída a outro utilizador." });
+    if (task && ctx.operatorProfile!.role !== "manager" && (!assignees.length || !assignees.includes(ctx.operatorProfile!.id))) throw new TRPCError({ code: "FORBIDDEN", message: "Esta tarefa está atribuída a outro utilizador." });
     if (!task) throw new TRPCError({ code: "NOT_FOUND", message: "Tarefa não encontrada." });
+    if (task.status !== "pending") throw new TRPCError({ code: "BAD_REQUEST", message: "Esta tarefa já não está pendente." });
     const completedAt = new Date();
     await db.update(controlTasks).set({ status: "completed", completedAt, completedByProfileId: ctx.operatorProfile!.id, completedByName: ctx.operatorProfile!.name, completedByTitle: ctx.operatorProfile!.title }).where(eq(controlTasks.id, input.id));
     await db.insert(controlEntries).values({
@@ -333,7 +369,7 @@ export const qualityRouter = router({
       area: task.area,
       factoryId: task.factoryId,
       result: input.result,
-      notes: input.notes ?? null,
+      notes: input.notes,
       payload: { taskId: task.id },
       completedAt,
       registeredByProfileId: ctx.operatorProfile!.id,

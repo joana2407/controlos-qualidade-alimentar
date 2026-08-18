@@ -13,10 +13,12 @@ vi.mock("@/lib/trpc", () => ({
     quality: {
       metadata: { useQuery: () => ({ data: { factories: [{ id: 1, name: "Fábrica 1 (Fatiado)" }], areas: [] } }) },
       accessStatus: { useQuery: () => ({ data: { profiles: [] } }) },
-      dashboard: { useQuery: () => ({ data: { moduleProgress: { bphf: { expected: 2, completed: 1, registeredToday: 1, pending: ["BPHF — Produção"], percentage: 50, lastCompletedAt: now } } } }) },
-      listTasks: { useQuery: () => ({ data: [{ id: 1, title: "Verificação diária", module: "bphf", area: "Produção", factoryId: 1, responsible: "Equipa", dueAt: now, status: "completed", completedByName: "Neuza Antunes", completedByTitle: "Tec. Qualidade" }] }) },
+      dashboard: { useQuery: () => ({ data: { metrics: { fragilePending: 1 }, moduleProgress: { bphf: { expected: 2, completed: 1, registeredToday: 1, pending: ["BPHF — Produção"], percentage: 50, lastCompletedAt: now } } } }) },
+      listTasks: { useQuery: () => ({ data: [{ id: 1, title: "Verificação diária", module: "bphf", area: "Produção", factoryId: 1, responsible: "Equipa", dueAt: now, status: "completed", completedByName: "Neuza Antunes", completedByTitle: "Tec. Qualidade" }, { id: 2, title: "Tarefa pendente", description: "Confirmar o registo operacional.", module: "bphf", area: "Produção", factoryId: 1, responsible: "Sabrina Esteves", assigneeProfileIds: [1], dueAt: now, status: "pending" }] }) },
       createTask: { useMutation: () => ({ mutate: vi.fn(), isPending: false }) },
       completeTask: { useMutation: () => ({ mutate: vi.fn(), isPending: false }) },
+      updateTask: { useMutation: () => ({ mutate: vi.fn(), isPending: false }) },
+      deleteTask: { useMutation: () => ({ mutate: vi.fn(), isPending: false }) },
       reports: { useQuery: () => ({ isLoading: false, data: { planCompliance: 100, openNcs: 1, criticalOpen: 0, modules: [], areas: [], trends: [], recentEntries: [{ id: 2, title: "BPHF Produção", module: "bphf", area: "Produção", completedAt: now, result: "C", registeredByName: "Sabrina Esteves", registeredByTitle: "Tec. Qualidade" }] } }) },
       listNcs: { useQuery: () => ({ data: [] }) },
       dailyIncidences: { useQuery: () => ({ isLoading: false, data: { total: 1, byFactory: [{ factoryName: "Fábrica 1 (Fatiado)", total: 1 }], incidences: [{ id: 3, title: "Incidência shelf-life", module: "shelf_life", area: "Shelf-life", factoryName: "Fábrica 1 (Fatiado)", severity: "medium", status: "open", detectedAt: now, reportedByName: "Joana Pina", reportedByTitle: "Resp. Qualidade" }] } }) },
@@ -46,6 +48,11 @@ describe("autoria operacional nas páginas", () => {
     expect(screen.getByText("1 de 2 verificações")).toBeTruthy();
     expect(screen.getByText("Pendente hoje: 1 verificação por concluir")).toBeTruthy();
     expect(screen.getByLabelText("Filtrar progresso por fábrica ou linha")).toBeTruthy();
+    expect(screen.getByText("Registos diários")).toBeTruthy();
+    expect(screen.getByText("Registos periódicos")).toBeTruthy();
+    expect(screen.getByRole("button", { name: /preencher relatório/i })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Editar Tarefa pendente" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Eliminar Tarefa pendente" })).toBeTruthy();
   });
 
   it("mostra quem registou os controlos e incidências nos relatórios", () => {

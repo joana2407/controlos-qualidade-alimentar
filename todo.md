@@ -197,3 +197,9 @@
 - [x] Adicionar uma linha temporal por controlo que apresente a evolução até à conclusão diária.
 - [x] Permitir filtrar o progresso diário dos controlos por fábrica ou linha no painel de Controlos.
 - [x] Destacar visualmente os módulos com verificações diárias em atraso.
+- [x] Permitir à Responsável de Qualidade editar tarefas pontuais, incluindo data, descrição e responsáveis.
+- [x] Permitir à Responsável de Qualidade eliminar tarefas pontuais com confirmação explícita.
+- [x] Garantir que apenas os responsáveis atribuídos e a Responsável de Qualidade conseguem visualizar e aceder a cada tarefa.
+- [x] Diferenciar visualmente as categorias de tarefas Em atraso, Esta semana e Próximos dias por código de cores.
+- [x] Permitir ao responsável atribuído preencher um relatório de execução da tarefa, visível também à Responsável de Qualidade.
+- [x] Mostrar por fábrica ou linha os estados de execução de todas as verificações diárias e periódicas previstas, para evitar registos esquecidos.
