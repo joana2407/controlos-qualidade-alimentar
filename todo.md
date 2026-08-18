@@ -213,3 +213,6 @@
 - [x] Configurar BPHF, shelf-life e expedição como controlos diários obrigatórios.
 - [x] Configurar caixas de sugestões e controlo sensorial como controlos semanais obrigatórios.
 - [x] Configurar o checklist mensal como controlo mensal obrigatório, mantendo Quebráveis conforme a periodicidade de cada ponto.
+- [x] Excluir sábados, domingos e feriados portugueses do planeamento, das pendências e dos atrasos de controlo.
+- [x] Permitir importar uma encomenda em PDF no controlo à expedição para pré-preencher cliente, número da encomenda, produtos e quantidades pedidas.
+- [x] Disponibilizar o checklist mensal para preenchimento a partir do dia 20 de cada mês.

@@ -10,6 +10,7 @@ vi.mock("@/lib/trpc", () => ({
     useUtils: () => ({ quality: { dashboard: { invalidate: vi.fn() }, reports: { invalidate: vi.fn() }, listNcs: { invalidate: vi.fn() } } }),
     quality: {
       calculateDispatchConformity: { useQuery: (input: Parameters<typeof calculateDispatchConformity>[0]) => ({ data: calculateDispatchConformity(input) }) },
+      parseDispatchOrderPdf: { useMutation: () => ({ mutate: vi.fn(), isPending: false }) },
       registerDispatchControl: { useMutation: () => ({ mutate, isPending: false }) },
     },
   },
@@ -29,6 +30,7 @@ describe("fluxo de interface do controlo à expedição", () => {
     expect(screen.getAllByText("Validação Expedição ambiente").length).toBeGreaterThan(0);
     expect(screen.getByText("Produto e veículo ≤ 25 °C")).toBeTruthy();
     expect(screen.getByText("Conformidade global")).toBeTruthy();
+    expect(screen.getByLabelText("Carregar encomenda em PDF")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Ajuda sobre a temperatura do produto" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Ajuda sobre a temperatura do veículo" })).toBeTruthy();
   });

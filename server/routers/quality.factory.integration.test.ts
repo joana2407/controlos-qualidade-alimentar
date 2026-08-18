@@ -2,11 +2,13 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { areas, controlPlans, correctiveActions, controlEntries, controlTasks, factories, fragileItems, nonconformities, qualityPinProfiles } from "../../drizzle/schema";
 import type { TrpcContext } from "../_core/context";
 import { getDb } from "../db";
-import { storagePut } from "../storage";
+import { storageGetSignedUrl, storagePut } from "../storage";
+import { invokeLLM } from "../_core/llm";
 import { qualityRouter } from "./quality";
 
 vi.mock("../db", () => ({ getDb: vi.fn() }));
-vi.mock("../storage", () => ({ storagePut: vi.fn() }));
+vi.mock("../storage", () => ({ storagePut: vi.fn(), storageGetSignedUrl: vi.fn() }));
+vi.mock("../_core/llm", () => ({ invokeLLM: vi.fn() }));
 
 const now = new Date(2026, 7, 14, 10, 0, 0);
 const tasks = [
@@ -85,7 +87,7 @@ function mockDatabase() {
 }
 
 describe("procedimentos de qualidade por fábrica", () => {
-  beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(now); tasks.splice(0, tasks.length, ...initialTasks.map((task) => ({ ...task, assigneeProfileIds: [...task.assigneeProfileIds] }))); plans.length = 0; dbUpdates.length = 0; dbInserts.length = 0; vi.clearAllMocks(); vi.mocked(getDb).mockResolvedValue(mockDatabase() as any); });
+  beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(now); tasks.splice(0, tasks.length, ...initialTasks.map((task) => ({ ...task, assigneeProfileIds: [...task.assigneeProfileIds] }))); plans.length = 0; dbUpdates.length = 0; dbInserts.length = 0; vi.clearAllMocks(); vi.mocked(getDb).mockResolvedValue(mockDatabase() as any); vi.mocked(storagePut).mockResolvedValue({ key: "dispatch-orders/3/encomenda.pdf", url: "/manus-storage/dispatch-orders/3/encomenda.pdf" }); vi.mocked(storageGetSignedUrl).mockResolvedValue("https://storage.example/encomenda.pdf"); });
 
   it("filtra o painel e as tarefas pela fábrica selecionada", async () => {
     const caller = qualityRouter.createCaller(createContext());
@@ -281,6 +283,16 @@ describe("procedimentos de qualidade por fábrica", () => {
     const result = await caller.addFragileItem({ name: "Proteção acrílica da linha", location: "Embalamento primário", factoryId: 3, periodicity: "Q", itemType: "Plástico rígido" });
     expect(result).toEqual({ success: true });
     expect(dbInserts[0]).toMatchObject({ name: "Proteção acrílica da linha", location: "Embalamento primário", factoryId: 3, periodicity: "Q", itemType: "Plástico rígido", status: "active", createdBy: "quality-admin" });
+  });
+
+  it("extrai cliente, número e linhas de produto de uma encomenda PDF", async () => {
+    vi.mocked(invokeLLM).mockResolvedValue({ choices: [{ message: { content: JSON.stringify({ orderNumber: "ENC-345", customer: "Cliente Norte", products: [{ name: "Pão de forma", orderedQuantity: 24 }, { name: "Pão brioche", orderedQuantity: 12 }], warnings: [] }) } }] } as any);
+    const caller = qualityRouter.createCaller(createContext({ id: 1, name: "Sabrina Esteves", title: "Tec. Qualidade", role: "technician" }));
+    const result = await caller.parseDispatchOrderPdf({ fileName: "encomenda.pdf", mimeType: "application/pdf", dataUrl: `data:application/pdf;base64,${Buffer.from("%PDF-1.4\nordem").toString("base64")}` });
+    expect(result).toMatchObject({ orderNumber: "ENC-345", customer: "Cliente Norte", document: { name: "encomenda.pdf", url: "/manus-storage/dispatch-orders/3/encomenda.pdf" } });
+    expect(result.products).toContainEqual({ name: "Pão de forma", orderedQuantity: 24 });
+    expect(storagePut).toHaveBeenCalledWith(expect.stringContaining("dispatch-orders/1/"), expect.any(Buffer), "application/pdf");
+    expect(invokeLLM).toHaveBeenCalledWith(expect.objectContaining({ model: "gemini-3-flash-preview" }));
   });
 
   it("regista a expedição como incidência quando a temperatura falha", async () => {

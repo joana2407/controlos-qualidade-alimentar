@@ -41,10 +41,28 @@ export function shouldCreateCriticalMetalAlert(module: string, result: string | 
   return module === "metal_detectors" && result === "NC";
 }
 
-/** O planeamento operacional considera de segunda a sexta-feira; feriados podem ser tratados numa evolução posterior. */
+function easterSunday(year: number) {
+  const a = year % 19; const b = Math.floor(year / 100); const c = year % 100; const d = Math.floor(b / 4); const e = b % 4; const f = Math.floor((b + 8) / 25); const g = Math.floor((b - f + 1) / 3); const h = (19 * a + b - d - g + 15) % 30; const i = Math.floor(c / 4); const k = c % 4; const l = (32 + 2 * e + 2 * i - h - k) % 7; const m = Math.floor((a + 11 * h + 22 * l) / 451); const month = Math.floor((h + l - 7 * m + 114) / 31); const day = (h + l - 7 * m + 114) % 31 + 1;
+  return new Date(year, month - 1, day);
+}
+
+function sameCalendarDay(left: Date, right: Date) { return left.getFullYear() === right.getFullYear() && left.getMonth() === right.getMonth() && left.getDate() === right.getDate(); }
+
+/** Considera os feriados nacionais portugueses, incluindo Sexta-feira Santa e Corpo de Deus. */
+export function isPortuguesePublicHoliday(date: Date) {
+  const day = startOfDay(date);
+  const fixedHolidays = [[0, 1], [3, 25], [4, 1], [5, 10], [7, 15], [9, 5], [10, 1], [11, 1], [11, 8], [11, 25]];
+  if (fixedHolidays.some(([month, calendarDay]) => day.getMonth() === month && day.getDate() === calendarDay)) return true;
+  const easter = easterSunday(day.getFullYear());
+  const goodFriday = new Date(easter); goodFriday.setDate(easter.getDate() - 2);
+  const corpusChristi = new Date(easter); corpusChristi.setDate(easter.getDate() + 60);
+  return sameCalendarDay(day, goodFriday) || sameCalendarDay(day, corpusChristi);
+}
+
+/** O planeamento operacional considera de segunda a sexta-feira e exclui os feriados nacionais portugueses. */
 export function isBusinessDay(date: Date) {
   const day = date.getDay();
-  return day !== 0 && day !== 6;
+  return day !== 0 && day !== 6 && !isPortuguesePublicHoliday(date);
 }
 
 /** Devolve o próprio dia quando útil ou o próximo dia útil quando a referência cai no fim de semana. */
@@ -60,6 +78,13 @@ export function businessDayAfter(date: Date) {
   result.setHours(0, 0, 0, 0);
   do result.setDate(result.getDate() + 1); while (!isBusinessDay(result));
   return result;
+}
+
+/** O checklist mensal abre no dia 20 ou, se necessário, no primeiro dia útil seguinte. */
+export function isMonthlyChecklistAvailable(date: Date) {
+  const openingDate = new Date(date.getFullYear(), date.getMonth(), 20);
+  openingDate.setHours(0, 0, 0, 0);
+  return startOfDay(date).getTime() >= nextBusinessDay(openingDate).getTime();
 }
 
 export type DispatchControlInput = {
@@ -120,7 +145,8 @@ export function fragileInspectionDueDate(periodicity: FragilePeriodicity, lastIn
 export function isFragileInspectionPending(periodicity: FragilePeriodicity, lastInspectionAt: Date | null | undefined, referenceDate = new Date()) {
   const reference = startOfDay(referenceDate);
   if (periodicity === "D") return isBusinessDay(reference) && (!lastInspectionAt || startOfDay(lastInspectionAt) < reference);
-  return reference.getDay() === 5 && reference.getTime() >= fragileInspectionDueDate(periodicity, lastInspectionAt, reference).getTime();
+  const dueOperationalDay = nextBusinessDay(fragileInspectionDueDate(periodicity, lastInspectionAt, reference));
+  return isBusinessDay(reference) && reference.getTime() >= dueOperationalDay.getTime();
 }
 
 export function fragileInspectionDelayDays(periodicity: FragilePeriodicity, lastInspectionAt: Date | null | undefined, referenceDate = new Date()) {

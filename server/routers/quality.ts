@@ -19,9 +19,10 @@ import {
   resultValues,
 } from "../../drizzle/schema";
 import { getDb } from "../db";
-import { businessDayAfter, calculateConformityRate, calculateDispatchConformity, calculateSensoryScore, fragileInspectionDelayDays, fragileInspectionDueDate, isBusinessDay, isFragileInspectionPending, nextBusinessDay, shouldCreateCriticalMetalAlert } from "../quality.logic";
+import { businessDayAfter, calculateConformityRate, calculateDispatchConformity, calculateSensoryScore, fragileInspectionDelayDays, fragileInspectionDueDate, isBusinessDay, isFragileInspectionPending, isMonthlyChecklistAvailable, nextBusinessDay, shouldCreateCriticalMetalAlert } from "../quality.logic";
 import { calculatePlanCompliance, countOpenNonconformities, scopeToFactory } from "../factory.scope.logic";
-import { storagePut } from "../storage";
+import { storageGetSignedUrl, storagePut } from "../storage";
+import { invokeLLM } from "../_core/llm";
 import { createSessionToken, hashPin, hashSessionToken, QUALITY_OPERATOR_COOKIE, QUALITY_SESSION_HOURS, QUALITY_TEAM_DEFAULTS, validatePin, verifyPin } from "../team-access";
 import { getSessionCookieOptions } from "../_core/cookies";
 import { protectedProcedure, publicProcedure, qualityManagerProcedure, qualityOperatorProcedure, qualitySessionProcedure, router } from "../_core/trpc";
@@ -39,6 +40,12 @@ const REQUIRED_MODULE_FREQUENCIES = [
   { module: "sensory", frequency: "weekly", title: "Controlo sensorial obrigatório" },
   { module: "monthly_checklist", frequency: "monthly", title: "Checklist mensal obrigatório" },
 ] as const;
+const dispatchOrderExtractionSchema = z.object({
+  orderNumber: z.string().max(80),
+  customer: z.string().max(160),
+  products: z.array(z.object({ name: z.string().max(180), orderedQuantity: z.number().int().min(0) })).max(30),
+  warnings: z.array(z.string().max(240)).max(12),
+});
 
 function asDateRange(date: Date) {
   const start = new Date(date);
@@ -69,9 +76,10 @@ function isLastBusinessDayOfMonth(date: Date) {
 }
 
 function isPlanDue(frequency: string, date: Date) {
+  if (!isBusinessDay(date)) return false;
   if (frequency === "daily" || frequency === "per_shift") return isBusinessDay(date);
   if (frequency === "weekly") return date.getDay() === 5;
-  if (frequency === "monthly") return isLastBusinessDayOfMonth(date);
+  if (frequency === "monthly") return isMonthlyChecklistAvailable(date);
   return false;
 }
 
@@ -454,6 +462,7 @@ export const qualityRouter = router({
     createNonconformity: z.boolean().default(false),
     severity: z.enum(["critical", "high", "medium", "low"]).default("medium"),
   })).mutation(async ({ ctx, input }) => {
+    if (input.module === "monthly_checklist" && !isMonthlyChecklistAvailable(new Date())) throw new TRPCError({ code: "BAD_REQUEST", message: "O checklist mensal fica disponível a partir do dia 20 ou do primeiro dia útil seguinte." });
     const db = await requireDb();
     const completedAt = new Date();
     await db.insert(controlEntries).values({
@@ -494,6 +503,53 @@ export const qualityRouter = router({
     vehicleTemperatureLimit: z.number().min(-100).max(100),
   })).query(({ input }) => calculateDispatchConformity(input)),
 
+  parseDispatchOrderPdf: qualityOperatorProcedure.input(z.object({
+    fileName: z.string().min(5).max(180),
+    mimeType: z.literal("application/pdf"),
+    dataUrl: z.string().min(32).max(16_500_000),
+  })).mutation(async ({ ctx, input }) => {
+    const match = /^data:application\/pdf;base64,([A-Za-z0-9+/=\s]+)$/i.exec(input.dataUrl);
+    if (!match) throw new TRPCError({ code: "BAD_REQUEST", message: "O ficheiro enviado não é um PDF válido." });
+    const pdfBuffer = Buffer.from(match[1].replace(/\s/g, ""), "base64");
+    if (!pdfBuffer.subarray(0, 4).equals(Buffer.from("%PDF"))) throw new TRPCError({ code: "BAD_REQUEST", message: "O ficheiro enviado não corresponde a um documento PDF." });
+    if (pdfBuffer.byteLength > 12_000_000) throw new TRPCError({ code: "PAYLOAD_TOO_LARGE", message: "A encomenda PDF deve ter no máximo 12 MB." });
+    const safeName = input.fileName.replace(/[^a-zA-Z0-9._-]/g, "_");
+    const stored = await storagePut(`dispatch-orders/${ctx.operatorProfile!.id}/${Date.now()}-${safeName}`, pdfBuffer, input.mimeType);
+    const signedUrl = await storageGetSignedUrl(stored.key);
+    try {
+      const response = await invokeLLM({
+        model: "gemini-3-flash-preview",
+        messages: [
+          { role: "system", content: "Extrai dados de encomendas de panificação em PDF. Nunca inventes valores: quando um campo não estiver legível, devolve uma string vazia, lista vazia ou uma advertência. Quantidades são números inteiros de caixas/unidades pedidas. Devolve apenas JSON conforme o esquema." },
+          { role: "user", content: [{ type: "text", text: "Extrai o número da encomenda, cliente e todas as linhas de produto com quantidade pedida." }, { type: "file_url", file_url: { url: signedUrl, mime_type: "application/pdf" } }] },
+        ],
+        response_format: {
+          type: "json_schema",
+          json_schema: {
+            name: "dispatch_order",
+            strict: true,
+            schema: {
+              type: "object",
+              properties: {
+                orderNumber: { type: "string" },
+                customer: { type: "string" },
+                products: { type: "array", items: { type: "object", properties: { name: { type: "string" }, orderedQuantity: { type: "integer" } }, required: ["name", "orderedQuantity"], additionalProperties: false } },
+                warnings: { type: "array", items: { type: "string" } },
+              },
+              required: ["orderNumber", "customer", "products", "warnings"],
+              additionalProperties: false,
+            },
+          },
+        },
+      });
+      const content = response.choices[0]?.message.content;
+      const extracted = dispatchOrderExtractionSchema.parse(JSON.parse(typeof content === "string" ? content : "{}"));
+      return { ...extracted, document: { name: input.fileName, url: stored.url } };
+    } catch (error) {
+      throw new TRPCError({ code: "BAD_REQUEST", message: "Não foi possível extrair os dados da encomenda. Confirme se o PDF está legível e preencha os campos manualmente." });
+    }
+  }),
+
   registerDispatchControl: qualityOperatorProcedure.input(z.object({
     factoryId: z.number().int(),
     profile: z.enum(["ambiente", "congelado"]),
@@ -509,6 +565,8 @@ export const qualityRouter = router({
     productTemperature: z.number().min(-100).max(100),
     vehicleTemperature: z.number().min(-100).max(100),
     observations: z.string().max(3000).optional(),
+    orderItems: z.array(z.object({ name: z.string().min(1).max(180), orderedQuantity: z.number().int().min(0) })).max(30).optional(),
+    sourceOrderDocument: z.object({ name: z.string().min(1).max(180), url: z.string().startsWith("/manus-storage/") }).optional(),
   })).mutation(async ({ ctx, input }) => {
     const profile = getDispatchProfile(input.profile);
     const limits = { product: profile.productTemperatureLimit, vehicle: profile.vehicleTemperatureLimit };

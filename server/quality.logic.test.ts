@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { businessDayAfter, calculateConformityRate, calculateDispatchConformity, calculateSensoryScore, fragileInspectionDelayDays, isBusinessDay, isFragileInspectionPending, nextBusinessDay, shouldCreateCriticalMetalAlert } from "./quality.logic";
+import { businessDayAfter, calculateConformityRate, calculateDispatchConformity, calculateSensoryScore, fragileInspectionDelayDays, isBusinessDay, isFragileInspectionPending, isMonthlyChecklistAvailable, isPortuguesePublicHoliday, nextBusinessDay, shouldCreateCriticalMetalAlert } from "./quality.logic";
 
 describe("quality calculations", () => {
   it("applies the fixed sensory weights and converts the result to percentage", () => {
@@ -27,6 +27,16 @@ describe("quality calculations", () => {
     expect(businessDayAfter(friday)).toMatchObject(new Date(2026, 7, 17, 0, 0, 0));
   });
 
+  it("exclui feriados nacionais portugueses e avança para o próximo dia operacional", () => {
+    const goodFriday = new Date(2026, 3, 3, 10, 0, 0);
+    const freedomDay = new Date(2026, 3, 25, 10, 0, 0);
+    expect(isPortuguesePublicHoliday(goodFriday)).toBe(true);
+    expect(isBusinessDay(goodFriday)).toBe(false);
+    expect(isBusinessDay(freedomDay)).toBe(false);
+    expect(nextBusinessDay(goodFriday)).toMatchObject(new Date(2026, 3, 6, 0, 0, 0));
+    expect(businessDayAfter(new Date(2026, 3, 2, 10, 0, 0))).toMatchObject(new Date(2026, 3, 6, 0, 0, 0));
+  });
+
   it("agenda pendências diárias em dias úteis e as restantes periodicidades à sexta-feira", () => {
     const thursday = new Date(2026, 7, 13, 10, 0, 0);
     const friday = new Date(2026, 7, 14, 10, 0, 0);
@@ -40,6 +50,20 @@ describe("quality calculations", () => {
     expect(isFragileInspectionPending("M", new Date(2026, 6, 31, 8, 0, 0), friday)).toBe(true);
     expect(isFragileInspectionPending("M", null, friday)).toBe(true);
     expect(fragileInspectionDelayDays("S", new Date(2026, 7, 7, 9, 0, 0), new Date(2026, 7, 21, 10, 0, 0))).toBe(7);
+  });
+
+  it("não marca Quebráveis como pendentes num feriado e transporta a pendência para o próximo dia útil", () => {
+    const goodFriday = new Date(2026, 3, 3, 10, 0, 0);
+    const monday = new Date(2026, 3, 6, 10, 0, 0);
+    expect(isFragileInspectionPending("S", new Date(2026, 2, 27, 9, 0, 0), goodFriday)).toBe(false);
+    expect(isFragileInspectionPending("S", new Date(2026, 2, 27, 9, 0, 0), monday)).toBe(true);
+  });
+
+  it("disponibiliza o checklist mensal no dia 20 ou no primeiro dia útil seguinte", () => {
+    expect(isMonthlyChecklistAvailable(new Date(2026, 7, 19, 10, 0, 0))).toBe(false);
+    expect(isMonthlyChecklistAvailable(new Date(2026, 7, 20, 10, 0, 0))).toBe(true);
+    expect(isMonthlyChecklistAvailable(new Date(2027, 1, 20, 10, 0, 0))).toBe(false);
+    expect(isMonthlyChecklistAvailable(new Date(2027, 1, 22, 10, 0, 0))).toBe(true);
   });
 
   it("calcula C para a expedição apenas quando os cinco critérios estão conformes", () => {

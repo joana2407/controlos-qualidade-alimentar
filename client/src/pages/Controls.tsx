@@ -12,6 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { useQualityAccess } from "@/contexts/QualityAccessContext";
 import { dateFormat, MODULES } from "@/lib/quality";
+import { isOperationalBusinessDay, nextOperationalBusinessDay, operationalBusinessDayAfter } from "@/lib/businessCalendar";
 import { trpc } from "@/lib/trpc";
 import { AlertTriangle, Boxes, CheckCircle2, ChevronRight, CircleDotDashed, ClipboardCheck, ClipboardPlus, Clock3, FilePenLine, FlaskConical, Gauge, HeartPulse, ImagePlus, ListChecks, ListTodo, MessageSquareText, Pencil, ShieldCheck, Trash2, Truck, X } from "lucide-react";
 import React, { FormEvent, useMemo, useState } from "react";
@@ -28,8 +29,8 @@ type TaskReport = { id: number; title: string; result: "C" | "NC"; notes: string
 type EditableTask = { id: number; title: string; description: string | null; factoryId: number | null; dueAt: Date; assigneeProfileIds: number[] | null };
 
 const dayStart = (value: Date) => { const result = new Date(value); result.setHours(0, 0, 0, 0); return result; };
-const nextWorkDate = () => { const value = dayStart(new Date()); while ([0, 6].includes(value.getDay())) value.setDate(value.getDate() + 1); return value.toISOString().slice(0, 10); };
-const nextBusinessDate = (value: Date) => { const result = dayStart(value); do result.setDate(result.getDate() + 1); while ([0, 6].includes(result.getDay())); return result; };
+const nextWorkDate = () => nextOperationalBusinessDay(new Date()).toISOString().slice(0, 10);
+const nextBusinessDate = (value: Date) => operationalBusinessDayAfter(value);
 
 function ModuleCompletionTimeline({ label, progress, completionUnit = "verificações", pendingUnit = "verificação" }: { label: string; progress?: ModuleProgress; completionUnit?: string; pendingUnit?: string }) {
   const expected = progress?.expected ?? 0;
@@ -88,18 +89,18 @@ export default function Controls() {
   const deleteTask = trpc.quality.deleteTask.useMutation({ onSuccess: () => { invalidateTasks(); setDeletingTask(null); toast.success("Tarefa eliminada."); }, onError: (error) => toast.error(error.message) });
 
   const groupedTasks = useMemo(() => {
-    const today = dayStart(new Date()); while ([0, 6].includes(today.getDay())) today.setDate(today.getDate() + 1);
+    const today = nextOperationalBusinessDay(new Date());
     const tomorrow = nextBusinessDate(today); const weekStart = dayStart(today); weekStart.setDate(weekStart.getDate() - ((weekStart.getDay() + 6) % 7)); const weekEnd = new Date(weekStart); weekEnd.setDate(weekEnd.getDate() + 5);
     const buckets = { overdue: [] as any[], today: [] as any[], tomorrow: [] as any[], thisWeek: [] as any[], later: [] as any[] };
     (tasks.data ?? []).forEach((task) => { const due = dayStart(task.dueAt); if (due < today) buckets.overdue.push(task); else if (+due === +today) buckets.today.push(task); else if (+due === +tomorrow) buckets.tomorrow.push(task); else if (due < weekEnd) buckets.thisWeek.push(task); else buckets.later.push(task); });
     return buckets;
   }, [tasks.data]);
 
-  function submit(event: FormEvent) { event.preventDefault(); if (!factoryId) return toast.error("Selecione a fábrica ou linha."); if (!assigneeIds.length) return toast.error("Selecione pelo menos um responsável."); const date = new Date(`${dueAt}T12:00:00`); if ([0, 6].includes(date.getDay())) return toast.error("Selecione um dia útil, de segunda a sexta-feira."); createTask.mutate({ title, description, factoryId: Number(factoryId), dueAt: date, assigneeProfileIds: assigneeIds }); }
+  function submit(event: FormEvent) { event.preventDefault(); if (!factoryId) return toast.error("Selecione a fábrica ou linha."); if (!assigneeIds.length) return toast.error("Selecione pelo menos um responsável."); const date = new Date(`${dueAt}T12:00:00`); if (!isOperationalBusinessDay(date)) return toast.error("Selecione um dia útil, excluindo sábados, domingos e feriados."); createTask.mutate({ title, description, factoryId: Number(factoryId), dueAt: date, assigneeProfileIds: assigneeIds }); }
   function toggleAssignee(id: number) { setAssigneeIds((current) => current.includes(id) ? current.filter((entry) => entry !== id) : [...current, id]); }
   function toggleEditorAssignee(id: number) { setEditingTask((current) => current ? { ...current, assigneeProfileIds: current.assigneeProfileIds.includes(id) ? current.assigneeProfileIds.filter((entry) => entry !== id) : [...current.assigneeProfileIds, id] } : current); }
   function openTaskEditor(task: EditableTask) { setEditingTask({ id: task.id, title: task.title, description: task.description ?? "", factoryId: task.factoryId, dueAt: new Date(task.dueAt), assigneeProfileIds: task.assigneeProfileIds ?? [] }); }
-  function submitTaskEdit(event: FormEvent) { event.preventDefault(); if (!editingTask) return; if (!editingTask.assigneeProfileIds.length) return toast.error("Selecione pelo menos um responsável."); const date = new Date(`${editingTask.dueAt.toISOString().slice(0, 10)}T12:00:00`); if ([0, 6].includes(date.getDay())) return toast.error("Selecione um dia útil, de segunda a sexta-feira."); updateTask.mutate({ id: editingTask.id, title: editingTask.title, description: editingTask.description, factoryId: editingTask.factoryId ?? undefined, dueAt: date, assigneeProfileIds: editingTask.assigneeProfileIds }); }
+  function submitTaskEdit(event: FormEvent) { event.preventDefault(); if (!editingTask) return; if (!editingTask.assigneeProfileIds.length) return toast.error("Selecione pelo menos um responsável."); const date = new Date(`${editingTask.dueAt.toISOString().slice(0, 10)}T12:00:00`); if (!isOperationalBusinessDay(date)) return toast.error("Selecione um dia útil, excluindo sábados, domingos e feriados."); updateTask.mutate({ id: editingTask.id, title: editingTask.title, description: editingTask.description, factoryId: editingTask.factoryId ?? undefined, dueAt: date, assigneeProfileIds: editingTask.assigneeProfileIds }); }
   async function uploadReportPhotos(event: React.ChangeEvent<HTMLInputElement>) { const files = Array.from(event.currentTarget.files ?? []); if (!reportTask || !files.length) return; const available = 5 - reportTask.evidencePhotos.length; if (available <= 0) return toast.error("Pode anexar no máximo 5 fotografias por relatório."); const selected = files.slice(0, available); if (selected.some((file) => !["image/jpeg", "image/png", "image/webp"].includes(file.type))) return toast.error("Utilize apenas imagens JPEG, PNG ou WebP."); if (selected.some((file) => file.size > 5_000_000)) return toast.error("Cada fotografia pode ter até 5 MB."); setReportPhotoUploading(true); try { const photos: TaskEvidencePhoto[] = []; for (const file of selected) { const dataUrl = await new Promise<string>((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(String(reader.result)); reader.onerror = () => reject(new Error("Não foi possível ler a fotografia.")); reader.readAsDataURL(file); }); const uploaded = await uploadTaskReportPhoto.mutateAsync({ taskId: reportTask.id, fileName: file.name, mimeType: file.type as TaskEvidencePhoto["mimeType"], dataUrl }); photos.push({ url: uploaded.url, fileName: uploaded.fileName, mimeType: uploaded.mimeType }); } setReportTask((current) => current ? { ...current, evidencePhotos: [...current.evidencePhotos, ...photos] } : current); toast.success(`${photos.length} fotografia(s) anexada(s).`); } catch (error) { toast.error(error instanceof Error ? error.message : "Não foi possível carregar a fotografia."); } finally { setReportPhotoUploading(false); event.currentTarget.value = ""; } }
   function submitTaskReport(event: FormEvent) { event.preventDefault(); if (!reportTask) return; if (reportTask.notes.trim().length < 3) return toast.error("Descreva a execução da tarefa no relatório."); completeTask.mutate({ id: reportTask.id, result: reportTask.result, notes: reportTask.notes.trim(), evidencePhotos: reportTask.evidencePhotos }); }
 
