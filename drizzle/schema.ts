@@ -89,11 +89,13 @@ export const controlPlans = mysqlTable("control_plans", {
 export const controlTasks = mysqlTable("control_tasks", {
   id: int("id").autoincrement().primaryKey(),
   title: varchar("title", { length: 180 }).notNull(),
+  description: text("description"),
   module: qualityModule.notNull(),
   area: varchar("area", { length: 120 }).notNull(),
   factoryId: int("factoryId"),
   dueAt: timestamp("dueAt").notNull(),
   responsible: varchar("responsible", { length: 120 }).notNull(),
+  assigneeProfileIds: json("assigneeProfileIds").$type<number[] | null>(),
   status: mysqlEnum("task_status", ["pending", "completed", "cancelled"]).default("pending").notNull(),
   completedAt: timestamp("completedAt"),
   completedByProfileId: int("completedByProfileId"),

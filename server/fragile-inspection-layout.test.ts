@@ -7,7 +7,7 @@ const panel = readFileSync(panelPath, "utf8");
 
 describe("disposição da inspeção de quebráveis", () => {
   it("abre a inspeção num painel próprio e sem deslocar a página", () => {
-    expect(panel).toContain("function openInspection(item: any)");
+    expect(panel).toContain("function openInspection(item: FragilePoint)");
     expect(panel).toContain("setInspectionOpen(true)");
     expect(panel).toContain("<Dialog open={inspectionOpen}");
     expect(panel).not.toContain("scrollIntoView");

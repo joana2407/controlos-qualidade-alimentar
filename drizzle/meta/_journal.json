@@ -106,6 +106,13 @@
       "when": 1786828105487,
       "tag": "0014_abnormal_reptil",
       "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "5",
+      "when": 1787057508879,
+      "tag": "0015_stiff_deathstrike",
+      "breakpoints": true
     }
   ]
 }

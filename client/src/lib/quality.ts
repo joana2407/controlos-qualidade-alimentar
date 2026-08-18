@@ -11,13 +11,15 @@ export const MODULES = [
 
 export const BPHF_AREAS = ["Embalagem T", "Produção T", "Embalagem SG", "Produção SG"] as const;
 export const METAL_AREAS = ["SG", "Tradicional 1", "Tradicional 2", "Granel", "Fábrica II"] as const;
-export const SUGGESTION_LOCATIONS = [
-  "Caixa Escritório",
-  "Caixa WC Homens - tradicional",
-  "Caixa WC Senhoras - tradicional",
-  "Caixa WC Homens - SG",
-  "Caixa WC Senhoras - SG",
-] as const;
+export const SUGGESTION_LOCATIONS_BY_FACTORY = {
+  F1_FATIADO: ["Caixa escritório", "Caixa WC feminino", "Caixa WC masculino"],
+  F2_GRANEL: ["Caixa WC feminino", "Caixa WC masculino"],
+  F3_SEM_GLUTEN: ["Caixa WC feminino", "Caixa WC masculino"],
+} as const;
+
+export function suggestionLocationsForFactory(factoryCode?: string) {
+  return factoryCode ? SUGGESTION_LOCATIONS_BY_FACTORY[factoryCode as keyof typeof SUGGESTION_LOCATIONS_BY_FACTORY] ?? [] : [];
+}
 export const SENSORY_FIELDS = [
   { key: "aspeto", label: "Aspeto", weight: "10%" },
   { key: "fimDeBoca", label: "Fim de boca", weight: "15%" },

@@ -97,15 +97,33 @@ function startOfWeek(date: Date) {
   return result;
 }
 
+function fridayOnOrAfter(date: Date) {
+  const result = startOfDay(date);
+  result.setDate(result.getDate() + ((5 - result.getDay() + 7) % 7));
+  return result;
+}
+
+/** Devolve a data de vencimento do ciclo de um ponto de Quebráveis. */
+export function fragileInspectionDueDate(periodicity: FragilePeriodicity, lastInspectionAt: Date | null | undefined, referenceDate = new Date()) {
+  const reference = startOfDay(referenceDate);
+  if (periodicity === "D") return reference;
+  if (!lastInspectionAt) return fridayOnOrAfter(reference);
+  if (periodicity === "S") return fridayOnOrAfter(new Date(startOfDay(lastInspectionAt).setDate(startOfDay(lastInspectionAt).getDate() + 7)));
+  if (periodicity === "Q") return fridayOnOrAfter(new Date(startOfDay(lastInspectionAt).setDate(startOfDay(lastInspectionAt).getDate() + 14)));
+  return fridayOnOrAfter(new Date(lastInspectionAt.getFullYear(), lastInspectionAt.getMonth() + 1, 1));
+}
+
 /**
- * Indica se um ponto de controlo de quebráveis deve ser inspecionado na data de referência.
- * D e S seguem períodos de calendário; Q vence 14 dias após a última inspeção;
- * M vence no primeiro dia de um novo mês civil.
+ * Os pontos diários vencem em cada dia útil. Pontos semanais, quinzenais e mensais
+ * são apresentados para verificação à sexta-feira do respetivo ciclo.
  */
 export function isFragileInspectionPending(periodicity: FragilePeriodicity, lastInspectionAt: Date | null | undefined, referenceDate = new Date()) {
-  if (!lastInspectionAt) return true;
-  if (periodicity === "D") return startOfDay(lastInspectionAt) < startOfDay(referenceDate);
-  if (periodicity === "S") return startOfWeek(lastInspectionAt) < startOfWeek(referenceDate);
-  if (periodicity === "Q") return referenceDate.getTime() - lastInspectionAt.getTime() >= 14 * 24 * 60 * 60 * 1000;
-  return lastInspectionAt.getFullYear() !== referenceDate.getFullYear() || lastInspectionAt.getMonth() !== referenceDate.getMonth();
+  const reference = startOfDay(referenceDate);
+  if (periodicity === "D") return isBusinessDay(reference) && (!lastInspectionAt || startOfDay(lastInspectionAt) < reference);
+  return reference.getDay() === 5 && reference.getTime() >= fragileInspectionDueDate(periodicity, lastInspectionAt, reference).getTime();
+}
+
+export function fragileInspectionDelayDays(periodicity: FragilePeriodicity, lastInspectionAt: Date | null | undefined, referenceDate = new Date()) {
+  const due = fragileInspectionDueDate(periodicity, lastInspectionAt, referenceDate);
+  return Math.max(0, Math.floor((startOfDay(referenceDate).getTime() - due.getTime()) / (24 * 60 * 60 * 1000)));
 }

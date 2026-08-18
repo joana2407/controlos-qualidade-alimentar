@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { businessDayAfter, calculateConformityRate, calculateDispatchConformity, calculateSensoryScore, isBusinessDay, isFragileInspectionPending, nextBusinessDay, shouldCreateCriticalMetalAlert } from "./quality.logic";
+import { businessDayAfter, calculateConformityRate, calculateDispatchConformity, calculateSensoryScore, fragileInspectionDelayDays, isBusinessDay, isFragileInspectionPending, nextBusinessDay, shouldCreateCriticalMetalAlert } from "./quality.logic";
 
 describe("quality calculations", () => {
   it("applies the fixed sensory weights and converts the result to percentage", () => {
@@ -27,17 +27,19 @@ describe("quality calculations", () => {
     expect(businessDayAfter(friday)).toMatchObject(new Date(2026, 7, 17, 0, 0, 0));
   });
 
-  it("identifies pending fragile inspections by daily, weekly, fortnightly and monthly periodicity", () => {
-    const reference = new Date(2026, 7, 13, 10, 0, 0);
-    expect(isFragileInspectionPending("D", new Date(2026, 7, 13, 8, 0, 0), reference)).toBe(false);
-    expect(isFragileInspectionPending("D", new Date(2026, 7, 12, 16, 0, 0), reference)).toBe(true);
-    expect(isFragileInspectionPending("S", new Date(2026, 7, 10, 9, 0, 0), reference)).toBe(false);
-    expect(isFragileInspectionPending("S", new Date(2026, 7, 9, 9, 0, 0), reference)).toBe(true);
-    expect(isFragileInspectionPending("Q", new Date(2026, 6, 31, 10, 0, 0), reference)).toBe(false);
-    expect(isFragileInspectionPending("Q", new Date(2026, 6, 30, 9, 0, 0), reference)).toBe(true);
-    expect(isFragileInspectionPending("M", new Date(2026, 7, 1, 8, 0, 0), reference)).toBe(false);
-    expect(isFragileInspectionPending("M", new Date(2026, 6, 31, 8, 0, 0), reference)).toBe(true);
-    expect(isFragileInspectionPending("M", null, reference)).toBe(true);
+  it("agenda pendências diárias em dias úteis e as restantes periodicidades à sexta-feira", () => {
+    const thursday = new Date(2026, 7, 13, 10, 0, 0);
+    const friday = new Date(2026, 7, 14, 10, 0, 0);
+    expect(isFragileInspectionPending("D", new Date(2026, 7, 13, 8, 0, 0), thursday)).toBe(false);
+    expect(isFragileInspectionPending("D", new Date(2026, 7, 12, 16, 0, 0), thursday)).toBe(true);
+    expect(isFragileInspectionPending("S", null, thursday)).toBe(false);
+    expect(isFragileInspectionPending("Q", null, thursday)).toBe(false);
+    expect(isFragileInspectionPending("M", null, thursday)).toBe(false);
+    expect(isFragileInspectionPending("S", new Date(2026, 7, 7, 9, 0, 0), friday)).toBe(true);
+    expect(isFragileInspectionPending("Q", new Date(2026, 6, 31, 10, 0, 0), friday)).toBe(true);
+    expect(isFragileInspectionPending("M", new Date(2026, 6, 31, 8, 0, 0), friday)).toBe(true);
+    expect(isFragileInspectionPending("M", null, friday)).toBe(true);
+    expect(fragileInspectionDelayDays("S", new Date(2026, 7, 7, 9, 0, 0), new Date(2026, 7, 21, 10, 0, 0))).toBe(7);
   });
 
   it("calcula C para a expedição apenas quando os cinco critérios estão conformes", () => {

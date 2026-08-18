@@ -113,7 +113,7 @@ describe("fluxo de interface de pontos de controlo de quebráveis", () => {
     render(<FragileOperationsPanel createEntry={{ mutate: vi.fn(), isPending: false }} factoryId="1" />);
     const title = screen.getByRole("heading", { name: "Quebráveis" });
     expect(title.closest("header")?.className).toContain("flex");
-    expect(screen.getByText("Escolha uma pendência e registe a verificação. A gestão dos pontos está concentrada num único local.")).toBeTruthy();
+    expect(screen.getByText("Pontos diários vencem em dias úteis; pontos S, Q e M são verificados à sexta-feira.")).toBeTruthy();
     expect(screen.queryByText("Pendências e catálogo")).toBeNull();
   });
 });

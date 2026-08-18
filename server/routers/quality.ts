@@ -19,7 +19,7 @@ import {
   resultValues,
 } from "../../drizzle/schema";
 import { getDb } from "../db";
-import { businessDayAfter, calculateConformityRate, calculateDispatchConformity, calculateSensoryScore, isBusinessDay, isFragileInspectionPending, nextBusinessDay, shouldCreateCriticalMetalAlert } from "../quality.logic";
+import { businessDayAfter, calculateConformityRate, calculateDispatchConformity, calculateSensoryScore, fragileInspectionDelayDays, fragileInspectionDueDate, isBusinessDay, isFragileInspectionPending, nextBusinessDay, shouldCreateCriticalMetalAlert } from "../quality.logic";
 import { calculatePlanCompliance, countOpenNonconformities, scopeToFactory } from "../factory.scope.logic";
 import { storagePut } from "../storage";
 import { createSessionToken, hashPin, hashSessionToken, QUALITY_OPERATOR_COOKIE, QUALITY_SESSION_HOURS, QUALITY_TEAM_DEFAULTS, validatePin, verifyPin } from "../team-access";
@@ -284,23 +284,29 @@ export const qualityRouter = router({
     };
   }),
 
-  listTasks: qualitySessionProcedure.input(z.object({ factoryId: z.number().int().optional() }).optional()).query(async ({ input }) => {
+  listTasks: qualitySessionProcedure.input(z.object({ factoryId: z.number().int().optional() }).optional()).query(async ({ ctx, input }) => {
     const db = await requireDb();
     const tasks = await db.select().from(controlTasks).orderBy(controlTasks.dueAt);
-    return scopeToFactory(tasks, input?.factoryId).filter((task) => isBusinessDay(task.dueAt));
+    const profile = ctx.operatorProfile!;
+    return scopeToFactory(tasks, input?.factoryId).filter((task) => {
+      const assignees = Array.isArray(task.assigneeProfileIds) ? task.assigneeProfileIds : [];
+      return isBusinessDay(task.dueAt) && (profile.role === "manager" || !assignees.length || assignees.includes(profile.id));
+    });
   }),
 
   createTask: qualityManagerProcedure.input(z.object({
     title: z.string().min(2).max(180),
-    module: qualityModuleSchema,
-    area: z.string().max(120).optional().transform((value) => value?.trim() || "Sem área"),
+    description: z.string().max(3000).optional(),
     factoryId: z.number().int().optional(),
     dueAt: dateInput,
-    responsible: z.string().min(2).max(120),
+    assigneeProfileIds: z.array(z.number().int()).min(1).max(10),
   })).mutation(async ({ ctx, input }) => {
     if (!isBusinessDay(input.dueAt)) throw new TRPCError({ code: "BAD_REQUEST", message: "As tarefas de controlo só podem ser agendadas em dias úteis, de segunda a sexta-feira." });
     const db = await requireDb();
-    await db.insert(controlTasks).values({ ...input, factoryId: input.factoryId ?? null, createdBy: ctx.user!.openId });
+    const selectedProfiles = await db.select().from(qualityPinProfiles).where(inArray(qualityPinProfiles.id, input.assigneeProfileIds)).orderBy(qualityPinProfiles.id);
+    const profiles = selectedProfiles.filter((profile) => input.assigneeProfileIds.includes(profile.id));
+    if (profiles.length !== input.assigneeProfileIds.length || profiles.some((profile) => profile.active !== "true")) throw new TRPCError({ code: "BAD_REQUEST", message: "Selecione utilizadores ativos para a tarefa." });
+    await db.insert(controlTasks).values({ title: input.title, description: input.description?.trim() || null, module: "bphf", area: "Sem área", factoryId: input.factoryId ?? null, dueAt: input.dueAt, responsible: profiles.map((profile) => profile.name).join(", "), assigneeProfileIds: input.assigneeProfileIds, createdBy: ctx.user!.openId });
     return { success: true };
   }),
 
@@ -311,6 +317,8 @@ export const qualityRouter = router({
   })).mutation(async ({ ctx, input }) => {
     const db = await requireDb();
     const task = (await db.select().from(controlTasks).where(eq(controlTasks.id, input.id)).limit(1))[0];
+    const assignees = Array.isArray(task?.assigneeProfileIds) ? task.assigneeProfileIds : [];
+    if (task && ctx.operatorProfile!.role !== "manager" && assignees.length && !assignees.includes(ctx.operatorProfile!.id)) throw new TRPCError({ code: "FORBIDDEN", message: "Esta tarefa está atribuída a outro utilizador." });
     if (!task) throw new TRPCError({ code: "NOT_FOUND", message: "Tarefa não encontrada." });
     const completedAt = new Date();
     await db.update(controlTasks).set({ status: "completed", completedAt, completedByProfileId: ctx.operatorProfile!.id, completedByName: ctx.operatorProfile!.name, completedByTitle: ctx.operatorProfile!.title }).where(eq(controlTasks.id, input.id));
@@ -697,7 +705,10 @@ export const qualityRouter = router({
     const now = new Date();
     return items
       .filter((item) => item.status === "active" && (!input?.factoryId || item.factoryId === input.factoryId) && (!input?.periodicity || item.periodicity === input.periodicity))
-      .map((item) => ({ ...item, lastInspectionAt: lastInspections.get(item.id) ?? null }))
+      .map((item) => {
+        const lastInspectionAt = lastInspections.get(item.id) ?? null;
+        return { ...item, lastInspectionAt, dueAt: fragileInspectionDueDate(item.periodicity, lastInspectionAt, now), delayDays: fragileInspectionDelayDays(item.periodicity, lastInspectionAt, now) };
+      })
       .filter((item) => isFragileInspectionPending(item.periodicity, item.lastInspectionAt, now))
       .sort((left, right) => (left.lastInspectionAt?.getTime() ?? 0) - (right.lastInspectionAt?.getTime() ?? 0));
   }),

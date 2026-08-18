@@ -12,6 +12,7 @@ vi.mock("@/lib/trpc", () => ({
     useUtils: () => ({ quality: { dashboard: { invalidate: vi.fn() }, listTasks: { invalidate: vi.fn() }, listNcs: { invalidate: vi.fn() }, reports: { invalidate: vi.fn() } } }),
     quality: {
       metadata: { useQuery: () => ({ data: { factories: [{ id: 1, name: "Fábrica 1 (Fatiado)" }], areas: [] } }) },
+      accessStatus: { useQuery: () => ({ data: { profiles: [] } }) },
       listTasks: { useQuery: () => ({ data: [{ id: 1, title: "Verificação diária", module: "bphf", area: "Produção", factoryId: 1, responsible: "Equipa", dueAt: now, status: "completed", completedByName: "Neuza Antunes", completedByTitle: "Tec. Qualidade" }] }) },
       createTask: { useMutation: () => ({ mutate: vi.fn(), isPending: false }) },
       completeTask: { useMutation: () => ({ mutate: vi.fn(), isPending: false }) },

@@ -34,7 +34,6 @@ const menuItems = [
   { icon: BookOpenCheck, label: "Plataforma", path: "/plataforma" },
   { icon: HelpCircle, label: "Ajuda", path: "/ajuda" },
   { icon: ClipboardCheck, label: "Controlos", path: "/controlos" },
-  { icon: FileWarning, label: "Não conformidades", path: "/nao-conformidades" },
   { icon: BarChart3, label: "Relatórios", path: "/relatorios" },
   { icon: Settings2, label: "Configuração", path: "/configuracao" },
 ];

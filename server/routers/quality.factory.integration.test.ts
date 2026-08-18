@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { areas, controlPlans, correctiveActions, controlEntries, controlTasks, factories, fragileItems, nonconformities } from "../../drizzle/schema";
+import { areas, controlPlans, correctiveActions, controlEntries, controlTasks, factories, fragileItems, nonconformities, qualityPinProfiles } from "../../drizzle/schema";
 import type { TrpcContext } from "../_core/context";
 import { getDb } from "../db";
 import { storagePut } from "../storage";
@@ -35,6 +35,7 @@ const factoryRows = [
   { id: 3, name: "Fabrica 3 (Sem Gluten)" },
 ];
 const areaRows = [{ id: 101, name: "Produção T", group: "bphf", factoryId: 1, active: "true" }];
+const profileRows = [{ id: 1, name: "Sabrina Esteves", title: "Tec. Qualidade", active: "true", role: "technician" }, { id: 2, name: "Neuza Antunes", title: "Tec. Qualidade", active: "true", role: "technician" }, { id: 3, name: "Joana Pina", title: "Resp. Qualidade", active: "true", role: "manager" }];
 const plans: Array<{ id: number; title: string; module: "bphf"; areaId: number; factoryId: number; frequency: "daily"; active: "true" }> = [];
 const fragile = [
   { id: 1, factoryId: 1, periodicity: "D", location: "Zona Tratamento Térmico", name: "Portas forno Anelar 1", status: "active" },
@@ -61,6 +62,7 @@ function mockDatabase() {
     if (table === correctiveActions) return actions;
     if (table === factories) return factoryRows;
     if (table === areas) return areaRows;
+    if (table === qualityPinProfiles) return profileRows;
     if (table === controlPlans) return plans;
     if (table === fragileItems) return fragile;
     return [];
@@ -161,15 +163,15 @@ describe("procedimentos de qualidade por fábrica", () => {
     await expect(noOperator.createEntry({ module: "bphf", title: "Verificação BPHF", area: "Produção", result: "C" })).rejects.toMatchObject({ code: "FORBIDDEN" });
 
     const technician = qualityRouter.createCaller(createContext({ id: 1, name: "Sabrina Esteves", title: "Tec. Qualidade", role: "technician" }));
-    await expect(technician.createTask({ title: "Tarefa pontual", module: "bphf", area: "Produção", factoryId: 1, dueAt: now, responsible: "Sabrina Esteves" })).rejects.toMatchObject({ code: "FORBIDDEN" });
+    await expect(technician.createTask({ title: "Tarefa pontual", factoryId: 1, dueAt: now, assigneeProfileIds: [1] })).rejects.toMatchObject({ code: "FORBIDDEN" });
     await expect(technician.addArea({ name: "Área reservada", module: "bphf", factoryId: 1 })).rejects.toMatchObject({ code: "FORBIDDEN" });
   });
 
-  it("cria uma tarefa pontual sem área e guarda uma indicação neutra", async () => {
+  it("cria uma tarefa pontual com descrição e responsáveis atribuídos", async () => {
     const caller = qualityRouter.createCaller(createContext());
-    await caller.createTask({ title: "Verificação geral", module: "bphf", factoryId: 1, dueAt: now, responsible: "Joana Pina" });
+    await caller.createTask({ title: "Verificação geral", description: "Confirmar a condição da área.", factoryId: 1, dueAt: now, assigneeProfileIds: [1, 2] });
 
-    expect(dbInserts[0]).toMatchObject({ title: "Verificação geral", area: "Sem área", factoryId: 1 });
+    expect(dbInserts[0]).toMatchObject({ title: "Verificação geral", description: "Confirmar a condição da área.", area: "Sem área", factoryId: 1, assigneeProfileIds: [1, 2], responsible: "Sabrina Esteves, Neuza Antunes" });
   });
 
   it("guarda o perfil que concluiu a tarefa e cria o respetivo registo de controlo", async () => {

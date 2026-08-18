@@ -183,3 +183,13 @@
 - [x] Mostrar em cada painel de controlo a evolução do preenchimento do dia para a fábrica ou linha selecionada.
 - [x] Apresentar em cada painel as verificações pendentes do dia para o respetivo controlo e fábrica ou linha.
 - [x] Configurar as linhas de deteção de metais por fábrica conforme a distribuição operacional indicada.
+- [x] Associar as caixas de sugestões apenas às localizações definidas para Fábrica 1, Fábrica 2 e Fábrica 3/SG.
+- [x] Programar as verificações semanais, quinzenais e mensais de Quebráveis para sexta-feira.
+- [x] Adicionar pesquisa por nome no gestor de pontos de controlo de Quebráveis.
+- [x] Mostrar o tempo de atraso de cada verificação pendente de Quebráveis.
+- [x] Adicionar descrição e atribuição a um ou vários utilizadores nas tarefas pontuais.
+- [x] Restringir a visibilidade de cada tarefa aos utilizadores atribuídos e à Responsável de Qualidade.
+- [x] Remover os campos Módulo e Área do formulário de criação de tarefa pontual.
+- [x] Substituir na interface, navegação, ajuda e relatórios a terminologia «Não Conformidade» por «Incidência» — cancelado para permitir distinguir ambos os tipos de registo.
+- [x] Permitir criar um registo como Incidência ou Não Conformidade e identificá-lo numa lista unificada de ocorrências.
+- [x] Restaurar rótulos explícitos de Incidência e Não Conformidade, sem alteração automática da terminologia no ecrã.

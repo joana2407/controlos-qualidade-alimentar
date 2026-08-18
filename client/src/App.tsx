@@ -25,6 +25,7 @@ function Router() {
       <Route path={"/ajuda"} component={() => <DashboardLayout><HelpCenter /></DashboardLayout>} />
       <Route path={"/controlos"} component={() => <DashboardLayout><Controls /></DashboardLayout>} />
       <Route path={"/controlos/:module"} component={() => <DashboardLayout><ModuleControl /></DashboardLayout>} />
+      <Route path={"/incidencias"} component={() => <DashboardLayout><Nonconformities /></DashboardLayout>} />
       <Route path={"/nao-conformidades"} component={() => <DashboardLayout><Nonconformities /></DashboardLayout>} />
       <Route path={"/relatorios"} component={() => <DashboardLayout><Reports /></DashboardLayout>} />
       <Route path={"/configuracao"} component={() => <DashboardLayout><Configuration /></DashboardLayout>} />
