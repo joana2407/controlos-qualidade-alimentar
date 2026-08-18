@@ -238,6 +238,20 @@ export const qualityRouter = router({
     });
     const dailyExpectedCount = todayTasks.length + dailyPlans.length;
     const dailyCompletedCount = completedTasksToday.length + completedDailyPlans.length;
+    const effectiveDailyExpectedCount = dailyExpectedCount || completedToday.length;
+    const moduleProgress = Object.fromEntries(qualityModuleValues.map((module) => {
+      const moduleTasks = todayTasks.filter((task) => task.module === module);
+      const modulePlans = dailyPlans.filter((plan) => plan.module === module);
+      const moduleCompletedTasks = completedTasksToday.filter((task) => task.module === module);
+      const moduleCompletedPlans = completedDailyPlans.filter((plan) => plan.module === module);
+      const registeredToday = completedToday.filter((entry) => entry.module === module).length;
+      const expected = moduleTasks.length + modulePlans.length;
+      const completed = moduleCompletedTasks.length + moduleCompletedPlans.length;
+      const denominator = expected || registeredToday;
+      const pendingTaskTitles = moduleTasks.filter((task) => task.status !== "completed").map((task) => task.title);
+      const pendingPlanTitles = modulePlans.filter((plan) => !moduleCompletedPlans.some((completedPlan) => completedPlan.id === plan.id)).map((plan) => `${plan.title}${areasById.get(plan.areaId) ? ` — ${areasById.get(plan.areaId)}` : ""}`);
+      return [module, { expected, completed: expected ? completed : registeredToday, registeredToday, pending: Array.from(new Set([...pendingTaskTitles, ...pendingPlanTitles])), percentage: denominator ? Number(((expected ? completed : registeredToday) / denominator * 100).toFixed(1)) : 0 }];
+    }));
     const critical = scopedNcs.filter((nc) => nc.status !== "closed" && nc.severity === "critical");
     const openActions = scopedActions.filter((action) => action.status !== "verified");
     const lastFragileInspections = new Map<number, Date>();
@@ -264,8 +278,9 @@ export const qualityRouter = router({
         criticalOpen: critical.length,
         completedToday: completedToday.length,
         fragilePending: fragilePending.length,
-        dailyExecutionRate: dailyExpectedCount ? Number(((dailyCompletedCount / dailyExpectedCount) * 100).toFixed(1)) : 0,
+        dailyExecutionRate: effectiveDailyExpectedCount ? Number(((dailyExpectedCount ? dailyCompletedCount : completedToday.length) / effectiveDailyExpectedCount * 100).toFixed(1)) : 0,
       },
+      moduleProgress,
     };
   }),
 

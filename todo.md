@@ -179,3 +179,7 @@
 - [x] Permitir editar incidências diárias como registos autónomos, sem criar automaticamente uma Não Conformidade.
 - [x] Indicar em cada incidência se originou uma Não Conformidade registada no formulário próprio.
 - [x] Disponibilizar linhas/áreas da fábrica selecionada no controlo de detetores de metais e permitir o registo.
+- [x] Corrigir o indicador de execução diária para refletir controlos concluídos e previstos no dia útil.
+- [x] Mostrar em cada painel de controlo a evolução do preenchimento do dia para a fábrica ou linha selecionada.
+- [x] Apresentar em cada painel as verificações pendentes do dia para o respetivo controlo e fábrica ou linha.
+- [x] Configurar as linhas de deteção de metais por fábrica conforme a distribuição operacional indicada.

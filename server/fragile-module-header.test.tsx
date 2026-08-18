@@ -14,6 +14,7 @@ vi.mock("@/lib/trpc", () => ({
     useUtils: () => ({ quality: { dashboard: { invalidate: vi.fn() }, reports: { invalidate: vi.fn() }, listNcs: { invalidate: vi.fn() }, fragilePending: { invalidate: vi.fn() }, listFragileItems: { invalidate: vi.fn() } } }),
     quality: {
       metadata: { useQuery: () => ({ data: { factories: [{ id: 1, name: "Fábrica 1 (Fatiado)" }], areas: [] } }) },
+      dashboard: { useQuery: () => ({ data: { moduleProgress: { fragile_items: { expected: 0, completed: 0, registeredToday: 0, pending: [], percentage: 0 } } }, isLoading: false }) },
       createEntry: { useMutation: () => noopMutation },
       listFragileItems: { useQuery: (input?: { factoryId?: number }) => ({ data: input?.factoryId === 1 ? [{ id: 101, name: "Ponto F1", location: "Produção", periodicity: "D", itemType: "Vidro" }] : [] }) },
       fragilePending: { useQuery: (input?: { factoryId?: number }) => ({ data: input?.factoryId === 1 ? [{ id: 101, name: "Ponto F1", location: "Produção", periodicity: "D", itemType: "Vidro", lastInspectionAt: null }] : [], isLoading: false }) },

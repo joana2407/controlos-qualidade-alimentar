@@ -90,6 +90,8 @@ describe("procedimentos de qualidade por fábrica", () => {
     const filteredTasks = await caller.listTasks({ factoryId: 1 });
     expect(dashboard.tasks.map((task) => task.id)).toEqual([1, 2]);
     expect(dashboard.metrics).toMatchObject({ pending: 1, criticalOpen: 1, completedToday: 3, fragilePending: 1, dailyExecutionRate: 50 });
+    expect(dashboard.moduleProgress.bphf).toMatchObject({ expected: 1, completed: 1, pending: [], percentage: 100 });
+    expect(dashboard.moduleProgress.metal_detectors).toMatchObject({ expected: 1, completed: 0, pending: ["Metal F1"], percentage: 0 });
     expect(filteredTasks.map((task) => task.id)).toEqual([1, 2]);
   });
 
@@ -108,6 +110,17 @@ describe("procedimentos de qualidade por fábrica", () => {
 
     expect(dashboard.metrics.dailyExecutionRate).toBe(66.7);
     plans.length = 0;
+  });
+
+  it("considera os registos efetuados quando não existem tarefas ou planos diários", async () => {
+    const originalTasks = [...tasks];
+    tasks.length = 0;
+    const caller = qualityRouter.createCaller(createContext());
+    const dashboard = await caller.dashboard({ factoryId: 1 });
+
+    expect(dashboard.metrics.dailyExecutionRate).toBe(100);
+    expect(dashboard.moduleProgress.bphf).toMatchObject({ expected: 0, registeredToday: 1, percentage: 100 });
+    tasks.push(...originalTasks);
   });
 
   it("filtra NC e agrega os relatórios sem misturar a fábrica 2", async () => {
