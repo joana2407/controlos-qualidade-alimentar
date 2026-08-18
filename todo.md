@@ -208,3 +208,8 @@
 - [x] Criar dashboards de relatórios com filtros por período, fábrica ou linha, módulo, resultado e estado.
 - [x] Mostrar em cada cartão de controlo o progresso diário por fábrica ou linha.
 - [x] Remover o bloco de texto detalhado de estado por fábrica ou linha da vista geral de Controlos.
+- [x] Permitir abrir diretamente o módulo e a fábrica ou linha com registo pendente ao clicar na respetiva percentagem.
+- [x] Garantir que a barra global de cada módulo só atinge 100% quando todas as fábricas ou linhas com verificações previstas estiverem concluídas.
+- [x] Configurar BPHF, shelf-life e expedição como controlos diários obrigatórios.
+- [x] Configurar caixas de sugestões e controlo sensorial como controlos semanais obrigatórios.
+- [x] Configurar o checklist mensal como controlo mensal obrigatório, mantendo Quebráveis conforme a periodicidade de cada ponto.

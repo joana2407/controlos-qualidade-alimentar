@@ -60,7 +60,7 @@ export default function ModuleControl() {
   const metadata = trpc.quality.metadata.useQuery();
   const bphfAreas = Array.from(new Set(metadata.data?.areas.filter((area) => area.group === "bphf").map((area) => area.name) ?? []));
   const factories = metadata.data?.factories ?? [];
-  const [factoryId, setFactoryId] = useState(readControlFactoryScope);
+  const [factoryId, setFactoryId] = useState(() => new URLSearchParams(window.location.search).get("factoryId") ?? readControlFactoryScope());
   const metalAreasForFactory = factoryId ? metadata.data?.areas.filter((area) => area.group === "metal" && area.factoryId === Number(factoryId)).map((area) => area.name) ?? [] : [];
   useEffect(() => { writeControlFactoryScope(factoryId); }, [factoryId]);
   const bphfAreasForFactory = factoryId ? metadata.data?.areas.filter((area) => area.group === "bphf" && area.factoryId === Number(factoryId)).map((area) => area.name) ?? [] : [];

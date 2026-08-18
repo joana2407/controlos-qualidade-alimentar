@@ -6,14 +6,14 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 const now = new Date("2026-08-13T10:00:00Z");
 
 vi.mock("@/contexts/QualityAccessContext", () => ({ useQualityAccess: () => ({ canManage: true }) }));
-vi.mock("wouter", () => ({ Link: ({ children }: { children: React.ReactNode }) => <>{children}</> }));
+vi.mock("wouter", () => ({ Link: ({ children, href, ...props }: { children: React.ReactNode; href: string }) => <a href={href} {...props}>{children}</a> }));
 vi.mock("@/lib/trpc", () => ({
   trpc: {
     useUtils: () => ({ quality: { dashboard: { invalidate: vi.fn() }, listTasks: { invalidate: vi.fn() }, listNcs: { invalidate: vi.fn() }, reports: { invalidate: vi.fn() } } }),
     quality: {
-      metadata: { useQuery: () => ({ data: { factories: [{ id: 1, name: "Fábrica 1 (Fatiado)" }], areas: [] } }) },
+      metadata: { useQuery: () => ({ data: { factories: [{ id: 1, name: "Fábrica 1 (Fatiado)" }, { id: 2, name: "Fábrica 2 (granel)" }], areas: [] } }) },
       accessStatus: { useQuery: () => ({ data: { profiles: [] } }) },
-      dashboard: { useQuery: () => ({ data: { metrics: { fragilePending: 1 }, moduleProgress: { bphf: { expected: 2, completed: 1, registeredToday: 1, pending: ["BPHF — Produção"], percentage: 50, lastCompletedAt: now } }, moduleProgressByFactory: { bphf: [{ factoryId: 1, expected: 2, completed: 1, registeredToday: 1, percentage: 50 }] } } }) },
+      dashboard: { useQuery: () => ({ data: { metrics: { fragilePending: 1 }, moduleProgress: { bphf: { expected: 2, completed: 1, registeredToday: 1, pending: ["BPHF — Produção"], percentage: 50, lastCompletedAt: now } }, moduleProgressByFactory: { bphf: [{ factoryId: 1, expected: 1, completed: 1, registeredToday: 1, percentage: 100 }, { factoryId: 2, expected: 1, completed: 0, registeredToday: 0, percentage: 0 }] } } }) },
       listTasks: { useQuery: () => ({ data: [{ id: 1, title: "Verificação diária", module: "bphf", area: "Produção", factoryId: 1, responsible: "Equipa", dueAt: now, status: "completed", completedByName: "Neuza Antunes", completedByTitle: "Tec. Qualidade" }, { id: 2, title: "Tarefa pendente", description: "Confirmar o registo operacional.", module: "bphf", area: "Produção", factoryId: 1, responsible: "Sabrina Esteves", assigneeProfileIds: [1], dueAt: now, status: "pending" }] }) },
       createTask: { useMutation: () => ({ mutate: vi.fn(), isPending: false }) },
       completeTask: { useMutation: () => ({ mutate: vi.fn(), isPending: false }) },
@@ -46,10 +46,10 @@ describe("autoria operacional nas páginas", () => {
     expect(screen.getAllByText("Estado de preenchimento").length).toBeGreaterThanOrEqual(8);
     expect(screen.getByLabelText("Linha temporal de conclusão de Verificação de BPHF: Em preenchimento")).toBeTruthy();
     expect(screen.getByLabelText("Conclusão de Verificação de BPHF: 50%")).toBeTruthy();
-    expect(screen.getByText("1 de 2 verificações")).toBeTruthy();
-    expect(screen.getByText("Pendente hoje: 1 verificação por concluir")).toBeTruthy();
+    expect(screen.getByText("1 de 2 fábricas/linhas")).toBeTruthy();
+    expect(screen.getByText("Pendente hoje: 1 fábrica/linha por concluir")).toBeTruthy();
     expect(screen.getAllByText("Por fábrica / linha").length).toBeGreaterThanOrEqual(8);
-    expect(screen.getByText("50%")).toBeTruthy();
+    expect(screen.getByRole("link", { name: /abrir registos pendentes de bphf para fábrica 2/i }).getAttribute("href")).toBe("/controlos/bphf?factoryId=2&pending=1");
     expect(screen.getByRole("button", { name: /preencher relatório/i })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Editar Tarefa pendente" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Eliminar Tarefa pendente" })).toBeTruthy();

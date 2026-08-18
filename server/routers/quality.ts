@@ -31,6 +31,14 @@ const qualityModuleSchema = z.enum(qualityModuleValues);
 const resultSchema = z.enum(resultValues);
 const dateInput = z.coerce.date();
 const BPHF_AREA_NAMES = ["Produção", "Embalagem", "Logística", "Manutenção", "Limpeza", "Outros"] as const;
+const REQUIRED_MODULE_FREQUENCIES = [
+  { module: "bphf", frequency: "daily", title: "BPHF obrigatório" },
+  { module: "shelf_life", frequency: "daily", title: "Shelf-life obrigatório" },
+  { module: "dispatch_control", frequency: "daily", title: "Expedição obrigatória" },
+  { module: "suggestion_boxes", frequency: "weekly", title: "Caixas de sugestões obrigatórias" },
+  { module: "sensory", frequency: "weekly", title: "Controlo sensorial obrigatório" },
+  { module: "monthly_checklist", frequency: "monthly", title: "Checklist mensal obrigatório" },
+] as const;
 
 function asDateRange(date: Date) {
   const start = new Date(date);
@@ -50,6 +58,21 @@ function startOfWorkingWeek(date: Date) {
   result.setHours(0, 0, 0, 0);
   result.setDate(result.getDate() - ((result.getDay() + 6) % 7));
   return result;
+}
+
+function isLastBusinessDayOfMonth(date: Date) {
+  const candidate = new Date(date);
+  candidate.setHours(0, 0, 0, 0);
+  candidate.setDate(candidate.getDate() + 1);
+  while (!isBusinessDay(candidate)) candidate.setDate(candidate.getDate() + 1);
+  return candidate.getMonth() !== date.getMonth();
+}
+
+function isPlanDue(frequency: string, date: Date) {
+  if (frequency === "daily" || frequency === "per_shift") return isBusinessDay(date);
+  if (frequency === "weekly") return date.getDay() === 5;
+  if (frequency === "monthly") return isLastBusinessDayOfMonth(date);
+  return false;
 }
 
 async function requireDb() {
@@ -231,20 +254,31 @@ export const qualityRouter = router({
     const completedToday = scopedEntries.filter((entry) => entry.completedAt >= start && entry.completedAt < end);
     const todayTasks = businessTasks.filter((task) => task.dueAt >= start && task.dueAt < end);
     const completedTasksToday = todayTasks.filter((task) => task.status === "completed" && task.completedAt && task.completedAt >= start && task.completedAt < end);
-    const dailyPlans = scopedPlans.filter((plan) => plan.frequency === "daily" || plan.frequency === "per_shift");
     const areasById = new Map(areaCatalog.map((area) => [area.id, area.name]));
-    const completedDailyPlans = dailyPlans.filter((plan) => {
+    const lastFragileInspections = new Map<number, Date>();
+    scopedEntries.filter((entry) => entry.module === "fragile_items").forEach((entry) => {
+      const payload = entry.payload;
+      const fragileItemId = payload && typeof payload === "object" && !Array.isArray(payload) ? (payload as { fragileItemId?: unknown }).fragileItemId : null;
+      if (typeof fragileItemId === "number" && !lastFragileInspections.has(fragileItemId)) lastFragileInspections.set(fragileItemId, entry.completedAt);
+    });
+    type ScheduledPlan = { id: number; title: string; module: typeof qualityModuleValues[number]; areaId: number; factoryId: number | null; frequency: string; fragileItemId?: number };
+    const manualPlans: ScheduledPlan[] = scopedPlans.map((plan) => ({ id: plan.id, title: plan.title, module: plan.module, areaId: plan.areaId, factoryId: plan.factoryId, frequency: plan.frequency }));
+    const requiredPlans: ScheduledPlan[] = REQUIRED_MODULE_FREQUENCIES.filter((rule) => isPlanDue(rule.frequency, operationalDate)).flatMap((rule, ruleIndex) => factoryCatalog.filter((factory) => !input?.factoryId || factory.id === input.factoryId).filter((factory) => !manualPlans.some((plan) => plan.module === rule.module && plan.frequency === rule.frequency && (plan.factoryId === factory.id || plan.factoryId === null))).map((factory) => ({ id: -((ruleIndex + 1) * 1000 + factory.id), title: rule.title, module: rule.module, areaId: 0, factoryId: factory.id, frequency: rule.frequency })));
+    const fragileRequiredPlans: ScheduledPlan[] = scopedFragileCatalog.filter((item) => item.status === "active" && isFragileInspectionPending(item.periodicity, lastFragileInspections.get(item.id), operationalDate)).map((item) => ({ id: -(90_000 + item.id), title: `Quebrável — ${item.name}`, module: "fragile_items", areaId: 0, factoryId: item.factoryId, frequency: item.periodicity, fragileItemId: item.id }));
+    const duePlans = [...manualPlans.filter((plan) => isPlanDue(plan.frequency, operationalDate)), ...requiredPlans, ...fragileRequiredPlans];
+    const completedDuePlans = duePlans.filter((plan) => {
+      if (plan.fragileItemId) return completedToday.some((entry) => entry.module === "fragile_items" && entry.factoryId === plan.factoryId && Boolean(entry.payload && typeof entry.payload === "object" && (entry.payload as { fragileItemId?: unknown }).fragileItemId === plan.fragileItemId));
       const planArea = areasById.get(plan.areaId);
       return completedToday.some((entry) => entry.module === plan.module && (!plan.factoryId || entry.factoryId === plan.factoryId) && (!planArea || entry.area === planArea));
     });
-    const dailyExpectedCount = todayTasks.length + dailyPlans.length;
-    const dailyCompletedCount = completedTasksToday.length + completedDailyPlans.length;
+    const dailyExpectedCount = todayTasks.length + duePlans.length;
+    const dailyCompletedCount = completedTasksToday.length + completedDuePlans.length;
     const effectiveDailyExpectedCount = dailyExpectedCount || completedToday.length;
     const moduleProgress = Object.fromEntries(qualityModuleValues.map((module) => {
       const moduleTasks = todayTasks.filter((task) => task.module === module);
-      const modulePlans = dailyPlans.filter((plan) => plan.module === module);
+      const modulePlans = duePlans.filter((plan) => plan.module === module);
       const moduleCompletedTasks = completedTasksToday.filter((task) => task.module === module);
-      const moduleCompletedPlans = completedDailyPlans.filter((plan) => plan.module === module);
+      const moduleCompletedPlans = completedDuePlans.filter((plan) => plan.module === module);
       const registeredToday = completedToday.filter((entry) => entry.module === module).length;
       const expected = moduleTasks.length + modulePlans.length;
       const completed = moduleCompletedTasks.length + moduleCompletedPlans.length;
@@ -261,9 +295,9 @@ export const qualityRouter = router({
     const visibleFactories = input?.factoryId ? factoryCatalog.filter((factory) => factory.id === input.factoryId) : factoryCatalog;
     const moduleProgressByFactory = Object.fromEntries(qualityModuleValues.map((module) => [module, visibleFactories.map((factory) => {
       const factoryTasks = todayTasks.filter((task) => task.module === module && task.factoryId === factory.id);
-      const factoryPlans = dailyPlans.filter((plan) => plan.module === module && plan.factoryId === factory.id);
+      const factoryPlans = duePlans.filter((plan) => plan.module === module && plan.factoryId === factory.id);
       const factoryCompletedTasks = completedTasksToday.filter((task) => task.module === module && task.factoryId === factory.id);
-      const factoryCompletedPlans = completedDailyPlans.filter((plan) => plan.module === module && plan.factoryId === factory.id);
+      const factoryCompletedPlans = completedDuePlans.filter((plan) => plan.module === module && plan.factoryId === factory.id);
       const registeredToday = completedToday.filter((entry) => entry.module === module && entry.factoryId === factory.id).length;
       const expected = factoryTasks.length + factoryPlans.length;
       const completed = factoryCompletedTasks.length + factoryCompletedPlans.length;
@@ -272,12 +306,6 @@ export const qualityRouter = router({
     })]));
     const critical = scopedNcs.filter((nc) => nc.status !== "closed" && nc.severity === "critical");
     const openActions = scopedActions.filter((action) => action.status !== "verified");
-    const lastFragileInspections = new Map<number, Date>();
-    scopedEntries.filter((entry) => entry.module === "fragile_items").forEach((entry) => {
-      const payload = entry.payload;
-      const fragileItemId = payload && typeof payload === "object" && !Array.isArray(payload) ? (payload as { fragileItemId?: unknown }).fragileItemId : null;
-      if (typeof fragileItemId === "number" && !lastFragileInspections.has(fragileItemId)) lastFragileInspections.set(fragileItemId, entry.completedAt);
-    });
     const fragilePending = scopedFragileCatalog.filter((item) => item.status === "active" && isFragileInspectionPending(item.periodicity, lastFragileInspections.get(item.id), now));
 
     return {

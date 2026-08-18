@@ -14,6 +14,7 @@ const tasks = [
   { id: 2, factoryId: 1, status: "pending", dueAt: now, completedAt: null, module: "metal_detectors", area: "Tradicional 1", title: "Metal F1", responsible: "Ana", assigneeProfileIds: [2] },
   { id: 3, factoryId: 2, status: "completed", dueAt: now, completedAt: now, module: "bphf", area: "Granel", title: "BPHF F2", responsible: "Bruno", assigneeProfileIds: [1] },
 ];
+const initialTasks = tasks.map((task) => ({ ...task, assigneeProfileIds: [...task.assigneeProfileIds] }));
 const entries = [
   { id: 1, factoryId: 1, module: "bphf", area: "Produção T", result: "C", completedAt: now, registeredByProfileId: 3, registeredByName: "Joana Pina", registeredByTitle: "Resp. Qualidade" },
   { id: 2, factoryId: 1, module: "metal_detectors", area: "Tradicional 1", result: "NC", completedAt: now },
@@ -84,17 +85,17 @@ function mockDatabase() {
 }
 
 describe("procedimentos de qualidade por fábrica", () => {
-  beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(now); dbUpdates.length = 0; dbInserts.length = 0; vi.clearAllMocks(); vi.mocked(getDb).mockResolvedValue(mockDatabase() as any); });
+  beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(now); tasks.splice(0, tasks.length, ...initialTasks.map((task) => ({ ...task, assigneeProfileIds: [...task.assigneeProfileIds] }))); plans.length = 0; dbUpdates.length = 0; dbInserts.length = 0; vi.clearAllMocks(); vi.mocked(getDb).mockResolvedValue(mockDatabase() as any); });
 
   it("filtra o painel e as tarefas pela fábrica selecionada", async () => {
     const caller = qualityRouter.createCaller(createContext());
     const dashboard = await caller.dashboard({ factoryId: 1 });
     const filteredTasks = await caller.listTasks({ factoryId: 1 });
     expect(dashboard.tasks.map((task) => task.id)).toEqual([1, 2]);
-    expect(dashboard.metrics).toMatchObject({ pending: 1, criticalOpen: 1, completedToday: 3, fragilePending: 1, dailyExecutionRate: 50 });
-    expect(dashboard.moduleProgress.bphf).toMatchObject({ expected: 1, completed: 1, pending: [], percentage: 100 });
+    expect(dashboard.metrics).toMatchObject({ pending: 1, criticalOpen: 1, completedToday: 3, fragilePending: 1, dailyExecutionRate: 25 });
+    expect(dashboard.moduleProgress.bphf).toMatchObject({ expected: 2, completed: 2, pending: [], percentage: 100 });
     expect(dashboard.moduleProgress.metal_detectors).toMatchObject({ expected: 1, completed: 0, pending: ["Metal F1"], percentage: 0 });
-    expect(dashboard.moduleProgressByFactory.bphf).toEqual([{ factoryId: 1, expected: 1, completed: 1, registeredToday: 1, percentage: 100 }]);
+    expect(dashboard.moduleProgressByFactory.bphf).toEqual([{ factoryId: 1, expected: 2, completed: 2, registeredToday: 1, percentage: 100 }]);
     expect(dashboard.moduleProgressByFactory.metal_detectors).toEqual([{ factoryId: 1, expected: 1, completed: 0, registeredToday: 1, percentage: 0 }]);
     expect(filteredTasks.map((task) => task.id)).toEqual([1, 2]);
   });
@@ -104,27 +105,25 @@ describe("procedimentos de qualidade por fábrica", () => {
     const caller = qualityRouter.createCaller(pinOnlyContext);
 
     await expect(caller.metadata()).resolves.toMatchObject({ factories: factoryRows });
-    await expect(caller.dashboard({ factoryId: 1 })).resolves.toMatchObject({ metrics: { dailyExecutionRate: 50 } });
+    await expect(caller.dashboard({ factoryId: 1 })).resolves.toMatchObject({ metrics: { dailyExecutionRate: 25 } });
   });
 
-  it("não apresenta 100% enquanto existir um plano diário previsto sem registo", async () => {
+  it("não replica a obrigação diária quando existe um plano manual equivalente", async () => {
     plans.push({ id: 1, title: "BPHF diário", module: "bphf", areaId: 101, factoryId: 1, frequency: "daily", active: "true" });
     const caller = qualityRouter.createCaller(createContext());
     const dashboard = await caller.dashboard({ factoryId: 1 });
 
-    expect(dashboard.metrics.dailyExecutionRate).toBe(66.7);
-    plans.length = 0;
+    expect(dashboard.metrics.dailyExecutionRate).toBe(25);
+    expect(dashboard.moduleProgress.bphf).toMatchObject({ expected: 2, completed: 2, percentage: 100 });
   });
 
-  it("considera os registos efetuados quando não existem tarefas ou planos diários", async () => {
-    const originalTasks = [...tasks];
+  it("mantém as obrigações padrão mesmo quando não existem tarefas pontuais", async () => {
     tasks.length = 0;
     const caller = qualityRouter.createCaller(createContext());
     const dashboard = await caller.dashboard({ factoryId: 1 });
 
-    expect(dashboard.metrics.dailyExecutionRate).toBe(100);
-    expect(dashboard.moduleProgress.bphf).toMatchObject({ expected: 0, registeredToday: 1, percentage: 100 });
-    tasks.push(...originalTasks);
+    expect(dashboard.metrics.dailyExecutionRate).toBe(16.7);
+    expect(dashboard.moduleProgress.bphf).toMatchObject({ expected: 1, completed: 1, registeredToday: 1, percentage: 100 });
   });
 
   it("filtra NC e agrega os relatórios sem misturar a fábrica 2", async () => {
