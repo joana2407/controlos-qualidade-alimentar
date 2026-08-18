@@ -35,7 +35,6 @@ const BPHF_AREA_NAMES = ["Produção", "Embalagem", "Logística", "Manutenção"
 const REQUIRED_MODULE_FREQUENCIES = [
   { module: "bphf", frequency: "daily", title: "BPHF obrigatório" },
   { module: "shelf_life", frequency: "daily", title: "Shelf-life obrigatório" },
-  { module: "dispatch_control", frequency: "daily", title: "Expedição obrigatória" },
   { module: "suggestion_boxes", frequency: "weekly", title: "Caixas de sugestões obrigatórias" },
   { module: "sensory", frequency: "weekly", title: "Controlo sensorial obrigatório" },
   { module: "monthly_checklist", frequency: "monthly", title: "Checklist mensal obrigatório" },
@@ -270,10 +269,11 @@ export const qualityRouter = router({
       if (typeof fragileItemId === "number" && !lastFragileInspections.has(fragileItemId)) lastFragileInspections.set(fragileItemId, entry.completedAt);
     });
     type ScheduledPlan = { id: number; title: string; module: typeof qualityModuleValues[number]; areaId: number; factoryId: number | null; frequency: string; fragileItemId?: number };
-    const manualPlans: ScheduledPlan[] = scopedPlans.map((plan) => ({ id: plan.id, title: plan.title, module: plan.module, areaId: plan.areaId, factoryId: plan.factoryId, frequency: plan.frequency }));
+    const manualPlans: ScheduledPlan[] = scopedPlans.filter((plan) => plan.module !== "dispatch_control").map((plan) => ({ id: plan.id, title: plan.title, module: plan.module, areaId: plan.areaId, factoryId: plan.factoryId, frequency: plan.frequency }));
     const requiredPlans: ScheduledPlan[] = REQUIRED_MODULE_FREQUENCIES.filter((rule) => isPlanDue(rule.frequency, operationalDate)).flatMap((rule, ruleIndex) => factoryCatalog.filter((factory) => !input?.factoryId || factory.id === input.factoryId).filter((factory) => !manualPlans.some((plan) => plan.module === rule.module && plan.frequency === rule.frequency && (plan.factoryId === factory.id || plan.factoryId === null))).map((factory) => ({ id: -((ruleIndex + 1) * 1000 + factory.id), title: rule.title, module: rule.module, areaId: 0, factoryId: factory.id, frequency: rule.frequency })));
+    const sharedDispatchPlan: ScheduledPlan[] = !input?.factoryId && isPlanDue("daily", operationalDate) ? [{ id: -80_001, title: "Expedição diária obrigatória", module: "dispatch_control", areaId: 0, factoryId: null, frequency: "daily" }] : [];
     const fragileRequiredPlans: ScheduledPlan[] = scopedFragileCatalog.filter((item) => item.status === "active" && isFragileInspectionPending(item.periodicity, lastFragileInspections.get(item.id), operationalDate)).map((item) => ({ id: -(90_000 + item.id), title: `Quebrável — ${item.name}`, module: "fragile_items", areaId: 0, factoryId: item.factoryId, frequency: item.periodicity, fragileItemId: item.id }));
-    const duePlans = [...manualPlans.filter((plan) => isPlanDue(plan.frequency, operationalDate)), ...requiredPlans, ...fragileRequiredPlans];
+    const duePlans = [...manualPlans.filter((plan) => isPlanDue(plan.frequency, operationalDate)), ...requiredPlans, ...sharedDispatchPlan, ...fragileRequiredPlans];
     const completedDuePlans = duePlans.filter((plan) => {
       if (plan.fragileItemId) return completedToday.some((entry) => entry.module === "fragile_items" && entry.factoryId === plan.factoryId && Boolean(entry.payload && typeof entry.payload === "object" && (entry.payload as { fragileItemId?: unknown }).fragileItemId === plan.fragileItemId));
       const planArea = areasById.get(plan.areaId);
@@ -551,7 +551,7 @@ export const qualityRouter = router({
   }),
 
   registerDispatchControl: qualityOperatorProcedure.input(z.object({
-    factoryId: z.number().int(),
+    factoryId: z.number().int().optional(),
     profile: z.enum(["ambiente", "congelado"]),
     orderNumber: z.string().min(1).max(80),
     customer: z.string().min(2).max(160),
@@ -586,7 +586,7 @@ export const qualityRouter = router({
     const title = `Expedição ${input.orderNumber} — ${input.customer}`;
     const area = `Expedição ${input.profile}`;
     const payload = { ...input, profileLabel: profile.label, temperatureLimits: limits, ...conformity };
-    await db.insert(controlEntries).values({ module: "dispatch_control", title, area, factoryId: input.factoryId, result: conformity.result, notes: input.observations ?? null, payload, completedAt, registeredByProfileId: ctx.operatorProfile!.id, registeredByName: ctx.operatorProfile!.name, registeredByTitle: ctx.operatorProfile!.title, createdBy: ctx.user!.openId });
+    await db.insert(controlEntries).values({ module: "dispatch_control", title, area, factoryId: null, result: conformity.result, notes: input.observations ?? null, payload, completedAt, registeredByProfileId: ctx.operatorProfile!.id, registeredByName: ctx.operatorProfile!.name, registeredByTitle: ctx.operatorProfile!.title, createdBy: ctx.user!.openId });
     return { success: true, conformity, limits, incidence: conformity.result === "NC" };
   }),
 

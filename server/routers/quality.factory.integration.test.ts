@@ -94,7 +94,7 @@ describe("procedimentos de qualidade por fábrica", () => {
     const dashboard = await caller.dashboard({ factoryId: 1 });
     const filteredTasks = await caller.listTasks({ factoryId: 1 });
     expect(dashboard.tasks.map((task) => task.id)).toEqual([1, 2]);
-    expect(dashboard.metrics).toMatchObject({ pending: 1, criticalOpen: 1, completedToday: 3, fragilePending: 1, dailyExecutionRate: 25 });
+    expect(dashboard.metrics).toMatchObject({ pending: 1, criticalOpen: 1, completedToday: 3, fragilePending: 1, dailyExecutionRate: 28.6 });
     expect(dashboard.moduleProgress.bphf).toMatchObject({ expected: 2, completed: 2, pending: [], percentage: 100 });
     expect(dashboard.moduleProgress.metal_detectors).toMatchObject({ expected: 1, completed: 0, pending: ["Metal F1"], percentage: 0 });
     expect(dashboard.moduleProgressByFactory.bphf).toEqual([{ factoryId: 1, expected: 2, completed: 2, registeredToday: 1, percentage: 100 }]);
@@ -107,7 +107,7 @@ describe("procedimentos de qualidade por fábrica", () => {
     const caller = qualityRouter.createCaller(pinOnlyContext);
 
     await expect(caller.metadata()).resolves.toMatchObject({ factories: factoryRows });
-    await expect(caller.dashboard({ factoryId: 1 })).resolves.toMatchObject({ metrics: { dailyExecutionRate: 25 } });
+    await expect(caller.dashboard({ factoryId: 1 })).resolves.toMatchObject({ metrics: { dailyExecutionRate: 28.6 } });
   });
 
   it("não replica a obrigação diária quando existe um plano manual equivalente", async () => {
@@ -115,7 +115,7 @@ describe("procedimentos de qualidade por fábrica", () => {
     const caller = qualityRouter.createCaller(createContext());
     const dashboard = await caller.dashboard({ factoryId: 1 });
 
-    expect(dashboard.metrics.dailyExecutionRate).toBe(25);
+    expect(dashboard.metrics.dailyExecutionRate).toBe(28.6);
     expect(dashboard.moduleProgress.bphf).toMatchObject({ expected: 2, completed: 2, percentage: 100 });
   });
 
@@ -124,8 +124,15 @@ describe("procedimentos de qualidade por fábrica", () => {
     const caller = qualityRouter.createCaller(createContext());
     const dashboard = await caller.dashboard({ factoryId: 1 });
 
-    expect(dashboard.metrics.dailyExecutionRate).toBe(16.7);
+    expect(dashboard.metrics.dailyExecutionRate).toBe(20);
     expect(dashboard.moduleProgress.bphf).toMatchObject({ expected: 1, completed: 1, registeredToday: 1, percentage: 100 });
+  });
+
+  it("planeia uma única expedição diária comum a toda a operação", async () => {
+    const caller = qualityRouter.createCaller(createContext());
+    const dashboard = await caller.dashboard();
+    expect(dashboard.moduleProgress.dispatch_control).toMatchObject({ expected: 1, completed: 0, registeredToday: 0, percentage: 0, pending: ["Expedição diária obrigatória"] });
+    expect(dashboard.moduleProgressByFactory.dispatch_control.every((entry) => entry.expected === 0)).toBe(true);
   });
 
   it("filtra NC e agrega os relatórios sem misturar a fábrica 2", async () => {
@@ -300,14 +307,14 @@ describe("procedimentos de qualidade por fábrica", () => {
     const result = await caller.registerDispatchControl({ factoryId: 1, profile: "congelado", orderNumber: "ENC-100", customer: "Cliente Norte", deliveryNote: "GR-50", product: "Pão congelado", lot: "L-100", orderedBoxes: 24, dispatchedBoxes: 24, productLabelResult: "C", boxLabelResult: "C", productTemperature: -17, vehicleTemperature: -18, observations: "Produto acima do limite para congelados." });
     expect(result.conformity).toMatchObject({ result: "NC", productTemperatureResult: "NC", vehicleTemperatureResult: "C" });
     expect(result.incidence).toBe(true);
-    expect(dbInserts[0]).toMatchObject({ module: "dispatch_control", result: "NC", factoryId: 1, area: "Expedição congelado", registeredByName: "Joana Pina" });
+    expect(dbInserts[0]).toMatchObject({ module: "dispatch_control", result: "NC", factoryId: null, area: "Expedição congelado", registeredByName: "Joana Pina" });
     expect(dbInserts).toHaveLength(1);
   });
 
   it("regista desvios de expedição sem criar NC automática", async () => {
     const caller = qualityRouter.createCaller(createContext());
     await caller.registerDispatchControl({ factoryId: 2, profile: "ambiente", orderNumber: "ENC-101", customer: "Cliente Centro", product: "Pão de forma", lot: "L-101", orderedBoxes: 25, dispatchedBoxes: 24, productLabelResult: "NC", boxLabelResult: "C", productTemperature: 18, vehicleTemperature: 20, observations: "Quantidade e rotulagem do produto divergentes." });
-    expect(dbInserts[0]).toMatchObject({ module: "dispatch_control", result: "NC", factoryId: 2, area: "Expedição ambiente" });
+    expect(dbInserts[0]).toMatchObject({ module: "dispatch_control", result: "NC", factoryId: null, area: "Expedição ambiente" });
     expect(dbInserts).toHaveLength(1);
   });
 });
