@@ -206,3 +206,5 @@
 - [x] Permitir anexar evidências fotográficas ao relatório de execução das tarefas, com acesso restrito aos responsáveis e à Responsável de Qualidade.
 - [x] Mostrar no painel Hoje o relatório diário de execução dos controlos e das tarefas.
 - [x] Criar dashboards de relatórios com filtros por período, fábrica ou linha, módulo, resultado e estado.
+- [x] Mostrar em cada cartão de controlo o progresso diário por fábrica ou linha.
+- [x] Remover o bloco de texto detalhado de estado por fábrica ou linha da vista geral de Controlos.

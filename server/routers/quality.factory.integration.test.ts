@@ -94,6 +94,8 @@ describe("procedimentos de qualidade por fábrica", () => {
     expect(dashboard.metrics).toMatchObject({ pending: 1, criticalOpen: 1, completedToday: 3, fragilePending: 1, dailyExecutionRate: 50 });
     expect(dashboard.moduleProgress.bphf).toMatchObject({ expected: 1, completed: 1, pending: [], percentage: 100 });
     expect(dashboard.moduleProgress.metal_detectors).toMatchObject({ expected: 1, completed: 0, pending: ["Metal F1"], percentage: 0 });
+    expect(dashboard.moduleProgressByFactory.bphf).toEqual([{ factoryId: 1, expected: 1, completed: 1, registeredToday: 1, percentage: 100 }]);
+    expect(dashboard.moduleProgressByFactory.metal_detectors).toEqual([{ factoryId: 1, expected: 1, completed: 0, registeredToday: 1, percentage: 0 }]);
     expect(filteredTasks.map((task) => task.id)).toEqual([1, 2]);
   });
 

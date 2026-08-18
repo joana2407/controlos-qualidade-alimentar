@@ -13,7 +13,7 @@ vi.mock("@/lib/trpc", () => ({
     quality: {
       metadata: { useQuery: () => ({ data: { factories: [{ id: 1, name: "Fábrica 1 (Fatiado)" }], areas: [] } }) },
       accessStatus: { useQuery: () => ({ data: { profiles: [] } }) },
-      dashboard: { useQuery: () => ({ data: { metrics: { fragilePending: 1 }, moduleProgress: { bphf: { expected: 2, completed: 1, registeredToday: 1, pending: ["BPHF — Produção"], percentage: 50, lastCompletedAt: now } } } }) },
+      dashboard: { useQuery: () => ({ data: { metrics: { fragilePending: 1 }, moduleProgress: { bphf: { expected: 2, completed: 1, registeredToday: 1, pending: ["BPHF — Produção"], percentage: 50, lastCompletedAt: now } }, moduleProgressByFactory: { bphf: [{ factoryId: 1, expected: 2, completed: 1, registeredToday: 1, percentage: 50 }] } } }) },
       listTasks: { useQuery: () => ({ data: [{ id: 1, title: "Verificação diária", module: "bphf", area: "Produção", factoryId: 1, responsible: "Equipa", dueAt: now, status: "completed", completedByName: "Neuza Antunes", completedByTitle: "Tec. Qualidade" }, { id: 2, title: "Tarefa pendente", description: "Confirmar o registo operacional.", module: "bphf", area: "Produção", factoryId: 1, responsible: "Sabrina Esteves", assigneeProfileIds: [1], dueAt: now, status: "pending" }] }) },
       createTask: { useMutation: () => ({ mutate: vi.fn(), isPending: false }) },
       completeTask: { useMutation: () => ({ mutate: vi.fn(), isPending: false }) },
@@ -48,9 +48,8 @@ describe("autoria operacional nas páginas", () => {
     expect(screen.getByLabelText("Conclusão de Verificação de BPHF: 50%")).toBeTruthy();
     expect(screen.getByText("1 de 2 verificações")).toBeTruthy();
     expect(screen.getByText("Pendente hoje: 1 verificação por concluir")).toBeTruthy();
-    expect(screen.getByLabelText("Filtrar progresso por fábrica ou linha")).toBeTruthy();
-    expect(screen.getByText("Registos diários")).toBeTruthy();
-    expect(screen.getByText("Registos periódicos")).toBeTruthy();
+    expect(screen.getAllByText("Por fábrica / linha").length).toBeGreaterThanOrEqual(8);
+    expect(screen.getByText("50%")).toBeTruthy();
     expect(screen.getByRole("button", { name: /preencher relatório/i })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Editar Tarefa pendente" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Eliminar Tarefa pendente" })).toBeTruthy();

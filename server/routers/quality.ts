@@ -201,7 +201,7 @@ export const qualityRouter = router({
 
   dashboard: qualitySessionProcedure.input(z.object({ factoryId: z.number().int().optional() }).optional()).query(async ({ input }) => {
     const db = await requireDb();
-    const [tasks, ncs, entries, actions, fragileCatalog, plans, areaCatalog] = await Promise.all([
+    const [tasks, ncs, entries, actions, fragileCatalog, plans, areaCatalog, factoryCatalog] = await Promise.all([
       db.select().from(controlTasks).orderBy(controlTasks.dueAt),
       db.select().from(nonconformities).orderBy(desc(nonconformities.detectedAt)),
       db.select().from(controlEntries).orderBy(desc(controlEntries.completedAt)),
@@ -209,6 +209,7 @@ export const qualityRouter = router({
       db.select().from(fragileItems).orderBy(fragileItems.location, fragileItems.sortOrder, fragileItems.name),
       db.select().from(controlPlans).orderBy(controlPlans.module, controlPlans.title),
       db.select().from(areas).orderBy(areas.name),
+      db.select().from(factories).orderBy(factories.name),
     ]);
     const scopedTasks = scopeToFactory(tasks, input?.factoryId);
     const scopedNcs = scopeToFactory(ncs, input?.factoryId);
@@ -257,6 +258,18 @@ export const qualityRouter = router({
       const lastCompletedAt = completionTimes.reduce<Date | undefined>((latest, date) => !latest || date > latest ? date : latest, undefined);
       return [module, { expected, completed: expected ? completed : registeredToday, registeredToday, pending: Array.from(new Set([...pendingTaskTitles, ...pendingPlanTitles])), percentage: denominator ? Number(((expected ? completed : registeredToday) / denominator * 100).toFixed(1)) : 0, lastCompletedAt }];
     }));
+    const visibleFactories = input?.factoryId ? factoryCatalog.filter((factory) => factory.id === input.factoryId) : factoryCatalog;
+    const moduleProgressByFactory = Object.fromEntries(qualityModuleValues.map((module) => [module, visibleFactories.map((factory) => {
+      const factoryTasks = todayTasks.filter((task) => task.module === module && task.factoryId === factory.id);
+      const factoryPlans = dailyPlans.filter((plan) => plan.module === module && plan.factoryId === factory.id);
+      const factoryCompletedTasks = completedTasksToday.filter((task) => task.module === module && task.factoryId === factory.id);
+      const factoryCompletedPlans = completedDailyPlans.filter((plan) => plan.module === module && plan.factoryId === factory.id);
+      const registeredToday = completedToday.filter((entry) => entry.module === module && entry.factoryId === factory.id).length;
+      const expected = factoryTasks.length + factoryPlans.length;
+      const completed = factoryCompletedTasks.length + factoryCompletedPlans.length;
+      const denominator = expected || registeredToday;
+      return { factoryId: factory.id, expected, completed: expected ? completed : registeredToday, registeredToday, percentage: denominator ? Number(((expected ? completed : registeredToday) / denominator * 100).toFixed(1)) : 0 };
+    })]));
     const critical = scopedNcs.filter((nc) => nc.status !== "closed" && nc.severity === "critical");
     const openActions = scopedActions.filter((action) => action.status !== "verified");
     const lastFragileInspections = new Map<number, Date>();
@@ -286,6 +299,7 @@ export const qualityRouter = router({
         dailyExecutionRate: effectiveDailyExpectedCount ? Number(((dailyExpectedCount ? dailyCompletedCount : completedToday.length) / effectiveDailyExpectedCount * 100).toFixed(1)) : 0,
       },
       moduleProgress,
+      moduleProgressByFactory,
     };
   }),
 
