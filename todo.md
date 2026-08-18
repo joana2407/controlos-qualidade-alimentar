@@ -195,3 +195,5 @@
 - [x] Restaurar rótulos explícitos de Incidência e Não Conformidade, sem alteração automática da terminologia no ecrã.
 - [x] Mostrar no painel de Controlos o estado diário de preenchimento de cada módulo.
 - [x] Adicionar uma linha temporal por controlo que apresente a evolução até à conclusão diária.
+- [x] Permitir filtrar o progresso diário dos controlos por fábrica ou linha no painel de Controlos.
+- [x] Destacar visualmente os módulos com verificações diárias em atraso.

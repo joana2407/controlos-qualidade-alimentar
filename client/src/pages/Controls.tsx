@@ -1,4 +1,3 @@
-import { useQualityAccess } from "@/contexts/QualityAccessContext";
 import { OperatorAttribution } from "@/components/quality/OperatorAttribution";
 import { StatusBadge } from "@/components/quality/QualityUi";
 import { Button } from "@/components/ui/button";
@@ -10,60 +9,182 @@ import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { useQualityAccess } from "@/contexts/QualityAccessContext";
 import { dateFormat, MODULES } from "@/lib/quality";
 import { trpc } from "@/lib/trpc";
-import { Boxes, Check, CheckCircle2, ChevronRight, CircleDotDashed, ClipboardPlus, Clock3, FlaskConical, Gauge, HeartPulse, ListChecks, ListTodo, MessageSquareText, ShieldCheck, Truck, X } from "lucide-react";
+import { AlertTriangle, Boxes, Check, CheckCircle2, ChevronRight, CircleDotDashed, ClipboardPlus, Clock3, FlaskConical, Gauge, HeartPulse, ListChecks, ListTodo, MessageSquareText, ShieldCheck, Truck, X } from "lucide-react";
 import React, { FormEvent, useMemo, useState } from "react";
-import { Link } from "wouter";
 import { toast } from "sonner";
+import { Link } from "wouter";
 
 const icons = { bphf: ShieldCheck, metal_detectors: Gauge, sensory: FlaskConical, shelf_life: HeartPulse, monthly_checklist: ListChecks, suggestion_boxes: MessageSquareText, fragile_items: Boxes, dispatch_control: Truck } as const;
-const dayStart = (value: Date) => { const result = new Date(value); result.setHours(0, 0, 0, 0); return result; };
-const nextWorkDate = () => { const value = dayStart(new Date()); while ([0, 6].includes(value.getDay())) value.setDate(value.getDate() + 1); return value.toISOString().slice(0, 10); };
-const nextBusinessDate = (value: Date) => { const result = dayStart(value); do result.setDate(result.getDate() + 1); while ([0, 6].includes(result.getDay())); return result; };
 
-type ModuleProgress = { expected: number; completed: number; registeredToday: number; pending: string[]; percentage: number; lastCompletedAt?: Date | null };
+type ModuleProgress = {
+  expected: number;
+  completed: number;
+  registeredToday: number;
+  pending: string[];
+  percentage: number;
+  lastCompletedAt?: Date | null;
+};
+
+const dayStart = (value: Date) => {
+  const result = new Date(value);
+  result.setHours(0, 0, 0, 0);
+  return result;
+};
+
+const nextWorkDate = () => {
+  const value = dayStart(new Date());
+  while ([0, 6].includes(value.getDay())) value.setDate(value.getDate() + 1);
+  return value.toISOString().slice(0, 10);
+};
+
+const nextBusinessDate = (value: Date) => {
+  const result = dayStart(value);
+  do result.setDate(result.getDate() + 1); while ([0, 6].includes(result.getDay()));
+  return result;
+};
 
 function ModuleCompletionTimeline({ label, progress }: { label: string; progress?: ModuleProgress }) {
   const expected = progress?.expected ?? 0;
   const completed = progress?.completed ?? 0;
+  const registeredToday = progress?.registeredToday ?? 0;
   const percentage = Math.min(100, Math.max(0, progress?.percentage ?? 0));
-  const hasActivity = expected > 0 || (progress?.registeredToday ?? 0) > 0;
+  const hasActivity = expected > 0 || registeredToday > 0;
   const isComplete = hasActivity && percentage >= 100;
   const isInProgress = hasActivity && !isComplete && completed > 0;
+  const isDelayed = expected > completed;
   const stateLabel = !hasActivity ? "Sem verificação prevista" : isComplete ? "Concluído" : isInProgress ? "Em preenchimento" : "Por iniciar";
-  const lastCompletedLabel = progress?.lastCompletedAt ? new Date(progress.lastCompletedAt).toLocaleTimeString("pt-PT", { hour: "2-digit", minute: "2-digit" }) : null;
+  const lastCompletedLabel = progress?.lastCompletedAt
+    ? new Date(progress.lastCompletedAt).toLocaleTimeString("pt-PT", { hour: "2-digit", minute: "2-digit" })
+    : null;
   const stateClass = isComplete ? "text-emerald-700" : isInProgress ? "text-teal-700" : hasActivity ? "text-slate-600" : "text-slate-500";
 
-  return <div className="mt-5 rounded-xl bg-slate-50 p-3" aria-label={`Linha temporal de conclusão de ${label}: ${stateLabel}`}>
-    <div className="flex items-center justify-between gap-3"><p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Estado de preenchimento</p><span className={`text-xs font-semibold ${stateClass}`}>{stateLabel}</span></div>
-    <div className="mt-3 flex items-center" aria-hidden="true"><span className={`grid h-6 w-6 shrink-0 place-items-center rounded-full ${hasActivity ? "bg-teal-700 text-white" : "bg-slate-200 text-slate-500"}`}><Clock3 className="h-3.5 w-3.5" /></span><span className={`h-0.5 flex-1 ${isInProgress || isComplete ? "bg-teal-600" : "bg-slate-200"}`} /><span className={`grid h-6 w-6 shrink-0 place-items-center rounded-full ${isInProgress || isComplete ? "bg-teal-700 text-white" : "bg-slate-200 text-slate-500"}`}><CircleDotDashed className="h-3.5 w-3.5" /></span><span className={`h-0.5 flex-1 ${isComplete ? "bg-emerald-600" : "bg-slate-200"}`} /><span className={`grid h-6 w-6 shrink-0 place-items-center rounded-full ${isComplete ? "bg-emerald-600 text-white" : "bg-slate-200 text-slate-500"}`}><CheckCircle2 className="h-3.5 w-3.5" /></span></div>
-    <div className="mt-1 grid grid-cols-3 text-[10px] font-medium text-slate-500"><span>Previsto</span><span className="text-center">Em curso</span><span className="text-right">Concluído</span></div>
-    <div className="mt-3 flex items-center justify-between gap-3 text-xs text-slate-600"><span>{hasActivity ? `${completed} de ${expected || progress?.registeredToday || 0} verificações` : "Sem plano diário associado"}</span><span>{lastCompletedLabel ? `Último registo às ${lastCompletedLabel}` : `${percentage}%`}</span></div>
-    <Progress className="mt-2 h-1.5 bg-slate-200" value={percentage} aria-label={`Conclusão de ${label}: ${percentage}%`} />
-  </div>;
+  return (
+    <div className={`mt-5 rounded-xl p-3 ${isDelayed ? "border border-red-200 bg-red-50/60" : "bg-slate-50"}`} aria-label={`Linha temporal de conclusão de ${label}: ${stateLabel}`}>
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Estado de preenchimento</p>
+        <span className={`text-xs font-semibold ${stateClass}`}>{stateLabel}</span>
+      </div>
+      {isDelayed && (
+        <div className="mt-2 flex items-center gap-1.5 text-xs font-semibold text-red-700" role="status">
+          <AlertTriangle className="h-3.5 w-3.5" aria-hidden="true" />
+          Pendente hoje: {expected - completed} verificação{expected - completed === 1 ? "" : "ões"} por concluir
+        </div>
+      )}
+      <div className="mt-3 flex items-center" aria-hidden="true">
+        <span className={`grid h-6 w-6 shrink-0 place-items-center rounded-full ${hasActivity ? "bg-teal-700 text-white" : "bg-slate-200 text-slate-500"}`}><Clock3 className="h-3.5 w-3.5" /></span>
+        <span className={`h-0.5 flex-1 ${isInProgress || isComplete ? "bg-teal-600" : "bg-slate-200"}`} />
+        <span className={`grid h-6 w-6 shrink-0 place-items-center rounded-full ${isInProgress || isComplete ? "bg-teal-700 text-white" : "bg-slate-200 text-slate-500"}`}><CircleDotDashed className="h-3.5 w-3.5" /></span>
+        <span className={`h-0.5 flex-1 ${isComplete ? "bg-emerald-600" : "bg-slate-200"}`} />
+        <span className={`grid h-6 w-6 shrink-0 place-items-center rounded-full ${isComplete ? "bg-emerald-600 text-white" : "bg-slate-200 text-slate-500"}`}><CheckCircle2 className="h-3.5 w-3.5" /></span>
+      </div>
+      <div className="mt-1 grid grid-cols-3 text-[10px] font-medium text-slate-500"><span>Previsto</span><span className="text-center">Em curso</span><span className="text-right">Concluído</span></div>
+      <div className="mt-3 flex items-center justify-between gap-3 text-xs text-slate-600"><span>{hasActivity ? `${completed} de ${expected || registeredToday} verificações` : "Sem plano diário associado"}</span><span>{lastCompletedLabel ? `Último registo às ${lastCompletedLabel}` : `${percentage}%`}</span></div>
+      <Progress className="mt-2 h-1.5 bg-slate-200" value={percentage} aria-label={`Conclusão de ${label}: ${percentage}%`} />
+    </div>
+  );
 }
 
 export default function Controls() {
   const { canManage } = useQualityAccess();
   const utils = trpc.useUtils();
   const meta = trpc.quality.metadata.useQuery();
-  const dashboard = trpc.quality.dashboard.useQuery();
   const team = trpc.quality.accessStatus.useQuery();
   const [open, setOpen] = useState(false);
   const [factoryId, setFactoryId] = useState("");
+  const [progressFactoryFilter, setProgressFactoryFilter] = useState("");
   const [taskFactoryFilter, setTaskFactoryFilter] = useState("");
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [assigneeIds, setAssigneeIds] = useState<number[]>([]);
   const [dueAt, setDueAt] = useState(nextWorkDate);
+
+  const progressFilterInput = useMemo(() => progressFactoryFilter ? { factoryId: Number(progressFactoryFilter) } : undefined, [progressFactoryFilter]);
   const taskFilterInput = useMemo(() => taskFactoryFilter ? { factoryId: Number(taskFactoryFilter) } : undefined, [taskFactoryFilter]);
+  const dashboard = trpc.quality.dashboard.useQuery(progressFilterInput);
   const tasks = trpc.quality.listTasks.useQuery(taskFilterInput);
-  const createTask = trpc.quality.createTask.useMutation({ onSuccess: () => { utils.quality.dashboard.invalidate(); utils.quality.listTasks.invalidate(); setOpen(false); setTitle(""); setDescription(""); setAssigneeIds([]); toast.success("Tarefa criada e atribuída."); }, onError: (error) => toast.error(error.message) });
-  const completeTask = trpc.quality.completeTask.useMutation({ onSuccess: () => { utils.quality.dashboard.invalidate(); utils.quality.listTasks.invalidate(); toast.success("Tarefa concluída."); }, onError: (error) => toast.error(error.message) });
-  const groupedTasks = useMemo(() => { const today = dayStart(new Date()); while ([0, 6].includes(today.getDay())) today.setDate(today.getDate() + 1); const tomorrow = nextBusinessDate(today); const weekStart = dayStart(today); weekStart.setDate(weekStart.getDate() - ((weekStart.getDay() + 6) % 7)); const weekEnd = new Date(weekStart); weekEnd.setDate(weekEnd.getDate() + 5); const buckets = { overdue: [] as any[], today: [] as any[], tomorrow: [] as any[], thisWeek: [] as any[], later: [] as any[] }; (tasks.data ?? []).forEach((task) => { const due = dayStart(task.dueAt); if (due < today) buckets.overdue.push(task); else if (+due === +today) buckets.today.push(task); else if (+due === +tomorrow) buckets.tomorrow.push(task); else if (due < weekEnd) buckets.thisWeek.push(task); else buckets.later.push(task); }); return buckets; }, [tasks.data]);
-  function submit(event: FormEvent) { event.preventDefault(); if (!factoryId) return toast.error("Selecione a fábrica ou linha."); if (!assigneeIds.length) return toast.error("Selecione pelo menos um responsável."); const date = new Date(`${dueAt}T12:00:00`); if ([0, 6].includes(date.getDay())) return toast.error("Selecione um dia útil, de segunda a sexta-feira."); createTask.mutate({ title, description, factoryId: Number(factoryId), dueAt: date, assigneeProfileIds: assigneeIds }); }
-  function toggleAssignee(id: number) { setAssigneeIds((current) => current.includes(id) ? current.filter((entry) => entry !== id) : [...current, id]); }
+
+  const createTask = trpc.quality.createTask.useMutation({
+    onSuccess: () => {
+      utils.quality.dashboard.invalidate();
+      utils.quality.listTasks.invalidate();
+      setOpen(false);
+      setTitle("");
+      setDescription("");
+      setAssigneeIds([]);
+      toast.success("Tarefa criada e atribuída.");
+    },
+    onError: (error) => toast.error(error.message),
+  });
+  const completeTask = trpc.quality.completeTask.useMutation({
+    onSuccess: () => {
+      utils.quality.dashboard.invalidate();
+      utils.quality.listTasks.invalidate();
+      toast.success("Tarefa concluída.");
+    },
+    onError: (error) => toast.error(error.message),
+  });
+
+  const groupedTasks = useMemo(() => {
+    const today = dayStart(new Date());
+    while ([0, 6].includes(today.getDay())) today.setDate(today.getDate() + 1);
+    const tomorrow = nextBusinessDate(today);
+    const weekStart = dayStart(today);
+    weekStart.setDate(weekStart.getDate() - ((weekStart.getDay() + 6) % 7));
+    const weekEnd = new Date(weekStart);
+    weekEnd.setDate(weekEnd.getDate() + 5);
+    const buckets = { overdue: [] as any[], today: [] as any[], tomorrow: [] as any[], thisWeek: [] as any[], later: [] as any[] };
+    (tasks.data ?? []).forEach((task) => {
+      const due = dayStart(task.dueAt);
+      if (due < today) buckets.overdue.push(task);
+      else if (+due === +today) buckets.today.push(task);
+      else if (+due === +tomorrow) buckets.tomorrow.push(task);
+      else if (due < weekEnd) buckets.thisWeek.push(task);
+      else buckets.later.push(task);
+    });
+    return buckets;
+  }, [tasks.data]);
+
+  function submit(event: FormEvent) {
+    event.preventDefault();
+    if (!factoryId) return toast.error("Selecione a fábrica ou linha.");
+    if (!assigneeIds.length) return toast.error("Selecione pelo menos um responsável.");
+    const date = new Date(`${dueAt}T12:00:00`);
+    if ([0, 6].includes(date.getDay())) return toast.error("Selecione um dia útil, de segunda a sexta-feira.");
+    createTask.mutate({ title, description, factoryId: Number(factoryId), dueAt: date, assigneeProfileIds: assigneeIds });
+  }
+
+  function toggleAssignee(id: number) {
+    setAssigneeIds((current) => current.includes(id) ? current.filter((entry) => entry !== id) : [...current, id]);
+  }
+
   const factoryName = (id: number | null) => meta.data?.factories.find((factory) => factory.id === id)?.name ?? "Sem fábrica";
-  return <div className="app-grid min-h-full -m-4 p-4 md:-m-6 md:p-6"><section className="mx-auto max-w-7xl space-y-6"><header className="flex flex-col justify-between gap-4 md:flex-row md:items-end"><div><p className="font-mono-ui text-xs uppercase tracking-[0.18em] text-teal-700">Execução de controlos</p><h1 className="mt-2 text-3xl font-semibold tracking-tight">Controlos</h1><p className="mt-1 max-w-2xl text-sm text-muted-foreground">Registe controlos e acompanhe apenas as tarefas que lhe foram atribuídas.</p></div>{canManage && <Dialog open={open} onOpenChange={setOpen}><DialogTrigger asChild><Button><ClipboardPlus className="mr-2 h-4 w-4" />Nova tarefa</Button></DialogTrigger><DialogContent><DialogHeader><DialogTitle>Criar tarefa pontual</DialogTitle><DialogDescription>Indique a fábrica, uma descrição e um ou vários responsáveis. A tarefa será visível apenas para os utilizadores escolhidos e para a Responsável de Qualidade.</DialogDescription></DialogHeader><form className="space-y-4" onSubmit={submit}><div className="space-y-2"><Label>Fábrica / linha</Label><Select value={factoryId} onValueChange={setFactoryId}><SelectTrigger><SelectValue placeholder="Selecione a fábrica" /></SelectTrigger><SelectContent>{(meta.data?.factories ?? []).map((item) => <SelectItem key={item.id} value={String(item.id)}>{item.name}</SelectItem>)}</SelectContent></Select></div><div className="space-y-2"><Label>Título da tarefa</Label><Input required value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Ex.: Verificar condição da área" /></div><div className="space-y-2"><Label>Descrição da tarefa</Label><Textarea value={description} onChange={(event) => setDescription(event.target.value)} placeholder="Descreva o que deve ser realizado e os critérios a observar." /></div><div className="space-y-2"><Label>Responsáveis</Label><div className="max-h-40 space-y-2 overflow-auto rounded-xl border p-3">{(team.data?.profiles ?? []).filter((profile) => profile.active && profile.isConfigured).map((profile) => <label key={profile.id} className="flex cursor-pointer items-center gap-3 text-sm"><Checkbox checked={assigneeIds.includes(profile.id)} onCheckedChange={() => toggleAssignee(profile.id)} /><span>{profile.name} <span className="text-muted-foreground">· {profile.title}</span></span></label>)}</div></div><div className="space-y-2"><Label>Dia da tarefa</Label><Input required type="date" value={dueAt} onChange={(event) => setDueAt(event.target.value)} /></div><Button className="w-full" disabled={createTask.isPending || !factoryId || !assigneeIds.length}>{createTask.isPending ? "A criar…" : "Criar tarefa"}</Button></form></DialogContent></Dialog>}</header><div className="rounded-2xl border border-teal-100 bg-teal-50/70 px-4 py-3 text-sm text-teal-900"><span className="font-semibold">Progresso diário por controlo.</span> A linha temporal mostra o estado global do plano previsto para hoje e a hora do último registo concluído.</div><div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">{MODULES.map((item) => { const Icon = icons[item.id]; const progress = dashboard.data?.moduleProgress[item.id] as ModuleProgress | undefined; return <Link href={`/controlos/${item.id}`} key={item.id}><Card className="group h-full cursor-pointer border-0 panel-shadow transition-all hover:-translate-y-0.5 hover:shadow-xl"><CardHeader><div className="flex items-start justify-between"><div className="rounded-xl bg-slate-100 p-3 text-slate-700"><Icon className="h-5 w-5" /></div><ChevronRight className="h-5 w-5 text-slate-300" /></div><CardTitle className="mt-5 text-lg">{item.label}</CardTitle><CardDescription>{item.description}</CardDescription></CardHeader><CardContent><ModuleCompletionTimeline label={item.label} progress={progress} /><span className="mt-4 block font-mono-ui text-xs font-semibold uppercase tracking-[0.12em] text-teal-700">Abrir módulo</span></CardContent></Card></Link>; })}</div><Card className="border-0 panel-shadow"><CardHeader className="flex flex-col gap-4 border-b md:flex-row md:items-center md:justify-between"><div><CardTitle className="flex items-center gap-2"><ListTodo className="h-5 w-5 text-teal-700" />As minhas tarefas</CardTitle><CardDescription>Organizadas por dias úteis e visíveis apenas para os responsáveis atribuídos.</CardDescription></div><Select value={taskFactoryFilter || "all"} onValueChange={(value) => setTaskFactoryFilter(value === "all" ? "" : value)}><SelectTrigger className="w-full md:w-72"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">Todas as fábricas e linhas</SelectItem>{(meta.data?.factories ?? []).map((factory) => <SelectItem key={factory.id} value={String(factory.id)}>{factory.name}</SelectItem>)}</SelectContent></Select></CardHeader><CardContent className="p-0">{tasks.data?.length ? ([['Em atraso', groupedTasks.overdue], ['Hoje', groupedTasks.today], ['Amanhã', groupedTasks.tomorrow], ['Esta semana', groupedTasks.thisWeek], ['Próximos dias', groupedTasks.later]] as const).map(([label, bucket]) => bucket.length ? <div key={label}><div className="border-y bg-slate-50 px-5 py-2 text-xs font-semibold uppercase tracking-[0.14em] text-slate-600">{label}</div><div className="divide-y">{bucket.map((task) => <div className="flex flex-col gap-3 p-5 md:flex-row md:items-center md:justify-between" key={task.id}><div><p className="font-medium">{task.title}</p>{task.description && <p className="mt-1 text-sm text-slate-700">{task.description}</p>}<p className="mt-1 text-sm text-muted-foreground">{factoryName(task.factoryId)} · {task.responsible} · {dateFormat(task.dueAt, false)}</p>{task.completedByName && <OperatorAttribution verb="Concluído por" name={task.completedByName} title={task.completedByTitle} />}</div><div>{task.status === "completed" ? <StatusBadge value="completed" /> : <div className="flex gap-2"><Button size="sm" variant="outline" disabled={completeTask.isPending} onClick={() => completeTask.mutate({ id: task.id, result: "C" })}><Check className="mr-1 h-4 w-4" />C</Button><Button size="sm" variant="outline" disabled={completeTask.isPending} onClick={() => completeTask.mutate({ id: task.id, result: "NC", notes: "Incidência registada a partir da tarefa." })}><X className="mr-1 h-4 w-4" />NC</Button></div>}</div></div>)}</div></div> : null) : <div className="p-8 text-center text-sm text-muted-foreground">Não existem tarefas atribuídas em dias úteis.</div>}</CardContent></Card></section></div>;
+  const progressScope = progressFactoryFilter ? meta.data?.factories.find((factory) => factory.id === Number(progressFactoryFilter))?.name : "Todas as fábricas e linhas";
+
+  return (
+    <div className="app-grid min-h-full -m-4 p-4 md:-m-6 md:p-6">
+      <section className="mx-auto max-w-7xl space-y-6">
+        <header className="flex flex-col justify-between gap-4 md:flex-row md:items-end">
+          <div><p className="font-mono-ui text-xs uppercase tracking-[0.18em] text-teal-700">Execução de controlos</p><h1 className="mt-2 text-3xl font-semibold tracking-tight">Controlos</h1><p className="mt-1 max-w-2xl text-sm text-muted-foreground">Registe controlos e acompanhe apenas as tarefas que lhe foram atribuídas.</p></div>
+          {canManage && <Dialog open={open} onOpenChange={setOpen}><DialogTrigger asChild><Button><ClipboardPlus className="mr-2 h-4 w-4" />Nova tarefa</Button></DialogTrigger><DialogContent><DialogHeader><DialogTitle>Criar tarefa pontual</DialogTitle><DialogDescription>Indique a fábrica, uma descrição e um ou vários responsáveis. A tarefa será visível apenas para os utilizadores escolhidos e para a Responsável de Qualidade.</DialogDescription></DialogHeader><form className="space-y-4" onSubmit={submit}><div className="space-y-2"><Label>Fábrica / linha</Label><Select value={factoryId} onValueChange={setFactoryId}><SelectTrigger><SelectValue placeholder="Selecione a fábrica" /></SelectTrigger><SelectContent>{(meta.data?.factories ?? []).map((item) => <SelectItem key={item.id} value={String(item.id)}>{item.name}</SelectItem>)}</SelectContent></Select></div><div className="space-y-2"><Label>Título da tarefa</Label><Input required value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Ex.: Verificar condição da área" /></div><div className="space-y-2"><Label>Descrição da tarefa</Label><Textarea value={description} onChange={(event) => setDescription(event.target.value)} placeholder="Descreva o que deve ser realizado e os critérios a observar." /></div><div className="space-y-2"><Label>Responsáveis</Label><div className="max-h-40 space-y-2 overflow-auto rounded-xl border p-3">{(team.data?.profiles ?? []).filter((profile) => profile.active && profile.isConfigured).map((profile) => <label key={profile.id} className="flex cursor-pointer items-center gap-3 text-sm"><Checkbox checked={assigneeIds.includes(profile.id)} onCheckedChange={() => toggleAssignee(profile.id)} /><span>{profile.name} <span className="text-muted-foreground">· {profile.title}</span></span></label>)}</div></div><div className="space-y-2"><Label>Dia da tarefa</Label><Input required type="date" value={dueAt} onChange={(event) => setDueAt(event.target.value)} /></div><Button className="w-full" disabled={createTask.isPending || !factoryId || !assigneeIds.length}>{createTask.isPending ? "A criar…" : "Criar tarefa"}</Button></form></DialogContent></Dialog>}
+        </header>
+
+        <section className="rounded-2xl border border-teal-100 bg-teal-50/70 p-4" aria-label="Filtro do progresso diário">
+          <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between"><div><p className="font-semibold text-teal-950">Progresso diário por controlo</p><p className="mt-1 text-sm text-teal-900">A linha temporal mostra o plano previsto, o preenchimento e a conclusão para <strong>{progressScope}</strong>.</p></div><div className="w-full md:w-80"><Label className="mb-1.5 block text-xs text-teal-900">Fábrica ou linha</Label><Select value={progressFactoryFilter || "all"} onValueChange={(value) => setProgressFactoryFilter(value === "all" ? "" : value)}><SelectTrigger aria-label="Filtrar progresso por fábrica ou linha" className="bg-white"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">Todas as fábricas e linhas</SelectItem>{(meta.data?.factories ?? []).map((factory) => <SelectItem key={factory.id} value={String(factory.id)}>{factory.name}</SelectItem>)}</SelectContent></Select></div></div>
+        </section>
+
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          {MODULES.map((item) => {
+            const Icon = icons[item.id];
+            const progress = dashboard.data?.moduleProgress[item.id] as ModuleProgress | undefined;
+            return <Link href={`/controlos/${item.id}`} key={item.id}><Card className="group h-full cursor-pointer border-0 panel-shadow transition-all hover:-translate-y-0.5 hover:shadow-xl"><CardHeader><div className="flex items-start justify-between"><div className="rounded-xl bg-slate-100 p-3 text-slate-700"><Icon className="h-5 w-5" /></div><ChevronRight className="h-5 w-5 text-slate-300" /></div><CardTitle className="mt-5 text-lg">{item.label}</CardTitle><CardDescription>{item.description}</CardDescription></CardHeader><CardContent><ModuleCompletionTimeline label={item.label} progress={progress} /><span className="mt-4 block font-mono-ui text-xs font-semibold uppercase tracking-[0.12em] text-teal-700">Abrir módulo</span></CardContent></Card></Link>;
+          })}
+        </div>
+
+        <Card className="border-0 panel-shadow"><CardHeader className="flex flex-col gap-4 border-b md:flex-row md:items-center md:justify-between"><div><CardTitle className="flex items-center gap-2"><ListTodo className="h-5 w-5 text-teal-700" />As minhas tarefas</CardTitle><CardDescription>Organizadas por dias úteis e visíveis apenas para os responsáveis atribuídos.</CardDescription></div><Select value={taskFactoryFilter || "all"} onValueChange={(value) => setTaskFactoryFilter(value === "all" ? "" : value)}><SelectTrigger className="w-full md:w-72"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">Todas as fábricas e linhas</SelectItem>{(meta.data?.factories ?? []).map((factory) => <SelectItem key={factory.id} value={String(factory.id)}>{factory.name}</SelectItem>)}</SelectContent></Select></CardHeader><CardContent className="p-0">{tasks.data?.length ? ([['Em atraso', groupedTasks.overdue], ['Hoje', groupedTasks.today], ['Amanhã', groupedTasks.tomorrow], ['Esta semana', groupedTasks.thisWeek], ['Próximos dias', groupedTasks.later]] as const).map(([label, bucket]) => bucket.length ? <div key={label}><div className="border-y bg-slate-50 px-5 py-2 text-xs font-semibold uppercase tracking-[0.14em] text-slate-600">{label}</div><div className="divide-y">{bucket.map((task) => <div className="flex flex-col gap-3 p-5 md:flex-row md:items-center md:justify-between" key={task.id}><div><p className="font-medium">{task.title}</p>{task.description && <p className="mt-1 text-sm text-slate-700">{task.description}</p>}<p className="mt-1 text-sm text-muted-foreground">{factoryName(task.factoryId)} · {task.responsible} · {dateFormat(task.dueAt, false)}</p>{task.completedByName && <OperatorAttribution verb="Concluído por" name={task.completedByName} title={task.completedByTitle} />}</div><div>{task.status === "completed" ? <StatusBadge value="completed" /> : <div className="flex gap-2"><Button size="sm" variant="outline" disabled={completeTask.isPending} onClick={() => completeTask.mutate({ id: task.id, result: "C" })}><Check className="mr-1 h-4 w-4" />C</Button><Button size="sm" variant="outline" disabled={completeTask.isPending} onClick={() => completeTask.mutate({ id: task.id, result: "NC", notes: "Incidência registada a partir da tarefa." })}><X className="mr-1 h-4 w-4" />NC</Button></div>}</div></div>)}</div></div> : null) : <div className="p-8 text-center text-sm text-muted-foreground">Não existem tarefas atribuídas em dias úteis.</div>}</CardContent></Card>
+      </section>
+    </div>
+  );
 }

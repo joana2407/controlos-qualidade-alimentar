@@ -44,6 +44,8 @@ describe("autoria operacional nas páginas", () => {
     expect(screen.getByLabelText("Linha temporal de conclusão de Verificação de BPHF: Em preenchimento")).toBeTruthy();
     expect(screen.getByLabelText("Conclusão de Verificação de BPHF: 50%")).toBeTruthy();
     expect(screen.getByText("1 de 2 verificações")).toBeTruthy();
+    expect(screen.getByText("Pendente hoje: 1 verificação por concluir")).toBeTruthy();
+    expect(screen.getByLabelText("Filtrar progresso por fábrica ou linha")).toBeTruthy();
   });
 
   it("mostra quem registou os controlos e incidências nos relatórios", () => {
