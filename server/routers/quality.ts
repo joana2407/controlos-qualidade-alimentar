@@ -250,7 +250,12 @@ export const qualityRouter = router({
       const denominator = expected || registeredToday;
       const pendingTaskTitles = moduleTasks.filter((task) => task.status !== "completed").map((task) => task.title);
       const pendingPlanTitles = modulePlans.filter((plan) => !moduleCompletedPlans.some((completedPlan) => completedPlan.id === plan.id)).map((plan) => `${plan.title}${areasById.get(plan.areaId) ? ` — ${areasById.get(plan.areaId)}` : ""}`);
-      return [module, { expected, completed: expected ? completed : registeredToday, registeredToday, pending: Array.from(new Set([...pendingTaskTitles, ...pendingPlanTitles])), percentage: denominator ? Number(((expected ? completed : registeredToday) / denominator * 100).toFixed(1)) : 0 }];
+      const completionTimes = [
+        ...moduleCompletedTasks.map((task) => task.completedAt),
+        ...completedToday.filter((entry) => entry.module === module).map((entry) => entry.completedAt),
+      ].filter((date): date is Date => Boolean(date));
+      const lastCompletedAt = completionTimes.reduce<Date | undefined>((latest, date) => !latest || date > latest ? date : latest, undefined);
+      return [module, { expected, completed: expected ? completed : registeredToday, registeredToday, pending: Array.from(new Set([...pendingTaskTitles, ...pendingPlanTitles])), percentage: denominator ? Number(((expected ? completed : registeredToday) / denominator * 100).toFixed(1)) : 0, lastCompletedAt }];
     }));
     const critical = scopedNcs.filter((nc) => nc.status !== "closed" && nc.severity === "critical");
     const openActions = scopedActions.filter((action) => action.status !== "verified");

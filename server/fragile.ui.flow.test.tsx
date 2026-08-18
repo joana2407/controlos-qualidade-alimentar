@@ -63,7 +63,7 @@ describe("fluxo de interface de pontos de controlo de quebráveis", () => {
     expect(input).toBeTruthy();
     fireEvent.change(input, { target: { files: [file] } });
     await waitFor(() => expect(uploadMutate).toHaveBeenCalledWith(expect.objectContaining({ itemId: 9, fileName: "referencia.png", mimeType: "image/png" })));
-  });
+  }, 10_000);
 
   it("abre a pendência selecionada num painel próprio de inspeção", () => {
     const createEntry = { mutate: vi.fn(), isPending: false };

@@ -13,6 +13,7 @@ vi.mock("@/lib/trpc", () => ({
     quality: {
       metadata: { useQuery: () => ({ data: { factories: [{ id: 1, name: "Fábrica 1 (Fatiado)" }], areas: [] } }) },
       accessStatus: { useQuery: () => ({ data: { profiles: [] } }) },
+      dashboard: { useQuery: () => ({ data: { moduleProgress: { bphf: { expected: 2, completed: 1, registeredToday: 1, pending: ["BPHF — Produção"], percentage: 50, lastCompletedAt: now } } } }) },
       listTasks: { useQuery: () => ({ data: [{ id: 1, title: "Verificação diária", module: "bphf", area: "Produção", factoryId: 1, responsible: "Equipa", dueAt: now, status: "completed", completedByName: "Neuza Antunes", completedByTitle: "Tec. Qualidade" }] }) },
       createTask: { useMutation: () => ({ mutate: vi.fn(), isPending: false }) },
       completeTask: { useMutation: () => ({ mutate: vi.fn(), isPending: false }) },
@@ -35,6 +36,14 @@ describe("autoria operacional nas páginas", () => {
   it("mostra quem concluiu uma tarefa na lista operacional", () => {
     render(<Controls />);
     expect(screen.getByText("Concluído por: Neuza Antunes · Tec. Qualidade")).toBeTruthy();
+  });
+
+  it("mostra a linha temporal e o estado de preenchimento em cada cartão de controlo", () => {
+    render(<Controls />);
+    expect(screen.getAllByText("Estado de preenchimento").length).toBeGreaterThanOrEqual(8);
+    expect(screen.getByLabelText("Linha temporal de conclusão de Verificação de BPHF: Em preenchimento")).toBeTruthy();
+    expect(screen.getByLabelText("Conclusão de Verificação de BPHF: 50%")).toBeTruthy();
+    expect(screen.getByText("1 de 2 verificações")).toBeTruthy();
   });
 
   it("mostra quem registou os controlos e incidências nos relatórios", () => {

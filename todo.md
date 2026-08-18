@@ -193,3 +193,5 @@
 - [x] Substituir na interface, navegação, ajuda e relatórios a terminologia «Não Conformidade» por «Incidência» — cancelado para permitir distinguir ambos os tipos de registo.
 - [x] Permitir criar um registo como Incidência ou Não Conformidade e identificá-lo numa lista unificada de ocorrências.
 - [x] Restaurar rótulos explícitos de Incidência e Não Conformidade, sem alteração automática da terminologia no ecrã.
+- [x] Mostrar no painel de Controlos o estado diário de preenchimento de cada módulo.
+- [x] Adicionar uma linha temporal por controlo que apresente a evolução até à conclusão diária.
