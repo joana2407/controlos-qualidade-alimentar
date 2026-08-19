@@ -241,3 +241,4 @@
 - [x] Alterar a duplicação de Plano do Dia para criar uma nova estrutura vazia, sem copiar controlos, fábrica ou responsáveis.
 - [x] Remover a função de criação ou duplicação de plano vazio do Plano do Dia.
 - [x] Permitir selecionar várias fábricas ou linhas em simultâneo ao publicar o Plano do Dia.
+- [x] Limpar os registos operacionais de teste, preservando configurações, utilizadores, fábricas e catálogos de controlo.
