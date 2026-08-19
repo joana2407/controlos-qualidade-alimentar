@@ -170,6 +170,15 @@ describe("procedimentos de qualidade por fábrica", () => {
     expect(report.filters).toMatchObject({ module: "bphf", result: "C", ncStatus: "open" });
   });
 
+  it("aceita uma data inicial e final iguais para consultar um único dia", async () => {
+    const caller = qualityRouter.createCaller(createContext());
+    const sameDay = new Date(2026, 7, 14);
+
+    const report = await caller.reports({ factoryId: 1, startDate: sameDay, endDate: sameDay });
+
+    expect(report.filteredEntries).toHaveLength(3);
+  });
+
   it("gera uma incidência shelf-life e apresenta o relatório diário por fábrica", async () => {
     const caller = qualityRouter.createCaller(createContext());
     await caller.createEntry({

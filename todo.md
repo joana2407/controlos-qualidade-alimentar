@@ -221,3 +221,4 @@
 - [x] Remover o bloco informativo de verificação comum do cabeçalho de Expedição.
 - [x] Permitir abrir nos Relatórios o detalhe completo de cada controlo e respetivas anotações, limitado ao dia ou período selecionado.
 - [x] Permitir abrir observações de cada fábrica ou linha nos cartões de Controlos, sem exigir a conclusão global do módulo.
+- [x] Corrigir a validação de datas dos Relatórios para aceitar períodos de um único dia.

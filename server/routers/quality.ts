@@ -961,7 +961,7 @@ export const qualityRouter = router({
     ]);
     const start = input?.startDate ? asDateRange(input.startDate).start : null;
     const end = input?.endDate ? asDateRange(input.endDate).end : null;
-    if (start && end && start >= end) throw new TRPCError({ code: "BAD_REQUEST", message: "A data final deve ser posterior à data inicial." });
+    if (input?.startDate && input.endDate && asDateRange(input.startDate).start > asDateRange(input.endDate).start) throw new TRPCError({ code: "BAD_REQUEST", message: "A data final não pode ser anterior à data inicial." });
     const withinPeriod = (date: Date) => (!start || date >= start) && (!end || date < end);
     const scopedEntries = scopeToFactory(entries, input?.factoryId).filter((entry) => withinPeriod(entry.completedAt) && (!input?.module || entry.module === input.module) && (!input?.result || entry.result === input.result));
     const scopedTasks = scopeToFactory(tasks, input?.factoryId).filter((task) => task.status !== "cancelled" && withinPeriod(task.dueAt));
