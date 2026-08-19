@@ -6,15 +6,14 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { MODULES, SENSORY_FIELDS, suggestionLocationsForFactory } from "@/lib/quality";
 import { readControlFactoryScope, writeControlFactoryScope } from "@/lib/controlFactoryScope";
-import { isMonthlyChecklistOpen, monthlyChecklistOpeningDate } from "@/lib/businessCalendar";
 import { trpc } from "@/lib/trpc";
 import { FragileOperationsPanel } from "@/components/quality/FragileOperationsPanel";
 import { DISPATCH_CONTROL_CATALOG } from "@shared/dispatch-control";
-import { AlertTriangle, ArrowLeft, Boxes, CalendarClock, CheckCircle2, ChevronDown, ChevronUp, CircleAlert, CircleHelp, ClipboardCheck, Factory, FilePlus2, FlaskConical, Gauge, ImagePlus, Lightbulb, MapPin, PackageSearch, Pencil, Plus, ShieldCheck, Trash2, Truck } from "lucide-react";
+import { AlertTriangle, ArrowLeft, Boxes, CalendarClock, CheckCircle2, ChevronDown, ChevronUp, CircleAlert, CircleHelp, ClipboardCheck, Factory, FilePlus2, FlaskConical, Gauge, ImagePlus, Lightbulb, MapPin, Microscope, PackageSearch, Pencil, Plus, ShieldCheck, Trash2, Truck } from "lucide-react";
 import React, { FormEvent, useEffect, useMemo, useState } from "react";
 import { Link, useRoute } from "wouter";
 import { toast } from "sonner";
@@ -36,7 +35,7 @@ const ModuleProgressContext = React.createContext<{ items: Record<string, Module
 
 function ModuleHeader({ label, description, icon: Icon, critical = false, commonToAllOperations = false }: { label: string; description: string; icon: typeof ClipboardCheck; critical?: boolean; commonToAllOperations?: boolean }) {
   const { factories, factoryId, setFactoryId } = useControlFactory();
-  const helpAnchor = ({ "Verificação de BPHF": "bphf", "Verificação de detetores de metais": "metal_detectors", "Controlo sensorial de produto acabado": "sensory", "Controlo de amostras em shelf-life": "shelf_life", "Checklist mensal": "monthly_checklist", "Caixas de sugestões": "suggestion_boxes", "Quebráveis": "fragile_items", "Controlo à expedição": "dispatch_control" } as Record<string, string>)[label] ?? "bphf";
+  const helpAnchor = ({ "Verificação de BPHF": "bphf", "Verificação de detetores de metais": "metal_detectors", "Controlo sensorial de produto acabado": "sensory", "Controlo de amostras em shelf-life": "shelf_life", "Checklist mensal": "monthly_checklist", "Caixas de sugestões": "suggestion_boxes", "Quebráveis": "fragile_items", "Controlo à expedição": "dispatch_control", "Análises internas": "internal_analysis" } as Record<string, string>)[label] ?? "bphf";
   const selectClass = critical ? "border-red-200 bg-white text-red-900" : "border-slate-600 bg-slate-800 text-white [&>svg]:text-slate-300";
   const progressState = React.useContext(ModuleProgressContext);
   const progress = progressState.items[helpAnchor];
@@ -76,7 +75,7 @@ export default function ModuleControl() {
     mutateAsync: async (input: any) => { if (!factoryId) { toast.error("Selecione a fábrica ou linha antes de registar o controlo."); throw new Error("Fábrica obrigatória"); } return createEntry.mutateAsync({ ...input, factoryId: Number(factoryId) }); },
   };
   const props = { createEntry: scopedCreateEntry };
-  return <ControlFactoryContext.Provider value={{ factories, factoryId, setFactoryId }}><ModuleProgressContext.Provider value={{ items: (dashboard.data?.moduleProgress as Record<string, ModuleProgress> | undefined) ?? {}, isLoading: dashboard.isLoading }}><div className="app-grid min-h-full -m-4 p-4 md:-m-6 md:p-6"><section className="mx-auto max-w-5xl space-y-6">{module === "bphf" && <Bphf {...props} areas={bphfAreasForFactory} />}{module === "metal_detectors" && <MetalDetectors {...props} areas={metalAreasForFactory} />}{module === "sensory" && <Sensory {...props} areas={bphfAreas} />}{module === "shelf_life" && <ShelfLife {...props} areas={bphfAreas} />}{module === "monthly_checklist" && <MonthlyChecklistGate {...props} />}{module === "suggestion_boxes" && <SuggestionBoxes {...props} factoryId={factoryId} />}{module === "fragile_items" && <><ModuleHeader label="Quebráveis" description="Inspecione os pontos por periodicidade, área e estado de integridade." icon={Boxes} /><FragileOperationsPanel {...props} factoryId={factoryId} showHeader={false} /></>}{module === "dispatch_control" && <DispatchControl />}</section></div></ModuleProgressContext.Provider></ControlFactoryContext.Provider>;
+  return <ControlFactoryContext.Provider value={{ factories, factoryId, setFactoryId }}><ModuleProgressContext.Provider value={{ items: (dashboard.data?.moduleProgress as Record<string, ModuleProgress> | undefined) ?? {}, isLoading: dashboard.isLoading }}><div className="app-grid min-h-full -m-4 p-4 md:-m-6 md:p-6"><section className="mx-auto max-w-5xl space-y-6">{module === "bphf" && <Bphf {...props} areas={bphfAreasForFactory} />}{module === "metal_detectors" && <MetalDetectors {...props} areas={metalAreasForFactory} />}{module === "sensory" && <Sensory {...props} areas={bphfAreas} />}{module === "shelf_life" && <ShelfLife {...props} areas={bphfAreas} />}{module === "monthly_checklist" && <MonthlyChecklist {...props} />}{module === "suggestion_boxes" && <SuggestionBoxes {...props} factoryId={factoryId} />}{module === "fragile_items" && <><ModuleHeader label="Quebráveis" description="Inspecione os pontos por periodicidade, área e estado de integridade." icon={Boxes} /><FragileOperationsPanel {...props} factoryId={factoryId} showHeader={false} /></>}{module === "dispatch_control" && <DispatchControl />}{module === "internal_analysis" && <InternalAnalysis {...props} />}</section></div></ModuleProgressContext.Provider></ControlFactoryContext.Provider>;
 }
 
 export function Bphf({ createEntry, areas }: any) {
@@ -175,19 +174,59 @@ export function ShelfLife({ createEntry }: any) {
   return <><ModuleHeader label="Controlo de amostras em shelf-life" description="Registe a verificação diária como C ou NC. Os dados de rastreabilidade surgem apenas quando existe uma incidência." icon={PackageSearch} /><form onSubmit={submit} className="space-y-5"><Card className="border-0 panel-shadow"><CardContent className="space-y-5 p-6"><div className="rounded-xl border border-teal-100 bg-teal-50/70 p-4"><p className="font-medium text-teal-950">Verificação diária da amostra</p><p className="mt-1 text-sm text-teal-800">Registe primeiro o resultado. Um NC cria uma incidência diária que pode, se necessário, ser associada posteriormente a uma Não Conformidade.</p></div><div className="space-y-2"><div className="flex items-center gap-1.5"><Label>Resultado da verificação global:</Label><ContextualHelpIcon label="Explicação do resultado da verificação global">Selecione C quando a amostra estiver conforme. Escolha NC quando existir um desvio; serão pedidos os dados de rastreabilidade e criada uma incidência diária.</ContextualHelpIcon></div><BinaryResultPicker value={result} onChange={setResult} showHelp={false} /></div>{result === "NC" && <div className="space-y-5 rounded-2xl border border-red-200 bg-red-50/60 p-5"><div><p className="font-semibold text-red-950">Detalhe da incidência</p><p className="mt-1 text-sm text-red-800">Estes dados são obrigatórios para garantir a rastreabilidade da incidência.</p></div><div className="grid gap-4 md:grid-cols-3"><div className="space-y-2"><Label htmlFor="shelf-life-product">Produto</Label><Input id="shelf-life-product" required value={product} onChange={(event) => setProduct(event.target.value)} placeholder="Produto da amostra" /></div><div className="space-y-2"><Label htmlFor="shelf-life-lot">Lote</Label><Input id="shelf-life-lot" required value={lot} onChange={(event) => setLot(event.target.value)} placeholder="Lote" /></div><div className="space-y-2"><Label htmlFor="shelf-life-validity">Validade</Label><Input id="shelf-life-validity" required type="date" value={validity} onChange={(event) => setValidity(event.target.value)} /></div></div><div className="space-y-2"><Label htmlFor="shelf-life-reason">Motivo / observações da incidência</Label><Textarea id="shelf-life-reason" required value={reason} onChange={(event) => setReason(event.target.value)} placeholder="Descreva o desvio observado na amostra." /></div></div>}<Button size="lg" className="w-full" variant={result === "NC" ? "destructive" : "default"} disabled={createEntry.isPending || (result === "NC" && !isNcComplete)}>{result === "NC" ? "Registar incidência" : "Registar verificação conforme"}</Button></CardContent></Card></form></>;
 }
 
-function MonthlyChecklistGate({ createEntry }: any) {
-  const now = new Date();
-  if (isMonthlyChecklistOpen(now)) return <MonthlyChecklist createEntry={createEntry} />;
-  const openingDate = monthlyChecklistOpeningDate(now);
-  return <><ModuleHeader label="Checklist mensal" description="Avalie os itens configuráveis por zona e acompanhe a taxa de conformidade." icon={ClipboardCheck} /><Card className="border border-blue-100 bg-blue-50/70 shadow-sm"><CardHeader><CardTitle className="text-blue-950">Checklist ainda não disponível</CardTitle><CardDescription className="text-blue-800">O checklist mensal fica disponível a partir de {openingDate.toLocaleDateString("pt-PT", { day: "2-digit", month: "long" })}, o primeiro dia operacional após o dia 20.</CardDescription></CardHeader></Card></>;
-}
-
 function MonthlyChecklist({ createEntry }: any) {
   const items = trpc.quality.listChecklistItems.useQuery(); const initialize = trpc.quality.initializeChecklist.useMutation({ onSuccess: () => { items.refetch(); toast.success("Itens iniciais de checklist configurados."); }, onError: (error) => toast.error(error.message) }); const [area, setArea] = useState("Geral"); const [results, setResults] = useState<Record<number, Result>>({}); const [notes, setNotes] = useState<Record<number, string>>({});
   const grouped = items.data?.filter((item) => item.area === area) ?? [];
   const conformity = grouped.length ? Math.round((grouped.filter((item) => (results[item.id] ?? "C") === "C").length / grouped.length) * 100) : 0;
   async function submit(event: FormEvent) { event.preventDefault(); if (grouped.some((item) => (results[item.id] ?? "C") === "NC" && !notes[item.id]?.trim())) return toast.error("Inclua observações em todos os itens NC."); await Promise.all(grouped.map((item) => { const result = results[item.id] ?? "C"; return createEntry.mutateAsync({ module: "monthly_checklist", title: item.label, area, result, notes: notes[item.id] || undefined, payload: { checklistItemId: item.id }, createNonconformity: result === "NC", severity: "medium" }); })); toast.success("Checklist mensal registada."); }
   return <><ModuleHeader label="Checklist mensal" description="Avalie os itens configuráveis por zona e acompanhe a taxa de conformidade." icon={ClipboardCheck} /><div className="flex flex-col justify-between gap-4 rounded-2xl border border-blue-100 bg-blue-50 px-5 py-4 md:flex-row md:items-center"><div><p className="font-medium text-blue-950">Itens configuráveis por administrador</p><p className="mt-1 text-sm text-blue-800">A lista é gerida na área de Configuração e fica disponível para toda a equipa.</p></div>{!items.isLoading && !items.data?.length && <Button onClick={() => initialize.mutate()} disabled={initialize.isPending}>{initialize.isPending ? "A configurar…" : "Carregar itens iniciais"}</Button>}</div><form onSubmit={submit} className="space-y-5"><Card className="border-0 panel-shadow"><CardContent className="flex flex-col gap-4 p-5 md:flex-row md:items-center md:justify-between"><div className="w-full max-w-md space-y-2"><Label>Zona</Label><Select value={area} onValueChange={setArea}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{Array.from(new Set(items.data?.map((item) => item.area) ?? ["Geral"])).map((item) => <SelectItem key={item} value={item}>{item}</SelectItem>)}</SelectContent></Select></div><div className="w-full max-w-xs"><div className="mb-2 flex justify-between text-sm"><span>Taxa provisória</span><span className="font-mono-ui font-semibold">{conformity}%</span></div><Progress value={conformity} /></div></CardContent></Card>{grouped.map((item, index) => { const result = results[item.id] ?? "C"; return <Card key={item.id} className="border-0 panel-shadow"><CardContent className="space-y-4 p-5"><div className="flex gap-3"><span className="font-mono-ui rounded-lg bg-blue-50 px-2 py-1 text-xs font-semibold text-blue-700">{String(index + 1).padStart(2, "0")}</span><p className="font-medium">{item.label}</p></div><ResultPicker value={result} onChange={(value) => setResults((current) => ({ ...current, [item.id]: value }))} /><Notes value={notes[item.id] ?? ""} onChange={(value) => setNotes((current) => ({ ...current, [item.id]: value }))} required={result === "NC"} /></CardContent></Card>; })}{grouped.length > 0 && <Button className="w-full" size="lg" disabled={createEntry.isPending}>Concluir checklist mensal</Button>}</form></>;
+}
+
+const ALLERGEN_ANALYSIS_CATEGORIES = [
+  { label: "Glúten", tests: ["Análise ao glúten superfícies", "Glúten fardamento", "Teste rápido ao glúten Matérias-primas", "Teste rápido glúten Produto acabado", "Teste Elisa glúten MP", "Teste Elisa Glúten Produto acabado"] },
+  { label: "Soja", tests: ["Teste rápido soja"] },
+  { label: "Leite", tests: ["Teste rápido leite"] },
+  { label: "Sésamo", tests: ["Teste rápido sementes de sésamo"] },
+  { label: "Frutos de Casca Rija", tests: ["Teste rápido nozes", "Teste rápido amêndoas", "Teste rápido avelãs"] },
+  { label: "Tremoço", tests: ["Teste Elisa Tremoço"] },
+] as const;
+
+type AnalysisResult = "negative" | "positive" | "conform" | "nonconform";
+const ANALYSIS_RESULTS: Array<{ value: AnalysisResult; label: string; controlResult: "C" | "NC" }> = [
+  { value: "negative", label: "Negativo", controlResult: "C" },
+  { value: "positive", label: "Positivo", controlResult: "NC" },
+  { value: "conform", label: "Conforme", controlResult: "C" },
+  { value: "nonconform", label: "Não Conforme", controlResult: "NC" },
+];
+
+export function InternalAnalysis({ createEntry }: any) {
+  const [test, setTest] = useState("");
+  const [analyst, setAnalyst] = useState("");
+  const [sampleId, setSampleId] = useState("");
+  const [result, setResult] = useState<AnalysisResult>("negative");
+  const [ppm, setPpm] = useState("");
+  const [notes, setNotes] = useState("");
+  const selectedCategory = ALLERGEN_ANALYSIS_CATEGORIES.find((category) => category.tests.includes(test as never));
+  const isElisa = test.toLowerCase().includes("elisa");
+  const selectedResult = ANALYSIS_RESULTS.find((item) => item.value === result) ?? ANALYSIS_RESULTS[0];
+
+  function submit(event: FormEvent) {
+    event.preventDefault();
+    if (!test || !selectedCategory) return toast.error("Selecione o tipo de análise de alergénio.");
+    if (isElisa && (ppm === "" || Number(ppm) < 0)) return toast.error("Indique o resultado numérico em ppm para o teste Elisa.");
+    createEntry.mutate({
+      module: "internal_analysis",
+      title: test,
+      area: selectedCategory.label,
+      result: selectedResult.controlResult,
+      notes,
+      payload: { category: selectedCategory.label, test, analyst, sampleId, result: selectedResult.label, ppm: isElisa ? Number(ppm) : null },
+      createNonconformity: false,
+      severity: "medium",
+    });
+  }
+
+  return <><ModuleHeader label="Análises internas" description="Registe a monitorização de alergénios por categoria, teste e resultado." icon={Microscope} /><form onSubmit={submit} className="space-y-5"><Card className="border-0 panel-shadow"><CardHeader><CardTitle>Identificação da análise</CardTitle><CardDescription>Selecione o alergénio e o método analítico a partir das categorias disponíveis.</CardDescription></CardHeader><CardContent className="grid gap-4 md:grid-cols-2"><div className="space-y-2"><Label>Categoria e análise</Label><Select value={test} onValueChange={setTest}><SelectTrigger><SelectValue placeholder="Selecione a análise" /></SelectTrigger><SelectContent>{ALLERGEN_ANALYSIS_CATEGORIES.map((category) => <SelectGroup key={category.label}><SelectLabel>{category.label}</SelectLabel>{category.tests.map((item) => <SelectItem key={item} value={item}>{item}</SelectItem>)}</SelectGroup>)}</SelectContent></Select></div><div className="space-y-2"><Label>Nome do analista / operador</Label><Input required value={analyst} onChange={(event) => setAnalyst(event.target.value)} placeholder="Nome do responsável pela análise" /></div><div className="space-y-2"><Label>Lote / ponto de amostragem</Label><Input required value={sampleId} onChange={(event) => setSampleId(event.target.value)} placeholder="Lote, matéria-prima, produto ou ponto" /></div><div className="space-y-2"><Label>Resultado</Label><Select value={result} onValueChange={(value) => setResult(value as AnalysisResult)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{ANALYSIS_RESULTS.map((item) => <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>)}</SelectContent></Select></div>{isElisa && <div className="space-y-2"><Label>Resultado Elisa (ppm)</Label><Input required min="0" step="any" type="number" value={ppm} onChange={(event) => setPpm(event.target.value)} placeholder="Valor numérico em ppm" /></div>}</CardContent></Card><Card className="border-0 panel-shadow"><CardContent className="space-y-4 p-5"><Notes value={notes} onChange={setNotes} required /><Button className="w-full" size="lg" variant={selectedResult.controlResult === "NC" ? "destructive" : "default"} disabled={createEntry.isPending || !test}>{createEntry.isPending ? "A registar…" : "Registar análise interna"}</Button></CardContent></Card></form></>;
 }
 
 function SuggestionBoxes({ createEntry, factoryId }: { createEntry: any; factoryId: string }) {

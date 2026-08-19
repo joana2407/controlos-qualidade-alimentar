@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { businessDayAfter, calculateConformityRate, calculateDispatchConformity, calculateSensoryScore, fragileInspectionDelayDays, isBusinessDay, isFragileInspectionPending, isMonthlyChecklistAvailable, isPortuguesePublicHoliday, nextBusinessDay, shouldCreateCriticalMetalAlert } from "./quality.logic";
+import { businessDayAfter, calculateConformityRate, calculateDispatchConformity, calculateSensoryScore, fragileInspectionDelayDays, isBusinessDay, isFragileInspectionPending, isPortuguesePublicHoliday, nextBusinessDay, shouldCreateCriticalMetalAlert } from "./quality.logic";
 
 describe("quality calculations", () => {
   it("applies the fixed sensory weights and converts the result to percentage", () => {
@@ -57,13 +57,6 @@ describe("quality calculations", () => {
     const monday = new Date(2026, 3, 6, 10, 0, 0);
     expect(isFragileInspectionPending("S", new Date(2026, 2, 27, 9, 0, 0), goodFriday)).toBe(false);
     expect(isFragileInspectionPending("S", new Date(2026, 2, 27, 9, 0, 0), monday)).toBe(true);
-  });
-
-  it("disponibiliza o checklist mensal no dia 20 ou no primeiro dia útil seguinte", () => {
-    expect(isMonthlyChecklistAvailable(new Date(2026, 7, 19, 10, 0, 0))).toBe(false);
-    expect(isMonthlyChecklistAvailable(new Date(2026, 7, 20, 10, 0, 0))).toBe(true);
-    expect(isMonthlyChecklistAvailable(new Date(2027, 1, 20, 10, 0, 0))).toBe(false);
-    expect(isMonthlyChecklistAvailable(new Date(2027, 1, 22, 10, 0, 0))).toBe(true);
   });
 
   it("calcula C para a expedição apenas quando os cinco critérios estão conformes", () => {

@@ -29,13 +29,3 @@ export function operationalBusinessDayAfter(date: Date) {
   do result.setDate(result.getDate() + 1); while (!isOperationalBusinessDay(result));
   return result;
 }
-
-export function isMonthlyChecklistOpen(date: Date) {
-  const openingDate = new Date(date.getFullYear(), date.getMonth(), 20);
-  openingDate.setHours(0, 0, 0, 0);
-  return date.getTime() >= nextOperationalBusinessDay(openingDate).getTime();
-}
-
-export function monthlyChecklistOpeningDate(date: Date) {
-  return nextOperationalBusinessDay(new Date(date.getFullYear(), date.getMonth(), 20));
-}

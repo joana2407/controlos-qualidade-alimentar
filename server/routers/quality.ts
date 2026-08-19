@@ -19,7 +19,7 @@ import {
   resultValues,
 } from "../../drizzle/schema";
 import { getDb } from "../db";
-import { businessDayAfter, calculateConformityRate, calculateDispatchConformity, calculateSensoryScore, fragileInspectionDelayDays, fragileInspectionDueDate, isBusinessDay, isFragileInspectionPending, isMonthlyChecklistAvailable, nextBusinessDay, shouldCreateCriticalMetalAlert } from "../quality.logic";
+import { businessDayAfter, calculateConformityRate, calculateDispatchConformity, calculateSensoryScore, fragileInspectionDelayDays, fragileInspectionDueDate, isBusinessDay, isFragileInspectionPending, nextBusinessDay, shouldCreateCriticalMetalAlert } from "../quality.logic";
 import { calculatePlanCompliance, countOpenNonconformities, scopeToFactory } from "../factory.scope.logic";
 import { storageGetSignedUrl, storagePut } from "../storage";
 import { invokeLLM } from "../_core/llm";
@@ -111,7 +111,7 @@ function isPlanDue(frequency: string, date: Date) {
   if (!isBusinessDay(date)) return false;
   if (frequency === "daily" || frequency === "per_shift") return isBusinessDay(date);
   if (frequency === "weekly") return date.getDay() === 5;
-  if (frequency === "monthly") return isMonthlyChecklistAvailable(date);
+  if (frequency === "monthly") return false;
   return false;
 }
 
@@ -195,6 +195,7 @@ export const qualityRouter = router({
       { id: "suggestion_boxes", label: "Verificação de caixas de sugestões" },
       { id: "fragile_items", label: "Verificação de quebráveis" },
       { id: "dispatch_control", label: "Controlo à expedição" },
+      { id: "internal_analysis", label: "Análises internas" },
       ],
     };
   }),
@@ -295,6 +296,8 @@ export const qualityRouter = router({
     const todayTasks = businessTasks.filter((task) => task.dueAt >= start && task.dueAt < end);
     const completedTasksToday = todayTasks.filter((task) => task.status === "completed" && task.completedAt && task.completedAt >= start && task.completedAt < end);
     const hasPublishedDailyPlan = todayTasks.some((task) => task.area === "Plano do Dia");
+    const monthlyChecklistPlannedThisMonth = businessTasks.some((task) => task.module === "monthly_checklist" && task.dueAt.getFullYear() === operationalDate.getFullYear() && task.dueAt.getMonth() === operationalDate.getMonth());
+    const monthlyChecklistReminder = !input?.factoryId && operationalDate.getDate() >= 20 && !monthlyChecklistPlannedThisMonth;
     const areasById = new Map(areaCatalog.map((area) => [area.id, area.name]));
     const lastFragileInspections = new Map<number, Date>();
     scopedEntries.filter((entry) => entry.module === "fragile_items").forEach((entry) => {
@@ -370,6 +373,7 @@ export const qualityRouter = router({
       },
       moduleProgress,
       moduleProgressByFactory,
+      monthlyChecklistReminder,
     };
   }),
 
@@ -541,7 +545,6 @@ export const qualityRouter = router({
     createNonconformity: z.boolean().default(false),
     severity: z.enum(["critical", "high", "medium", "low"]).default("medium"),
   })).mutation(async ({ ctx, input }) => {
-    if (input.module === "monthly_checklist" && !isMonthlyChecklistAvailable(new Date())) throw new TRPCError({ code: "BAD_REQUEST", message: "O checklist mensal fica disponível a partir do dia 20 ou do primeiro dia útil seguinte." });
     const db = await requireDb();
     const completedAt = new Date();
     await db.insert(controlEntries).values({

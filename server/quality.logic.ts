@@ -80,13 +80,6 @@ export function businessDayAfter(date: Date) {
   return result;
 }
 
-/** O checklist mensal abre no dia 20 ou, se necessário, no primeiro dia útil seguinte. */
-export function isMonthlyChecklistAvailable(date: Date) {
-  const openingDate = new Date(date.getFullYear(), date.getMonth(), 20);
-  openingDate.setHours(0, 0, 0, 0);
-  return startOfDay(date).getTime() >= nextBusinessDay(openingDate).getTime();
-}
-
 export type DispatchControlInput = {
   orderedBoxes: number;
   dispatchedBoxes: number;

@@ -242,3 +242,8 @@
 - [x] Remover a função de criação ou duplicação de plano vazio do Plano do Dia.
 - [x] Permitir selecionar várias fábricas ou linhas em simultâneo ao publicar o Plano do Dia.
 - [x] Limpar os registos operacionais de teste, preservando configurações, utilizadores, fábricas e catálogos de controlo.
+- [x] Adicionar o botão Novo plano e abrir o painel de criação do Plano do Dia apenas após clique.
+- [x] Remover a abertura obrigatória do Checklist Mensal a partir do dia 20 e disponibilizá-lo pelo Plano do Dia.
+- [x] Mostrar um alerta à Responsável de Qualidade quando for altura de planear o Checklist Mensal.
+- [x] Adicionar o controlo Análises internas com categorias de alergénios e submenus de testes.
+- [x] Registar em cada análise o analista, lote ou ponto de amostragem, resultado e observações obrigatórias.
