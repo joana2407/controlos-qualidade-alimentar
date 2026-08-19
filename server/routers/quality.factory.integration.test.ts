@@ -102,6 +102,18 @@ describe("procedimentos de qualidade por fábrica", () => {
     expect(filteredTasks.map((task) => task.id)).toEqual([1, 2]);
   });
 
+  it("consulta as observações de uma fábrica sem exigir a conclusão global do módulo", async () => {
+    const originalNotes = entries[0]!.notes;
+    entries[0]!.notes = "Registo concluído, com acompanhamento parcial noutra fábrica.";
+    const caller = qualityRouter.createCaller(createContext());
+
+    const observations = await caller.controlObservations({ module: "bphf", factoryId: 1 });
+
+    expect(observations.entries).toHaveLength(1);
+    expect(observations.entries[0]).toMatchObject({ area: "Produção T", notes: "Registo concluído, com acompanhamento parcial noutra fábrica." });
+    entries[0]!.notes = originalNotes;
+  });
+
   it("permite consultar a operação com um perfil PIN mesmo sem conta Manus", async () => {
     const pinOnlyContext = { ...createContext(), user: null, operatorProfile: { id: 1, name: "Sabrina Esteves", title: "Tec. Qualidade", role: "technician" as const } };
     const caller = qualityRouter.createCaller(pinOnlyContext);

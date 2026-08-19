@@ -339,6 +339,17 @@ export const qualityRouter = router({
     };
   }),
 
+  controlObservations: qualitySessionProcedure.input(z.object({ module: qualityModuleSchema, factoryId: z.number().int() })).query(async ({ input }) => {
+    const db = await requireDb();
+    const operationalDate = nextBusinessDay(new Date());
+    const { start, end } = asDateRange(operationalDate);
+    const entries = await db.select().from(controlEntries).orderBy(desc(controlEntries.completedAt));
+    return {
+      operationalDate,
+      entries: entries.filter((entry) => entry.module === input.module && entry.factoryId === input.factoryId && entry.completedAt >= start && entry.completedAt < end).map((entry) => ({ id: entry.id, title: entry.title, area: entry.area, result: entry.result, notes: entry.notes, payload: entry.payload, completedAt: entry.completedAt, registeredByName: entry.registeredByName, registeredByTitle: entry.registeredByTitle })),
+    };
+  }),
+
   listTasks: qualitySessionProcedure.input(z.object({ factoryId: z.number().int().optional() }).optional()).query(async ({ ctx, input }) => {
     const db = await requireDb();
     const [tasks, entries] = await Promise.all([

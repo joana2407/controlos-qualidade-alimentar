@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import React from "react";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const now = new Date("2026-08-13T10:00:00Z");
@@ -14,6 +14,7 @@ vi.mock("@/lib/trpc", () => ({
       metadata: { useQuery: () => ({ data: { factories: [{ id: 1, name: "Fábrica 1 (Fatiado)" }, { id: 2, name: "Fábrica 2 (granel)" }], areas: [] } }) },
       accessStatus: { useQuery: () => ({ data: { profiles: [] } }) },
       dashboard: { useQuery: () => ({ data: { metrics: { fragilePending: 1 }, moduleProgress: { bphf: { expected: 2, completed: 1, registeredToday: 1, pending: ["BPHF — Produção"], percentage: 50, lastCompletedAt: now } }, moduleProgressByFactory: { bphf: [{ factoryId: 1, expected: 1, completed: 1, registeredToday: 1, percentage: 100 }, { factoryId: 2, expected: 1, completed: 0, registeredToday: 0, percentage: 0 }] } } }) },
+      controlObservations: { useQuery: () => ({ isLoading: false, data: { entries: [{ id: 55, title: "BPHF Produção", area: "Produção", result: "C", notes: "Observação parcial registada.", completedAt: now, registeredByName: "Sabrina Esteves", registeredByTitle: "Tec. Qualidade" }] } }) },
       listTasks: { useQuery: () => ({ data: [{ id: 1, title: "Verificação diária", module: "bphf", area: "Produção", factoryId: 1, responsible: "Equipa", dueAt: now, status: "completed", completedByName: "Neuza Antunes", completedByTitle: "Tec. Qualidade" }, { id: 2, title: "Tarefa pendente", description: "Confirmar o registo operacional.", module: "bphf", area: "Produção", factoryId: 1, responsible: "Sabrina Esteves", assigneeProfileIds: [1], dueAt: now, status: "pending" }] }) },
       createTask: { useMutation: () => ({ mutate: vi.fn(), isPending: false }) },
       completeTask: { useMutation: () => ({ mutate: vi.fn(), isPending: false }) },
@@ -53,6 +54,9 @@ describe("autoria operacional nas páginas", () => {
     expect(screen.getByRole("button", { name: /preencher relatório/i })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Editar Tarefa pendente" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Eliminar Tarefa pendente" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: /abrir observações de bphf para fábrica 2/i }));
+    expect(screen.getByText("Observações de Fábrica 2 (granel)")).toBeTruthy();
+    expect(screen.getByText("Observação parcial registada.")).toBeTruthy();
   });
 
   it("mostra quem registou os controlos e incidências nos relatórios", () => {
