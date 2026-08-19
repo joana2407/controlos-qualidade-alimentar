@@ -250,4 +250,8 @@
 - [x] Garantir que o controlo Análises internas está visível e acessível na navegação de Controlos.
 - [x] Manter Linha Croutons apenas nos Detetores de metais da Fábrica 1, juntamente com Linha 1 e Linha 2.
 - [x] Excluir a Linha Croutons como localização autónoma da aplicação.
-- [ ] Mostrar nos controlos comuns o nível de conclusão das Fábricas 1, 2 e 3 no painel principal.
+- [x] Mostrar nos controlos comuns o nível de conclusão das Fábricas 1, 2 e 3 no painel principal.
+- [x] Limitar o Checklist Mensal às Fábricas 1, 2 e 3, com pontos associados a cada fábrica.
+- [x] Permitir à Responsável de Qualidade adicionar ou remover pontos de controlo do Checklist Mensal.
+- [x] Substituir o preenchimento diário pelo preenchimento mensal das três fábricas no Checklist Mensal.
+- [x] Tornar Análises internas um controlo único, sem diferenciação por fábrica ou linha.

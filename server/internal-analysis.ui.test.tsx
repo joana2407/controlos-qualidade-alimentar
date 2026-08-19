@@ -16,7 +16,7 @@ describe("controlo de análises internas", () => {
     expect(screen.getByText("Lote / ponto de amostragem")).toBeTruthy();
     expect(screen.getByText("Observações (obrigatórias)")).toBeTruthy();
 
-    fireEvent.click(screen.getAllByRole("combobox")[1]);
+    fireEvent.click(screen.getAllByRole("combobox")[0]);
     expect(screen.getByText("Glúten")).toBeTruthy();
     expect(screen.getAllByText("Teste Elisa Tremoço").length).toBeGreaterThan(0);
   });

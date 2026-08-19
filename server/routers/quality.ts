@@ -941,18 +941,45 @@ export const qualityRouter = router({
     return [...direct, ...actionEvidence].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
   }),
 
-  listChecklistItems: qualitySessionProcedure.query(async () => {
+  listChecklistItems: qualitySessionProcedure.input(z.object({ factoryId: z.number().int().min(1).max(3) }).optional()).query(async ({ input }) => {
     const db = await requireDb();
-    return db.select().from(checklistItems).orderBy(checklistItems.area, checklistItems.sortOrder);
+    const items = await db.select().from(checklistItems).orderBy(checklistItems.area, checklistItems.sortOrder);
+    return input?.factoryId ? items.filter((item) => item.factoryId === input.factoryId) : items.filter((item) => item.factoryId !== 4);
   }),
 
   addChecklistItem: qualityManagerProcedure.input(z.object({
+    factoryId: z.number().int().min(1).max(3),
     area: z.string().min(2).max(120),
     label: z.string().min(3).max(500),
   })).mutation(async ({ ctx, input }) => {
     const db = await requireDb();
     await db.insert(checklistItems).values({ ...input, createdBy: ctx.user!.openId, sortOrder: 100, active: "true" });
     return { success: true };
+  }),
+
+  removeChecklistItem: qualityManagerProcedure.input(z.object({ id: z.number().int() })).mutation(async ({ input }) => {
+    const db = await requireDb();
+    await db.delete(checklistItems).where(eq(checklistItems.id, input.id));
+    return { success: true };
+  }),
+
+  monthlyChecklistProgress: qualitySessionProcedure.query(async () => {
+    const db = await requireDb();
+    const now = new Date();
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    const startOfNextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+    const [items, entries, monthlyFactories] = await Promise.all([
+      db.select().from(checklistItems),
+      db.select().from(controlEntries).where(eq(controlEntries.module, "monthly_checklist")),
+      db.select().from(factories),
+    ]);
+    const monthEntries = entries.filter((entry) => entry.completedAt >= startOfMonth && entry.completedAt < startOfNextMonth);
+    return monthlyFactories.filter((factory) => [1, 2, 3].includes(factory.id)).map((factory) => {
+      const factoryItems = items.filter((item) => item.factoryId === factory.id && item.active === "true");
+      const completedIds = new Set(monthEntries.filter((entry) => entry.factoryId === factory.id).map((entry) => Number((entry.payload as Record<string, unknown>)?.checklistItemId)).filter(Boolean));
+      const completed = factoryItems.filter((item) => completedIds.has(item.id)).length;
+      return { factoryId: factory.id, factoryName: factory.name, total: factoryItems.length, completed, percentage: factoryItems.length ? Math.round((completed / factoryItems.length) * 100) : 0 };
+    });
   }),
 
   listFragileItems: qualitySessionProcedure.input(z.object({ factoryId: z.number().int().optional(), periodicity: z.enum(["D", "S", "Q", "M"]).optional() }).optional()).query(async ({ input }) => {

@@ -316,6 +316,7 @@ export const evidences = mysqlTable("evidences", {
 
 export const checklistItems = mysqlTable("checklist_items", {
   id: int("id").autoincrement().primaryKey(),
+  factoryId: int("factoryId"),
   area: varchar("area", { length: 120 }).notNull(),
   label: varchar("label", { length: 500 }).notNull(),
   sortOrder: int("sortOrder").default(100).notNull(),
