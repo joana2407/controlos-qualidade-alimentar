@@ -39,6 +39,38 @@ const REQUIRED_MODULE_FREQUENCIES = [
   { module: "sensory", frequency: "weekly", title: "Controlo sensorial obrigatório" },
   { module: "monthly_checklist", frequency: "monthly", title: "Checklist mensal obrigatório" },
 ] as const;
+const MONTHLY_CHECKLIST_TEMPLATE = [
+  "Cumprimento do plano de higienização",
+  "Estado de limpeza de paredes e tectos",
+  "Estado de limpeza de todas as superfícies no interior das áreas de laboração (inspecionar zonas ocultas)",
+  "Cumprimento dos layouts e circuitos definidos por todos os colaboradores",
+  "FT e FS dos produtos de higienização actualizados",
+  "Todos os detergentes encontram-se protegidos e com bacias de retenção",
+  "As dispensas encontram-se fechadas quando nenhum responsável está na área e apenas os responsáveis têm acesso",
+  "MP/ME não conformes separadas de MP/ME conformes, identificadas e em local adequado",
+  "Correcta identificação de MP (lote e validade) e materiais utilizados para testes",
+  "Protecção de MP e embalagens primárias contra contaminações físicas",
+  "Estado de conservação de paredes, tectos, portas, janelas, pavimentos, rodapés, calhas, ralos, redes de escoamento e redes mosquiteiras",
+  "Estado de conservação e limpeza de lamelas e fitas",
+  "Protecção dos ralos de escoamento",
+  "Os cais mantêm-se fechados, sendo abertos apenas quando necessário",
+  "Estado de conservação de utensílios e equipamentos de trabalho",
+  "Arrumação de utensílios de trabalho",
+  "Ausência de objectos não autorizados nas áreas de laboração",
+  "Equipamentos e utensílios de limpeza em bom estado de conservação e guardados no devido local",
+  "Estado de limpeza do pavimento nos horários de laboração",
+  "Caixas plásticas em bom estado de limpeza e conservação",
+  "Cumprimento das boas práticas de manipulação e higiene por todos os colaboradores",
+  "Higiene pessoal: mãos, luvas e protecção de ferimentos",
+  "Higiene pessoal: utilização correta do fardamento e EPI",
+  "Arrumação e limpeza de cacifos do pessoal",
+  "Zonas de passagem desobstruídas",
+  "IT suficientes, adequadas e atualizadas na língua adequada aos colaboradores",
+  "Portões e entradas fechados, exceto durante descargas e cargas",
+  "Vedação em bom estado de conservação",
+  "Estado de conservação e funcionamento de câmaras de vigilância",
+  "Cumprimento do Plano de Controlo de Pragas: equipamentos identificados, ligados e sem evidências de pragas",
+] as const;
 const dispatchOrderExtractionSchema = z.object({
   orderNumber: z.string().max(80),
   customer: z.string().max(160),
@@ -577,26 +609,43 @@ export const qualityRouter = router({
     vehicleTemperature: z.number().min(-100).max(100),
     observations: z.string().max(3000).optional(),
     orderItems: z.array(z.object({ name: z.string().min(1).max(180), orderedQuantity: z.number().int().min(0) })).max(30).optional(),
+    productChecks: z.array(z.object({
+      name: z.string().min(2).max(180),
+      orderedQuantity: z.number().int().min(0),
+      lots: z.array(z.object({ lot: z.string().min(1).max(120), dispatchedQuantity: z.number().int().min(0) })).min(1).max(20),
+      productLabelResult: z.enum(["C", "NC"]),
+      boxLabelResult: z.enum(["C", "NC"]),
+      productTemperature: z.number().min(-100).max(100),
+      observations: z.string().max(3000).optional(),
+    })).min(1).max(30).optional(),
     sourceOrderDocument: z.object({ name: z.string().min(1).max(180), url: z.string().startsWith("/manus-storage/") }).optional(),
   })).mutation(async ({ ctx, input }) => {
     const profile = getDispatchProfile(input.profile);
     const limits = { product: profile.productTemperatureLimit, vehicle: profile.vehicleTemperatureLimit };
-    const conformity = calculateDispatchConformity({
-      orderedBoxes: input.orderedBoxes,
-      dispatchedBoxes: input.dispatchedBoxes,
-      productLabelResult: input.productLabelResult,
-      boxLabelResult: input.boxLabelResult,
-      productTemperature: input.productTemperature,
-      vehicleTemperature: input.vehicleTemperature,
-      productTemperatureLimit: limits.product,
-      vehicleTemperatureLimit: limits.vehicle,
+    const productChecks = input.productChecks ?? [{ name: input.product, orderedQuantity: input.orderedBoxes, lots: [{ lot: input.lot, dispatchedQuantity: input.dispatchedBoxes }], productLabelResult: input.productLabelResult, boxLabelResult: input.boxLabelResult, productTemperature: input.productTemperature, observations: input.observations }];
+    const productValidations = productChecks.map((check) => {
+      const dispatchedQuantity = check.lots.reduce((total, lot) => total + lot.dispatchedQuantity, 0);
+      const conformity = calculateDispatchConformity({ orderedBoxes: check.orderedQuantity, dispatchedBoxes: dispatchedQuantity, productLabelResult: check.productLabelResult, boxLabelResult: check.boxLabelResult, productTemperature: check.productTemperature, vehicleTemperature: limits.vehicle, productTemperatureLimit: limits.product, vehicleTemperatureLimit: limits.vehicle });
+      if (conformity.result === "NC" && !check.observations?.trim()) throw new TRPCError({ code: "BAD_REQUEST", message: `As observações são obrigatórias no produto ${check.name} quando a validação não está conforme.` });
+      return { ...check, dispatchedQuantity, conformity };
     });
-    if (conformity.result === "NC" && !input.observations?.trim()) throw new TRPCError({ code: "BAD_REQUEST", message: "As observações são obrigatórias quando a expedição não está conforme." });
+    const vehicleTemperatureResult = input.vehicleTemperature <= limits.vehicle ? "C" : "NC";
+    const reasons = [
+      ...productValidations.flatMap((check) => [
+        ...(check.conformity.quantityResult === "NC" ? [`${check.name}: quantidade expedida diferente da quantidade pedida.`] : []),
+        ...(check.conformity.productTemperatureResult === "NC" ? [`${check.name}: temperatura do produto fora do limite.`] : []),
+        ...(check.productLabelResult === "NC" ? [`${check.name}: rotulagem do produto não conforme.`] : []),
+        ...(check.boxLabelResult === "NC" ? [`${check.name}: rotulagem da caixa não conforme.`] : []),
+      ]),
+      ...(vehicleTemperatureResult === "NC" ? [`Temperatura do veículo fora do limite (${input.vehicleTemperature} °C; máximo ${limits.vehicle} °C).`] : []),
+    ];
+    const conformity = { result: productValidations.every((check) => check.conformity.result === "C") && vehicleTemperatureResult === "C" ? "C" as const : "NC" as const, productValidations, vehicleTemperatureResult, reasons };
+    if (vehicleTemperatureResult === "NC" && !input.observations?.trim()) throw new TRPCError({ code: "BAD_REQUEST", message: "A observação geral é obrigatória quando a temperatura do veículo não está conforme." });
     const db = await requireDb();
     const completedAt = new Date();
     const title = `Expedição ${input.orderNumber} — ${input.customer}`;
     const area = `Expedição ${input.profile}`;
-    const payload = { ...input, profileLabel: profile.label, temperatureLimits: limits, ...conformity };
+    const payload = { ...input, productChecks: productValidations, profileLabel: profile.label, temperatureLimits: limits, ...conformity };
     await db.insert(controlEntries).values({ module: "dispatch_control", title, area, factoryId: null, result: conformity.result, notes: input.observations ?? null, payload, completedAt, registeredByProfileId: ctx.operatorProfile!.id, registeredByName: ctx.operatorProfile!.name, registeredByTitle: ctx.operatorProfile!.title, createdBy: ctx.user!.openId });
     return { success: true, conformity, limits, incidence: conformity.result === "NC" };
   }),
@@ -952,6 +1001,7 @@ export const qualityRouter = router({
     module: qualityModuleSchema.optional(),
     result: resultSchema.optional(),
     ncStatus: z.enum(["open", "in_progress", "awaiting_validation", "closed"]).optional(),
+    orderNumber: z.string().trim().min(1).max(80).optional(),
   }).optional()).query(async ({ input }) => {
     const db = await requireDb();
     const [entries, tasks, ncs] = await Promise.all([
@@ -963,7 +1013,20 @@ export const qualityRouter = router({
     const end = input?.endDate ? asDateRange(input.endDate).end : null;
     if (input?.startDate && input.endDate && asDateRange(input.startDate).start > asDateRange(input.endDate).start) throw new TRPCError({ code: "BAD_REQUEST", message: "A data final não pode ser anterior à data inicial." });
     const withinPeriod = (date: Date) => (!start || date >= start) && (!end || date < end);
-    const scopedEntries = scopeToFactory(entries, input?.factoryId).filter((entry) => withinPeriod(entry.completedAt) && (!input?.module || entry.module === input.module) && (!input?.result || entry.result === input.result));
+    const payloadRecord = (payload: unknown) => payload && typeof payload === "object" && !Array.isArray(payload) ? payload as Record<string, unknown> : {};
+    const dispatchEntries = scopeToFactory(entries, input?.factoryId).filter((entry) => withinPeriod(entry.completedAt) && entry.module === "dispatch_control");
+    const dispatchOrdersByNumber = new Map<string, { orderNumber: string; customer: string | null; result: "C" | "NC" | "N/A" | null; completedAt: Date }>();
+    dispatchEntries.forEach((entry) => {
+      const payload = payloadRecord(entry.payload);
+      const orderNumber = typeof payload.orderNumber === "string" ? payload.orderNumber : null;
+      const customer = typeof payload.customer === "string" ? payload.customer : null;
+      if (orderNumber) dispatchOrdersByNumber.set(orderNumber, { orderNumber, customer, result: entry.result, completedAt: entry.completedAt });
+    });
+    const dispatchOrders = Array.from(dispatchOrdersByNumber.values());
+    const scopedEntries = scopeToFactory(entries, input?.factoryId).filter((entry) => {
+      const orderNumber = typeof payloadRecord(entry.payload).orderNumber === "string" ? payloadRecord(entry.payload).orderNumber as string : null;
+      return withinPeriod(entry.completedAt) && (!input?.module || entry.module === input.module) && (!input?.result || entry.result === input.result) && (!input?.orderNumber || orderNumber === input.orderNumber);
+    });
     const scopedTasks = scopeToFactory(tasks, input?.factoryId).filter((task) => task.status !== "cancelled" && withinPeriod(task.dueAt));
     const scopedNcs = scopeToFactory(ncs, input?.factoryId).filter((nc) => withinPeriod(nc.detectedAt) && (!input?.module || nc.module === input.module) && (!input?.ncStatus || nc.status === input.ncStatus));
     const modules = qualityModuleValues.map((module) => {
@@ -980,30 +1043,36 @@ export const qualityRouter = router({
       const areaEntries = scopedEntries.filter((entry) => entry.area === area);
       return { area, total: areaEntries.length, conformity: calculateConformityRate(areaEntries.map((entry) => entry.result)) };
     });
-    const now = new Date();
-    const trends = Array.from({ length: 6 }, (_, index) => {
-      const start = new Date(now);
-      start.setHours(0, 0, 0, 0);
-      start.setDate(start.getDate() - (5 - index) * 7 - 6);
-      const end = new Date(start);
-      end.setDate(end.getDate() + 7);
-      const weeklyEntries = scopedEntries.filter((entry) => entry.completedAt >= start && entry.completedAt < end);
-      return {
-        label: `S${index + 1}`,
-        entries: weeklyEntries.length,
-        nc: weeklyEntries.filter((entry) => entry.result === "NC").length,
-      };
+    const defaultEnd = asDateRange(new Date()).end;
+    const periodStart = start ?? new Date(defaultEnd.getFullYear(), defaultEnd.getMonth(), defaultEnd.getDate() - 30);
+    const periodEnd = end ?? defaultEnd;
+    const periodDays = Math.max(1, Math.ceil((periodEnd.getTime() - periodStart.getTime()) / 86_400_000));
+    const bucketCount = Math.min(10, periodDays);
+    const bucketSize = Math.max(1, Math.ceil(periodDays / bucketCount));
+    const trends = Array.from({ length: bucketCount }, (_, index) => {
+      const bucketStart = new Date(periodStart);
+      bucketStart.setDate(bucketStart.getDate() + index * bucketSize);
+      const bucketEnd = new Date(bucketStart);
+      bucketEnd.setDate(bucketEnd.getDate() + bucketSize);
+      if (bucketEnd > periodEnd) bucketEnd.setTime(periodEnd.getTime());
+      const bucketEntries = scopedEntries.filter((entry) => entry.completedAt >= bucketStart && entry.completedAt < bucketEnd);
+      const labelStart = bucketStart.toLocaleDateString("pt-PT", { day: "2-digit", month: "2-digit" });
+      const labelEnd = new Date(Math.max(bucketStart.getTime(), bucketEnd.getTime() - 1)).toLocaleDateString("pt-PT", { day: "2-digit", month: "2-digit" });
+      return { label: bucketSize === 1 ? labelStart : `${labelStart}–${labelEnd}`, entries: bucketEntries.length, c: bucketEntries.filter((entry) => entry.result === "C").length, nc: bucketEntries.filter((entry) => entry.result === "NC").length };
     });
+    const filteredSummary = { total: scopedEntries.length, conforming: scopedEntries.filter((entry) => entry.result === "C").length, nonconforming: scopedEntries.filter((entry) => entry.result === "NC").length, conformity: calculateConformityRate(scopedEntries.map((entry) => entry.result)) };
     return {
       modules,
       areas,
       trends,
+      filteredSummary,
       recentEntries: scopedEntries.slice(0, 12),
       filteredEntries: scopedEntries,
       planCompliance: calculatePlanCompliance(scopedTasks),
       openNcs: countOpenNonconformities(scopedNcs).open,
       criticalOpen: countOpenNonconformities(scopedNcs).criticalOpen,
-      filters: { startDate: start, endDate: end, module: input?.module ?? null, result: input?.result ?? null, ncStatus: input?.ncStatus ?? null },
+      dispatchOrders,
+      filters: { startDate: start, endDate: end, module: input?.module ?? null, result: input?.result ?? null, ncStatus: input?.ncStatus ?? null, orderNumber: input?.orderNumber ?? null },
     };
   }),
 
@@ -1011,22 +1080,13 @@ export const qualityRouter = router({
     const db = await requireDb();
     const existing = await db.select().from(checklistItems).limit(1);
     if (existing.length) return { success: true, created: 0 };
-    const defaults = [
-      "Cumprimento do plano de higienização",
-      "Estado de limpeza de paredes e tectos",
-      "Proteção de MP e embalagens primárias contra contaminações físicas",
-      "Estado de conservação de utensílios e equipamentos de trabalho",
-      "Higiene pessoal dos colaboradores",
-      "Zonas de passagem desobstruídas",
-      "Cumprimento do Plano de Controlo de Pragas",
-    ];
-    await db.insert(checklistItems).values(defaults.map((label, index) => ({
+    await db.insert(checklistItems).values(MONTHLY_CHECKLIST_TEMPLATE.map((label, index) => ({
       area: "Geral",
       label,
       sortOrder: index + 1,
       active: "true" as const,
       createdBy: ctx.user!.openId,
     })));
-    return { success: true, created: defaults.length };
+    return { success: true, created: MONTHLY_CHECKLIST_TEMPLATE.length };
   }),
 });

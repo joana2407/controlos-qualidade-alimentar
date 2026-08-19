@@ -222,3 +222,17 @@
 - [x] Permitir abrir nos Relatórios o detalhe completo de cada controlo e respetivas anotações, limitado ao dia ou período selecionado.
 - [x] Permitir abrir observações de cada fábrica ou linha nos cartões de Controlos, sem exigir a conclusão global do módulo.
 - [x] Corrigir a validação de datas dos Relatórios para aceitar períodos de um único dia.
+- [x] Mostrar todos os produtos e quantidades importados da encomenda PDF sem filtragem inicial.
+- [x] Permitir abrir o detalhe de cada produto para registar quantidades expedidas obrigatórias por um ou vários lotes.
+- [x] Adicionar validação e observações por produto, mantendo no fecho a temperatura do carro e a conformidade geral.
+- [x] Mostrar nos Relatórios o número da encomenda de Expedição e a respetiva conformidade.
+- [x] Criar filtro de Relatórios por número de encomenda verificada no controlo à expedição.
+- [x] Permitir adicionar vários produtos à verificação de detetores de metais, com conformidade e observações por produto.
+- [x] Avaliar e aprovar um plano diário de controlos publicado pela Responsável de Qualidade para a data selecionada.
+- [ ] Implementar o Plano do Dia, com seleção de controlos, fábricas ou linhas, responsáveis e prioridade antes da publicação.
+- [ ] Fazer com que apenas o Plano do Dia publicado gere tarefas, pendências e progresso operacional para a equipa.
+- [x] Importar os pontos do ficheiro «CONTROLO MENSAL» para o checklist mensal da aplicação.
+- [ ] Substituir a designação visível «Módulo» por «Controlo» em toda a interface.
+- [x] Não implementar filtro local por fábrica ou linha na Conformidade por área, por indicação posterior da utilizadora.
+- [x] Corrigir a lista de controlos dos Relatórios para não mostrar registos fora do período selecionado.
+- [x] Reconfigurar os Relatórios para apresentar exclusivamente dados dos filtros ativos, com gráficos de leitura rápida.

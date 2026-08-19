@@ -328,7 +328,7 @@ describe("procedimentos de qualidade por fábrica", () => {
   it("regista a expedição como incidência quando a temperatura falha", async () => {
     const caller = qualityRouter.createCaller(createContext());
     const result = await caller.registerDispatchControl({ factoryId: 1, profile: "congelado", orderNumber: "ENC-100", customer: "Cliente Norte", deliveryNote: "GR-50", product: "Pão congelado", lot: "L-100", orderedBoxes: 24, dispatchedBoxes: 24, productLabelResult: "C", boxLabelResult: "C", productTemperature: -17, vehicleTemperature: -18, observations: "Produto acima do limite para congelados." });
-    expect(result.conformity).toMatchObject({ result: "NC", productTemperatureResult: "NC", vehicleTemperatureResult: "C" });
+    expect(result.conformity).toMatchObject({ result: "NC", vehicleTemperatureResult: "C", productValidations: [expect.objectContaining({ conformity: expect.objectContaining({ productTemperatureResult: "NC" }) })] });
     expect(result.incidence).toBe(true);
     expect(dbInserts[0]).toMatchObject({ module: "dispatch_control", result: "NC", factoryId: null, area: "Expedição congelado", registeredByName: "Joana Pina" });
     expect(dbInserts).toHaveLength(1);

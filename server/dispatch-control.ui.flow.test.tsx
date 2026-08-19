@@ -28,11 +28,10 @@ describe("fluxo de interface do controlo à expedição", () => {
   it("mostra o perfil ambiente e os seus limites importados", () => {
     renderDispatchControl();
     expect(screen.getAllByText("Validação Expedição ambiente").length).toBeGreaterThan(0);
-    expect(screen.getByText("Produto e veículo ≤ 25 °C")).toBeTruthy();
-    expect(screen.getByText("Conformidade global")).toBeTruthy();
+    expect(screen.getByText("Produtos da encomenda")).toBeTruthy();
+    expect(screen.getByText("Fecho da expedição")).toBeTruthy();
     expect(screen.getByLabelText("Carregar encomenda em PDF")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Ajuda sobre a temperatura do produto" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Ajuda sobre a temperatura do veículo" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Ajuda sobre a temperatura do carro" })).toBeTruthy();
   });
 
   it("exige observações quando uma rotulagem NC torna a expedição não conforme", () => {
@@ -54,6 +53,6 @@ describe("fluxo de interface do controlo à expedição", () => {
     expect(observations.required).toBe(true);
     fireEvent.change(observations, { target: { value: "Rótulo do produto não conforme." } });
     fireEvent.click(screen.getByRole("button", { name: "Registar incidência à expedição" }));
-    expect(mutate).toHaveBeenCalledWith(expect.objectContaining({ profile: "ambiente", orderNumber: "ENC-001", productLabelResult: "NC", observations: "Rótulo do produto não conforme." }));
+    expect(mutate).toHaveBeenCalledWith(expect.objectContaining({ profile: "ambiente", orderNumber: "ENC-001", productLabelResult: "NC", productChecks: [expect.objectContaining({ observations: "Rótulo do produto não conforme." })] }));
   });
 });
