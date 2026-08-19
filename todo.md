@@ -229,10 +229,10 @@
 - [x] Criar filtro de Relatórios por número de encomenda verificada no controlo à expedição.
 - [x] Permitir adicionar vários produtos à verificação de detetores de metais, com conformidade e observações por produto.
 - [x] Avaliar e aprovar um plano diário de controlos publicado pela Responsável de Qualidade para a data selecionada.
-- [ ] Implementar o Plano do Dia, com seleção de controlos, fábricas ou linhas, responsáveis e prioridade antes da publicação.
-- [ ] Fazer com que apenas o Plano do Dia publicado gere tarefas, pendências e progresso operacional para a equipa.
+- [x] Implementar o Plano do Dia, com seleção de controlos, fábricas ou linhas e responsáveis antes da publicação.
+- [x] Fazer com que apenas o Plano do Dia publicado gere tarefas, pendências e progresso operacional para a equipa.
 - [x] Importar os pontos do ficheiro «CONTROLO MENSAL» para o checklist mensal da aplicação.
-- [ ] Substituir a designação visível «Módulo» por «Controlo» em toda a interface.
+- [x] Substituir a designação visível «Módulo» por «Controlo» em toda a interface.
 - [x] Não implementar filtro local por fábrica ou linha na Conformidade por área, por indicação posterior da utilizadora.
 - [x] Corrigir a lista de controlos dos Relatórios para não mostrar registos fora do período selecionado.
 - [x] Reconfigurar os Relatórios para apresentar exclusivamente dados dos filtros ativos, com gráficos de leitura rápida.

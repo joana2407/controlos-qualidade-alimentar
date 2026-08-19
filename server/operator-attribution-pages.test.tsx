@@ -17,6 +17,7 @@ vi.mock("@/lib/trpc", () => ({
       controlObservations: { useQuery: () => ({ isLoading: false, data: { entries: [{ id: 55, title: "BPHF Produção", area: "Produção", result: "C", notes: "Observação parcial registada.", completedAt: now, registeredByName: "Sabrina Esteves", registeredByTitle: "Tec. Qualidade" }] } }) },
       listTasks: { useQuery: () => ({ data: [{ id: 1, title: "Verificação diária", module: "bphf", area: "Produção", factoryId: 1, responsible: "Equipa", dueAt: now, status: "completed", completedByName: "Neuza Antunes", completedByTitle: "Tec. Qualidade" }, { id: 2, title: "Tarefa pendente", description: "Confirmar o registo operacional.", module: "bphf", area: "Produção", factoryId: 1, responsible: "Sabrina Esteves", assigneeProfileIds: [1], dueAt: now, status: "pending" }] }) },
       createTask: { useMutation: () => ({ mutate: vi.fn(), isPending: false }) },
+      publishDailyPlan: { useMutation: () => ({ mutate: vi.fn(), isPending: false }) },
       completeTask: { useMutation: () => ({ mutate: vi.fn(), isPending: false }) },
       uploadTaskReportPhoto: { useMutation: () => ({ mutateAsync: vi.fn(), isPending: false }) },
       updateTask: { useMutation: () => ({ mutate: vi.fn(), isPending: false }) },

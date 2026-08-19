@@ -293,6 +293,7 @@ export const qualityRouter = router({
     const completedToday = scopedEntries.filter((entry) => entry.completedAt >= start && entry.completedAt < end);
     const todayTasks = businessTasks.filter((task) => task.dueAt >= start && task.dueAt < end);
     const completedTasksToday = todayTasks.filter((task) => task.status === "completed" && task.completedAt && task.completedAt >= start && task.completedAt < end);
+    const hasPublishedDailyPlan = todayTasks.some((task) => task.area === "Plano do Dia");
     const areasById = new Map(areaCatalog.map((area) => [area.id, area.name]));
     const lastFragileInspections = new Map<number, Date>();
     scopedEntries.filter((entry) => entry.module === "fragile_items").forEach((entry) => {
@@ -305,7 +306,7 @@ export const qualityRouter = router({
     const requiredPlans: ScheduledPlan[] = REQUIRED_MODULE_FREQUENCIES.filter((rule) => isPlanDue(rule.frequency, operationalDate)).flatMap((rule, ruleIndex) => factoryCatalog.filter((factory) => !input?.factoryId || factory.id === input.factoryId).filter((factory) => !manualPlans.some((plan) => plan.module === rule.module && plan.frequency === rule.frequency && (plan.factoryId === factory.id || plan.factoryId === null))).map((factory) => ({ id: -((ruleIndex + 1) * 1000 + factory.id), title: rule.title, module: rule.module, areaId: 0, factoryId: factory.id, frequency: rule.frequency })));
     const sharedDispatchPlan: ScheduledPlan[] = !input?.factoryId && isPlanDue("daily", operationalDate) ? [{ id: -80_001, title: "Expedição diária obrigatória", module: "dispatch_control", areaId: 0, factoryId: null, frequency: "daily" }] : [];
     const fragileRequiredPlans: ScheduledPlan[] = scopedFragileCatalog.filter((item) => item.status === "active" && isFragileInspectionPending(item.periodicity, lastFragileInspections.get(item.id), operationalDate)).map((item) => ({ id: -(90_000 + item.id), title: `Quebrável — ${item.name}`, module: "fragile_items", areaId: 0, factoryId: item.factoryId, frequency: item.periodicity, fragileItemId: item.id }));
-    const duePlans = [...manualPlans.filter((plan) => isPlanDue(plan.frequency, operationalDate)), ...requiredPlans, ...sharedDispatchPlan, ...fragileRequiredPlans];
+    const duePlans = hasPublishedDailyPlan ? [] : [...manualPlans.filter((plan) => isPlanDue(plan.frequency, operationalDate)), ...requiredPlans, ...sharedDispatchPlan, ...fragileRequiredPlans];
     const completedDuePlans = duePlans.filter((plan) => {
       if (plan.fragileItemId) return completedToday.some((entry) => entry.module === "fragile_items" && entry.factoryId === plan.factoryId && Boolean(entry.payload && typeof entry.payload === "object" && (entry.payload as { fragileItemId?: unknown }).fragileItemId === plan.fragileItemId));
       const planArea = areasById.get(plan.areaId);
@@ -414,6 +415,33 @@ export const qualityRouter = router({
     if (profiles.length !== input.assigneeProfileIds.length || profiles.some((profile) => profile.active !== "true")) throw new TRPCError({ code: "BAD_REQUEST", message: "Selecione utilizadores ativos para a tarefa." });
     await db.insert(controlTasks).values({ title: input.title, description: input.description?.trim() || null, module: "bphf", area: "Sem área", factoryId: input.factoryId ?? null, dueAt: input.dueAt, responsible: profiles.map((profile) => profile.name).join(", "), assigneeProfileIds: input.assigneeProfileIds, createdBy: ctx.user!.openId });
     return { success: true };
+  }),
+
+  publishDailyPlan: qualityManagerProcedure.input(z.object({
+    date: dateInput,
+    factoryId: z.number().int().optional(),
+    assigneeProfileIds: z.array(z.number().int()).min(1).max(10),
+    modules: z.array(qualityModuleSchema).min(1).max(8),
+    priority: z.enum(["normal", "critical"]).default("normal"),
+  })).mutation(async ({ ctx, input }) => {
+    if (!isBusinessDay(input.date)) throw new TRPCError({ code: "BAD_REQUEST", message: "O Plano do Dia só pode ser publicado para um dia útil." });
+    const db = await requireDb();
+    const profiles = await db.select().from(qualityPinProfiles).where(inArray(qualityPinProfiles.id, input.assigneeProfileIds)).orderBy(qualityPinProfiles.id);
+    if (profiles.length !== input.assigneeProfileIds.length || profiles.some((profile) => profile.active !== "true")) throw new TRPCError({ code: "BAD_REQUEST", message: "Selecione responsáveis ativos para o Plano do Dia." });
+    const existing = await db.select().from(controlTasks).where(and(eq(controlTasks.dueAt, input.date), eq(controlTasks.status, "pending")));
+    const controls = Array.from(new Set(input.modules)).filter((module) => !existing.some((task) => task.module === module && task.factoryId === (module === "dispatch_control" ? null : input.factoryId ?? null)));
+    if (controls.length) await db.insert(controlTasks).values(controls.map((module) => ({
+      title: `Plano do Dia — ${module.replace(/_/g, " ")}`,
+      description: input.priority === "critical" ? "Controlo prioritário publicado pela Responsável de Qualidade." : "Controlo publicado no Plano do Dia.",
+      module,
+      area: "Plano do Dia",
+      factoryId: module === "dispatch_control" ? null : input.factoryId ?? null,
+      dueAt: input.date,
+      responsible: profiles.map((profile) => profile.name).join(", "),
+      assigneeProfileIds: input.assigneeProfileIds,
+      createdBy: ctx.user!.openId,
+    })));
+    return { success: true, created: controls.length };
   }),
 
   updateTask: qualityManagerProcedure.input(z.object({
