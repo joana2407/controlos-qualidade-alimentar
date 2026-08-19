@@ -256,10 +256,20 @@ export const qualityRouter = router({
     if (!existingFactories.length) { await db.insert(factories).values(defaultFactories.map((factory) => ({ ...factory, active: "true" as const, createdBy: ctx.user!.openId }))); created += defaultFactories.length; }
     const currentFactories = await db.select().from(factories);
     const existingBphfAreas = await db.select().from(areas).where(eq(areas.group, "bphf"));
+    const existingMetalAreas = await db.select().from(areas).where(eq(areas.group, "metal"));
     const bphfAreasToCreate = currentFactories.flatMap((factory) => BPHF_AREA_NAMES
       .filter((name) => !existingBphfAreas.some((area) => area.factoryId === factory.id && area.name === name))
       .map((name) => ({ name, group: "bphf" as const, factoryId: factory.id, active: "true" as const, createdBy: ctx.user!.openId })));
     if (bphfAreasToCreate.length) { await db.insert(areas).values(bphfAreasToCreate); created += bphfAreasToCreate.length; }
+    const metalLinesByFactory: Record<string, string[]> = {
+      F1_FATIADO: ["Linha 1", "Linha 2", "Linha Croutons"],
+      F2_GRANEL: ["Linha principal"],
+      F3_SEM_GLUTEN: ["Linha principal SG"],
+    };
+    const metalAreasToCreate = currentFactories.flatMap((factory) => (metalLinesByFactory[factory.code] ?? [])
+      .filter((name) => !existingMetalAreas.some((area) => area.factoryId === factory.id && area.name === name))
+      .map((name) => ({ name, group: "metal" as const, factoryId: factory.id, active: "true" as const, createdBy: ctx.user!.openId })));
+    if (metalAreasToCreate.length) { await db.insert(areas).values(metalAreasToCreate); created += metalAreasToCreate.length; }
     return { success: true, created };
   }),
 

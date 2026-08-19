@@ -248,3 +248,6 @@
 - [x] Adicionar o controlo Análises internas com categorias de alergénios e submenus de testes.
 - [x] Registar em cada análise o analista, lote ou ponto de amostragem, resultado e observações obrigatórias.
 - [x] Garantir que o controlo Análises internas está visível e acessível na navegação de Controlos.
+- [x] Manter Linha Croutons apenas nos Detetores de metais da Fábrica 1, juntamente com Linha 1 e Linha 2.
+- [x] Excluir a Linha Croutons como localização autónoma da aplicação.
+- [ ] Mostrar nos controlos comuns o nível de conclusão das Fábricas 1, 2 e 3 no painel principal.
