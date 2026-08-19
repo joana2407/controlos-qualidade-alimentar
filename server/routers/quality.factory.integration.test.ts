@@ -153,6 +153,8 @@ describe("procedimentos de qualidade por fábrica", () => {
     expect(report.modules.find((module) => module.module === "bphf")).toMatchObject({ total: 1, conformity: 100, nc: 0 });
     expect(report.modules.find((module) => module.module === "metal_detectors")).toMatchObject({ total: 0, conformity: 0, nc: 0 });
     expect(report.openNcs).toBe(0);
+    expect(report.filteredEntries).toHaveLength(1);
+    expect(report.filteredEntries[0]).toMatchObject({ module: "bphf", result: "C" });
     expect(report.filters).toMatchObject({ module: "bphf", result: "C", ncStatus: "open" });
   });
 

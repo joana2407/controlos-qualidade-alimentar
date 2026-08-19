@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -9,7 +9,7 @@ vi.mock("@/lib/trpc", () => ({
   trpc: {
     quality: {
       metadata: { useQuery: () => ({ data: { factories: [] } }) },
-      reports: { useQuery: () => ({ data: { modules: [], areas: [], trends: [], recentEntries: [], planCompliance: 0, openNcs: 0, criticalOpen: 0 }, isLoading: false }) },
+      reports: { useQuery: () => ({ data: { modules: [], areas: [], trends: [], recentEntries: [], filteredEntries: [{ id: 44, title: "Verificação de higiene", module: "bphf", area: "Produção", completedAt: day, result: "C", notes: "Superfície limpa e desinfetada.", payload: { criterioLimpeza: "C", observacao: "Verificação visual concluída." }, registeredByName: "Sabrina Esteves", registeredByTitle: "Tec. Qualidade" }], planCompliance: 0, openNcs: 0, criticalOpen: 0 }, isLoading: false }) },
       listNcs: { useQuery: () => ({ data: [] }) },
       dailyIncidences: { useQuery: () => ({ data: { incidences: [], total: 0, byFactory: [] } }) },
       dailyIncidenceSummary: { useQuery: () => ({ data: { date: day, total: 1, withNonconformity: 1, withoutNonconformity: 0, note: "Aguardar confirmação do fornecedor.", noteUpdatedByName: "Sabrina Esteves", incidences: [{ id: 12, title: "Embalagem danificada", module: "bphf", area: "Embalagem", factoryName: "Fábrica 1", generatedNonconformity: true, registeredByName: "Sabrina Esteves", registeredByTitle: "Tec. Qualidade" }] }, isLoading: false, refetch: vi.fn() }) },
@@ -32,5 +32,16 @@ describe("resumo diário de incidências", () => {
     expect(screen.getByText("Embalagem danificada")).toBeTruthy();
     expect(screen.getByText("Gerou NC")).toBeTruthy();
     expect(screen.getByRole("button", { name: /guardar nota/i })).toBeTruthy();
+  });
+
+  it("abre todos os dados e anotações de um controlo apenas no período filtrado", () => {
+    render(<Reports />);
+
+    fireEvent.click(screen.getByRole("button", { name: /ver detalhe/i }));
+
+    expect(screen.getByText("Dados do controlo")).toBeTruthy();
+    expect(screen.getByText("Superfície limpa e desinfetada.")).toBeTruthy();
+    expect(screen.getByText("Criterio Limpeza")).toBeTruthy();
+    expect(screen.getByText("Verificação visual concluída.")).toBeTruthy();
   });
 });

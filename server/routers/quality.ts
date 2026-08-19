@@ -988,6 +988,7 @@ export const qualityRouter = router({
       areas,
       trends,
       recentEntries: scopedEntries.slice(0, 12),
+      filteredEntries: scopedEntries,
       planCompliance: calculatePlanCompliance(scopedTasks),
       openNcs: countOpenNonconformities(scopedNcs).open,
       criticalOpen: countOpenNonconformities(scopedNcs).criticalOpen,
