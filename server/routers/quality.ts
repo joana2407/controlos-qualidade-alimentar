@@ -5,6 +5,7 @@ import {
   areas,
   factories,
   checklistItems,
+  checklistItemFactories,
   controlPlans,
   controlEntries,
   controlTasks,
@@ -943,22 +944,34 @@ export const qualityRouter = router({
 
   listChecklistItems: qualitySessionProcedure.input(z.object({ factoryId: z.number().int().min(1).max(3) }).optional()).query(async ({ input }) => {
     const db = await requireDb();
-    const items = await db.select().from(checklistItems).orderBy(checklistItems.area, checklistItems.sortOrder);
-    return input?.factoryId ? items.filter((item) => item.factoryId === input.factoryId) : items.filter((item) => item.factoryId !== 4);
+    const [items, assignments] = await Promise.all([db.select().from(checklistItems).orderBy(checklistItems.area, checklistItems.sortOrder), db.select().from(checklistItemFactories)]);
+    return items.map((item) => ({ ...item, factoryIds: assignments.filter((assignment) => assignment.checklistItemId === item.id).map((assignment) => assignment.factoryId) })).filter((item) => !input?.factoryId || item.factoryIds.includes(input.factoryId));
   }),
 
   addChecklistItem: qualityManagerProcedure.input(z.object({
-    factoryId: z.number().int().min(1).max(3),
+    factoryIds: z.array(z.number().int().min(1).max(3)).min(1),
     area: z.string().min(2).max(120),
     label: z.string().min(3).max(500),
   })).mutation(async ({ ctx, input }) => {
     const db = await requireDb();
-    await db.insert(checklistItems).values({ ...input, createdBy: ctx.user!.openId, sortOrder: 100, active: "true" });
+    const factoryIds = Array.from(new Set(input.factoryIds));
+    const inserted = await db.insert(checklistItems).values({ factoryId: factoryIds[0], area: input.area, label: input.label, createdBy: ctx.user!.openId, sortOrder: 100, active: "true" }).$returningId();
+    await db.insert(checklistItemFactories).values(factoryIds.map((factoryId) => ({ checklistItemId: inserted[0]!.id, factoryId })));
+    return { success: true };
+  }),
+
+  updateChecklistItem: qualityManagerProcedure.input(z.object({ id: z.number().int(), factoryIds: z.array(z.number().int().min(1).max(3)).min(1), area: z.string().min(2).max(120), label: z.string().min(3).max(500) })).mutation(async ({ input }) => {
+    const db = await requireDb();
+    const factoryIds = Array.from(new Set(input.factoryIds));
+    await db.update(checklistItems).set({ factoryId: factoryIds[0], area: input.area, label: input.label }).where(eq(checklistItems.id, input.id));
+    await db.delete(checklistItemFactories).where(eq(checklistItemFactories.checklistItemId, input.id));
+    await db.insert(checklistItemFactories).values(factoryIds.map((factoryId) => ({ checklistItemId: input.id, factoryId })));
     return { success: true };
   }),
 
   removeChecklistItem: qualityManagerProcedure.input(z.object({ id: z.number().int() })).mutation(async ({ input }) => {
     const db = await requireDb();
+    await db.delete(checklistItemFactories).where(eq(checklistItemFactories.checklistItemId, input.id));
     await db.delete(checklistItems).where(eq(checklistItems.id, input.id));
     return { success: true };
   }),
@@ -968,14 +981,15 @@ export const qualityRouter = router({
     const now = new Date();
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
     const startOfNextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
-    const [items, entries, monthlyFactories] = await Promise.all([
+    const [items, assignments, entries, monthlyFactories] = await Promise.all([
       db.select().from(checklistItems),
+      db.select().from(checklistItemFactories),
       db.select().from(controlEntries).where(eq(controlEntries.module, "monthly_checklist")),
       db.select().from(factories),
     ]);
     const monthEntries = entries.filter((entry) => entry.completedAt >= startOfMonth && entry.completedAt < startOfNextMonth);
     return monthlyFactories.filter((factory) => [1, 2, 3].includes(factory.id)).map((factory) => {
-      const factoryItems = items.filter((item) => item.factoryId === factory.id && item.active === "true");
+      const factoryItems = items.filter((item) => assignments.some((assignment) => assignment.checklistItemId === item.id && assignment.factoryId === factory.id) && item.active === "true");
       const completedIds = new Set(monthEntries.filter((entry) => entry.factoryId === factory.id).map((entry) => Number((entry.payload as Record<string, unknown>)?.checklistItemId)).filter(Boolean));
       const completed = factoryItems.filter((item) => completedIds.has(item.id)).length;
       return { factoryId: factory.id, factoryName: factory.name, total: factoryItems.length, completed, percentage: factoryItems.length ? Math.round((completed / factoryItems.length) * 100) : 0 };

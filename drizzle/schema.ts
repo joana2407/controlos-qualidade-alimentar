@@ -325,6 +325,13 @@ export const checklistItems = mysqlTable("checklist_items", {
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
 
+export const checklistItemFactories = mysqlTable("checklist_item_factories", {
+  id: int("id").autoincrement().primaryKey(),
+  checklistItemId: int("checklistItemId").notNull(),
+  factoryId: int("factoryId").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (table) => [uniqueIndex("checklist_item_factory_unique").on(table.checklistItemId, table.factoryId), index("checklist_item_factory_idx").on(table.factoryId)]);
+
 export const fragileItems = mysqlTable("fragile_items", {
   id: int("id").autoincrement().primaryKey(),
   name: varchar("name", { length: 180 }).notNull(),

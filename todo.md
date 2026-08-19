@@ -255,3 +255,6 @@
 - [x] Permitir à Responsável de Qualidade adicionar ou remover pontos de controlo do Checklist Mensal.
 - [x] Substituir o preenchimento diário pelo preenchimento mensal das três fábricas no Checklist Mensal.
 - [x] Tornar Análises internas um controlo único, sem diferenciação por fábrica ou linha.
+- [x] Excluir os pontos N/A do cálculo da taxa de conformidade do Checklist Mensal.
+- [x] Remover a zona Geral do Checklist Mensal.
+- [x] Permitir à Responsável editar cada ponto mensal e atribuí-lo a uma ou mais fábricas.
