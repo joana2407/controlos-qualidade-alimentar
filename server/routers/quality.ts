@@ -420,7 +420,7 @@ export const qualityRouter = router({
 
   publishDailyPlan: qualityManagerProcedure.input(z.object({
     date: dateInput,
-    factoryId: z.number().int().optional(),
+    factoryIds: z.array(z.number().int()).min(1).max(10),
     assigneeProfileIds: z.array(z.number().int()).min(1).max(10),
     modules: z.array(qualityModuleSchema).min(1).max(8),
     priority: z.enum(["normal", "critical"]).default("normal"),
@@ -430,13 +430,19 @@ export const qualityRouter = router({
     const profiles = await db.select().from(qualityPinProfiles).where(inArray(qualityPinProfiles.id, input.assigneeProfileIds)).orderBy(qualityPinProfiles.id);
     if (profiles.length !== input.assigneeProfileIds.length || profiles.some((profile) => profile.active !== "true")) throw new TRPCError({ code: "BAD_REQUEST", message: "Selecione responsáveis ativos para o Plano do Dia." });
     const existing = await db.select().from(controlTasks).where(and(eq(controlTasks.dueAt, input.date), eq(controlTasks.status, "pending")));
-    const controls = Array.from(new Set(input.modules)).filter((module) => !existing.some((task) => task.module === module && task.factoryId === (module === "dispatch_control" ? null : input.factoryId ?? null)));
-    if (controls.length) await db.insert(controlTasks).values(controls.map((module) => ({
+    const selectedFactories = Array.from(new Set(input.factoryIds));
+    const plannedControls: { module: typeof qualityModuleValues[number]; factoryId: number | null }[] = [];
+    for (const module of Array.from(new Set(input.modules))) {
+      if (module === "dispatch_control") plannedControls.push({ module, factoryId: null });
+      else selectedFactories.forEach((factoryId) => plannedControls.push({ module, factoryId }));
+    }
+    const controls = plannedControls.filter(({ module, factoryId }) => !existing.some((task) => task.module === module && task.factoryId === factoryId));
+    if (controls.length) await db.insert(controlTasks).values(controls.map(({ module, factoryId }) => ({
       title: `Plano do Dia — ${module.replace(/_/g, " ")}`,
       description: input.priority === "critical" ? "Controlo prioritário publicado pela Responsável de Qualidade." : "Controlo publicado no Plano do Dia.",
       module,
       area: "Plano do Dia",
-      factoryId: module === "dispatch_control" ? null : input.factoryId ?? null,
+      factoryId,
       dueAt: input.date,
       responsible: profiles.map((profile) => profile.name).join(", "),
       assigneeProfileIds: input.assigneeProfileIds,

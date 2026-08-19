@@ -239,3 +239,5 @@
 - [x] Permitir duplicar um Plano do Dia anterior para uma nova data útil.
 - [x] Notificar as técnicas responsáveis quando um Plano do Dia for publicado.
 - [x] Alterar a duplicação de Plano do Dia para criar uma nova estrutura vazia, sem copiar controlos, fábrica ou responsáveis.
+- [x] Remover a função de criação ou duplicação de plano vazio do Plano do Dia.
+- [x] Permitir selecionar várias fábricas ou linhas em simultâneo ao publicar o Plano do Dia.
