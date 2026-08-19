@@ -24,7 +24,7 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 import { useIsMobile } from "@/hooks/useMobile";
-import { AlertTriangle, ArrowLeft, BarChart3, BookOpenCheck, Boxes, ChevronDown, ClipboardCheck, ClipboardList, FilePlus2, FileWarning, FlaskConical, HelpCircle, KeyRound, LayoutDashboard, ListChecks, Magnet, MessageSquareMore, MessageSquareWarning, PanelLeft, Settings2, ShieldCheck, TimerReset, Truck } from "lucide-react";
+import { AlertTriangle, ArrowLeft, BarChart3, BookOpenCheck, Boxes, ChevronDown, ClipboardCheck, ClipboardList, FilePlus2, FileWarning, FlaskConical, HelpCircle, KeyRound, LayoutDashboard, ListChecks, Magnet, MessageSquareMore, MessageSquareWarning, Microscope, PanelLeft, Settings2, ShieldCheck, TimerReset, Truck } from "lucide-react";
 import React, { CSSProperties, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { DashboardLayoutSkeleton } from './DashboardLayoutSkeleton';
@@ -47,6 +47,7 @@ const controlPanels = [
   { icon: MessageSquareMore, label: "Caixas de sugestões", path: "/controlos/suggestion_boxes" },
   { icon: Boxes, label: "Quebráveis", path: "/controlos/fragile_items" },
   { icon: Truck, label: "Controlo à expedição", path: "/controlos/dispatch_control" },
+  { icon: Microscope, label: "Análises internas", path: "/controlos/internal_analysis" },
 ];
 
 const occurrencePanels = [

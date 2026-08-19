@@ -247,3 +247,4 @@
 - [x] Mostrar um alerta à Responsável de Qualidade quando for altura de planear o Checklist Mensal.
 - [x] Adicionar o controlo Análises internas com categorias de alergénios e submenus de testes.
 - [x] Registar em cada análise o analista, lote ou ponto de amostragem, resultado e observações obrigatórias.
+- [x] Garantir que o controlo Análises internas está visível e acessível na navegação de Controlos.
