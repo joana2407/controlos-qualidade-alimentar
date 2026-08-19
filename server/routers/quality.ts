@@ -446,27 +446,6 @@ export const qualityRouter = router({
     return { success: true, created: controls.length };
   }),
 
-  duplicateDailyPlan: qualityManagerProcedure.input(z.object({ sourceDate: dateInput, targetDate: dateInput })).mutation(async ({ ctx, input }) => {
-    if (!isBusinessDay(input.targetDate)) throw new TRPCError({ code: "BAD_REQUEST", message: "Selecione um dia útil para o novo Plano do Dia." });
-    const db = await requireDb();
-    const sourceTasks = (await db.select().from(controlTasks).where(and(eq(controlTasks.dueAt, input.sourceDate), eq(controlTasks.area, "Plano do Dia")))).filter((task) => task.status !== "cancelled");
-    if (!sourceTasks.length) throw new TRPCError({ code: "NOT_FOUND", message: "Não existe Plano do Dia publicado na data selecionada." });
-    const existing = await db.select().from(controlTasks).where(and(eq(controlTasks.dueAt, input.targetDate), eq(controlTasks.area, "Plano do Dia")));
-    const duplicates = sourceTasks.filter((source) => !existing.some((task) => task.module === source.module && task.factoryId === source.factoryId));
-    if (duplicates.length) await db.insert(controlTasks).values(duplicates.map((task) => ({
-      title: task.title,
-      description: task.description,
-      module: task.module,
-      area: "Plano do Dia",
-      factoryId: task.factoryId,
-      dueAt: input.targetDate,
-      responsible: task.responsible,
-      assigneeProfileIds: task.assigneeProfileIds,
-      createdBy: ctx.user!.openId,
-    })));
-    return { success: true, created: duplicates.length };
-  }),
-
   updateTask: qualityManagerProcedure.input(z.object({
     id: z.number().int(),
     title: z.string().min(2).max(180),

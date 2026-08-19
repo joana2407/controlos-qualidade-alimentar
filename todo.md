@@ -238,3 +238,4 @@
 - [x] Reconfigurar os Relatórios para apresentar exclusivamente dados dos filtros ativos, com gráficos de leitura rápida.
 - [x] Permitir duplicar um Plano do Dia anterior para uma nova data útil.
 - [x] Notificar as técnicas responsáveis quando um Plano do Dia for publicado.
+- [x] Alterar a duplicação de Plano do Dia para criar uma nova estrutura vazia, sem copiar controlos, fábrica ou responsáveis.
