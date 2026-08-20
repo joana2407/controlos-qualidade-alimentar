@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import React from "react";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/lib/trpc", () => ({
@@ -25,5 +25,12 @@ describe("painel Hoje — Plano do Dia", () => {
     render(<QualityDashboard />);
     expect(screen.getByText("Sem controlos agendados")).toBeTruthy();
     expect(screen.getByText("Sem tarefas agendadas")).toBeTruthy();
+  });
+
+  it("permite escolher outra data para consultar o planeamento respetivo", () => {
+    render(<QualityDashboard />);
+    const dateInput = screen.getByLabelText("Data a consultar no painel Hoje");
+    fireEvent.change(dateInput, { target: { value: "2026-08-25" } });
+    expect(screen.getByText("25/08/2026")).toBeTruthy();
   });
 });

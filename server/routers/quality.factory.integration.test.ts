@@ -106,6 +106,17 @@ describe("procedimentos de qualidade por fábrica", () => {
     expect(filteredTasks.map((task) => task.id)).toEqual([1, 2]);
   });
 
+  it("devolve os controlos publicados para a data selecionada no painel Hoje", async () => {
+    const plannedDate = new Date(2026, 7, 18, 10, 0, 0);
+    tasks.push({ id: 88, factoryId: 2, status: "pending", dueAt: plannedDate, completedAt: null, module: "bphf", area: "Plano do Dia", title: "Plano do Dia — BPHF F2", responsible: "Sabrina Esteves", assigneeProfileIds: [1] });
+    const caller = qualityRouter.createCaller(createContext());
+
+    const dashboard = await caller.dashboard({ date: plannedDate });
+
+    expect(dashboard.operationalDate).toEqual(new Date(2026, 7, 18));
+    expect(dashboard.plannedControls).toEqual([expect.objectContaining({ id: 88, factoryId: 2, module: "bphf" })]);
+  });
+
   it("consulta as observações de uma fábrica sem exigir a conclusão global do módulo", async () => {
     const originalNotes = entries[0]!.notes;
     entries[0]!.notes = "Registo concluído, com acompanhamento parcial noutra fábrica.";

@@ -23,17 +23,23 @@ function asRecord(value: unknown): Record<string, unknown> {
 function displayValue(value: unknown): string {
   if (value === null || value === undefined || value === "") return "—";
   if (typeof value === "boolean") return value ? "Sim" : "Não";
-  return String(value);
+  const translated = { positive: "Positivo", negative: "Negativo", conform: "Conforme", nonconform: "Não conforme", open: "Aberta", in_progress: "Em tratamento", awaiting_validation: "A aguardar validação", closed: "Fechada", pending: "Pendente", completed: "Concluída", ambiente: "Ambiente", congelado: "Congelado" }[String(value).toLowerCase()];
+  return translated ?? String(value);
 }
 
 function humanLabel(value: string): string {
-  return value.replace(/([A-Z])/g, " $1").replace(/[._]/g, " ").replace(/^./, (letter) => letter.toUpperCase());
+  const translated = { collaboratorId: "Identificador do colaborador", collaboratorName: "Colaborador inspecionado", criterion: "Critério verificado", criterioLimpeza: "Critério de limpeza", observacao: "Observação", analyst: "Analista", analystProfileId: "Identificador do analista", category: "Categoria", photos: "Fotografias", samples: "Amostras", controlResult: "Resultado do controlo", fileName: "Nome do ficheiro", mimeType: "Tipo de ficheiro", samplePoint: "Ponto de amostragem", product: "Produto", lot: "Lote", result: "Resultado", label: "Designação", test: "Teste", profileLabel: "Perfil", temperatureLimits: "Limites de temperatura", sourceOrderDocument: "Documento da encomenda", orderNumber: "N.º da encomenda", customer: "Cliente", deliveryNote: "Guia de transporte", observations: "Observações", evidencePhotos: "Fotografias de evidência" }[value];
+  return translated ?? value.replace(/([A-Z])/g, " $1").replace(/[._]/g, " ").replace(/^./, (letter) => letter.toUpperCase());
 }
 
 function flattenPayload(value: unknown, prefix = ""): DetailRow[] {
   if (value === null || value === undefined || value === "") return [];
   if (Array.isArray(value)) return value.flatMap((item, index) => flattenPayload(item, `${prefix}${prefix ? " · " : ""}${index + 1}`));
-  if (typeof value === "object") return Object.entries(value as Record<string, unknown>).flatMap(([key, item]) => flattenPayload(item, `${prefix}${prefix ? " · " : ""}${humanLabel(key)}`));
+  if (typeof value === "object") return Object.entries(value as Record<string, unknown>).flatMap(([key, item]) => {
+    if (["key", "url", "mimeType", "collaboratorId", "analystProfileId", "fileName"].includes(key)) return [];
+    if (["photos", "evidencePhotos"].includes(key) && Array.isArray(item)) return item.length ? [{ label: humanLabel(key), value: `${item.length} fotografia${item.length === 1 ? "" : "s"} anexada${item.length === 1 ? "" : "s"}` }] : [];
+    return flattenPayload(item, `${prefix}${prefix ? " · " : ""}${humanLabel(key)}`);
+  });
   return [{ label: prefix || "Dados registados", value: displayValue(value) }];
 }
 
@@ -54,7 +60,7 @@ function DetailList({ payload }: { payload: unknown }) {
 }
 
 function EntryCard({ entry, factoryName, onDetail }: { entry: any; factoryName: (id: number | null | undefined) => string; onDetail: (entry: any) => void }) {
-  return <article className="space-y-4 px-6 py-5"><div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between"><div><p className="font-semibold text-slate-950">{entry.title}</p><p className="mt-1 text-sm text-muted-foreground">{moduleLabel(entry.module)} · {factoryName(entry.factoryId)} · {entry.area} · {dateFormat(entry.completedAt)}</p><OperatorAttribution name={entry.registeredByName} title={entry.registeredByTitle} /></div><div className="flex items-center gap-2"><ResultBadge value={entry.result} /><Button size="sm" variant="outline" onClick={() => onDetail(entry)}><Eye className="mr-1 h-3.5 w-3.5" />Abrir detalhe</Button></div></div><div className="rounded-xl border border-slate-100 bg-slate-50/60 p-4"><p className="mb-2 text-sm font-semibold">Dados registados</p><DetailList payload={entry.payload} /></div><div><p className="text-sm font-semibold">Observações</p><p className="mt-1 whitespace-pre-wrap rounded-xl border border-slate-100 bg-white p-3 text-sm text-slate-800">{entry.notes?.trim() || "Sem observações registadas."}</p></div></article>;
+  return <article className="px-6 py-5"><div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between"><div><p className="font-semibold text-slate-950">{entry.title}</p><p className="mt-1 text-sm text-muted-foreground">{moduleLabel(entry.module)} · {factoryName(entry.factoryId)} · {entry.area} · {dateFormat(entry.completedAt)}</p><OperatorAttribution name={entry.registeredByName} title={entry.registeredByTitle} /></div><div className="flex items-center gap-2"><ResultBadge value={entry.result} /><Button size="sm" variant="outline" onClick={() => onDetail(entry)}><Eye className="mr-1 h-3.5 w-3.5" />Abrir detalhe</Button></div></div></article>;
 }
 
 function downloadFullWorkbook(entries: any[], incidences: any[], factoryName: (id: number | null | undefined) => string, filters: Record<string, string>) {

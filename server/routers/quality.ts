@@ -352,7 +352,7 @@ export const qualityRouter = router({
     return { success: true, created };
   }),
 
-  dashboard: qualitySessionProcedure.input(z.object({ factoryId: z.number().int().optional() }).optional()).query(async ({ input }) => {
+  dashboard: qualitySessionProcedure.input(z.object({ factoryId: z.number().int().optional(), date: dateInput.optional() }).optional()).query(async ({ input }) => {
     const db = await requireDb();
     const [tasks, ncs, entries, actions, fragileCatalog, factoryCatalog] = await Promise.all([
       db.select().from(controlTasks).orderBy(controlTasks.dueAt),
@@ -368,7 +368,7 @@ export const qualityRouter = router({
     const scopedActions = scopeToFactory(actions, input?.factoryId);
     const scopedFragileCatalog = scopeToFactory(fragileCatalog, input?.factoryId);
     const now = new Date();
-    const operationalDate = nextBusinessDay(now);
+    const operationalDate = input?.date ? new Date(input.date.getFullYear(), input.date.getMonth(), input.date.getDate()) : nextBusinessDay(now);
     const { start, end } = asDateRange(operationalDate);
     const tomorrowDate = businessDayAfter(operationalDate);
     const { start: tomorrowStart, end: tomorrowEnd } = asDateRange(tomorrowDate);

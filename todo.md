@@ -286,3 +286,10 @@
 - [x] Considerar cada ponto BPHF concluído apenas quando todas as áreas agendadas estiverem registadas.
 - [x] Manter campos BPHF vazios até seleção explícita do utilizador, sem pré-preenchimento.
 - [x] Diferenciar visualmente as áreas BPHF concluídas e pendentes para cada ponto de verificação.
+- [x] Permitir selecionar uma data no painel Hoje para consultar os controlos e tarefas previstos nesse dia.
+- [x] Atualizar os estados vazios e indicadores do painel Hoje de acordo com a data selecionada.
+- [x] Remover da página Plataforma o painel de acesso rápido aos controlos.
+- [x] Simplificar a lista de Relatórios para apresentar apenas informação essencial.
+- [x] Manter os dados completos dos controlos disponíveis exclusivamente em Abrir detalhe.
+- [x] Traduzir para português os rótulos, resultados e metadados mostrados nos detalhes dos Relatórios.
+- [x] Ocultar o identificador técnico do colaborador nos detalhes e exportações dos Relatórios.
