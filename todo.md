@@ -305,3 +305,7 @@
 - [x] Adicionar aos Relatórios um filtro por colaborador, aplicado à consulta e à exportação Excel.
 - [x] Alertar a Responsável quando um colaborador acumular 3 incidências nos últimos 6 meses, para avaliar a abertura de NC.
 - [x] Preparar o QualiControl como PWA instalável em telemóveis, com manifesto, ícone e suporte offline.
+- [x] Permitir registar incidências sem internet numa fila local do telemóvel.
+- [x] Sincronizar automaticamente as incidências pendentes quando a ligação for restabelecida.
+- [x] Mostrar o estado de incidências pendentes e sincronizadas ao utilizador.
+- [x] Tentar sincronizar incidências em segundo plano quando o sistema móvel suportar essa capacidade.

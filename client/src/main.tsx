@@ -6,6 +6,7 @@ import { createRoot } from "react-dom/client";
 import superjson from "superjson";
 import App from "./App";
 import { startLogin } from "./const";
+import { initialiseOfflineIncidenceSync } from "./lib/offlineIncidences";
 import "./index.css";
 
 const queryClient = new QueryClient();
@@ -71,6 +72,8 @@ const trpcClient = trpc.createClient({
     }),
   ],
 });
+
+initialiseOfflineIncidenceSync();
 
 createRoot(document.getElementById("root")!).render(
   <trpc.Provider client={trpcClient} queryClient={queryClient}>

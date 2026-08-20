@@ -124,13 +124,14 @@ export const controlEntries = mysqlTable("control_entries", {
   result: controlResult,
   notes: text("notes"),
   payload: json("payload").$type<Record<string, unknown>>().notNull(),
+  offlineSyncId: varchar("offlineSyncId", { length: 64 }),
   registeredByProfileId: int("registeredByProfileId"),
   registeredByName: varchar("registeredByName", { length: 160 }),
   registeredByTitle: varchar("registeredByTitle", { length: 160 }),
   completedAt: timestamp("completedAt").defaultNow().notNull(),
   createdBy: varchar("createdBy", { length: 64 }).notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
-}, (table) => [index("entry_module_idx").on(table.module), index("entry_area_idx").on(table.area), index("entry_completed_idx").on(table.completedAt), index("entry_factory_idx").on(table.factoryId), index("entry_operator_idx").on(table.registeredByProfileId)]);
+}, (table) => [index("entry_module_idx").on(table.module), index("entry_area_idx").on(table.area), index("entry_completed_idx").on(table.completedAt), index("entry_factory_idx").on(table.factoryId), index("entry_operator_idx").on(table.registeredByProfileId), uniqueIndex("entry_offline_sync_idx").on(table.offlineSyncId)]);
 
 export const nonconformities = mysqlTable("nonconformities", {
   id: int("id").autoincrement().primaryKey(),

@@ -157,6 +157,9 @@ const plugins = [
   jsxLocPlugin(),
   vitePluginManusRuntime(),
   VitePWA({
+    strategies: "injectManifest",
+    srcDir: "src",
+    filename: "offline-sync-sw.ts",
     registerType: "autoUpdate",
     injectRegister: "auto",
     manifest: {
@@ -174,9 +177,8 @@ const plugins = [
         { src: "/manus-storage/qualicontrol-pwa-512_d191e79d.png", sizes: "512x512", type: "image/png", purpose: "any maskable" },
       ],
     },
-    workbox: {
-      cleanupOutdatedCaches: true,
-      navigateFallback: "/index.html",
+    injectManifest: {
+      maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
     },
   }),
   vitePluginManusDebugCollector(),

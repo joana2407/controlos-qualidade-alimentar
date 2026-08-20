@@ -8,6 +8,7 @@ import { registerStorageProxy } from "./storageProxy";
 import { appRouter } from "../routers";
 import { createContext } from "./context";
 import { serveStatic, setupVite } from "./vite";
+import { offlineIncidenceInputSchema, persistOfflineIncidence } from "../offline-incidences";
 
 function isPortAvailable(port: number): Promise<boolean> {
   return new Promise(resolve => {
@@ -36,6 +37,23 @@ async function startServer() {
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
   registerStorageProxy(app);
   registerOAuthRoutes(app);
+  app.post("/api/offline-incidences", async (req, res) => {
+    try {
+      const ctx = await createContext({ req, res });
+      if (!ctx.operatorProfile) return res.status(403).json({ error: "Selecione o perfil operacional e introduza o respetivo PIN antes de sincronizar." });
+      const rawItems = Array.isArray(req.body?.items) ? req.body.items : [];
+      const items = offlineIncidenceInputSchema.array().min(1).max(50).parse(rawItems);
+      const syncedIds: string[] = [];
+      for (const item of items) {
+        await persistOfflineIncidence(item, ctx.operatorProfile, ctx.user?.openId ?? `quality-pin-${ctx.operatorProfile.id}`);
+        syncedIds.push(item.offlineSyncId);
+      }
+      return res.json({ syncedIds });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Não foi possível sincronizar as incidências.";
+      return res.status(400).json({ error: message });
+    }
+  });
   // tRPC API
   app.use(
     "/api/trpc",
