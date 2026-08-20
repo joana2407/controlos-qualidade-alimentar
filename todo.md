@@ -261,3 +261,4 @@
 - [x] Corrigir o painel Hoje para mostrar exclusivamente controlos e tarefas incluídos num Plano do Dia publicado para a data operacional.
 - [x] Mostrar em cada controlo agendado a evolução do preenchimento por fábrica incluída no Plano do Dia.
 - [x] Substituir o bloco «Preenchimento de hoje» pelo progresso de preenchimento por fábrica nos controlos agendados.
+- [x] Verificar e publicar a alteração do título do cartão prioritário de «NC críticas» para «Ocorrências».
