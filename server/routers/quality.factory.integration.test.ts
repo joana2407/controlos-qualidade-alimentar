@@ -203,6 +203,22 @@ describe("procedimentos de qualidade por fábrica", () => {
     expect(report.filters).toMatchObject({ module: "bphf", result: "C", ncStatus: "open" });
   });
 
+  it("filtra relatórios por colaborador e alerta ao acumular três incidências sem NC em seis meses", async () => {
+    const caller = qualityRouter.createCaller(createContext());
+    const report = await caller.reports({ collaboratorProfileId: 3 });
+    expect(report.filteredEntries.map((entry) => entry.id)).toEqual([1]);
+
+    const originalEntries = [...entries];
+    entries.push(
+      { id: 91, factoryId: 1, module: "bphf", area: "Produção", result: "NC", completedAt: new Date(2026, 6, 4), payload: { collaboratorId: 42, collaboratorName: "Marco Monteiro" } },
+      { id: 92, factoryId: 1, module: "bphf", area: "Produção", result: "NC", completedAt: new Date(2026, 6, 18), payload: { collaboratorId: 42, collaboratorName: "Marco Monteiro" } },
+      { id: 93, factoryId: 1, module: "bphf", area: "Produção", result: "NC", completedAt: new Date(2026, 7, 2), payload: { collaboratorId: 42, collaboratorName: "Marco Monteiro" } },
+    );
+    const alerts = await caller.incidenceRecurrenceAlerts();
+    expect(alerts).toContainEqual(expect.objectContaining({ collaboratorId: 42, collaboratorName: "Marco Monteiro", total: 3 }));
+    entries.splice(0, entries.length, ...originalEntries);
+  });
+
   it("aceita uma data inicial e final iguais para consultar um único dia", async () => {
     const caller = qualityRouter.createCaller(createContext());
     const sameDay = new Date(2026, 7, 14);

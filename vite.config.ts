@@ -5,6 +5,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { defineConfig, type Plugin, type ViteDevServer } from "vite";
 import { vitePluginManusRuntime } from "vite-plugin-manus-runtime";
+import { VitePWA } from "vite-plugin-pwa";
 
 // =============================================================================
 // Manus Debug Collector - Vite Plugin
@@ -150,7 +151,36 @@ function vitePluginManusDebugCollector(): Plugin {
   };
 }
 
-const plugins = [react(), tailwindcss(), jsxLocPlugin(), vitePluginManusRuntime(), vitePluginManusDebugCollector()];
+const plugins = [
+  react(),
+  tailwindcss(),
+  jsxLocPlugin(),
+  vitePluginManusRuntime(),
+  VitePWA({
+    registerType: "autoUpdate",
+    injectRegister: "auto",
+    manifest: {
+      name: "QualiControl — Controlos de Qualidade",
+      short_name: "QualiControl",
+      description: "Gestão operacional de controlos de qualidade e segurança alimentar.",
+      lang: "pt-PT",
+      start_url: "/",
+      scope: "/",
+      display: "standalone",
+      theme_color: "#101b34",
+      background_color: "#101b34",
+      icons: [
+        { src: "/manus-storage/qualicontrol-pwa-192_fc456895.png", sizes: "192x192", type: "image/png", purpose: "any" },
+        { src: "/manus-storage/qualicontrol-pwa-512_d191e79d.png", sizes: "512x512", type: "image/png", purpose: "any maskable" },
+      ],
+    },
+    workbox: {
+      cleanupOutdatedCaches: true,
+      navigateFallback: "/index.html",
+    },
+  }),
+  vitePluginManusDebugCollector(),
+];
 
 export default defineConfig({
   plugins,

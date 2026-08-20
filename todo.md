@@ -301,3 +301,7 @@
 - [x] Adicionar no painel de Incidências um filtro por intervalo de datas.
 - [x] Permitir registar e apresentar o número de ocorrência quando uma incidência gerar uma Não Conformidade.
 - [x] Compactar o painel de filtros dos Relatórios, reduzindo altura e espaços vazios.
+- [x] Fazer o indicador de Não Conformidades abertas respeitar o período de datas selecionado nas Incidências.
+- [x] Adicionar aos Relatórios um filtro por colaborador, aplicado à consulta e à exportação Excel.
+- [x] Alertar a Responsável quando um colaborador acumular 3 incidências nos últimos 6 meses, para avaliar a abertura de NC.
+- [x] Preparar o QualiControl como PWA instalável em telemóveis, com manifesto, ícone e suporte offline.

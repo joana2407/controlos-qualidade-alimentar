@@ -203,13 +203,15 @@ export const qualityRouter = router({
 
   metadata: qualitySessionProcedure.query(async () => {
     const db = await requireDb();
-    const [persistedAreas, persistedFactories] = await Promise.all([
+    const [persistedAreas, persistedFactories, persistedProfiles] = await Promise.all([
       db.select().from(areas).orderBy(areas.group, areas.name),
       db.select().from(factories).orderBy(factories.name),
+      db.select().from(qualityPinProfiles).orderBy(qualityPinProfiles.name),
     ]);
     return {
       areas: persistedAreas.map((area) => ({ id: area.id, name: area.name, group: area.group, factoryId: area.factoryId })),
       factories: persistedFactories.map((factory) => ({ id: factory.id, code: factory.code, name: factory.name })),
+      collaborators: persistedProfiles.filter((profile) => profile.active === "true").map((profile) => ({ id: profile.id, name: profile.name, title: profile.title })),
       modules: [
       { id: "bphf", label: "Verificação de BPHF" },
       { id: "metal_detectors", label: "Verificação de detetores de metais" },
@@ -804,6 +806,37 @@ export const qualityRouter = router({
     });
   }),
 
+  incidenceRecurrenceAlerts: qualitySessionProcedure.query(async () => {
+    const db = await requireDb();
+    const [entries, ncs] = await Promise.all([
+      db.select().from(controlEntries).orderBy(desc(controlEntries.completedAt)),
+      db.select().from(nonconformities),
+    ]);
+    const since = new Date();
+    since.setMonth(since.getMonth() - 6);
+    const linkedEntryIds = new Set(ncs.map((nc) => nc.sourceEntryId).filter((id): id is number => Boolean(id)));
+    const grouped = new Map<number, { collaboratorId: number; collaboratorName: string; incidences: typeof entries }>();
+    entries.filter((entry) => {
+      const payload = entry.payload && typeof entry.payload === "object" && !Array.isArray(entry.payload) ? entry.payload as Record<string, unknown> : {};
+      const collaboratorId = Number(payload.collaboratorId);
+      const collaboratorName = typeof payload.collaboratorName === "string" ? payload.collaboratorName.trim() : "";
+      return entry.result === "NC" && entry.completedAt >= since && collaboratorId > 0 && Boolean(collaboratorName) && !linkedEntryIds.has(entry.id) && payload.generatedNonconformity !== true;
+    }).forEach((entry) => {
+      const payload = entry.payload as Record<string, unknown>;
+      const collaboratorId = Number(payload.collaboratorId);
+      const collaboratorName = String(payload.collaboratorName).trim();
+      const current = grouped.get(collaboratorId) ?? { collaboratorId, collaboratorName, incidences: [] as typeof entries };
+      current.incidences.push(entry);
+      grouped.set(collaboratorId, current);
+    });
+    return Array.from(grouped.values()).filter((item) => item.incidences.length >= 3).map((item) => ({
+      collaboratorId: item.collaboratorId,
+      collaboratorName: item.collaboratorName,
+      total: item.incidences.length,
+      mostRecentAt: item.incidences.reduce((latest, entry) => entry.completedAt > latest ? entry.completedAt : latest, item.incidences[0].completedAt),
+    })).sort((left, right) => right.total - left.total || right.mostRecentAt.getTime() - left.mostRecentAt.getTime());
+  }),
+
   updateIncidence: qualityOperatorProcedure.input(z.object({
     id: z.number().int(),
     title: z.string().min(2).max(180).optional(),
@@ -1187,6 +1220,7 @@ export const qualityRouter = router({
     orderNumber: z.string().trim().min(1).max(80).optional(),
     analysisProduct: z.string().trim().min(1).max(180).optional(),
     analysisLot: z.string().trim().min(1).max(160).optional(),
+    collaboratorProfileId: z.number().int().optional(),
   }).optional()).query(async ({ input }) => {
     const db = await requireDb();
     const [entries, tasks, ncs] = await Promise.all([
@@ -1225,10 +1259,10 @@ export const qualityRouter = router({
     };
     const scopedEntries = scopeToFactory(entries, input?.factoryId).filter((entry) => {
       const orderNumber = typeof payloadRecord(entry.payload).orderNumber === "string" ? payloadRecord(entry.payload).orderNumber as string : null;
-      return withinPeriod(entry.completedAt) && (!input?.module || entry.module === input.module) && (!input?.result || entry.result === input.result) && (!input?.orderNumber || orderNumber === input.orderNumber) && matchesInternalAnalysis(entry);
+      return withinPeriod(entry.completedAt) && (!input?.module || entry.module === input.module) && (!input?.result || entry.result === input.result) && (!input?.orderNumber || orderNumber === input.orderNumber) && (!input?.collaboratorProfileId || entry.registeredByProfileId === input.collaboratorProfileId) && matchesInternalAnalysis(entry);
     });
-    const scopedTasks = scopeToFactory(tasks, input?.factoryId).filter((task) => task.status !== "cancelled" && withinPeriod(task.dueAt));
-    const scopedNcs = scopeToFactory(ncs, input?.factoryId).filter((nc) => withinPeriod(nc.detectedAt) && (!input?.module || nc.module === input.module) && (!input?.ncStatus || nc.status === input.ncStatus));
+    const scopedTasks = scopeToFactory(tasks, input?.factoryId).filter((task) => task.status !== "cancelled" && withinPeriod(task.dueAt) && (!input?.collaboratorProfileId || task.completedByProfileId === input.collaboratorProfileId));
+    const scopedNcs = scopeToFactory(ncs, input?.factoryId).filter((nc) => withinPeriod(nc.detectedAt) && (!input?.module || nc.module === input.module) && (!input?.ncStatus || nc.status === input.ncStatus) && (!input?.collaboratorProfileId || nc.reportedByProfileId === input.collaboratorProfileId));
     const modules = qualityModuleValues.map((module) => {
       const moduleEntries = scopedEntries.filter((entry) => entry.module === module);
       return {
