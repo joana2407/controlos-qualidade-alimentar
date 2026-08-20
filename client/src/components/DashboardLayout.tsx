@@ -33,7 +33,7 @@ const menuItems = [
   { icon: LayoutDashboard, label: "Hoje", path: "/qualicontrol" },
   { icon: BookOpenCheck, label: "Plataforma", path: "/plataforma" },
   { icon: ClipboardCheck, label: "Controlos", path: "/controlos" },
-  { icon: FileWarning, label: "Ocorrências", path: "/incidencias" },
+  { icon: FileWarning, label: "Incidências", path: "/incidencias" },
   { icon: BarChart3, label: "Relatórios", path: "/relatorios" },
   { icon: Settings2, label: "Configuração", path: "/configuracao" },
 ];

@@ -294,3 +294,5 @@
 - [x] Traduzir para português os rótulos, resultados e metadados mostrados nos detalhes dos Relatórios.
 - [x] Ocultar o identificador técnico do colaborador nos detalhes e exportações dos Relatórios.
 - [x] Adicionar um atalho direto ao painel de Ocorrências na barra lateral.
+- [x] Atualizar para «Incidências» os títulos e o atalho da barra lateral da lista unificada.
+- [x] Configurar o botão «Gerar Não Conformidade» para abrir o site externo de gestão de ocorrências numa nova janela.

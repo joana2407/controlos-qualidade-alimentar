@@ -74,14 +74,14 @@ describe("atalhos laterais dos painéis de controlo", () => {
     occurrenceScope = "reclamacoes";
     currentLocation = "/qualicontrol";
     render(<DashboardLayout workspace="quality"><div>Conteúdo</div></DashboardLayout>);
-    expect(screen.getByRole("button", { name: "Ocorrências" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Incidências" })).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Reclamações a fornecedores" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Nova reclamação" })).toBeNull();
   });
 
-  it("apresenta o atalho direto de Ocorrências sem incluir os menus de Gestão de Ocorrências", () => {
+  it("apresenta o atalho direto de Incidências sem incluir os menus de Gestão de Ocorrências", () => {
     render(<DashboardLayout workspace="quality"><div>Conteúdo</div></DashboardLayout>);
-    fireEvent.click(screen.getByRole("button", { name: "Ocorrências" }));
+    fireEvent.click(screen.getByRole("button", { name: "Incidências" }));
     expect(setLocation).toHaveBeenLastCalledWith("/incidencias");
     expect(screen.queryByRole("button", { name: "Reclamações a fornecedores" })).toBeNull();
   });

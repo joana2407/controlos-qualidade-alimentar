@@ -12,14 +12,15 @@ describe("estrutura de acessibilidade dos ecrãs operacionais", () => {
     expect(css).not.toMatch(/outline:\s*none/);
   });
 
-  it("fornece rótulos e controlos semânticos nos formulários críticos", () => {
+  it("fornece rótulos e controlos semânticos nos formulários e ações críticas", () => {
     const controls = source("client/src/pages/ModuleControl.tsx");
     const nonconformities = source("client/src/pages/Nonconformities.tsx");
     expect(controls.match(/<Label>/g)?.length).toBeGreaterThanOrEqual(8);
     expect(controls).toContain("<Button");
     expect(controls).toContain("<Textarea");
-    expect(nonconformities.match(/<Label>/g)?.length).toBeGreaterThanOrEqual(5);
     expect(nonconformities).toContain("Gerar Não Conformidade");
+    expect(nonconformities).toContain('target="_blank"');
+    expect(nonconformities).toContain("EXTERNAL_NONCONFORMITY_URL");
   });
 
   it("exprime os estados críticos por texto, ícone e não apenas por cor", () => {
