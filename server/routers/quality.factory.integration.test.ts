@@ -94,11 +94,12 @@ describe("procedimentos de qualidade por fábrica", () => {
     const dashboard = await caller.dashboard({ factoryId: 1 });
     const filteredTasks = await caller.listTasks({ factoryId: 1 });
     expect(dashboard.tasks.map((task) => task.id)).toEqual([1, 2]);
-    expect(dashboard.metrics).toMatchObject({ pending: 1, criticalOpen: 1, completedToday: 3, fragilePending: 1, dailyExecutionRate: 28.6 });
-    expect(dashboard.moduleProgress.bphf).toMatchObject({ expected: 2, completed: 2, pending: [], percentage: 100 });
-    expect(dashboard.moduleProgress.metal_detectors).toMatchObject({ expected: 1, completed: 0, pending: ["Metal F1"], percentage: 0 });
-    expect(dashboard.moduleProgressByFactory.bphf).toEqual([{ factoryId: 1, expected: 2, completed: 2, registeredToday: 1, percentage: 100 }]);
-    expect(dashboard.moduleProgressByFactory.metal_detectors).toEqual([{ factoryId: 1, expected: 1, completed: 0, registeredToday: 1, percentage: 0 }]);
+    expect(dashboard.metrics).toMatchObject({ pending: 1, criticalOpen: 1, completedToday: 3, fragilePending: 0, dailyExecutionRate: 50 });
+    expect(dashboard.plannedControls).toEqual([]);
+    expect(dashboard.moduleProgress.bphf).toMatchObject({ expected: 0, completed: 0, pending: [], percentage: 0 });
+    expect(dashboard.moduleProgress.metal_detectors).toMatchObject({ expected: 0, completed: 0, pending: [], percentage: 0 });
+    expect(dashboard.moduleProgressByFactory.bphf).toEqual([{ factoryId: 1, expected: 0, completed: 0, registeredToday: 0, percentage: 0 }]);
+    expect(dashboard.moduleProgressByFactory.metal_detectors).toEqual([{ factoryId: 1, expected: 0, completed: 0, registeredToday: 0, percentage: 0 }]);
     expect(filteredTasks.map((task) => task.id)).toEqual([1, 2]);
   });
 
@@ -119,32 +120,50 @@ describe("procedimentos de qualidade por fábrica", () => {
     const caller = qualityRouter.createCaller(pinOnlyContext);
 
     await expect(caller.metadata()).resolves.toMatchObject({ factories: factoryRows });
-    await expect(caller.dashboard({ factoryId: 1 })).resolves.toMatchObject({ metrics: { dailyExecutionRate: 28.6 } });
+    await expect(caller.dashboard({ factoryId: 1 })).resolves.toMatchObject({ metrics: { dailyExecutionRate: 50 } });
   });
 
-  it("não replica a obrigação diária quando existe um plano manual equivalente", async () => {
+  it("não cria obrigações automáticas a partir do catálogo de planos", async () => {
     plans.push({ id: 1, title: "BPHF diário", module: "bphf", areaId: 101, factoryId: 1, frequency: "daily", active: "true" });
     const caller = qualityRouter.createCaller(createContext());
     const dashboard = await caller.dashboard({ factoryId: 1 });
 
-    expect(dashboard.metrics.dailyExecutionRate).toBe(28.6);
-    expect(dashboard.moduleProgress.bphf).toMatchObject({ expected: 2, completed: 2, percentage: 100 });
+    expect(dashboard.metrics.dailyExecutionRate).toBe(50);
+    expect(dashboard.moduleProgress.bphf).toMatchObject({ expected: 0, completed: 0, percentage: 0 });
   });
 
-  it("mantém as obrigações padrão mesmo quando não existem tarefas pontuais", async () => {
+  it("não apresenta controlos pendentes quando não existe Plano do Dia", async () => {
     tasks.length = 0;
     const caller = qualityRouter.createCaller(createContext());
     const dashboard = await caller.dashboard({ factoryId: 1 });
 
-    expect(dashboard.metrics.dailyExecutionRate).toBe(20);
-    expect(dashboard.moduleProgress.bphf).toMatchObject({ expected: 1, completed: 1, registeredToday: 1, percentage: 100 });
+    expect(dashboard.metrics.dailyExecutionRate).toBe(0);
+    expect(dashboard.plannedControls).toEqual([]);
+    expect(dashboard.moduleProgress.bphf).toMatchObject({ expected: 0, completed: 0, registeredToday: 0, percentage: 0 });
   });
 
-  it("planeia uma única expedição diária comum a toda a operação", async () => {
+  it("não agenda automaticamente a expedição comum", async () => {
     const caller = qualityRouter.createCaller(createContext());
     const dashboard = await caller.dashboard();
-    expect(dashboard.moduleProgress.dispatch_control).toMatchObject({ expected: 1, completed: 0, registeredToday: 0, percentage: 0, pending: ["Expedição diária obrigatória"] });
+    expect(dashboard.moduleProgress.dispatch_control).toMatchObject({ expected: 0, completed: 0, registeredToday: 0, percentage: 0, pending: [] });
     expect(dashboard.moduleProgressByFactory.dispatch_control.every((entry) => entry.expected === 0)).toBe(true);
+  });
+
+  it("mostra o progresso apenas das fábricas incluídas no Plano do Dia", async () => {
+    tasks.push(
+      { id: 4, factoryId: 1, status: "pending", dueAt: now, completedAt: null, module: "bphf", area: "Plano do Dia", title: "Plano do Dia — BPHF F1", responsible: "Ana", assigneeProfileIds: [1] },
+      { id: 5, factoryId: 2, status: "pending", dueAt: now, completedAt: null, module: "bphf", area: "Plano do Dia", title: "Plano do Dia — BPHF F2", responsible: "Ana", assigneeProfileIds: [1] },
+    );
+    const caller = qualityRouter.createCaller(createContext());
+    const dashboard = await caller.dashboard();
+
+    expect(dashboard.plannedControls.map((control) => control.factoryId)).toEqual([1, 2]);
+    expect(dashboard.moduleProgress.bphf).toMatchObject({ expected: 2, completed: 2, registeredToday: 2, percentage: 100 });
+    expect(dashboard.moduleProgressByFactory.bphf).toEqual([
+      { factoryId: 1, expected: 1, completed: 1, registeredToday: 1, percentage: 100 },
+      { factoryId: 2, expected: 1, completed: 1, registeredToday: 1, percentage: 100 },
+      { factoryId: 3, expected: 0, completed: 0, registeredToday: 0, percentage: 0 },
+    ]);
   });
 
   it("filtra NC e agrega os relatórios sem misturar a fábrica 2", async () => {

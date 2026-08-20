@@ -276,14 +276,12 @@ export const qualityRouter = router({
 
   dashboard: qualitySessionProcedure.input(z.object({ factoryId: z.number().int().optional() }).optional()).query(async ({ input }) => {
     const db = await requireDb();
-    const [tasks, ncs, entries, actions, fragileCatalog, plans, areaCatalog, factoryCatalog] = await Promise.all([
+    const [tasks, ncs, entries, actions, fragileCatalog, factoryCatalog] = await Promise.all([
       db.select().from(controlTasks).orderBy(controlTasks.dueAt),
       db.select().from(nonconformities).orderBy(desc(nonconformities.detectedAt)),
       db.select().from(controlEntries).orderBy(desc(controlEntries.completedAt)),
       db.select().from(correctiveActions).orderBy(correctiveActions.dueAt),
       db.select().from(fragileItems).orderBy(fragileItems.location, fragileItems.sortOrder, fragileItems.name),
-      db.select().from(controlPlans).orderBy(controlPlans.module, controlPlans.title),
-      db.select().from(areas).orderBy(areas.name),
       db.select().from(factories).orderBy(factories.name),
     ]);
     const scopedTasks = scopeToFactory(tasks, input?.factoryId);
@@ -291,7 +289,6 @@ export const qualityRouter = router({
     const scopedEntries = scopeToFactory(entries, input?.factoryId);
     const scopedActions = scopeToFactory(actions, input?.factoryId);
     const scopedFragileCatalog = scopeToFactory(fragileCatalog, input?.factoryId);
-    const scopedPlans = plans.filter((plan) => plan.active === "true" && (!input?.factoryId || plan.factoryId === input.factoryId || plan.factoryId === null));
     const now = new Date();
     const operationalDate = nextBusinessDay(now);
     const { start, end } = asDateRange(operationalDate);
@@ -305,72 +302,57 @@ export const qualityRouter = router({
     const overdue = pending.filter((task) => task.dueAt < start);
     const completedToday = scopedEntries.filter((entry) => entry.completedAt >= start && entry.completedAt < end);
     const todayTasks = businessTasks.filter((task) => task.dueAt >= start && task.dueAt < end);
+    const plannedControls = todayTasks.filter((task) => task.area === "Plano do Dia");
+    const adHocTasks = businessTasks.filter((task) => task.area !== "Plano do Dia");
     const completedTasksToday = todayTasks.filter((task) => task.status === "completed" && task.completedAt && task.completedAt >= start && task.completedAt < end);
-    const hasPublishedDailyPlan = todayTasks.some((task) => task.area === "Plano do Dia");
     const monthlyChecklistPlannedThisMonth = businessTasks.some((task) => task.module === "monthly_checklist" && task.dueAt.getFullYear() === operationalDate.getFullYear() && task.dueAt.getMonth() === operationalDate.getMonth());
     const monthlyChecklistReminder = !input?.factoryId && operationalDate.getDate() >= 20 && !monthlyChecklistPlannedThisMonth;
-    const areasById = new Map(areaCatalog.map((area) => [area.id, area.name]));
     const lastFragileInspections = new Map<number, Date>();
     scopedEntries.filter((entry) => entry.module === "fragile_items").forEach((entry) => {
       const payload = entry.payload;
       const fragileItemId = payload && typeof payload === "object" && !Array.isArray(payload) ? (payload as { fragileItemId?: unknown }).fragileItemId : null;
       if (typeof fragileItemId === "number" && !lastFragileInspections.has(fragileItemId)) lastFragileInspections.set(fragileItemId, entry.completedAt);
     });
-    type ScheduledPlan = { id: number; title: string; module: typeof qualityModuleValues[number]; areaId: number; factoryId: number | null; frequency: string; fragileItemId?: number };
-    const manualPlans: ScheduledPlan[] = scopedPlans.filter((plan) => plan.module !== "dispatch_control").map((plan) => ({ id: plan.id, title: plan.title, module: plan.module, areaId: plan.areaId, factoryId: plan.factoryId, frequency: plan.frequency }));
-    const requiredPlans: ScheduledPlan[] = REQUIRED_MODULE_FREQUENCIES.filter((rule) => isPlanDue(rule.frequency, operationalDate)).flatMap((rule, ruleIndex) => factoryCatalog.filter((factory) => !input?.factoryId || factory.id === input.factoryId).filter((factory) => !manualPlans.some((plan) => plan.module === rule.module && plan.frequency === rule.frequency && (plan.factoryId === factory.id || plan.factoryId === null))).map((factory) => ({ id: -((ruleIndex + 1) * 1000 + factory.id), title: rule.title, module: rule.module, areaId: 0, factoryId: factory.id, frequency: rule.frequency })));
-    const sharedDispatchPlan: ScheduledPlan[] = !input?.factoryId && isPlanDue("daily", operationalDate) ? [{ id: -80_001, title: "Expedição diária obrigatória", module: "dispatch_control", areaId: 0, factoryId: null, frequency: "daily" }] : [];
-    const fragileRequiredPlans: ScheduledPlan[] = scopedFragileCatalog.filter((item) => item.status === "active" && isFragileInspectionPending(item.periodicity, lastFragileInspections.get(item.id), operationalDate)).map((item) => ({ id: -(90_000 + item.id), title: `Quebrável — ${item.name}`, module: "fragile_items", areaId: 0, factoryId: item.factoryId, frequency: item.periodicity, fragileItemId: item.id }));
-    const duePlans = hasPublishedDailyPlan ? [] : [...manualPlans.filter((plan) => isPlanDue(plan.frequency, operationalDate)), ...requiredPlans, ...sharedDispatchPlan, ...fragileRequiredPlans];
-    const completedDuePlans = duePlans.filter((plan) => {
-      if (plan.fragileItemId) return completedToday.some((entry) => entry.module === "fragile_items" && entry.factoryId === plan.factoryId && Boolean(entry.payload && typeof entry.payload === "object" && (entry.payload as { fragileItemId?: unknown }).fragileItemId === plan.fragileItemId));
-      const planArea = areasById.get(plan.areaId);
-      return completedToday.some((entry) => entry.module === plan.module && (!plan.factoryId || entry.factoryId === plan.factoryId) && (!planArea || entry.area === planArea));
-    });
-    const dailyExpectedCount = todayTasks.length + duePlans.length;
-    const dailyCompletedCount = completedTasksToday.length + completedDuePlans.length;
-    const effectiveDailyExpectedCount = dailyExpectedCount || completedToday.length;
+    const isPlannedControlCompleted = (task: typeof plannedControls[number]) => task.status === "completed" || completedToday.some((entry) => entry.module === task.module && (task.factoryId === null || entry.factoryId === task.factoryId));
+    const completedPlannedControls = plannedControls.filter(isPlannedControlCompleted);
+    const dailyExpectedCount = todayTasks.length;
+    const dailyCompletedCount = completedTasksToday.length + completedPlannedControls.filter((task) => task.status !== "completed").length;
+    const effectiveDailyExpectedCount = dailyExpectedCount;
     const moduleProgress = Object.fromEntries(qualityModuleValues.map((module) => {
-      const moduleTasks = todayTasks.filter((task) => task.module === module);
-      const modulePlans = duePlans.filter((plan) => plan.module === module);
-      const moduleCompletedTasks = completedTasksToday.filter((task) => task.module === module);
-      const moduleCompletedPlans = completedDuePlans.filter((plan) => plan.module === module);
-      const registeredToday = completedToday.filter((entry) => entry.module === module).length;
-      const expected = moduleTasks.length + modulePlans.length;
-      const completed = moduleCompletedTasks.length + moduleCompletedPlans.length;
-      const denominator = expected || registeredToday;
-      const pendingTaskTitles = moduleTasks.filter((task) => task.status !== "completed").map((task) => task.title);
-      const pendingPlanTitles = modulePlans.filter((plan) => !moduleCompletedPlans.some((completedPlan) => completedPlan.id === plan.id)).map((plan) => `${plan.title}${areasById.get(plan.areaId) ? ` — ${areasById.get(plan.areaId)}` : ""}`);
+      const moduleControls = plannedControls.filter((task) => task.module === module);
+      const moduleCompletedControls = completedPlannedControls.filter((task) => task.module === module);
+      const expected = moduleControls.length;
+      const completed = moduleCompletedControls.length;
+      const registeredToday = expected ? completed : 0;
+      const denominator = expected;
+      const pendingTaskTitles = moduleControls.filter((task) => !isPlannedControlCompleted(task)).map((task) => task.title);
       const completionTimes = [
-        ...moduleCompletedTasks.map((task) => task.completedAt),
-        ...completedToday.filter((entry) => entry.module === module).map((entry) => entry.completedAt),
+        ...moduleCompletedControls.map((task) => task.completedAt),
+        ...completedToday.filter((entry) => entry.module === module && moduleControls.some((task) => task.factoryId === null || task.factoryId === entry.factoryId)).map((entry) => entry.completedAt),
       ].filter((date): date is Date => Boolean(date));
       const lastCompletedAt = completionTimes.reduce<Date | undefined>((latest, date) => !latest || date > latest ? date : latest, undefined);
-      return [module, { expected, completed: expected ? completed : registeredToday, registeredToday, pending: Array.from(new Set([...pendingTaskTitles, ...pendingPlanTitles])), percentage: denominator ? Number(((expected ? completed : registeredToday) / denominator * 100).toFixed(1)) : 0, lastCompletedAt }];
+      return [module, { expected, completed, registeredToday, pending: Array.from(new Set(pendingTaskTitles)), percentage: denominator ? Number((completed / denominator * 100).toFixed(1)) : 0, lastCompletedAt }];
     }));
     const visibleFactories = input?.factoryId ? factoryCatalog.filter((factory) => factory.id === input.factoryId) : factoryCatalog;
     const moduleProgressByFactory = Object.fromEntries(qualityModuleValues.map((module) => [module, visibleFactories.map((factory) => {
-      const factoryTasks = todayTasks.filter((task) => task.module === module && task.factoryId === factory.id);
-      const factoryPlans = duePlans.filter((plan) => plan.module === module && plan.factoryId === factory.id);
-      const factoryCompletedTasks = completedTasksToday.filter((task) => task.module === module && task.factoryId === factory.id);
-      const factoryCompletedPlans = completedDuePlans.filter((plan) => plan.module === module && plan.factoryId === factory.id);
-      const registeredToday = completedToday.filter((entry) => entry.module === module && entry.factoryId === factory.id).length;
-      const expected = factoryTasks.length + factoryPlans.length;
-      const completed = factoryCompletedTasks.length + factoryCompletedPlans.length;
-      const denominator = expected || registeredToday;
-      return { factoryId: factory.id, expected, completed: expected ? completed : registeredToday, registeredToday, percentage: denominator ? Number(((expected ? completed : registeredToday) / denominator * 100).toFixed(1)) : 0 };
+      const factoryControls = plannedControls.filter((task) => task.module === module && task.factoryId === factory.id);
+      const completedFactoryControls = factoryControls.filter(isPlannedControlCompleted);
+      const expected = factoryControls.length;
+      const completed = completedFactoryControls.length;
+      return { factoryId: factory.id, expected, completed, registeredToday: expected ? completed : 0, percentage: expected ? Number((completed / expected * 100).toFixed(1)) : 0 };
     })]));
     const critical = scopedNcs.filter((nc) => nc.status !== "closed" && nc.severity === "critical");
     const openActions = scopedActions.filter((action) => action.status !== "verified");
-    const fragilePending = scopedFragileCatalog.filter((item) => item.status === "active" && isFragileInspectionPending(item.periodicity, lastFragileInspections.get(item.id), now));
+    const fragilePending = plannedControls.some((task) => task.module === "fragile_items") ? scopedFragileCatalog.filter((item) => item.status === "active" && isFragileInspectionPending(item.periodicity, lastFragileInspections.get(item.id), now)) : [];
 
     return {
-      tasks: businessTasks.slice(0, 20),
+      tasks: adHocTasks.slice(0, 20),
+      plannedControls: plannedControls.map((task) => ({ ...task, completed: isPlannedControlCompleted(task) })),
       operationalDate,
       taskGroups: {
-        today: businessTasks.filter((task) => task.dueAt >= start && task.dueAt < end),
-        tomorrow: businessTasks.filter((task) => task.dueAt >= tomorrowStart && task.dueAt < tomorrowEnd),
-        thisWeek: businessTasks.filter((task) => task.dueAt >= workingWeekStart && task.dueAt < workingWeekEnd && !(task.dueAt >= start && task.dueAt < tomorrowEnd)),
+        today: adHocTasks.filter((task) => task.dueAt >= start && task.dueAt < end),
+        tomorrow: adHocTasks.filter((task) => task.dueAt >= tomorrowStart && task.dueAt < tomorrowEnd),
+        thisWeek: adHocTasks.filter((task) => task.dueAt >= workingWeekStart && task.dueAt < workingWeekEnd && !(task.dueAt >= start && task.dueAt < tomorrowEnd)),
       },
       criticalNcs: critical.slice(0, 6),
       dueActions: openActions.filter((action) => action.dueAt && action.dueAt < now).slice(0, 6),
@@ -380,7 +362,7 @@ export const qualityRouter = router({
         criticalOpen: critical.length,
         completedToday: completedToday.length,
         fragilePending: fragilePending.length,
-        dailyExecutionRate: effectiveDailyExpectedCount ? Number(((dailyExpectedCount ? dailyCompletedCount : completedToday.length) / effectiveDailyExpectedCount * 100).toFixed(1)) : 0,
+        dailyExecutionRate: effectiveDailyExpectedCount ? Number((dailyCompletedCount / effectiveDailyExpectedCount * 100).toFixed(1)) : 0,
       },
       moduleProgress,
       moduleProgressByFactory,

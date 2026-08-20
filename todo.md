@@ -258,3 +258,6 @@
 - [x] Excluir os pontos N/A do cálculo da taxa de conformidade do Checklist Mensal.
 - [x] Remover a zona Geral do Checklist Mensal.
 - [x] Permitir à Responsável editar cada ponto mensal e atribuí-lo a uma ou mais fábricas.
+- [x] Corrigir o painel Hoje para mostrar exclusivamente controlos e tarefas incluídos num Plano do Dia publicado para a data operacional.
+- [x] Mostrar em cada controlo agendado a evolução do preenchimento por fábrica incluída no Plano do Dia.
+- [x] Substituir o bloco «Preenchimento de hoje» pelo progresso de preenchimento por fábrica nos controlos agendados.
