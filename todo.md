@@ -262,3 +262,16 @@
 - [x] Mostrar em cada controlo agendado a evolução do preenchimento por fábrica incluída no Plano do Dia.
 - [x] Substituir o bloco «Preenchimento de hoje» pelo progresso de preenchimento por fábrica nos controlos agendados.
 - [x] Verificar e publicar a alteração do título do cartão prioritário de «NC críticas» para «Ocorrências».
+- [x] Adicionar ao BPHF a verificação de limpeza e organização dos cacifos pessoal e de trabalho.
+- [x] Exigir o nome do colaborador inspecionado no novo ponto de verificação de cacifos.
+- [x] Permitir gerir e adicionar colaboradores ao catálogo de inspeção de cacifos.
+- [x] Remover a pré-seleção de resultado C no controlo BPHF.
+- [x] Permitir registar cada ponto BPHF de forma independente, com a respetiva área selecionada.
+- [x] Adicionar filtro BPHF para consultar colaboradores inspecionados e os respetivos resultados.
+- [x] Rever e reorganizar o painel de Relatórios para melhorar a funcionalidade operacional, os filtros e o acesso ao detalhe.
+- [x] Preencher automaticamente o analista das Análises internas a partir da sessão PIN.
+- [x] Permitir vários pontos de amostragem com resultado individual numa Análise interna.
+- [x] Permitir anexar fotografias como evidência numa Análise interna.
+- [x] Criar filtros de Relatórios para Análises internas por produto ou ponto, lote e data de realização.
+- [x] Integrar os conteúdos do painel Ajuda na página Plataforma.
+- [x] Retirar o painel Ajuda autónomo da navegação e redirecionar os seus atalhos para a Plataforma.

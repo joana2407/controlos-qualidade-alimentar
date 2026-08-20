@@ -10,17 +10,18 @@ import PlatformOverview from "../client/src/pages/PlatformOverview";
 describe("visão geral da plataforma", () => {
   afterEach(cleanup);
 
-  it("apresenta o fluxo operacional e os oito módulos de controlo", () => {
+  it("apresenta o fluxo operacional, os módulos e os guias integrados", () => {
     render(<PlatformOverview />);
     expect(screen.getByText("Qualidade alimentar organizada por ação.")).toBeTruthy();
-    expect(screen.getByText("Oito módulos, um único fluxo de qualidade.")).toBeTruthy();
-    ["BPHF", "Detetores de metais", "Controlo sensorial", "Shelf-life", "Checklist mensal", "Caixas de sugestões", "Quebráveis", "Controlo à expedição"].forEach((label) => expect(screen.getByText(label)).toBeTruthy());
+    expect(screen.getByText("Acesso rápido aos controlos.")).toBeTruthy();
+    expect(screen.getByText("Como executar cada controlo.")).toBeTruthy();
+    ["BPHF", "Detetores de metais", "Controlo sensorial", "Shelf-life", "Checklist mensal", "Caixas de sugestões", "Quebráveis", "Controlo à expedição", "Análises internas"].forEach((label) => expect(screen.getAllByText(label).length).toBeGreaterThan(0));
   });
 
   it("liga os atalhos principais aos destinos operacionais", () => {
     render(<PlatformOverview />);
     expect(screen.getByRole("link", { name: /Abrir painel «Hoje»/ }).getAttribute("href")).toBe("/");
-    expect(screen.getByRole("link", { name: /Explorar controlos/ }).getAttribute("href")).toBe("/controlos");
+    expect(screen.getByRole("link", { name: /Abrir painel de controlos/ }).getAttribute("href")).toBe("/controlos");
     expect(screen.getByRole("link", { name: /BPHF/ }).getAttribute("href")).toBe("/controlos/bphf");
     expect(screen.getByRole("link", { name: /Quebráveis/ }).getAttribute("href")).toBe("/controlos/fragile_items");
     expect(screen.getByRole("link", { name: /Controlo à expedição/ }).getAttribute("href")).toBe("/controlos/dispatch_control");

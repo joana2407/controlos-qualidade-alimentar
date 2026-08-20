@@ -2,6 +2,20 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+
+vi.mock("@/lib/trpc", () => ({
+  trpc: {
+    useUtils: () => ({ quality: { reports: { invalidate: vi.fn() } } }),
+    quality: {
+      uploadInternalAnalysisPhoto: { useMutation: () => ({ isPending: false, mutate: vi.fn() }) },
+    },
+  },
+}));
+
+vi.mock("@/contexts/QualityAccessContext", () => ({
+  useQualityAccess: () => ({ activeProfile: { id: 1, name: "Sabrina Esteves", title: "Tec. Qualidade", role: "technician" }, canManage: false }),
+}));
+
 import { ControlFactoryContext, InternalAnalysis } from "../client/src/pages/ModuleControl";
 
 afterEach(cleanup);
@@ -12,9 +26,12 @@ describe("controlo de análises internas", () => {
     render(<ControlFactoryContext.Provider value={{ factories: [{ id: 1, name: "Fábrica 1 (Fatiado)" }], factoryId: "1", setFactoryId: vi.fn() }}><InternalAnalysis createEntry={createEntry} /></ControlFactoryContext.Provider>);
 
     expect(screen.getByText("Análises internas")).toBeTruthy();
-    expect(screen.getByText("Nome do analista / operador")).toBeTruthy();
-    expect(screen.getByText("Lote / ponto de amostragem")).toBeTruthy();
+    expect(screen.getByText("Analista responsável")).toBeTruthy();
+    expect(screen.getByDisplayValue("Sabrina Esteves")).toBeTruthy();
+    expect(screen.getByText("Ponto de amostragem")).toBeTruthy();
     expect(screen.getByText("Observações (obrigatórias)")).toBeTruthy();
+    expect(screen.getByText("Fotografias de evidência")).toBeTruthy();
+    expect(screen.getByRole("button", { name: /amostra/i })).toBeTruthy();
 
     fireEvent.click(screen.getAllByRole("combobox")[0]);
     expect(screen.getByText("Glúten")).toBeTruthy();

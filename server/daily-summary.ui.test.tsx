@@ -31,13 +31,13 @@ describe("resumo diário de incidências", () => {
     expect(screen.getByDisplayValue("Aguardar confirmação do fornecedor.")).toBeTruthy();
     expect(screen.getByText("Embalagem danificada")).toBeTruthy();
     expect(screen.getByText("Gerou NC")).toBeTruthy();
-    expect(screen.getByRole("button", { name: /guardar nota/i })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Guardar" })).toBeTruthy();
   });
 
   it("abre todos os dados e anotações de um controlo apenas no período filtrado", () => {
     render(<Reports />);
 
-    fireEvent.click(screen.getByRole("button", { name: /ver detalhe/i }));
+    fireEvent.click(screen.getByRole("button", { name: /detalhe/i }));
 
     expect(screen.getByText("Dados do controlo")).toBeTruthy();
     expect(screen.getByText("Superfície limpa e desinfetada.")).toBeTruthy();

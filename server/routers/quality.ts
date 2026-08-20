@@ -3,6 +3,7 @@ import { and, desc, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
 import {
   areas,
+  bphfInspectionEmployees,
   factories,
   checklistItems,
   checklistItemFactories,
@@ -204,6 +205,46 @@ export const qualityRouter = router({
   listAreas: qualitySessionProcedure.query(async () => {
     const db = await requireDb();
     return db.select().from(areas).orderBy(areas.group, areas.name);
+  }),
+
+  listBphfInspectionEmployees: qualitySessionProcedure.query(async () => {
+    const db = await requireDb();
+    const employees = await db.select().from(bphfInspectionEmployees).where(eq(bphfInspectionEmployees.active, "true")).orderBy(bphfInspectionEmployees.name);
+    return employees.map((employee) => ({ id: employee.id, name: employee.name }));
+  }),
+
+  addBphfInspectionEmployee: qualityOperatorProcedure.input(z.object({
+    name: z.string().trim().min(2).max(160),
+  })).mutation(async ({ ctx, input }) => {
+    const db = await requireDb();
+    const name = input.name.replace(/\s+/g, " ").trim();
+    const existing = await db.select().from(bphfInspectionEmployees).where(eq(bphfInspectionEmployees.name, name)).limit(1);
+    if (existing[0]) {
+      if (existing[0].active !== "true") await db.update(bphfInspectionEmployees).set({ active: "true" }).where(eq(bphfInspectionEmployees.id, existing[0].id));
+      return { id: existing[0].id, name: existing[0].name, alreadyExists: true };
+    }
+    const result = await db.insert(bphfInspectionEmployees).values({ name, active: "true", createdBy: ctx.user?.openId ?? `quality-profile-${ctx.operatorProfile!.id}` });
+    return { id: Number(result[0].insertId), name, alreadyExists: false };
+  }),
+
+  listBphfCollaboratorInspections: qualitySessionProcedure.input(z.object({
+    collaboratorId: z.number().int().optional(),
+    factoryId: z.number().int().optional(),
+    result: resultSchema.optional(),
+  }).optional()).query(async ({ input }) => {
+    const db = await requireDb();
+    const conditions = [eq(controlEntries.module, "bphf")];
+    if (input?.factoryId) conditions.push(eq(controlEntries.factoryId, input.factoryId));
+    const entries = await db.select().from(controlEntries).where(and(...conditions)).orderBy(desc(controlEntries.completedAt)).limit(150);
+    return entries.flatMap((entry) => {
+      const payload = entry.payload as Record<string, unknown>;
+      const collaboratorId = Number(payload.collaboratorId);
+      const collaboratorName = typeof payload.collaboratorName === "string" ? payload.collaboratorName : "";
+      if (!collaboratorId || !collaboratorName) return [];
+      if (input?.collaboratorId && collaboratorId !== input.collaboratorId) return [];
+      if (input?.result && entry.result !== input.result) return [];
+      return [{ id: entry.id, collaboratorId, collaboratorName, criterion: typeof payload.criterion === "string" ? payload.criterion : entry.title, area: entry.area, result: entry.result, notes: entry.notes, completedAt: entry.completedAt, factoryId: entry.factoryId }];
+    });
   }),
 
   listFactories: qualitySessionProcedure.query(async () => {
@@ -493,6 +534,18 @@ export const qualityRouter = router({
     if (!base64) throw new TRPCError({ code: "BAD_REQUEST", message: "Imagem inválida." });
     const safeName = input.fileName.replace(/[^a-zA-Z0-9._-]/g, "_");
     const { key, url } = await storagePut(`task-reports/${input.taskId}/${ctx.operatorProfile!.id}/${Date.now()}-${safeName}`, Buffer.from(base64, "base64"), input.mimeType);
+    return { key, url, fileName: input.fileName, mimeType: input.mimeType };
+  }),
+
+  uploadInternalAnalysisPhoto: qualityOperatorProcedure.input(z.object({
+    fileName: z.string().min(1).max(255),
+    mimeType: z.enum(["image/jpeg", "image/png", "image/webp"]),
+    dataUrl: z.string().min(20).max(7_000_000),
+  })).mutation(async ({ ctx, input }) => {
+    const base64 = input.dataUrl.split(",")[1];
+    if (!base64) throw new TRPCError({ code: "BAD_REQUEST", message: "Imagem inválida." });
+    const safeName = input.fileName.replace(/[^a-zA-Z0-9._-]/g, "_");
+    const { key, url } = await storagePut(`internal-analysis/${ctx.operatorProfile!.id}/${Date.now()}-${safeName}`, Buffer.from(base64, "base64"), input.mimeType);
     return { key, url, fileName: input.fileName, mimeType: input.mimeType };
   }),
 
@@ -1074,6 +1127,8 @@ export const qualityRouter = router({
     result: resultSchema.optional(),
     ncStatus: z.enum(["open", "in_progress", "awaiting_validation", "closed"]).optional(),
     orderNumber: z.string().trim().min(1).max(80).optional(),
+    analysisProduct: z.string().trim().min(1).max(180).optional(),
+    analysisLot: z.string().trim().min(1).max(160).optional(),
   }).optional()).query(async ({ input }) => {
     const db = await requireDb();
     const [entries, tasks, ncs] = await Promise.all([
@@ -1095,9 +1150,24 @@ export const qualityRouter = router({
       if (orderNumber) dispatchOrdersByNumber.set(orderNumber, { orderNumber, customer, result: entry.result, completedAt: entry.completedAt });
     });
     const dispatchOrders = Array.from(dispatchOrdersByNumber.values());
+    const normalized = (value: string) => value.toLocaleLowerCase("pt-PT").trim();
+    const matchesInternalAnalysis = (entry: typeof entries[number]) => {
+      if (!input?.analysisProduct && !input?.analysisLot) return true;
+      if (entry.module !== "internal_analysis") return false;
+      const payload = payloadRecord(entry.payload);
+      const samples = Array.isArray(payload.samples) ? payload.samples : [];
+      const legacySample = { product: payload.product, samplePoint: payload.sampleId, lot: payload.lot };
+      const candidates = samples.length ? samples : [legacySample];
+      return candidates.some((sample) => {
+        const values = sample && typeof sample === "object" ? sample as Record<string, unknown> : {};
+        const product = [values.product, values.samplePoint].filter((value): value is string => typeof value === "string").join(" ");
+        const lot = typeof values.lot === "string" ? values.lot : "";
+        return (!input.analysisProduct || normalized(product).includes(normalized(input.analysisProduct))) && (!input.analysisLot || normalized(lot).includes(normalized(input.analysisLot)));
+      });
+    };
     const scopedEntries = scopeToFactory(entries, input?.factoryId).filter((entry) => {
       const orderNumber = typeof payloadRecord(entry.payload).orderNumber === "string" ? payloadRecord(entry.payload).orderNumber as string : null;
-      return withinPeriod(entry.completedAt) && (!input?.module || entry.module === input.module) && (!input?.result || entry.result === input.result) && (!input?.orderNumber || orderNumber === input.orderNumber);
+      return withinPeriod(entry.completedAt) && (!input?.module || entry.module === input.module) && (!input?.result || entry.result === input.result) && (!input?.orderNumber || orderNumber === input.orderNumber) && matchesInternalAnalysis(entry);
     });
     const scopedTasks = scopeToFactory(tasks, input?.factoryId).filter((task) => task.status !== "cancelled" && withinPeriod(task.dueAt));
     const scopedNcs = scopeToFactory(ncs, input?.factoryId).filter((nc) => withinPeriod(nc.detectedAt) && (!input?.module || nc.module === input.module) && (!input?.ncStatus || nc.status === input.ncStatus));
@@ -1144,7 +1214,7 @@ export const qualityRouter = router({
       openNcs: countOpenNonconformities(scopedNcs).open,
       criticalOpen: countOpenNonconformities(scopedNcs).criticalOpen,
       dispatchOrders,
-      filters: { startDate: start, endDate: end, module: input?.module ?? null, result: input?.result ?? null, ncStatus: input?.ncStatus ?? null, orderNumber: input?.orderNumber ?? null },
+      filters: { startDate: start, endDate: end, module: input?.module ?? null, result: input?.result ?? null, ncStatus: input?.ncStatus ?? null, orderNumber: input?.orderNumber ?? null, analysisProduct: input?.analysisProduct ?? null, analysisLot: input?.analysisLot ?? null },
     };
   }),
 

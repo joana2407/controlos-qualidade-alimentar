@@ -20,9 +20,9 @@ describe("rota da plataforma", () => {
     expect(screen.getByText("Qualidade alimentar organizada por ação.")).toBeTruthy();
   });
 
-  it("apresenta a área de ajuda no respetivo caminho", () => {
+  it("redireciona a rota antiga de ajuda para os guias integrados na Plataforma", () => {
     window.history.pushState({}, "", "/ajuda");
     render(<App />);
-    expect(screen.getByText("Ajuda para executar controlos com consistência.")).toBeTruthy();
+    expect(screen.getByText("Como executar cada controlo.")).toBeTruthy();
   });
 });

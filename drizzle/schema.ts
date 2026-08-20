@@ -45,6 +45,16 @@ export const qualityPinProfiles = mysqlTable("quality_pin_profiles", {
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 }, (table) => [index("quality_profile_role_idx").on(table.role)]);
 
+/** Colaboradores que podem ser identificados numa inspeção BPHF de cacifos. */
+export const bphfInspectionEmployees = mysqlTable("bphf_inspection_employees", {
+  id: int("id").autoincrement().primaryKey(),
+  name: varchar("name", { length: 160 }).notNull().unique(),
+  active: mysqlEnum("bphf_employee_active", ["true", "false"]).default("true").notNull(),
+  createdBy: varchar("createdBy", { length: 64 }).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, (table) => [index("bphf_employee_active_idx").on(table.active)]);
+
 export const qualityPinSessions = mysqlTable("quality_pin_sessions", {
   id: int("id").autoincrement().primaryKey(),
   profileId: int("profileId").notNull(),

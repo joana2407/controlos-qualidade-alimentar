@@ -1,7 +1,7 @@
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import NotFound from "@/pages/NotFound";
-import { Route, Switch } from "wouter";
+import { Redirect, Route, Switch } from "wouter";
 import React from "react";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { ThemeProvider } from "./contexts/ThemeContext";
@@ -13,7 +13,6 @@ import QualityDashboard from "./pages/QualityDashboard";
 import Reports from "./pages/Reports";
 import Configuration from "./pages/Configuration";
 import PlatformOverview from "./pages/PlatformOverview";
-import HelpCenter from "./pages/HelpCenter";
 
 function Router() {
   // make sure to consider if you need authentication for certain routes
@@ -22,7 +21,7 @@ function Router() {
       <Route path={"/"} component={() => <DashboardLayout workspace="quality"><QualityDashboard /></DashboardLayout>} />
       <Route path={"/qualicontrol"} component={() => <DashboardLayout workspace="quality"><QualityDashboard /></DashboardLayout>} />
       <Route path={"/plataforma"} component={() => <DashboardLayout><PlatformOverview /></DashboardLayout>} />
-      <Route path={"/ajuda"} component={() => <DashboardLayout><HelpCenter /></DashboardLayout>} />
+      <Route path={"/ajuda"} component={() => <Redirect to="/plataforma" />} />
       <Route path={"/controlos"} component={() => <DashboardLayout><Controls /></DashboardLayout>} />
       <Route path={"/controlos/:module"} component={() => <DashboardLayout><ModuleControl /></DashboardLayout>} />
       <Route path={"/incidencias"} component={() => <DashboardLayout><Nonconformities /></DashboardLayout>} />
