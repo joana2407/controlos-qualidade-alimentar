@@ -70,18 +70,19 @@ describe("atalhos laterais dos painéis de controlo", () => {
     expect(setLocation).toHaveBeenLastCalledWith("/controlos/fragile_items");
   });
 
-  it("não disponibiliza a área de Ocorrências nem para perfis com âmbito histórico de reclamações", () => {
+  it("disponibiliza o atalho de Ocorrências sem expor os menus da área histórica de reclamações", () => {
     occurrenceScope = "reclamacoes";
     currentLocation = "/qualicontrol";
     render(<DashboardLayout workspace="quality"><div>Conteúdo</div></DashboardLayout>);
-    expect(screen.queryByRole("button", { name: "Ocorrências" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Ocorrências" })).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Reclamações a fornecedores" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Nova reclamação" })).toBeNull();
   });
 
-  it("não apresenta Gestão de Ocorrências dentro da navegação do QualiControl", () => {
+  it("apresenta o atalho direto de Ocorrências sem incluir os menus de Gestão de Ocorrências", () => {
     render(<DashboardLayout workspace="quality"><div>Conteúdo</div></DashboardLayout>);
-    expect(screen.queryByRole("button", { name: "Ocorrências" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Ocorrências" }));
+    expect(setLocation).toHaveBeenLastCalledWith("/incidencias");
     expect(screen.queryByRole("button", { name: "Reclamações a fornecedores" })).toBeNull();
   });
 });

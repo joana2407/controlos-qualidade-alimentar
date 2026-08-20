@@ -293,3 +293,4 @@
 - [x] Manter os dados completos dos controlos disponíveis exclusivamente em Abrir detalhe.
 - [x] Traduzir para português os rótulos, resultados e metadados mostrados nos detalhes dos Relatórios.
 - [x] Ocultar o identificador técnico do colaborador nos detalhes e exportações dos Relatórios.
+- [x] Adicionar um atalho direto ao painel de Ocorrências na barra lateral.

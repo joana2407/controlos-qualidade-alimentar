@@ -6,6 +6,8 @@ describe("navegação lateral dos painéis de controlo", () => {
     const source = await readFile(new URL("../client/src/components/DashboardLayout.tsx", import.meta.url), "utf8");
 
     expect(source).toContain('label: "Controlos"');
+    expect(source).toContain('label: "Ocorrências"');
+    expect(source).toContain('path: "/incidencias"');
     expect(source).toContain("Abrir módulos de controlo");
     expect(source).not.toContain("Painéis de controlo");
     [
