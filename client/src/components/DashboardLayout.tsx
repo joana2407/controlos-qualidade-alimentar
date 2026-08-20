@@ -24,8 +24,9 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 import { useIsMobile } from "@/hooks/useMobile";
-import { AlertTriangle, ArrowLeft, BarChart3, BookOpenCheck, Boxes, ChevronDown, ClipboardCheck, ClipboardList, FilePlus2, FileWarning, FlaskConical, KeyRound, LayoutDashboard, ListChecks, Magnet, MessageSquareMore, MessageSquareWarning, Microscope, PanelLeft, Settings2, ShieldCheck, TimerReset, Truck } from "lucide-react";
+import { AlertTriangle, ArrowLeft, BarChart3, BookOpenCheck, Boxes, ChevronDown, ClipboardCheck, ClipboardList, FilePlus2, FileWarning, FlaskConical, KeyRound, LayoutDashboard, ListChecks, Magnet, MessageSquareMore, MessageSquareWarning, Microscope, PackageSearch, PanelLeft, Ruler, Settings2, ShieldCheck, TimerReset, TrendingDown, Truck, Wrench } from "lucide-react";
 import React, { CSSProperties, useEffect, useRef, useState } from "react";
+import { toast } from "sonner";
 import { useLocation } from "wouter";
 import { DashboardLayoutSkeleton } from './DashboardLayoutSkeleton';
 
@@ -57,6 +58,14 @@ const occurrencePanels = [
   { icon: MessageSquareWarning, label: "Dashboard de reclamações", path: "/reclamacoes" },
   { icon: ClipboardList, label: "Reclamações a fornecedores", path: "/reclamacoes/lista" },
   { icon: FilePlus2, label: "Nova reclamação", path: "/reclamacoes/nova" },
+];
+
+const preparedExternalPanels = [
+  { icon: ClipboardList, label: "Gestão de Ocorrências" },
+  { icon: PackageSearch, label: "Gestão de MP" },
+  { icon: Ruler, label: "Plano Calibração" },
+  { icon: Wrench, label: "Plano de Manutenção" },
+  { icon: TrendingDown, label: "Quebras de produção" },
 ];
 
 const SIDEBAR_WIDTH_KEY = "sidebar-width";
@@ -253,6 +262,10 @@ function DashboardLayoutContent({
                   </SidebarMenuItem>
                 );
               })}
+            </SidebarMenu>
+            <SidebarMenu className="mt-2 border-t border-border/70 px-2 py-2">
+              {!isCollapsed && <p className="px-2 pb-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Painéis externos</p>}
+              {preparedExternalPanels.map((panel) => <SidebarMenuItem key={panel.label}><SidebarMenuButton onClick={() => toast.info(`${panel.label}: aguarda a configuração do link de acesso.`)} tooltip={`${panel.label} — link em configuração`} className="h-10 text-muted-foreground transition-all hover:text-foreground"><panel.icon className="h-4 w-4" /><span>{panel.label}</span></SidebarMenuButton></SidebarMenuItem>)}
             </SidebarMenu>
           </SidebarContent>
 

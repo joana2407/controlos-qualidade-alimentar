@@ -11,6 +11,13 @@ describe("navegação lateral dos painéis de controlo", () => {
     expect(source).toContain("Abrir módulos de controlo");
     expect(source).not.toContain("Painéis de controlo");
     [
+      "Gestão de Ocorrências",
+      "Gestão de MP",
+      "Plano Calibração",
+      "Plano de Manutenção",
+      "Quebras de produção",
+    ].forEach((label) => expect(source).toContain(label));
+    [
       "/controlos/bphf",
       "/controlos/metal_detectors",
       "/controlos/sensory",
