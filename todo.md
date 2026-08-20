@@ -280,3 +280,9 @@
 - [x] Substituir as exportações parciais por uma exportação Excel completa do relatório filtrado.
 - [x] Redesenhar o layout e a paleta de cores do painel de Relatórios.
 - [x] Aumentar os espaços em branco e a legibilidade na caixa de filtros dos Relatórios.
+- [x] Restringir no servidor o registo de controlos ao Plano do Dia publicado e às pessoas atribuídas.
+- [x] Permitir à Responsável de Qualidade preencher controlos autorizados como supervisora.
+- [x] Bloquear visualmente os painéis de controlo não agendados ou não atribuídos ao perfil PIN ativo.
+- [x] Considerar cada ponto BPHF concluído apenas quando todas as áreas agendadas estiverem registadas.
+- [x] Manter campos BPHF vazios até seleção explícita do utilizador, sem pré-preenchimento.
+- [x] Diferenciar visualmente as áreas BPHF concluídas e pendentes para cada ponto de verificação.

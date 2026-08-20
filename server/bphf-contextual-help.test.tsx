@@ -3,12 +3,14 @@ import { cleanup, render, screen } from "@testing-library/react";
 import React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+const { inspectionData } = vi.hoisted(() => ({ inspectionData: [] as any[] }));
+
 vi.mock("@/lib/trpc", () => ({
   trpc: {
     useUtils: () => ({ quality: { listBphfInspectionEmployees: { invalidate: vi.fn() }, listBphfCollaboratorInspections: { invalidate: vi.fn() } } }),
     quality: {
       listBphfInspectionEmployees: { useQuery: () => ({ data: [{ id: 1, name: "Colaborador de teste" }] }) },
-      listBphfCollaboratorInspections: { useQuery: () => ({ isLoading: false, data: [] }) },
+      listBphfCollaboratorInspections: { useQuery: () => ({ isLoading: false, data: inspectionData }) },
       addBphfInspectionEmployee: { useMutation: () => ({ isPending: false, mutate: vi.fn() }) },
     },
   },
@@ -22,7 +24,7 @@ vi.mock("@/components/ui/tooltip", () => ({
 
 import { Bphf, ControlFactoryContext } from "../client/src/pages/ModuleControl";
 
-afterEach(cleanup);
+afterEach(() => { inspectionData.splice(0, inspectionData.length); cleanup(); });
 
 describe("ajuda contextual de BPHF", () => {
   it("mostra um ícone e explicação contextual própria para cada critério", () => {
@@ -33,5 +35,21 @@ describe("ajuda contextual de BPHF", () => {
     expect(screen.getByText(/lavagem e desinfeção das mãos é realizada nos momentos necessários/)).toBeTruthy();
     expect(screen.getByText(/cumprimento global das boas práticas aplicáveis à área/)).toBeTruthy();
     expect(screen.getByText(/cacifos pessoais e de trabalho estão limpos/)).toBeTruthy();
+  });
+
+  it("mostra áreas pendentes sem pré-preenchimento e só conclui o ponto quando todas estão registadas", () => {
+    const criterion = "Estado de limpeza e conservação do fardamento";
+    const completedAt = new Date();
+    inspectionData.push(
+      { id: 1, collaboratorName: "Colaborador de teste", collaboratorId: 1, criterion, area: "Produção", result: "C", completedAt },
+      { id: 2, collaboratorName: "Colaborador de teste", collaboratorId: 1, criterion, area: "Embalagem", result: "C", completedAt },
+    );
+    render(<ControlFactoryContext.Provider value={{ factories: [{ id: 1, name: "Fábrica 1 (Fatiado)" }], factoryId: "1", setFactoryId: vi.fn() }}><Bphf createEntry={{ isPending: false, mutate: vi.fn(), mutateAsync: vi.fn() }} areas={["Produção", "Embalagem", "Logística"]} /></ControlFactoryContext.Provider>);
+
+    expect(screen.getAllByText("Em preenchimento")).toHaveLength(4);
+    expect(screen.getByText("✓ Produção")).toBeTruthy();
+    expect(screen.getByText("✓ Embalagem")).toBeTruthy();
+    expect(screen.getAllByText("• Logística")).toHaveLength(4);
+    expect(screen.getAllByRole("button", { name: "Registar área verificada" }).every((button) => (button as HTMLButtonElement).disabled)).toBe(true);
   });
 });

@@ -117,6 +117,28 @@ function isPlanDue(frequency: string, date: Date) {
   return false;
 }
 
+const sharedPlanModules = new Set(["dispatch_control", "internal_analysis"]);
+
+type OperationalProfile = { id: number; role: string; name: string };
+
+async function assessControlAuthorization(db: any, input: { module: typeof qualityModuleValues[number]; factoryId?: number | null; profile: OperationalProfile }) {
+  const isShared = sharedPlanModules.has(input.module);
+  if (!isShared && !input.factoryId) return { allowed: false, reason: "Selecione a fábrica ou linha antes de consultar ou preencher este controlo.", task: null };
+  const today = localDateKey(new Date());
+  const tasks = await db.select().from(controlTasks).orderBy(controlTasks.dueAt);
+  const task = tasks.find((item: any) => item.status === "pending" && item.area === "Plano do Dia" && item.module === input.module && localDateKey(new Date(item.dueAt)) === today && (isShared ? item.factoryId === null : item.factoryId === input.factoryId));
+  if (!task) return { allowed: false, reason: "Este controlo não está incluído num Plano do Dia publicado para hoje.", task: null };
+  const assignees = Array.isArray(task.assigneeProfileIds) ? task.assigneeProfileIds : [];
+  if (input.profile.role !== "manager" && !assignees.includes(input.profile.id)) return { allowed: false, reason: "Este controlo foi agendado para outro colaborador. Apenas os responsáveis designados ou a Responsável de Qualidade podem preenchê-lo.", task };
+  return { allowed: true, reason: input.profile.role === "manager" ? "Preenchimento autorizado como Responsável de Qualidade." : "Preenchimento autorizado pelo Plano do Dia.", task };
+}
+
+async function requireControlAuthorization(db: any, input: { module: typeof qualityModuleValues[number]; factoryId?: number | null; profile: OperationalProfile }) {
+  const access = await assessControlAuthorization(db, input);
+  if (!access.allowed) throw new TRPCError({ code: "FORBIDDEN", message: access.reason });
+  return access;
+}
+
 async function requireDb() {
   const db = await getDb();
   if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "A base de dados não está disponível." });
@@ -245,6 +267,21 @@ export const qualityRouter = router({
       if (input?.result && entry.result !== input.result) return [];
       return [{ id: entry.id, collaboratorId, collaboratorName, criterion: typeof payload.criterion === "string" ? payload.criterion : entry.title, area: entry.area, result: entry.result, notes: entry.notes, completedAt: entry.completedAt, factoryId: entry.factoryId }];
     });
+  }),
+
+  controlAuthorization: qualitySessionProcedure.input(z.object({
+    module: qualityModuleSchema,
+    factoryId: z.number().int().optional(),
+  })).query(async ({ ctx, input }) => {
+    const db = await requireDb();
+    const access = await assessControlAuthorization(db, { module: input.module, factoryId: input.factoryId ?? null, profile: ctx.operatorProfile! });
+    return {
+      allowed: access.allowed,
+      reason: access.reason,
+      taskId: access.task?.id ?? null,
+      assignedTo: access.task?.responsible ?? null,
+      dueAt: access.task?.dueAt ?? null,
+    };
   }),
 
   listFactories: qualitySessionProcedure.query(async () => {
@@ -471,7 +508,7 @@ export const qualityRouter = router({
     const selectedFactories = Array.from(new Set(input.factoryIds));
     const plannedControls: { module: typeof qualityModuleValues[number]; factoryId: number | null }[] = [];
     for (const module of Array.from(new Set(input.modules))) {
-      if (module === "dispatch_control") plannedControls.push({ module, factoryId: null });
+      if (sharedPlanModules.has(module)) plannedControls.push({ module, factoryId: null });
       else selectedFactories.forEach((factoryId) => plannedControls.push({ module, factoryId }));
     }
     const controls = plannedControls.filter(({ module, factoryId }) => !existing.some((task) => task.module === module && task.factoryId === factoryId));
@@ -542,6 +579,8 @@ export const qualityRouter = router({
     mimeType: z.enum(["image/jpeg", "image/png", "image/webp"]),
     dataUrl: z.string().min(20).max(7_000_000),
   })).mutation(async ({ ctx, input }) => {
+    const db = await requireDb();
+    await requireControlAuthorization(db, { module: "internal_analysis", factoryId: null, profile: ctx.operatorProfile! });
     const base64 = input.dataUrl.split(",")[1];
     if (!base64) throw new TRPCError({ code: "BAD_REQUEST", message: "Imagem inválida." });
     const safeName = input.fileName.replace(/[^a-zA-Z0-9._-]/g, "_");
@@ -592,6 +631,7 @@ export const qualityRouter = router({
     severity: z.enum(["critical", "high", "medium", "low"]).default("medium"),
   })).mutation(async ({ ctx, input }) => {
     const db = await requireDb();
+    await requireControlAuthorization(db, { module: input.module, factoryId: input.factoryId ?? null, profile: ctx.operatorProfile! });
     const completedAt = new Date();
     await db.insert(controlEntries).values({
       module: input.module,
@@ -636,6 +676,8 @@ export const qualityRouter = router({
     mimeType: z.literal("application/pdf"),
     dataUrl: z.string().min(32).max(16_500_000),
   })).mutation(async ({ ctx, input }) => {
+    const db = await requireDb();
+    await requireControlAuthorization(db, { module: "dispatch_control", factoryId: null, profile: ctx.operatorProfile! });
     const match = /^data:application\/pdf;base64,([A-Za-z0-9+/=\s]+)$/i.exec(input.dataUrl);
     if (!match) throw new TRPCError({ code: "BAD_REQUEST", message: "O ficheiro enviado não é um PDF válido." });
     const pdfBuffer = Buffer.from(match[1].replace(/\s/g, ""), "base64");
@@ -705,6 +747,8 @@ export const qualityRouter = router({
     })).min(1).max(30).optional(),
     sourceOrderDocument: z.object({ name: z.string().min(1).max(180), url: z.string().startsWith("/manus-storage/") }).optional(),
   })).mutation(async ({ ctx, input }) => {
+    const db = await requireDb();
+    await requireControlAuthorization(db, { module: "dispatch_control", factoryId: null, profile: ctx.operatorProfile! });
     const profile = getDispatchProfile(input.profile);
     const limits = { product: profile.productTemperatureLimit, vehicle: profile.vehicleTemperatureLimit };
     const productChecks = input.productChecks ?? [{ name: input.product, orderedQuantity: input.orderedBoxes, lots: [{ lot: input.lot, dispatchedQuantity: input.dispatchedBoxes }], productLabelResult: input.productLabelResult, boxLabelResult: input.boxLabelResult, productTemperature: input.productTemperature, observations: input.observations }];
@@ -726,7 +770,6 @@ export const qualityRouter = router({
     ];
     const conformity = { result: productValidations.every((check) => check.conformity.result === "C") && vehicleTemperatureResult === "C" ? "C" as const : "NC" as const, productValidations, vehicleTemperatureResult, reasons };
     if (vehicleTemperatureResult === "NC" && !input.observations?.trim()) throw new TRPCError({ code: "BAD_REQUEST", message: "A observação geral é obrigatória quando a temperatura do veículo não está conforme." });
-    const db = await requireDb();
     const completedAt = new Date();
     const title = `Expedição ${input.orderNumber} — ${input.customer}`;
     const area = `Expedição ${input.profile}`;

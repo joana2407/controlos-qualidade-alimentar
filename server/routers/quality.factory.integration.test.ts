@@ -17,6 +17,9 @@ const tasks = [
   { id: 3, factoryId: 2, status: "completed", dueAt: now, completedAt: now, module: "bphf", area: "Granel", title: "BPHF F2", responsible: "Bruno", assigneeProfileIds: [1] },
 ];
 const initialTasks = tasks.map((task) => ({ ...task, assigneeProfileIds: [...task.assigneeProfileIds] }));
+function addPublishedControlTask(module: string, factoryId: number | null, assigneeProfileIds = [1]) {
+  tasks.push({ id: 100 + tasks.length, factoryId, status: "pending", dueAt: now, completedAt: null, module, area: "Plano do Dia", title: `Plano do Dia — ${module}`, responsible: "Equipa atribuída", assigneeProfileIds });
+}
 const entries = [
   { id: 1, factoryId: 1, module: "bphf", area: "Produção T", result: "C", completedAt: now, registeredByProfileId: 3, registeredByName: "Joana Pina", registeredByTitle: "Resp. Qualidade" },
   { id: 2, factoryId: 1, module: "metal_detectors", area: "Tradicional 1", result: "NC", completedAt: now },
@@ -199,6 +202,7 @@ describe("procedimentos de qualidade por fábrica", () => {
   });
 
   it("gera uma incidência shelf-life e apresenta o relatório diário por fábrica", async () => {
+    addPublishedControlTask("shelf_life", 2, [3]);
     const caller = qualityRouter.createCaller(createContext());
     await caller.createEntry({
       module: "shelf_life",
@@ -227,6 +231,22 @@ describe("procedimentos de qualidade por fábrica", () => {
     const technician = qualityRouter.createCaller(createContext({ id: 1, name: "Sabrina Esteves", title: "Tec. Qualidade", role: "technician" }));
     await expect(technician.createTask({ title: "Tarefa pontual", factoryId: 1, dueAt: now, assigneeProfileIds: [1] })).rejects.toMatchObject({ code: "FORBIDDEN" });
     await expect(technician.addArea({ name: "Área reservada", module: "bphf", factoryId: 1 })).rejects.toMatchObject({ code: "FORBIDDEN" });
+  });
+
+  it("só permite preencher controlos publicados para o técnico atribuído ou para a Responsável", async () => {
+    const sabrina = qualityRouter.createCaller(createContext({ id: 1, name: "Sabrina Esteves", title: "Tec. Qualidade", role: "technician" }));
+    const neuza = qualityRouter.createCaller(createContext({ id: 2, name: "Neuza Antunes", title: "Tec. Qualidade", role: "technician" }));
+    const joana = qualityRouter.createCaller(createContext());
+
+    await expect(sabrina.createEntry({ module: "bphf", title: "Fardamento", area: "Produção", factoryId: 1, result: "C" })).rejects.toMatchObject({ code: "FORBIDDEN", message: expect.stringMatching(/Plano do Dia/i) });
+
+    addPublishedControlTask("bphf", 1, [1]);
+    await expect(neuza.createEntry({ module: "bphf", title: "Fardamento", area: "Produção", factoryId: 1, result: "C" })).rejects.toMatchObject({ code: "FORBIDDEN", message: expect.stringMatching(/outro colaborador/i) });
+    await expect(sabrina.createEntry({ module: "bphf", title: "Fardamento", area: "Produção", factoryId: 1, result: "C" })).resolves.toMatchObject({ success: true });
+
+    addPublishedControlTask("shelf_life", 2, [1]);
+    await expect(joana.createEntry({ module: "shelf_life", title: "Verificação de amostra", area: "Shelf-life", factoryId: 2, result: "C" })).resolves.toMatchObject({ success: true });
+    expect(dbInserts).toHaveLength(2);
   });
 
   it("cria uma tarefa pontual com descrição e responsáveis atribuídos", async () => {
@@ -336,6 +356,7 @@ describe("procedimentos de qualidade por fábrica", () => {
 
   it("extrai cliente, número e linhas de produto de uma encomenda PDF", async () => {
     vi.mocked(invokeLLM).mockResolvedValue({ choices: [{ message: { content: JSON.stringify({ orderNumber: "ENC-345", customer: "Cliente Norte", products: [{ name: "Pão de forma", orderedQuantity: 24 }, { name: "Pão brioche", orderedQuantity: 12 }], warnings: [] }) } }] } as any);
+    addPublishedControlTask("dispatch_control", null, [1]);
     const caller = qualityRouter.createCaller(createContext({ id: 1, name: "Sabrina Esteves", title: "Tec. Qualidade", role: "technician" }));
     const result = await caller.parseDispatchOrderPdf({ fileName: "encomenda.pdf", mimeType: "application/pdf", dataUrl: `data:application/pdf;base64,${Buffer.from("%PDF-1.4\nordem").toString("base64")}` });
     expect(result).toMatchObject({ orderNumber: "ENC-345", customer: "Cliente Norte", document: { name: "encomenda.pdf", url: "/manus-storage/dispatch-orders/3/encomenda.pdf" } });
@@ -345,6 +366,7 @@ describe("procedimentos de qualidade por fábrica", () => {
   });
 
   it("regista a expedição como incidência quando a temperatura falha", async () => {
+    addPublishedControlTask("dispatch_control", null, [3]);
     const caller = qualityRouter.createCaller(createContext());
     const result = await caller.registerDispatchControl({ factoryId: 1, profile: "congelado", orderNumber: "ENC-100", customer: "Cliente Norte", deliveryNote: "GR-50", product: "Pão congelado", lot: "L-100", orderedBoxes: 24, dispatchedBoxes: 24, productLabelResult: "C", boxLabelResult: "C", productTemperature: -17, vehicleTemperature: -18, observations: "Produto acima do limite para congelados." });
     expect(result.conformity).toMatchObject({ result: "NC", vehicleTemperatureResult: "C", productValidations: [expect.objectContaining({ conformity: expect.objectContaining({ productTemperatureResult: "NC" }) })] });
@@ -354,6 +376,7 @@ describe("procedimentos de qualidade por fábrica", () => {
   });
 
   it("regista desvios de expedição sem criar NC automática", async () => {
+    addPublishedControlTask("dispatch_control", null, [3]);
     const caller = qualityRouter.createCaller(createContext());
     await caller.registerDispatchControl({ factoryId: 2, profile: "ambiente", orderNumber: "ENC-101", customer: "Cliente Centro", product: "Pão de forma", lot: "L-101", orderedBoxes: 25, dispatchedBoxes: 24, productLabelResult: "NC", boxLabelResult: "C", productTemperature: 18, vehicleTemperature: 20, observations: "Quantidade e rotulagem do produto divergentes." });
     expect(dbInserts[0]).toMatchObject({ module: "dispatch_control", result: "NC", factoryId: null, area: "Expedição ambiente" });
