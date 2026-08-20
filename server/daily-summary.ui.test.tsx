@@ -23,15 +23,14 @@ import Reports from "../client/src/pages/Reports";
 
 afterEach(cleanup);
 
-describe("resumo diário de incidências", () => {
-  it("mostra a anotação diária e identifica a incidência que gerou Não Conformidade", () => {
+describe("relatório operacional unificado", () => {
+  it("usa uma única zona de incidências, sem data, gravação ou exportação autónomas", () => {
     render(<Reports />);
 
-    expect(screen.getByText("Resumo diário de incidências")).toBeTruthy();
-    expect(screen.getByDisplayValue("Aguardar confirmação do fornecedor.")).toBeTruthy();
-    expect(screen.getByText("Embalagem danificada")).toBeTruthy();
-    expect(screen.getByText("Gerou NC")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Guardar" })).toBeTruthy();
+    expect(screen.getByText("Controlos e informações registadas")).toBeTruthy();
+    expect(screen.getByText("Incidências no período filtrado")).toBeTruthy();
+    expect(screen.queryByText("Resumo diário de incidências")).toBeNull();
+    expect(screen.getByRole("button", { name: /exportar excel completo/i })).toBeTruthy();
   });
 
   it("abre todos os dados e anotações de um controlo apenas no período filtrado", () => {
@@ -39,9 +38,9 @@ describe("resumo diário de incidências", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /detalhe/i }));
 
-    expect(screen.getByText("Dados do controlo")).toBeTruthy();
-    expect(screen.getByText("Superfície limpa e desinfetada.")).toBeTruthy();
-    expect(screen.getByText("Criterio Limpeza")).toBeTruthy();
-    expect(screen.getByText("Verificação visual concluída.")).toBeTruthy();
+    expect(screen.getAllByText("Dados registados").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Superfície limpa e desinfetada.").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Criterio Limpeza").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Verificação visual concluída.").length).toBeGreaterThan(0);
   });
 });

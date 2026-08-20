@@ -275,3 +275,6 @@
 - [x] Criar filtros de Relatórios para Análises internas por produto ou ponto, lote e data de realização.
 - [x] Integrar os conteúdos do painel Ajuda na página Plataforma.
 - [x] Retirar o painel Ajuda autónomo da navegação e redirecionar os seus atalhos para a Plataforma.
+- [x] Fazer as incidências dos Relatórios respeitarem os filtros principais do painel, sem filtros separados.
+- [x] Mostrar no relatório filtrado todos os detalhes e observações dos controlos e incidências.
+- [x] Substituir as exportações parciais por uma exportação Excel completa do relatório filtrado.

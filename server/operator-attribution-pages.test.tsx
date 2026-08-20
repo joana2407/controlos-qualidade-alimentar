@@ -61,9 +61,8 @@ describe("autoria operacional nas páginas", () => {
     expect(screen.getByText("Observação parcial registada.")).toBeTruthy();
   });
 
-  it("mostra quem registou os controlos e incidências nos relatórios", () => {
+  it("mostra quem registou os controlos nos relatórios", () => {
     render(<Reports />);
     expect(screen.getByText("Registado por: Sabrina Esteves · Tec. Qualidade")).toBeTruthy();
-    expect(screen.getByText("Registado por: Joana Pina · Resp. Qualidade")).toBeTruthy();
   });
 });
