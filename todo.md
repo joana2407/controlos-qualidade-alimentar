@@ -296,3 +296,8 @@
 - [x] Adicionar um atalho direto ao painel de Ocorrências na barra lateral.
 - [x] Atualizar para «Incidências» os títulos e o atalho da barra lateral da lista unificada.
 - [x] Configurar o botão «Gerar Não Conformidade» para abrir o site externo de gestão de ocorrências numa nova janela.
+- [x] Confirmar e publicar os novos textos do painel de Incidências.
+- [x] Indicar no painel de cada incidência se gerou ou não uma Não Conformidade.
+- [x] Adicionar no painel de Incidências um filtro por intervalo de datas.
+- [x] Permitir registar e apresentar o número de ocorrência quando uma incidência gerar uma Não Conformidade.
+- [x] Compactar o painel de filtros dos Relatórios, reduzindo altura e espaços vazios.

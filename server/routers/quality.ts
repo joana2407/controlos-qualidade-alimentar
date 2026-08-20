@@ -780,11 +780,15 @@ export const qualityRouter = router({
 
   listIncidences: qualitySessionProcedure.input(z.object({
     date: dateInput.optional(),
+    startDate: dateInput.optional(),
+    endDate: dateInput.optional(),
     factoryId: z.number().int().optional(),
   }).optional()).query(async ({ input }) => {
     const db = await requireDb();
-    const reference = input?.date ?? new Date();
-    const { start, end } = asDateRange(reference);
+    if (input?.startDate && input.endDate && asDateRange(input.startDate).start > asDateRange(input.endDate).start) throw new TRPCError({ code: "BAD_REQUEST", message: "A data final não pode ser anterior à data inicial." });
+    const defaultRange = asDateRange(input?.date ?? new Date());
+    const start = input?.startDate ? asDateRange(input.startDate).start : input?.date ? defaultRange.start : new Date(0);
+    const end = input?.endDate ? asDateRange(input.endDate).end : input?.date ? defaultRange.end : new Date("9999-12-31T23:59:59.999Z");
     const [entries, factoryRows, ncRows] = await Promise.all([
       db.select().from(controlEntries).orderBy(desc(controlEntries.completedAt)),
       db.select().from(factories).orderBy(factories.name),
@@ -793,20 +797,28 @@ export const qualityRouter = router({
     const factoryNames = new Map(factoryRows.map((factory) => [factory.id, factory.name]));
     return entries.filter((entry) => entry.result === "NC" && entry.completedAt >= start && entry.completedAt < end && (!input?.factoryId || entry.factoryId === input.factoryId)).map((entry) => {
       const linked = ncRows.find((nc) => nc.sourceEntryId === entry.id);
-      return { ...entry, factoryName: entry.factoryId ? factoryNames.get(entry.factoryId) ?? "Fábrica não identificada" : "Sem fábrica/linha", generatedNonconformity: Boolean(linked), nonconformityId: linked?.id ?? null };
+      const payload = entry.payload && typeof entry.payload === "object" && !Array.isArray(entry.payload) ? entry.payload as Record<string, unknown> : {};
+      const occurrenceNumber = typeof payload.nonconformityOccurrenceNumber === "string" ? payload.nonconformityOccurrenceNumber : null;
+      const generatedNonconformity = Boolean(linked) || payload.generatedNonconformity === true;
+      return { ...entry, factoryName: entry.factoryId ? factoryNames.get(entry.factoryId) ?? "Fábrica não identificada" : "Sem fábrica/linha", generatedNonconformity, nonconformityId: linked?.id ?? null, occurrenceNumber };
     });
   }),
 
   updateIncidence: qualityOperatorProcedure.input(z.object({
     id: z.number().int(),
-    title: z.string().min(2).max(180),
-    area: z.string().min(2).max(120),
+    title: z.string().min(2).max(180).optional(),
+    area: z.string().min(2).max(120).optional(),
     notes: z.string().max(3000).optional(),
+    generatedNonconformity: z.boolean().optional(),
+    occurrenceNumber: z.string().max(80).optional(),
   })).mutation(async ({ input }) => {
     const db = await requireDb();
     const entry = (await db.select().from(controlEntries).where(eq(controlEntries.id, input.id)).limit(1))[0];
     if (!entry || entry.result !== "NC") throw new TRPCError({ code: "NOT_FOUND", message: "Incidência diária não encontrada." });
-    await db.update(controlEntries).set({ title: input.title, area: input.area, notes: input.notes?.trim() || null }).where(eq(controlEntries.id, input.id));
+    const payload = entry.payload && typeof entry.payload === "object" && !Array.isArray(entry.payload) ? { ...entry.payload } as Record<string, unknown> : {};
+    if (input.generatedNonconformity !== undefined) payload.generatedNonconformity = input.generatedNonconformity;
+    if (input.occurrenceNumber !== undefined) payload.nonconformityOccurrenceNumber = input.occurrenceNumber.trim() || null;
+    await db.update(controlEntries).set({ title: input.title ?? entry.title, area: input.area ?? entry.area, notes: input.notes === undefined ? entry.notes : input.notes.trim() || null, payload }).where(eq(controlEntries.id, input.id));
     return { success: true };
   }),
 
@@ -830,10 +842,13 @@ export const qualityRouter = router({
     return { success: true };
   }),
 
-  listNcs: qualitySessionProcedure.input(z.object({ factoryId: z.number().int().optional() }).optional()).query(async ({ input }) => {
+  listNcs: qualitySessionProcedure.input(z.object({ factoryId: z.number().int().optional(), startDate: dateInput.optional(), endDate: dateInput.optional() }).optional()).query(async ({ input }) => {
     const db = await requireDb();
+    if (input?.startDate && input.endDate && asDateRange(input.startDate).start > asDateRange(input.endDate).start) throw new TRPCError({ code: "BAD_REQUEST", message: "A data final não pode ser anterior à data inicial." });
+    const start = input?.startDate ? asDateRange(input.startDate).start : null;
+    const end = input?.endDate ? asDateRange(input.endDate).end : null;
     const ncs = await db.select().from(nonconformities).orderBy(desc(nonconformities.detectedAt));
-    return scopeToFactory(ncs, input?.factoryId);
+    return scopeToFactory(ncs, input?.factoryId).filter((nc) => (!start || nc.detectedAt >= start) && (!end || nc.detectedAt < end));
   }),
 
   dailyIncidences: qualitySessionProcedure.input(z.object({

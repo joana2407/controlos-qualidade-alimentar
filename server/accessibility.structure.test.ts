@@ -18,9 +18,13 @@ describe("estrutura de acessibilidade dos ecrãs operacionais", () => {
     expect(controls.match(/<Label>/g)?.length).toBeGreaterThanOrEqual(8);
     expect(controls).toContain("<Button");
     expect(controls).toContain("<Textarea");
-    expect(nonconformities).toContain("Gerar Não Conformidade");
+    expect(nonconformities).toContain("Abrir gestão de Não Conformidades");
     expect(nonconformities).toContain('target="_blank"');
     expect(nonconformities).toContain("EXTERNAL_NONCONFORMITY_URL");
+    expect(nonconformities).toContain("Data inicial");
+    expect(nonconformities).toContain("Data final");
+    expect(nonconformities).toContain("Esta incidência gerou uma Não Conformidade?");
+    expect(nonconformities).toContain("N.º de ocorrência");
   });
 
   it("exprime os estados críticos por texto, ícone e não apenas por cor", () => {
