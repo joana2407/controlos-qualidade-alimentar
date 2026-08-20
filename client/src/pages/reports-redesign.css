@@ -1,0 +1,144 @@
+.reports-redesign {
+  background:
+    radial-gradient(circle at 85% 0%, rgb(224 231 255 / 0.7), transparent 24rem),
+    linear-gradient(180deg, #f8fafc 0%, #f5f3ff 54%, #f8fafc 100%);
+}
+
+.reports-redesign > section > header {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid rgb(67 56 202 / 0.32);
+  border-radius: 1.75rem;
+  padding: 2rem;
+  color: white;
+  background: linear-gradient(122deg, #17133b 0%, #312e81 58%, #1d4d67 100%);
+  box-shadow: 0 24px 56px -28px rgb(30 27 75 / 0.6);
+}
+
+.reports-redesign > section > header::after {
+  position: absolute;
+  right: -4rem;
+  bottom: -6rem;
+  width: 18rem;
+  height: 18rem;
+  border-radius: 9999px;
+  content: "";
+  background: rgb(45 212 191 / 0.16);
+  filter: blur(4px);
+}
+
+.reports-redesign > section > header > * {
+  position: relative;
+  z-index: 1;
+}
+
+.reports-redesign > section > header .text-teal-700 {
+  color: #a5f3fc;
+}
+
+.reports-redesign > section > header .text-muted-foreground {
+  color: rgb(224 231 255 / 0.86);
+}
+
+.reports-redesign > section > header button {
+  border-radius: 0.8rem;
+  border-color: rgb(255 255 255 / 0.24);
+  color: white;
+  background: rgb(255 255 255 / 0.12);
+  backdrop-filter: blur(8px);
+}
+
+.reports-redesign > section > header button:hover {
+  color: #17133b;
+  background: white;
+}
+
+.reports-redesign > section > [data-slot="card"]:first-of-type {
+  overflow: hidden;
+  border: 1px solid rgb(196 181 253 / 0.62);
+  border-radius: 1.5rem;
+  background: linear-gradient(125deg, #ffffff 0%, #faf5ff 62%, #eef2ff 100%);
+  box-shadow: 0 20px 45px -34px rgb(76 29 149 / 0.48);
+}
+
+.reports-redesign > section > [data-slot="card"]:first-of-type > [data-slot="card-header"] {
+  border-bottom: 1px solid rgb(221 214 254 / 0.8);
+  padding: 1.7rem 2rem 1.25rem;
+}
+
+.reports-redesign > section > [data-slot="card"]:first-of-type > [data-slot="card-header"] [data-slot="card-title"] {
+  color: #312e81;
+}
+
+.reports-redesign > section > [data-slot="card"]:first-of-type > [data-slot="card-content"] {
+  padding: 1.75rem 2rem 2rem;
+}
+
+.reports-redesign > section > [data-slot="card"]:first-of-type [data-slot="card-content"] > .grid {
+  column-gap: 1.5rem;
+  row-gap: 1.6rem;
+}
+
+.reports-redesign > section > [data-slot="card"]:first-of-type [data-slot="card-content"] > .grid > .space-y-1 {
+  min-height: 6.75rem;
+  padding: 0.85rem;
+  border: 1px solid rgb(221 214 254 / 0.78);
+  border-radius: 0.9rem;
+  background: rgb(255 255 255 / 0.84);
+  box-shadow: 0 8px 18px -18px rgb(76 29 149 / 0.58);
+}
+
+.reports-redesign > section > [data-slot="card"]:first-of-type label {
+  color: #4c1d95;
+  letter-spacing: 0.02em;
+}
+
+.reports-redesign > section > [data-slot="card"]:first-of-type input,
+.reports-redesign > section > [data-slot="card"]:first-of-type [data-slot="select-trigger"] {
+  min-height: 2.75rem;
+  margin-top: 0.35rem;
+  border-color: rgb(196 181 253 / 0.86);
+  background: white;
+}
+
+.reports-redesign > section > [data-slot="card"]:first-of-type [data-slot="card-content"] > .rounded-xl {
+  margin-top: 0.75rem;
+  padding: 1.35rem;
+  border-color: rgb(196 181 253 / 0.62);
+  background: linear-gradient(90deg, rgb(245 243 255 / 0.95), rgb(236 253 245 / 0.74));
+}
+
+.reports-redesign > section > .grid > [data-slot="card"] {
+  border: 1px solid rgb(224 231 255 / 0.9);
+  border-radius: 1.25rem;
+  background: rgb(255 255 255 / 0.9);
+  box-shadow: 0 16px 35px -29px rgb(30 41 59 / 0.45);
+}
+
+.reports-redesign > section > [data-slot="card"]:not(:first-of-type) {
+  border-radius: 1.35rem;
+  border: 1px solid rgb(226 232 240 / 0.95);
+  background: rgb(255 255 255 / 0.92);
+  box-shadow: 0 18px 38px -32px rgb(30 41 59 / 0.45);
+}
+
+.reports-redesign > section > [data-slot="card"]:not(:first-of-type) > [data-slot="card-header"] {
+  padding: 1.55rem 1.75rem 1rem;
+}
+
+.reports-redesign > section > [data-slot="card"]:not(:first-of-type) > [data-slot="card-content"] {
+  padding: 0 1.75rem 1.75rem;
+}
+
+.reports-redesign [data-slot="badge"] {
+  border-radius: 9999px;
+}
+
+@media (max-width: 640px) {
+  .reports-redesign > section > header,
+  .reports-redesign > section > [data-slot="card"]:first-of-type > [data-slot="card-header"],
+  .reports-redesign > section > [data-slot="card"]:first-of-type > [data-slot="card-content"] {
+    padding-right: 1.25rem;
+    padding-left: 1.25rem;
+  }
+}

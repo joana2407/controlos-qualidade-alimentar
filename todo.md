@@ -278,3 +278,5 @@
 - [x] Fazer as incidências dos Relatórios respeitarem os filtros principais do painel, sem filtros separados.
 - [x] Mostrar no relatório filtrado todos os detalhes e observações dos controlos e incidências.
 - [x] Substituir as exportações parciais por uma exportação Excel completa do relatório filtrado.
+- [x] Redesenhar o layout e a paleta de cores do painel de Relatórios.
+- [x] Aumentar os espaços em branco e a legibilidade na caixa de filtros dos Relatórios.
