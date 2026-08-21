@@ -7,6 +7,7 @@ const day = new Date(2026, 7, 14, 12, 0, 0);
 
 vi.mock("@/lib/trpc", () => ({
   trpc: {
+    useUtils: () => ({ quality: { reports: { invalidate: vi.fn() } } }),
     quality: {
       metadata: { useQuery: () => ({ data: { factories: [] } }) },
       reports: { useQuery: () => ({ data: { modules: [], areas: [], trends: [], recentEntries: [], filteredEntries: [{ id: 44, title: "Verificação de higiene", module: "bphf", area: "Produção", completedAt: day, result: "C", notes: "Superfície limpa e desinfetada.", payload: { collaboratorId: 99992, collaboratorName: "Marco Monteiro", criterioLimpeza: "C", observacao: "Verificação visual concluída." }, registeredByName: "Sabrina Esteves", registeredByTitle: "Tec. Qualidade" }], planCompliance: 0, openNcs: 0, criticalOpen: 0 }, isLoading: false }) },
@@ -15,6 +16,8 @@ vi.mock("@/lib/trpc", () => ({
       dailyIncidenceSummary: { useQuery: () => ({ data: { date: day, total: 1, withNonconformity: 1, withoutNonconformity: 0, note: "Aguardar confirmação do fornecedor.", noteUpdatedByName: "Sabrina Esteves", incidences: [{ id: 12, title: "Embalagem danificada", module: "bphf", area: "Embalagem", factoryName: "Fábrica 1", generatedNonconformity: true, registeredByName: "Sabrina Esteves", registeredByTitle: "Tec. Qualidade" }] }, isLoading: false, refetch: vi.fn() }) },
       saveDailyIncidenceNote: { useMutation: () => ({ isPending: false, mutate: vi.fn() }) },
       updateIncidence: { useMutation: () => ({ isPending: false, mutate: vi.fn() }) },
+      updateControlEntry: { useMutation: () => ({ isPending: false, mutate: vi.fn() }) },
+      deleteControlEntry: { useMutation: () => ({ isPending: false, mutate: vi.fn() }) },
     },
   },
 }));

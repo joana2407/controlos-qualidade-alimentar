@@ -8,6 +8,7 @@ export const MODULES = [
   { id: "fragile_items", label: "Verificação de quebráveis", shortLabel: "Quebráveis", description: "Inventário e inspeção de integridade", color: "orange" },
   { id: "dispatch_control", label: "Controlo à expedição", shortLabel: "Expedição", description: "Encomenda, rotulagem, quantidades e temperaturas", color: "teal" },
   { id: "internal_analysis", label: "Análises internas", shortLabel: "Análises", description: "Monitorização de alergénios por teste", color: "rose" },
+  { id: "temperature_controls", label: "Controlos de Temperatura", shortLabel: "Temperaturas", description: "Verificação manual de equipamentos de congelação e frio", color: "sky" },
 ] as const;
 
 export const BPHF_AREAS = ["Embalagem T", "Produção T", "Embalagem SG", "Produção SG"] as const;

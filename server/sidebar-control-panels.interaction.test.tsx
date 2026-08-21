@@ -44,7 +44,9 @@ describe("atalhos laterais dos painéis de controlo", () => {
 
     const fragile = screen.getByRole("button", { name: "Quebráveis" });
     expect(fragile.getAttribute("data-active")).toBe("true");
-    expect(screen.getByRole("button", { name: "Controlos" })).toBeTruthy();
+    const controls = screen.getByRole("button", { name: "Controlos" });
+    expect(controls).toBeTruthy();
+    expect(controls.closest("li")?.contains(screen.getByRole("button", { name: "BPHF" }))).toBe(true);
     fireEvent.click(screen.getByRole("button", { name: "BPHF" }));
     expect(setLocation).toHaveBeenLastCalledWith("/controlos/bphf");
 

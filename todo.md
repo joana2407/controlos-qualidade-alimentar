@@ -318,3 +318,18 @@
 - [x] Permitir selecionar várias análises internas em simultâneo numa única submissão.
 - [x] Associar a mesma imagem de resultado às análises internas selecionadas.
 - [x] Permitir indicar a data efetiva de realização ao concluir controlos pendentes de dias anteriores.
+- [x] Permitir às Técnicas de Qualidade criar e editar pontos de controlo autorizados.
+- [x] Registar a autoria das alterações efetuadas aos pontos de controlo.
+- [x] Criar o controlo Controlos de Temperatura com equipamentos e limites por fábrica ou localização.
+- [x] Registar a temperatura, o resultado e as observações de cada equipamento verificado.
+- [x] Preparar um atalho para a plataforma externa de verificação automática de temperatura.
+- [x] Explicar na Plataforma que cada área BPHF deve incluir pelo menos um operador selecionado para verificação.
+- [x] Remover a área Outros do painel BPHF e das respetivas orientações.
+- [x] Abrir o formulário normal do controlo quando uma tarefa agendada de controlo for executada.
+- [x] Restringir a verificação BPHF apresentada a Embalagem e Produção, removendo Limpeza, Logística, Manutenção e Outros. — Substituído pelo requisito posterior de manter Limpeza.
+- [x] Manter nas verificações BPHF as áreas Embalagem, Limpeza e Produção, removendo Manutenção, Logística e Outros.
+- [x] Permitir editar ou eliminar uma tarefa concluída apenas ao técnico que a executou e à Responsável de Qualidade.
+- [x] Apresentar nos Relatórios as ações de edição e eliminação apenas para o técnico que registou o controlo ou para a Responsável de Qualidade.
+- [x] Evitar a sobreposição dos links abaixo quando o submenu Controlos é expandido na barra lateral.
+- [x] Reorganizar os filtros de Relatórios sem sobreposição e posicionar claramente a ação Limpar filtros.
+- [x] Explicar na Plataforma o registo de incidências e o fluxo de geração e tratamento de NC.

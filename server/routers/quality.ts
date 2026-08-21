@@ -34,7 +34,7 @@ import { getDispatchProfile } from "../../shared/dispatch-control";
 const qualityModuleSchema = z.enum(qualityModuleValues);
 const resultSchema = z.enum(resultValues);
 const dateInput = z.coerce.date();
-const BPHF_AREA_NAMES = ["Produção", "Embalagem", "Logística", "Manutenção", "Limpeza", "Outros"] as const;
+const BPHF_AREA_NAMES = ["Produção", "Embalagem", "Limpeza"] as const;
 const REQUIRED_MODULE_FREQUENCIES = [
   { module: "bphf", frequency: "daily", title: "BPHF obrigatório" },
   { module: "shelf_life", frequency: "daily", title: "Shelf-life obrigatório" },
@@ -482,7 +482,8 @@ export const qualityRouter = router({
       const report = entries.find((entry) => entry.payload?.taskId === task.id);
       const storedPhotos = report?.payload && typeof report.payload.executionReport === "object" && report.payload.executionReport && !Array.isArray(report.payload.executionReport) ? (report.payload.executionReport as { evidencePhotos?: unknown }).evidencePhotos : [];
       const evidencePhotos = Array.isArray(storedPhotos) ? storedPhotos.filter((photo): photo is { url: string; fileName: string; mimeType: string } => Boolean(photo && typeof photo === "object" && typeof (photo as { url?: unknown }).url === "string" && typeof (photo as { fileName?: unknown }).fileName === "string" && typeof (photo as { mimeType?: unknown }).mimeType === "string")) : [];
-      return report ? { ...task, executionReport: { result: report.result, notes: report.notes, completedAt: report.completedAt, registeredByName: report.registeredByName, registeredByTitle: report.registeredByTitle, evidencePhotos } } : { ...task, executionReport: null };
+      const qualityModule = task.area === "Plano do Dia" ? task.module : null;
+      return report ? { ...task, qualityModule, executionReport: { result: report.result, notes: report.notes, completedAt: report.completedAt, registeredByName: report.registeredByName, registeredByTitle: report.registeredByTitle, evidencePhotos } } : { ...task, qualityModule, executionReport: null };
     });
   }),
 
@@ -513,6 +514,7 @@ export const qualityRouter = router({
     const db = await requireDb();
     const profiles = await db.select().from(qualityPinProfiles).where(inArray(qualityPinProfiles.id, input.assigneeProfileIds)).orderBy(qualityPinProfiles.id);
     if (profiles.length !== input.assigneeProfileIds.length || profiles.some((profile) => profile.active !== "true")) throw new TRPCError({ code: "BAD_REQUEST", message: "Selecione responsáveis ativos para o Plano do Dia." });
+    if (input.modules.includes("temperature_controls") && input.factoryIds.some((factoryId) => ![1, 2].includes(factoryId))) throw new TRPCError({ code: "BAD_REQUEST", message: "Os Controlos de Temperatura manuais estão disponíveis apenas para as Fábricas 1 e 2." });
     const existing = await db.select().from(controlTasks).where(and(eq(controlTasks.dueAt, input.date), eq(controlTasks.status, "pending")));
     const selectedFactories = Array.from(new Set(input.factoryIds));
     const plannedControls: { module: typeof qualityModuleValues[number]; factoryId: number | null }[] = [];
@@ -626,6 +628,46 @@ export const qualityRouter = router({
       createdBy: ctx.user!.openId,
     });
     return { success: true, critical: shouldCreateCriticalMetalAlert(task.module, input.result), incidence: input.result === "NC" };
+  }),
+
+  updateControlEntry: qualityOperatorProcedure.input(z.object({
+    id: z.number().int(),
+    title: z.string().trim().min(2).max(180),
+    area: z.string().trim().min(1).max(120),
+    result: resultSchema,
+    notes: z.string().trim().max(3000).optional(),
+  })).mutation(async ({ ctx, input }) => {
+    const db = await requireDb();
+    const entry = (await db.select().from(controlEntries).where(eq(controlEntries.id, input.id)).limit(1))[0];
+    if (!entry) throw new TRPCError({ code: "NOT_FOUND", message: "Registo de controlo não encontrado." });
+    const isManager = ctx.operatorProfile!.role === "manager";
+    const isAuthor = entry.registeredByProfileId === ctx.operatorProfile!.id || (!entry.registeredByProfileId && entry.registeredByName === ctx.operatorProfile!.name);
+    if (!isManager && !isAuthor) throw new TRPCError({ code: "FORBIDDEN", message: "Apenas o técnico que registou este controlo ou a Responsável de Qualidade o pode editar." });
+    const payload = entry.payload && typeof entry.payload === "object" && !Array.isArray(entry.payload) ? { ...entry.payload } as Record<string, unknown> : {};
+    const history = Array.isArray(payload.editHistory) ? payload.editHistory : [];
+    const editedAt = new Date().toISOString();
+    await db.update(controlEntries).set({
+      title: input.title,
+      area: input.area,
+      result: input.result,
+      notes: input.notes?.trim() || null,
+      payload: { ...payload, editHistory: [...history, { action: "updated", at: editedAt, byProfileId: ctx.operatorProfile!.id, byName: ctx.operatorProfile!.name, byTitle: ctx.operatorProfile!.title }] },
+    }).where(eq(controlEntries.id, input.id));
+    return { success: true };
+  }),
+
+  deleteControlEntry: qualityOperatorProcedure.input(z.object({ id: z.number().int() })).mutation(async ({ ctx, input }) => {
+    const db = await requireDb();
+    const entry = (await db.select().from(controlEntries).where(eq(controlEntries.id, input.id)).limit(1))[0];
+    if (!entry) throw new TRPCError({ code: "NOT_FOUND", message: "Registo de controlo não encontrado." });
+    const isManager = ctx.operatorProfile!.role === "manager";
+    const isAuthor = entry.registeredByProfileId === ctx.operatorProfile!.id || (!entry.registeredByProfileId && entry.registeredByName === ctx.operatorProfile!.name);
+    if (!isManager && !isAuthor) throw new TRPCError({ code: "FORBIDDEN", message: "Apenas o técnico que registou este controlo ou a Responsável de Qualidade o pode eliminar." });
+    const payload = entry.payload && typeof entry.payload === "object" && !Array.isArray(entry.payload) ? { ...entry.payload } as Record<string, unknown> : {};
+    const history = Array.isArray(payload.editHistory) ? payload.editHistory : [];
+    const deletedAt = new Date().toISOString();
+    await db.update(controlEntries).set({ payload: { ...payload, recordLifecycle: { status: "deleted", deletedAt, deletedByProfileId: ctx.operatorProfile!.id, deletedByName: ctx.operatorProfile!.name, deletedByTitle: ctx.operatorProfile!.title }, editHistory: [...history, { action: "deleted", at: deletedAt, byProfileId: ctx.operatorProfile!.id, byName: ctx.operatorProfile!.name, byTitle: ctx.operatorProfile!.title }] } }).where(eq(controlEntries.id, input.id));
+    return { success: true };
   }),
 
   createEntry: qualityOperatorProcedure.input(z.object({
@@ -1168,7 +1210,7 @@ export const qualityRouter = router({
       .sort((left, right) => (left.lastInspectionAt?.getTime() ?? 0) - (right.lastInspectionAt?.getTime() ?? 0));
   }),
 
-  addFragileItem: qualityManagerProcedure.input(z.object({
+  addFragileItem: qualityOperatorProcedure.input(z.object({
     name: z.string().min(2).max(180),
     location: z.string().min(2).max(120),
     factoryId: z.number().int().optional(),
@@ -1176,7 +1218,17 @@ export const qualityRouter = router({
     itemType: z.enum(["Vidro", "Plástico rígido", "Outro"]),
   })).mutation(async ({ ctx, input }) => {
     const db = await requireDb();
-    await db.insert(fragileItems).values({ ...input, factoryId: input.factoryId ?? null, status: "active", createdBy: ctx.user!.openId });
+    await db.insert(fragileItems).values({
+      ...input,
+      factoryId: input.factoryId ?? null,
+      status: "active",
+      createdBy: ctx.user!.openId,
+      createdByProfileId: ctx.operatorProfile!.id,
+      createdByName: ctx.operatorProfile!.name,
+      updatedBy: ctx.user!.openId,
+      updatedByProfileId: ctx.operatorProfile!.id,
+      updatedByName: ctx.operatorProfile!.name,
+    });
     return { success: true };
   }),
 
@@ -1187,7 +1239,7 @@ export const qualityRouter = router({
     factoryId: z.number().int().nullable(),
     periodicity: z.enum(["D", "S", "Q", "M"]),
     itemType: z.enum(["Vidro", "Plástico rígido", "Outro"]),
-  })).mutation(async ({ input }) => {
+  })).mutation(async ({ ctx, input }) => {
     const db = await requireDb();
     const item = (await db.select().from(fragileItems).where(eq(fragileItems.id, input.id)).limit(1))[0];
     if (!item) throw new TRPCError({ code: "NOT_FOUND", message: "Ponto de controlo não encontrado." });
@@ -1197,6 +1249,9 @@ export const qualityRouter = router({
       factoryId: input.factoryId,
       periodicity: input.periodicity,
       itemType: input.itemType,
+      updatedBy: ctx.user!.openId,
+      updatedByProfileId: ctx.operatorProfile!.id,
+      updatedByName: ctx.operatorProfile!.name,
     }).where(eq(fragileItems.id, input.id));
     return { success: true };
   }),
@@ -1215,7 +1270,7 @@ export const qualityRouter = router({
     const safeName = input.fileName.replace(/[^a-zA-Z0-9._-]/g, "_");
     const key = `fragile-reference/${input.itemId}/${Date.now()}-${safeName}`;
     const { key: referenceImageKey, url: referenceImageUrl } = await storagePut(key, Buffer.from(base64, "base64"), input.mimeType);
-    await db.update(fragileItems).set({ referenceImageKey, referenceImageUrl, referenceImageName: input.fileName }).where(eq(fragileItems.id, input.itemId));
+    await db.update(fragileItems).set({ referenceImageKey, referenceImageUrl, referenceImageName: input.fileName, updatedBy: ctx.user!.openId, updatedByProfileId: ctx.operatorProfile!.id, updatedByName: ctx.operatorProfile!.name }).where(eq(fragileItems.id, input.itemId));
     return { success: true, url: referenceImageUrl };
   }),
 
@@ -1250,7 +1305,11 @@ export const qualityRouter = router({
     if (input?.startDate && input.endDate && asDateRange(input.startDate).start > asDateRange(input.endDate).start) throw new TRPCError({ code: "BAD_REQUEST", message: "A data final não pode ser anterior à data inicial." });
     const withinPeriod = (date: Date) => (!start || date >= start) && (!end || date < end);
     const payloadRecord = (payload: unknown) => payload && typeof payload === "object" && !Array.isArray(payload) ? payload as Record<string, unknown> : {};
-    const dispatchEntries = scopeToFactory(entries, input?.factoryId).filter((entry) => withinPeriod(entry.completedAt) && entry.module === "dispatch_control");
+    const isDeletedEntry = (entry: typeof entries[number]) => {
+      const lifecycle = payloadRecord(entry.payload).recordLifecycle;
+      return Boolean(lifecycle && typeof lifecycle === "object" && !Array.isArray(lifecycle) && (lifecycle as Record<string, unknown>).status === "deleted");
+    };
+    const dispatchEntries = scopeToFactory(entries, input?.factoryId).filter((entry) => !isDeletedEntry(entry) && withinPeriod(entry.completedAt) && entry.module === "dispatch_control");
     const dispatchOrdersByNumber = new Map<string, { orderNumber: string; customer: string | null; result: "C" | "NC" | "N/A" | null; completedAt: Date }>();
     dispatchEntries.forEach((entry) => {
       const payload = payloadRecord(entry.payload);
@@ -1276,7 +1335,7 @@ export const qualityRouter = router({
     };
     const scopedEntries = scopeToFactory(entries, input?.factoryId).filter((entry) => {
       const orderNumber = typeof payloadRecord(entry.payload).orderNumber === "string" ? payloadRecord(entry.payload).orderNumber as string : null;
-      return withinPeriod(entry.completedAt) && (!input?.module || entry.module === input.module) && (!input?.result || entry.result === input.result) && (!input?.orderNumber || orderNumber === input.orderNumber) && (!input?.collaboratorProfileId || entry.registeredByProfileId === input.collaboratorProfileId) && matchesInternalAnalysis(entry);
+      return !isDeletedEntry(entry) && withinPeriod(entry.completedAt) && (!input?.module || entry.module === input.module) && (!input?.result || entry.result === input.result) && (!input?.orderNumber || orderNumber === input.orderNumber) && (!input?.collaboratorProfileId || entry.registeredByProfileId === input.collaboratorProfileId) && matchesInternalAnalysis(entry);
     });
     const scopedTasks = scopeToFactory(tasks, input?.factoryId).filter((task) => task.status !== "cancelled" && withinPeriod(task.dueAt) && (!input?.collaboratorProfileId || task.completedByProfileId === input.collaboratorProfileId));
     const scopedNcs = scopeToFactory(ncs, input?.factoryId).filter((nc) => withinPeriod(nc.detectedAt) && (!input?.module || nc.module === input.module) && (!input?.ncStatus || nc.status === input.ncStatus) && (!input?.collaboratorProfileId || nc.reportedByProfileId === input.collaboratorProfileId));

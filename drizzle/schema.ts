@@ -25,7 +25,7 @@ export const users = mysqlTable("users", {
 export type User = typeof users.$inferSelect;
 export type InsertUser = typeof users.$inferInsert;
 
-export const qualityModuleValues = ["bphf", "metal_detectors", "sensory", "shelf_life", "monthly_checklist", "suggestion_boxes", "fragile_items", "dispatch_control", "internal_analysis"] as const;
+export const qualityModuleValues = ["bphf", "metal_detectors", "sensory", "shelf_life", "monthly_checklist", "suggestion_boxes", "fragile_items", "dispatch_control", "internal_analysis", "temperature_controls"] as const;
 export const resultValues = ["C", "NC", "N/A"] as const;
 
 const qualityModule = mysqlEnum("quality_module", qualityModuleValues);
@@ -357,5 +357,11 @@ export const fragileItems = mysqlTable("fragile_items", {
   itemType: mysqlEnum("fragile_type", ["Vidro", "Plástico rígido", "Outro"]).notNull(),
   status: mysqlEnum("fragile_status", ["active", "inactive"]).default("active").notNull(),
   createdBy: varchar("createdBy", { length: 64 }).notNull(),
+  createdByProfileId: int("createdByProfileId"),
+  createdByName: varchar("createdByName", { length: 160 }),
+  updatedBy: varchar("updatedBy", { length: 64 }),
+  updatedByProfileId: int("updatedByProfileId"),
+  updatedByName: varchar("updatedByName", { length: 160 }),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 }, (table) => [index("fragile_location_idx").on(table.location), index("fragile_factory_idx").on(table.factoryId), index("fragile_periodicity_idx").on(table.periodicity)]);

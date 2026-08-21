@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 const now = new Date("2026-08-13T10:00:00Z");
 
 vi.mock("@/contexts/QualityAccessContext", () => ({ useQualityAccess: () => ({ canManage: true }) }));
-vi.mock("wouter", () => ({ Link: ({ children, href, ...props }: { children: React.ReactNode; href: string }) => <a href={href} {...props}>{children}</a> }));
+vi.mock("wouter", () => ({ Link: ({ children, href, ...props }: { children: React.ReactNode; href: string }) => <a href={href} {...props}>{children}</a>, useLocation: () => ["/controlos", vi.fn()] }));
 vi.mock("@/lib/trpc", () => ({
   trpc: {
     useUtils: () => ({ quality: { dashboard: { invalidate: vi.fn() }, listTasks: { invalidate: vi.fn() }, listNcs: { invalidate: vi.fn() }, reports: { invalidate: vi.fn() } } }),
@@ -23,6 +23,8 @@ vi.mock("@/lib/trpc", () => ({
       uploadTaskReportPhoto: { useMutation: () => ({ mutateAsync: vi.fn(), isPending: false }) },
       updateTask: { useMutation: () => ({ mutate: vi.fn(), isPending: false }) },
       deleteTask: { useMutation: () => ({ mutate: vi.fn(), isPending: false }) },
+      updateControlEntry: { useMutation: () => ({ mutate: vi.fn(), isPending: false }) },
+      deleteControlEntry: { useMutation: () => ({ mutate: vi.fn(), isPending: false }) },
       reports: { useQuery: () => ({ isLoading: false, data: { planCompliance: 100, openNcs: 1, criticalOpen: 0, modules: [], areas: [], trends: [], recentEntries: [{ id: 2, title: "BPHF Produção", module: "bphf", area: "Produção", completedAt: now, result: "C", registeredByName: "Sabrina Esteves", registeredByTitle: "Tec. Qualidade" }], filteredEntries: [{ id: 2, title: "BPHF Produção", module: "bphf", area: "Produção", completedAt: now, result: "C", notes: null, payload: {}, registeredByName: "Sabrina Esteves", registeredByTitle: "Tec. Qualidade" }] } }) },
       listNcs: { useQuery: () => ({ data: [] }) },
       dailyIncidences: { useQuery: () => ({ isLoading: false, data: { total: 1, byFactory: [{ factoryName: "Fábrica 1 (Fatiado)", total: 1 }], incidences: [{ id: 3, title: "Incidência shelf-life", module: "shelf_life", area: "Shelf-life", factoryName: "Fábrica 1 (Fatiado)", severity: "medium", status: "open", detectedAt: now, reportedByName: "Joana Pina", reportedByTitle: "Resp. Qualidade" }] } }) },

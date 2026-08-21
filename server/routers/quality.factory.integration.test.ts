@@ -117,6 +117,16 @@ describe("procedimentos de qualidade por fábrica", () => {
     expect(dashboard.plannedControls).toEqual([expect.objectContaining({ id: 88, factoryId: 2, module: "bphf" })]);
   });
 
+  it("identifica as tarefas do Plano do Dia com o módulo para abrir o formulário de controlo", async () => {
+    addPublishedControlTask("bphf", 1, [3]);
+    const caller = qualityRouter.createCaller(createContext());
+
+    const listedTasks = await caller.listTasks({ factoryId: 1 });
+
+    expect(listedTasks).toEqual(expect.arrayContaining([expect.objectContaining({ area: "Plano do Dia", module: "bphf", qualityModule: "bphf", factoryId: 1 })]));
+    expect(listedTasks).toEqual(expect.arrayContaining([expect.objectContaining({ area: "Produção T", qualityModule: null })]));
+  });
+
   it("consulta as observações de uma fábrica sem exigir a conclusão global do módulo", async () => {
     const originalNotes = entries[0]!.notes;
     entries[0]!.notes = "Registo concluído, com acompanhamento parcial noutra fábrica.";
@@ -321,6 +331,22 @@ describe("procedimentos de qualidade por fábrica", () => {
     tasks[0]!.status = originalStatus;
   });
 
+  it("permite editar ou eliminar um registo concluído apenas ao técnico executor ou à Responsável", async () => {
+    const entry = entries[0]!;
+    const originalEntry = { ...entry };
+    Object.assign(entry, { registeredByProfileId: 1, registeredByName: "Sabrina Esteves", registeredByTitle: "Tec. Qualidade", payload: { criterion: "Fardamento" } });
+    const executor = qualityRouter.createCaller(createContext({ id: 1, name: "Sabrina Esteves", title: "Tec. Qualidade", role: "technician" }));
+    const otherTechnician = qualityRouter.createCaller(createContext({ id: 2, name: "Neuza Antunes", title: "Tec. Qualidade", role: "technician" }));
+    const manager = qualityRouter.createCaller(createContext());
+
+    await expect(otherTechnician.updateControlEntry({ id: entry.id, title: "Registo revisto", area: "Produção", result: "C", notes: "Observação revista" })).rejects.toMatchObject({ code: "FORBIDDEN" });
+    await executor.updateControlEntry({ id: entry.id, title: "Registo revisto", area: "Produção", result: "C", notes: "Observação revista" });
+    expect(dbUpdates[0]).toMatchObject({ title: "Registo revisto", notes: "Observação revista", payload: { criterion: "Fardamento", editHistory: [expect.objectContaining({ action: "updated", byProfileId: 1 })] } });
+    await manager.deleteControlEntry({ id: entry.id });
+    expect(dbUpdates[1]).toMatchObject({ payload: { recordLifecycle: expect.objectContaining({ status: "deleted", deletedByProfileId: 3 }), editHistory: [expect.objectContaining({ action: "deleted", byProfileId: 3 })] } });
+    Object.assign(entry, originalEntry);
+  });
+
   it("guarda o perfil que concluiu a tarefa e cria o respetivo registo de controlo", async () => {
     const originalStatus = tasks[0]!.status;
     const originalAssignees = tasks[0]!.assigneeProfileIds;
@@ -387,10 +413,10 @@ describe("procedimentos de qualidade por fábrica", () => {
   });
 
   it("cria um ponto de quebráveis com fábrica, área e periodicidade", async () => {
-    const caller = qualityRouter.createCaller(createContext());
+    const caller = qualityRouter.createCaller(createContext({ id: 1, name: "Sabrina Esteves", title: "Tec. Qualidade", role: "technician" }));
     const result = await caller.addFragileItem({ name: "Proteção acrílica da linha", location: "Embalamento primário", factoryId: 3, periodicity: "Q", itemType: "Plástico rígido" });
     expect(result).toEqual({ success: true });
-    expect(dbInserts[0]).toMatchObject({ name: "Proteção acrílica da linha", location: "Embalamento primário", factoryId: 3, periodicity: "Q", itemType: "Plástico rígido", status: "active", createdBy: "quality-admin" });
+    expect(dbInserts[0]).toMatchObject({ name: "Proteção acrílica da linha", location: "Embalamento primário", factoryId: 3, periodicity: "Q", itemType: "Plástico rígido", status: "active", createdBy: "quality-admin", createdByProfileId: 1, createdByName: "Sabrina Esteves", updatedByName: "Sabrina Esteves" });
   });
 
   it("extrai cliente, número e linhas de produto de uma encomenda PDF", async () => {

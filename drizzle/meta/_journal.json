@@ -148,6 +148,20 @@
       "when": 1787245117272,
       "tag": "0021_late_amazoness",
       "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "5",
+      "when": 1787298567264,
+      "tag": "0022_complex_the_hunter",
+      "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "5",
+      "when": 1787299287976,
+      "tag": "0023_vengeful_power_pack",
+      "breakpoints": true
     }
   ]
 }
