@@ -31,4 +31,11 @@ describe("visão geral da plataforma", () => {
     expect(document.querySelector('a[href="/controlos/dispatch_control"]')).toBeTruthy();
     expect(screen.getByRole("link", { name: /Consultar incidências/i }).getAttribute("href")).toBe("/incidencias");
   });
+
+  it("apresenta orientação PWA para Android e iPhone sem depender de uma instalação pendente", () => {
+    render(<PlatformOverview />);
+    expect(screen.getByText("Instale o QualiControl no telemóvel.")).toBeTruthy();
+    expect(screen.getByText(/No iPhone, abra Partilhar no Safari/)).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Instalação disponível no menu" })).toBeTruthy();
+  });
 });

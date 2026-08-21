@@ -2,7 +2,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { HELP_GUIDES } from "@/lib/helpGuides";
-import { ArrowRight, BarChart3, CheckCircle2, CircleAlert, ClipboardCheck, FileWarning, HelpCircle, Smartphone, Sparkles, Workflow } from "lucide-react";
+import { ArrowRight, BarChart3, CheckCircle2, CircleAlert, ClipboardCheck, Download, FileWarning, HelpCircle, Smartphone, Sparkles, Workflow } from "lucide-react";
 import React from "react";
 import { Link } from "wouter";
 
@@ -13,13 +13,45 @@ const workflow = [
   { number: "04", title: "Analisar", text: "Os Relatórios filtram apenas os registos selecionados para apoiar a decisão." },
 ];
 
+type DeferredInstallPrompt = Event & {
+  prompt: () => Promise<void>;
+  userChoice: Promise<{ outcome: "accepted" | "dismissed" }>;
+};
+
 export default function PlatformOverview() {
+  const [deferredInstallPrompt, setDeferredInstallPrompt] = React.useState<DeferredInstallPrompt | null>(null);
+  const [isInstalled, setIsInstalled] = React.useState(false);
+
+  React.useEffect(() => {
+    const updateInstalledState = () => setIsInstalled((typeof window.matchMedia === "function" && window.matchMedia("(display-mode: standalone)").matches) || (navigator as Navigator & { standalone?: boolean }).standalone === true);
+    const captureInstallPrompt = (event: Event) => {
+      event.preventDefault();
+      setDeferredInstallPrompt(event as DeferredInstallPrompt);
+    };
+    const handleInstalled = () => { setDeferredInstallPrompt(null); setIsInstalled(true); };
+    updateInstalledState();
+    window.addEventListener("beforeinstallprompt", captureInstallPrompt);
+    window.addEventListener("appinstalled", handleInstalled);
+    return () => {
+      window.removeEventListener("beforeinstallprompt", captureInstallPrompt);
+      window.removeEventListener("appinstalled", handleInstalled);
+    };
+  }, []);
+
+  const installPwa = async () => {
+    if (!deferredInstallPrompt) return;
+    await deferredInstallPrompt.prompt();
+    const choice = await deferredInstallPrompt.userChoice;
+    if (choice.outcome === "accepted") setIsInstalled(true);
+    setDeferredInstallPrompt(null);
+  };
+
   return <div className="app-grid min-h-full -m-4 p-4 md:-m-6 md:p-6"><main className="mx-auto max-w-7xl space-y-8">
     <section className="relative overflow-hidden rounded-3xl bg-slate-900 px-6 py-8 text-white md:px-10 md:py-12"><div className="absolute -right-20 -top-20 h-64 w-64 rounded-full bg-teal-500/15 blur-3xl" /><div className="relative max-w-3xl"><div className="flex items-center gap-2"><Badge className="bg-teal-400/15 text-teal-200 hover:bg-teal-400/15"><Sparkles className="mr-1 h-3.5 w-3.5" />Plataforma operacional</Badge><span className="font-mono-ui text-xs uppercase tracking-[0.17em] text-slate-400">QualiControl</span></div><h1 className="mt-5 text-3xl font-semibold tracking-tight md:text-5xl">Qualidade alimentar organizada por ação.</h1><p className="mt-5 max-w-2xl text-base leading-7 text-slate-300">Um núcleo único para planos, controlos, ocorrências, evidências e relatórios. Encontre nesta página o modo de trabalho e o guia de preenchimento de cada módulo.</p><div className="mt-7 flex flex-wrap gap-3"><Link href="/"><Button className="bg-teal-600 text-white hover:bg-teal-500">Abrir painel «Hoje»<ArrowRight className="ml-2 h-4 w-4" /></Button></Link><Link href="#guias"><Button variant="outline" className="border-slate-600 bg-slate-800/50 text-white hover:bg-slate-700 hover:text-white">Ver guias de preenchimento</Button></Link></div></div></section>
 
     <section className="grid gap-4 md:grid-cols-3"><Card className="border-0 panel-shadow"><CardContent className="p-5"><p className="font-mono-ui text-xs uppercase tracking-[0.14em] text-teal-700">Operação diária</p><p className="mt-2 text-2xl font-semibold">Plano antes de executar</p><p className="mt-2 text-sm leading-6 text-muted-foreground">O painel Hoje mostra exclusivamente controlos e tarefas publicados para a data.</p></CardContent></Card><Card className="border-0 panel-shadow"><CardContent className="p-5"><p className="font-mono-ui text-xs uppercase tracking-[0.14em] text-teal-700">Rastreabilidade</p><p className="mt-2 text-2xl font-semibold">Autor e evidência</p><p className="mt-2 text-sm leading-6 text-muted-foreground">Cada registo identifica o perfil que executou e guarda os dados e fotos associados.</p></CardContent></Card><Card className="border-0 panel-shadow"><CardContent className="p-5"><p className="font-mono-ui text-xs uppercase tracking-[0.14em] text-teal-700">Decisão</p><p className="mt-2 text-2xl font-semibold">Consulta filtrada</p><p className="mt-2 text-sm leading-6 text-muted-foreground">Os Relatórios mostram apenas a informação abrangida pelos filtros ativos.</p></CardContent></Card></section>
 
-    <section className="rounded-2xl border border-teal-100 bg-teal-50/60 p-5 panel-shadow"><div className="flex flex-col gap-4 md:flex-row md:items-center"><div className="rounded-xl bg-white p-3 text-teal-700 shadow-sm"><Smartphone className="h-6 w-6" /></div><div className="flex-1"><p className="font-mono-ui text-xs uppercase tracking-[0.14em] text-teal-700">Aplicação móvel</p><h2 className="mt-1 text-xl font-semibold">Instale o QualiControl no telemóvel.</h2><p className="mt-1 text-sm leading-6 text-slate-700">No Android, abra o menu do navegador e escolha «Instalar aplicação». No iPhone, abra Partilhar no Safari e selecione «Adicionar ao ecrã principal». A aplicação abre em ecrã completo e mantém os recursos essenciais disponíveis após a primeira visita.</p></div></div></section>
+    <section className="rounded-2xl border border-teal-100 bg-teal-50/60 p-5 panel-shadow"><div className="flex flex-col gap-4 md:flex-row md:items-center"><div className="rounded-xl bg-white p-3 text-teal-700 shadow-sm"><Smartphone className="h-6 w-6" /></div><div className="flex-1"><p className="font-mono-ui text-xs uppercase tracking-[0.14em] text-teal-700">Aplicação móvel</p><h2 className="mt-1 text-xl font-semibold">Instale o QualiControl no telemóvel.</h2><p className="mt-1 text-sm leading-6 text-slate-700">A aplicação instalada mantém todos os controlos, planos, incidências, evidências e relatórios disponíveis no mesmo acesso seguro. No Android, use «Instalar agora» quando disponível. No iPhone, abra Partilhar no Safari e selecione «Adicionar ao ecrã principal».</p></div><div className="shrink-0"><Button type="button" onClick={installPwa} disabled={isInstalled || !deferredInstallPrompt} className="w-full bg-teal-700 text-white hover:bg-teal-800 md:w-auto"><Download className="mr-2 h-4 w-4" />{isInstalled ? "Aplicação instalada" : deferredInstallPrompt ? "Instalar agora" : "Instalação disponível no menu"}</Button></div></div></section>
 
 
     <section className="rounded-2xl border border-amber-100 bg-amber-50/60 p-5 panel-shadow"><div className="flex flex-col gap-4 md:flex-row md:items-start"><div className="rounded-xl bg-white p-3 text-amber-700 shadow-sm"><CircleAlert className="h-6 w-6" /></div><div className="flex-1"><p className="font-mono-ui text-xs uppercase tracking-[0.14em] text-amber-700">Incidências e Não Conformidades</p><h2 className="mt-1 text-xl font-semibold">Registe o desvio, guarde a evidência e abra NC quando a repetição o exigir.</h2><p className="mt-1 text-sm leading-6 text-slate-700">Uma incidência documenta um desvio observado durante o controlo, incluindo autor, contexto, observações e fotografias. Mantém-se registada no QualiControl mesmo quando não exige NC; a Responsável de Qualidade pode rever, editar ou eliminar o registo, preservando a rastreabilidade.</p><div className="mt-4 grid gap-3 lg:grid-cols-3"><div className="rounded-xl border border-amber-100 bg-white/80 p-4"><CircleAlert className="h-4 w-4 text-amber-700" /><p className="mt-2 text-sm font-semibold text-slate-900">1. Registar e evidenciar</p><p className="mt-1 text-sm leading-6 text-slate-600">Descreva objetivamente o desvio, selecione a fábrica ou linha e o controlo relacionado — ou «Não aplicável» quando não existir. Anexe fotografias à incidência ou à verificação NC; as fotos também ficam guardadas sem internet.</p></div><div className="rounded-xl border border-red-100 bg-white/80 p-4"><FileWarning className="h-4 w-4 text-red-700" /><p className="mt-2 text-sm font-semibold text-slate-900">2. Abrir NC obrigatória</p><p className="mt-1 text-sm leading-6 text-slate-600">Ao atingir 3 verificações NC semelhantes — mesmo título, controlo e fábrica ou linha — nos últimos 6 meses, o painel alerta a Responsável para abrir obrigatoriamente a NC no sistema de gestão de ocorrências.</p></div><div className="rounded-xl border border-emerald-100 bg-white/80 p-4"><CheckCircle2 className="h-4 w-4 text-emerald-700" /><p className="mt-2 text-sm font-semibold text-slate-900">3. Acompanhar e decidir</p><p className="mt-1 text-sm leading-6 text-slate-600">A Responsável confirma se a incidência gerou NC, guarda o número de ocorrência e acompanha os registos pelos filtros de data, fábrica, colaborador e controlo.</p></div></div><div className="mt-4"><Link href="/incidencias"><Button variant="outline" className="border-amber-300 bg-white text-amber-950 hover:bg-amber-100">Consultar incidências <ArrowRight className="ml-2 h-4 w-4" /></Button></Link></div></div></div></section>
