@@ -356,3 +356,4 @@
 - [x] Reorganizar o submenu Controlos Operacionais para não ocultar itens da barra lateral em ecrãs estreitos.
 - [x] Corrigir o carregamento dos itens da checklist Food Defense no controlo anual.
 - [x] Remover a pré-seleção de C em todas as verificações de todos os controlos.
+- [x] Apresentar no detalhe da incidência todas as fotografias de evidência anexadas.
