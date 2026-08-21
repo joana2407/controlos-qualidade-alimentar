@@ -333,3 +333,5 @@
 - [x] Evitar a sobreposição dos links abaixo quando o submenu Controlos é expandido na barra lateral.
 - [x] Reorganizar os filtros de Relatórios sem sobreposição e posicionar claramente a ação Limpar filtros.
 - [x] Explicar na Plataforma o registo de incidências e o fluxo de geração e tratamento de NC.
+- [x] Permitir anexar e consultar fotografia de evidência quando um item de Quebráveis é registado como danificado.
+- [x] Ativar o controlo de Temperaturas no Plano do Dia e no acesso dos utilizadores atribuídos.

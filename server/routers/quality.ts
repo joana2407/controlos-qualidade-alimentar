@@ -514,13 +514,14 @@ export const qualityRouter = router({
     const db = await requireDb();
     const profiles = await db.select().from(qualityPinProfiles).where(inArray(qualityPinProfiles.id, input.assigneeProfileIds)).orderBy(qualityPinProfiles.id);
     if (profiles.length !== input.assigneeProfileIds.length || profiles.some((profile) => profile.active !== "true")) throw new TRPCError({ code: "BAD_REQUEST", message: "Selecione responsáveis ativos para o Plano do Dia." });
-    if (input.modules.includes("temperature_controls") && input.factoryIds.some((factoryId) => ![1, 2].includes(factoryId))) throw new TRPCError({ code: "BAD_REQUEST", message: "Os Controlos de Temperatura manuais estão disponíveis apenas para as Fábricas 1 e 2." });
     const existing = await db.select().from(controlTasks).where(and(eq(controlTasks.dueAt, input.date), eq(controlTasks.status, "pending")));
     const selectedFactories = Array.from(new Set(input.factoryIds));
+    const temperatureFactories = selectedFactories.filter((factoryId) => [1, 2].includes(factoryId));
+    if (input.modules.includes("temperature_controls") && !temperatureFactories.length) throw new TRPCError({ code: "BAD_REQUEST", message: "Selecione a Fábrica 1 ou a Fábrica 2 para publicar os Controlos de Temperatura." });
     const plannedControls: { module: typeof qualityModuleValues[number]; factoryId: number | null }[] = [];
     for (const module of Array.from(new Set(input.modules))) {
       if (sharedPlanModules.has(module)) plannedControls.push({ module, factoryId: null });
-      else selectedFactories.forEach((factoryId) => plannedControls.push({ module, factoryId }));
+      else (module === "temperature_controls" ? temperatureFactories : selectedFactories).forEach((factoryId) => plannedControls.push({ module, factoryId }));
     }
     const controls = plannedControls.filter(({ module, factoryId }) => !existing.some((task) => task.module === module && task.factoryId === factoryId));
     if (controls.length) await db.insert(controlTasks).values(controls.map(({ module, factoryId }) => ({
@@ -1272,6 +1273,23 @@ export const qualityRouter = router({
     const { key: referenceImageKey, url: referenceImageUrl } = await storagePut(key, Buffer.from(base64, "base64"), input.mimeType);
     await db.update(fragileItems).set({ referenceImageKey, referenceImageUrl, referenceImageName: input.fileName, updatedBy: ctx.user!.openId, updatedByProfileId: ctx.operatorProfile!.id, updatedByName: ctx.operatorProfile!.name }).where(eq(fragileItems.id, input.itemId));
     return { success: true, url: referenceImageUrl };
+  }),
+
+  uploadFragileInspectionEvidence: qualityOperatorProcedure.input(z.object({
+    itemId: z.number().int(),
+    fileName: z.string().min(1).max(255),
+    mimeType: z.enum(["image/jpeg", "image/png", "image/webp"]),
+    dataUrl: z.string().min(20).max(7_000_000),
+  })).mutation(async ({ ctx, input }) => {
+    const db = await requireDb();
+    const item = (await db.select().from(fragileItems).where(eq(fragileItems.id, input.itemId)).limit(1))[0];
+    if (!item || item.status !== "active") throw new TRPCError({ code: "NOT_FOUND", message: "Ponto de controlo não encontrado." });
+    await requireControlAuthorization(db, { module: "fragile_items", factoryId: item.factoryId, profile: ctx.operatorProfile! });
+    const base64 = input.dataUrl.split(",")[1];
+    if (!base64) throw new TRPCError({ code: "BAD_REQUEST", message: "Imagem inválida." });
+    const safeName = input.fileName.replace(/[^a-zA-Z0-9._-]/g, "_");
+    const { key, url } = await storagePut(`fragile-evidence/${input.itemId}/${ctx.operatorProfile!.id}/${Date.now()}-${safeName}`, Buffer.from(base64, "base64"), input.mimeType);
+    return { success: true, key, url, fileName: input.fileName, mimeType: input.mimeType };
   }),
 
   deleteFragileItem: qualityOperatorProcedure.input(z.object({ id: z.number().int() })).mutation(async ({ input }) => {

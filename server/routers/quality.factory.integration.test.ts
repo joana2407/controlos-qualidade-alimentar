@@ -80,7 +80,7 @@ function mockDatabase() {
         return {
           orderBy: async () => records,
           then: <T>(resolve: (value: unknown[]) => T | PromiseLike<T>) => Promise.resolve(records).then(resolve),
-          where: () => ({ limit: async () => records, orderBy: async () => records }),
+          where: () => ({ limit: async () => records, orderBy: async () => records, then: <T>(resolve: (value: unknown[]) => T | PromiseLike<T>) => Promise.resolve(records).then(resolve) }),
         };
       },
     }),
@@ -125,6 +125,18 @@ describe("procedimentos de qualidade por fábrica", () => {
 
     expect(listedTasks).toEqual(expect.arrayContaining([expect.objectContaining({ area: "Plano do Dia", module: "bphf", qualityModule: "bphf", factoryId: 1 })]));
     expect(listedTasks).toEqual(expect.arrayContaining([expect.objectContaining({ area: "Produção T", qualityModule: null })]));
+  });
+
+  it("publica Controlos de Temperatura para F1 e F2 sem bloquear um Plano do Dia que também inclua F3", async () => {
+    const caller = qualityRouter.createCaller(createContext());
+
+    const result = await caller.publishDailyPlan({ date: now, factoryIds: [1, 2, 3], assigneeProfileIds: [1, 2, 3], modules: ["temperature_controls"] });
+
+    expect(result).toMatchObject({ success: true, created: 2 });
+    expect(dbInserts[0]).toEqual(expect.arrayContaining([
+      expect.objectContaining({ module: "temperature_controls", factoryId: 1, area: "Plano do Dia", assigneeProfileIds: [1, 2, 3] }),
+      expect.objectContaining({ module: "temperature_controls", factoryId: 2, area: "Plano do Dia", assigneeProfileIds: [1, 2, 3] }),
+    ]));
   });
 
   it("consulta as observações de uma fábrica sem exigir a conclusão global do módulo", async () => {
@@ -410,6 +422,17 @@ describe("procedimentos de qualidade por fábrica", () => {
 
     expect(dbUpdates[0]).toMatchObject({ name: "Portas forno anelar — revista", location: "Produção", factoryId: 1 });
     expect(dbUpdates[1]).toEqual({ status: "inactive" });
+  });
+
+  it("aceita fotografia de evidência de dano apenas num controlo de Quebráveis autorizado", async () => {
+    addPublishedControlTask("fragile_items", 1, [1]);
+    const caller = qualityRouter.createCaller(createContext({ id: 1, name: "Sabrina Esteves", title: "Tec. Qualidade", role: "technician" }));
+    vi.mocked(storagePut).mockResolvedValue({ key: "fragile-evidence/1/1/dano.png", url: "/manus-storage/fragile-evidence/1/1/dano.png" });
+
+    const result = await caller.uploadFragileInspectionEvidence({ itemId: 1, fileName: "dano.png", mimeType: "image/png", dataUrl: "data:image/png;base64,aGVsbG8=" });
+
+    expect(result).toMatchObject({ success: true, url: "/manus-storage/fragile-evidence/1/1/dano.png", fileName: "dano.png" });
+    expect(storagePut).toHaveBeenCalledWith(expect.stringContaining("fragile-evidence/1/1/"), expect.any(Buffer), "image/png");
   });
 
   it("cria um ponto de quebráveis com fábrica, área e periodicidade", async () => {

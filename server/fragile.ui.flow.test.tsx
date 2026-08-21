@@ -8,6 +8,7 @@ const addMutate = vi.fn();
 const updateMutate = vi.fn();
 const deleteMutate = vi.fn();
 const uploadMutate = vi.fn();
+const uploadDamageMutate = vi.fn();
 const invalidate = vi.fn();
 
 vi.mock("@/lib/trpc", () => ({
@@ -21,6 +22,7 @@ vi.mock("@/lib/trpc", () => ({
       updateFragileItem: { useMutation: () => ({ isPending: false, mutate: (input: unknown, options?: { onSuccess?: () => void }) => { updateMutate(input); options?.onSuccess?.(); } }) },
       deleteFragileItem: { useMutation: (options?: { onSuccess?: () => void }) => ({ isPending: false, mutate: (input: unknown) => { deleteMutate(input); options?.onSuccess?.(); } }) },
       uploadFragileReferenceImage: { useMutation: () => ({ isPending: false, mutate: (input: unknown, options?: { onSuccess?: (result: { url: string }) => void }) => { uploadMutate(input); options?.onSuccess?.({ url: "/manus-storage/referencia.png" }); } }) },
+      uploadFragileInspectionEvidence: { useMutation: () => ({ isPending: false, mutate: (input: unknown, options?: { onSuccess?: (result: { key: string; url: string; fileName: string; mimeType: "image/png" }) => void }) => { uploadDamageMutate(input); options?.onSuccess?.({ key: "fragile-evidence/9/1/dano.png", url: "/manus-storage/dano.png", fileName: "dano.png", mimeType: "image/png" }); } }) },
     },
   },
 }));
@@ -33,7 +35,7 @@ import { FragileOperationsPanel } from "../client/src/components/quality/Fragile
 describe("fluxo de interface de pontos de controlo de quebráveis", () => {
   beforeEach(() => {
     cleanup();
-    addMutate.mockClear(); updateMutate.mockClear(); deleteMutate.mockClear(); uploadMutate.mockClear(); invalidate.mockClear();
+    addMutate.mockClear(); updateMutate.mockClear(); deleteMutate.mockClear(); uploadMutate.mockClear(); uploadDamageMutate.mockClear(); invalidate.mockClear();
     Object.defineProperty(HTMLElement.prototype, "hasPointerCapture", { configurable: true, value: () => false });
     Object.defineProperty(HTMLElement.prototype, "setPointerCapture", { configurable: true, value: () => undefined });
     Object.defineProperty(HTMLElement.prototype, "releasePointerCapture", { configurable: true, value: () => undefined });
@@ -78,6 +80,23 @@ describe("fluxo de interface de pontos de controlo de quebráveis", () => {
     expect(screen.getByRole("dialog")).toBeTruthy();
     expect(screen.getByRole("heading", { name: "Registar inspeção" })).toBeTruthy();
     expect(screen.getByRole("dialog").textContent).toContain("Verificação de Proteção acrílica.");
+  });
+
+  it("permite adicionar fotografia de evidência quando o item está danificado", async () => {
+    const user = userEvent.setup();
+    const createEntry = { mutate: vi.fn(), isPending: false };
+    render(<FragileOperationsPanel createEntry={createEntry} factoryId="1" />);
+
+    await user.click(screen.getByRole("button", { name: /inspecionar/i }));
+    await user.click(screen.getByRole("combobox"));
+    await user.click(screen.getByRole("option", { name: "Danificado" }));
+    expect(screen.getByText("Fotografia do dano")).toBeTruthy();
+    const photo = new File(["imagem do dano"], "dano.png", { type: "image/png" });
+    fireEvent.change(screen.getByLabelText("Fotografia do dano"), { target: { files: [photo] } });
+    await waitFor(() => expect(uploadDamageMutate).toHaveBeenCalledWith(expect.objectContaining({ itemId: 9, fileName: "dano.png", mimeType: "image/png" })));
+    await user.type(screen.getByPlaceholderText(/Obrigatório em caso/i), "Ponto isolado para substituição.");
+    await user.click(screen.getByRole("button", { name: "Registar inspeção" }));
+    expect(createEntry.mutate).toHaveBeenCalledWith(expect.objectContaining({ result: "NC", payload: expect.objectContaining({ state: "Danificado", evidencePhotos: [expect.objectContaining({ url: "/manus-storage/dano.png" })] }) }));
   });
 
   it("permite editar e eliminar um ponto no gestor por qualquer operador", async () => {
