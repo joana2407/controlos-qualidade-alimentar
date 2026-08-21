@@ -369,5 +369,5 @@
 - [x] Remover Área e adicionar validade obrigatória ao controlo de Análise Sensorial.
 - [x] Adicionar código de cores de risco à lista de pontos de Quebráveis conforme a periodicidade de verificação.
 - [x] Adicionar filtro direto por nível de risco na lista de pontos de Quebráveis.
-- [ ] Sugerir, com apoio de IA, medidas de controlo editáveis para critérios Food Defense marcados como NC.
+- [x] Sugerir, com apoio de IA, medidas de controlo editáveis para critérios Food Defense marcados como NC.
 - [x] Confirmar e reforçar a instalação PWA em Android e iPhone com todas as funcionalidades existentes.

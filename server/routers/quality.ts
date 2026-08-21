@@ -1493,6 +1493,53 @@ export const qualityRouter = router({
     return { success: true, key, url, fileName: input.fileName, mimeType: input.mimeType };
   }),
 
+  suggestFoodDefenseMeasure: qualitySessionProcedure.input(z.object({
+    itemId: z.string().min(1).max(120),
+    factoryId: z.number().int(),
+    plannedTaskId: z.number().int().optional(),
+    criterion: z.string().min(8).max(2_000),
+    section: z.string().min(2).max(180),
+    notes: z.string().max(2_000).optional(),
+    probability: z.number().int().min(1).max(3),
+    severity: z.number().int().min(1).max(3),
+    vulnerability: z.number().int().min(1).max(9),
+    riskGuidance: z.string().min(2).max(600),
+    existingMeasure: z.string().max(2_000).optional(),
+  })).mutation(async ({ ctx, input }) => {
+    const db = await requireDb();
+    await requireControlAuthorization(db, { module: "food_defense", factoryId: input.factoryId, plannedTaskId: input.plannedTaskId, profile: ctx.operatorProfile! });
+    const response = await invokeLLM({
+      model: "gpt-5-mini",
+      messages: [
+        { role: "system", content: "És especialista em Food Defense numa indústria de panificação. Propõe uma medida de controlo concreta, proporcional ao risco e verificável. Responde em português europeu, sem preâmbulos. A proposta é apenas apoio à decisão: não declares conformidade legal, não inventes factos e recorda implicitamente a necessidade de validação pela equipa." },
+        { role: "user", content: `Secção: ${input.section}\nCritério NC: ${input.criterion}\nObservações do técnico: ${input.notes?.trim() || "Não indicadas"}\nProbabilidade: ${input.probability}\nSeveridade: ${input.severity}\nVulnerabilidade: ${input.vulnerability}\nOrientação da matriz: ${input.riskGuidance}\nMedida já escrita: ${input.existingMeasure?.trim() || "Nenhuma"}\n\nPropõe uma única medida de controlo com ação imediata, responsável sugerido e forma de verificar eficácia. Máximo 120 palavras.` },
+      ],
+      response_format: {
+        type: "json_schema",
+        json_schema: {
+          name: "food_defense_control_measure",
+          strict: true,
+          schema: {
+            type: "object",
+            properties: { suggestion: { type: "string" } },
+            required: ["suggestion"],
+            additionalProperties: false,
+          },
+        },
+      },
+      maxTokens: 400,
+    });
+    try {
+      const content = response.choices[0]?.message.content;
+      const parsed = JSON.parse(typeof content === "string" ? content : "{}");
+      const suggestion = String(parsed.suggestion ?? "").trim();
+      if (!suggestion) throw new Error("Sugestão vazia");
+      return { suggestion };
+    } catch {
+      throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "A sugestão de medida de controlo não ficou disponível. Tente novamente." });
+    }
+  }),
+
   deleteFragileItem: qualityOperatorProcedure.input(z.object({ id: z.number().int() })).mutation(async ({ input }) => {
     const db = await requireDb();
     const item = (await db.select().from(fragileItems).where(eq(fragileItems.id, input.id)).limit(1))[0];

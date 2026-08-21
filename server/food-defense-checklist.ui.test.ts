@@ -16,6 +16,15 @@ describe("checklist anual Food Defense", () => {
     expect(page).toContain("Ação indicada:");
     expect(page).not.toContain("Referência 2025:");
     expect(page).toContain("<Notes value={value.notes} onChange={(notes) => update(item.id, { notes })} />");
+    expect(page).toContain("Sugerir com IA");
+    expect(page).toContain("suggestFoodDefenseMeasure");
+  });
+
+  it("expõe uma sugestão IA autorizada e estruturada para a medida de controlo", () => {
+    const router = readFileSync(new URL("../server/routers/quality.ts", import.meta.url), "utf8");
+    expect(router).toContain("suggestFoodDefenseMeasure");
+    expect(router).toContain('module: "food_defense"');
+    expect(router).toContain('name: "food_defense_control_measure"');
   });
 
   it("inclui a explicação operacional Food Defense na Plataforma", () => {
