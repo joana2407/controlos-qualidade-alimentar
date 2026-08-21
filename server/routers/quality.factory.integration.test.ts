@@ -148,6 +148,16 @@ describe("procedimentos de qualidade por fábrica", () => {
     ]));
   });
 
+  it("filtra os resultados de Temperaturas por período e equipamento", async () => {
+    entries.push({ id: 77, factoryId: 1, module: "temperature_controls", area: "Área da Qualidade", result: "NC", completedAt: now, payload: { equipment: [{ id: "f1-freezer-1", name: "Equipamento de congelação 1", area: "Área da Qualidade", limit: -18, temperature: -16, result: "NC", notes: "Ajuste solicitado" }, { id: "f1-freezer-2", name: "Equipamento de congelação 2", area: "Área da Qualidade", limit: -18, temperature: -19, result: "C", notes: "" }] } } as any);
+    const caller = qualityRouter.createCaller(createContext());
+
+    const results = await caller.temperatureHistory({ startDate: now, endDate: now, equipmentId: "f1-freezer-1" });
+
+    expect(results).toEqual([expect.objectContaining({ equipmentId: "f1-freezer-1", temperature: -16, result: "NC", notes: "Ajuste solicitado" })]);
+    entries.pop();
+  });
+
   it("consulta as observações de uma fábrica sem exigir a conclusão global do módulo", async () => {
     const originalNotes = entries[0]!.notes;
     entries[0]!.notes = "Registo concluído, com acompanhamento parcial noutra fábrica.";

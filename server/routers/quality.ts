@@ -472,6 +472,46 @@ export const qualityRouter = router({
     };
   }),
 
+  temperatureHistory: qualitySessionProcedure.input(z.object({
+    startDate: dateInput.optional(),
+    endDate: dateInput.optional(),
+    equipmentId: z.string().trim().min(1).max(100).optional(),
+  }).optional()).query(async ({ input }) => {
+    const db = await requireDb();
+    const entries = await db.select().from(controlEntries).orderBy(desc(controlEntries.completedAt));
+    const start = input?.startDate ? asDateRange(input.startDate).start : null;
+    const end = input?.endDate ? asDateRange(input.endDate).end : null;
+    return entries.filter((entry) => {
+      const payload = typeof entry.payload === "string" ? (() => { try { return JSON.parse(entry.payload) as Record<string, unknown>; } catch { return {}; } })() : (entry.payload && typeof entry.payload === "object" ? entry.payload as Record<string, unknown> : {});
+      if (entry.module !== "temperature_controls" || payload.deletedAt) return false;
+      if (start && entry.completedAt < start) return false;
+      if (end && entry.completedAt > end) return false;
+      return true;
+    }).flatMap((entry) => {
+      const payload = typeof entry.payload === "string" ? (() => { try { return JSON.parse(entry.payload) as Record<string, unknown>; } catch { return {}; } })() : (entry.payload && typeof entry.payload === "object" ? entry.payload as Record<string, unknown> : {});
+      const equipment = Array.isArray(payload.equipment) ? payload.equipment : [];
+      return equipment.flatMap((item: unknown) => {
+        const value = item && typeof item === "object" ? item as Record<string, unknown> : {};
+        const equipmentId = typeof value.id === "string" ? value.id : "";
+        if (!equipmentId || (input?.equipmentId && equipmentId !== input.equipmentId)) return [];
+        return [{
+          entryId: entry.id,
+          equipmentId,
+          name: typeof value.name === "string" ? value.name : "Equipamento",
+          area: typeof value.area === "string" ? value.area : entry.area,
+          limit: typeof value.limit === "number" ? value.limit : null,
+          temperature: typeof value.temperature === "number" ? value.temperature : null,
+          result: typeof value.result === "string" ? value.result : entry.result,
+          notes: typeof value.notes === "string" ? value.notes : null,
+          completedAt: entry.completedAt,
+          factoryId: entry.factoryId,
+          registeredByName: entry.registeredByName,
+          registeredByTitle: entry.registeredByTitle,
+        }];
+      });
+    });
+  }),
+
   listTasks: qualitySessionProcedure.input(z.object({ factoryId: z.number().int().optional() }).optional()).query(async ({ ctx, input }) => {
     const db = await requireDb();
     const [tasks, entries] = await Promise.all([
@@ -1385,7 +1425,7 @@ export const qualityRouter = router({
     ncStatus: z.enum(["open", "in_progress", "awaiting_validation", "closed"]).optional(),
     orderNumber: z.string().trim().min(1).max(80).optional(),
     analysisProduct: z.string().trim().min(1).max(180).optional(),
-    analysisLot: z.string().trim().min(1).max(160).optional(),
+    analysisClient: z.string().trim().min(1).max(180).optional(),
     collaboratorProfileId: z.number().int().optional(),
   }).optional()).query(async ({ input }) => {
     const db = await requireDb();
@@ -1414,17 +1454,17 @@ export const qualityRouter = router({
     const dispatchOrders = Array.from(dispatchOrdersByNumber.values());
     const normalized = (value: string) => value.toLocaleLowerCase("pt-PT").trim();
     const matchesInternalAnalysis = (entry: typeof entries[number]) => {
-      if (!input?.analysisProduct && !input?.analysisLot) return true;
+      if (!input?.analysisProduct && !input?.analysisClient) return true;
       if (entry.module !== "internal_analysis") return false;
       const payload = payloadRecord(entry.payload);
       const samples = Array.isArray(payload.samples) ? payload.samples : [];
-      const legacySample = { product: payload.product, samplePoint: payload.sampleId, lot: payload.lot };
+      const legacySample = { product: payload.product, client: payload.client ?? payload.samplePoint ?? payload.sampleId };
       const candidates = samples.length ? samples : [legacySample];
       return candidates.some((sample) => {
         const values = sample && typeof sample === "object" ? sample as Record<string, unknown> : {};
-        const product = [values.product, values.samplePoint].filter((value): value is string => typeof value === "string").join(" ");
-        const lot = typeof values.lot === "string" ? values.lot : "";
-        return (!input.analysisProduct || normalized(product).includes(normalized(input.analysisProduct))) && (!input.analysisLot || normalized(lot).includes(normalized(input.analysisLot)));
+        const product = typeof values.product === "string" ? values.product : "";
+        const client = [values.client, values.samplePoint].filter((value): value is string => typeof value === "string").join(" ");
+        return (!input.analysisProduct || normalized(product).includes(normalized(input.analysisProduct))) && (!input.analysisClient || normalized(client).includes(normalized(input.analysisClient)));
       });
     };
     const scopedEntries = scopeToFactory(entries, input?.factoryId).filter((entry) => {
@@ -1476,7 +1516,7 @@ export const qualityRouter = router({
       openNcs: countOpenNonconformities(scopedNcs).open,
       criticalOpen: countOpenNonconformities(scopedNcs).criticalOpen,
       dispatchOrders,
-      filters: { startDate: start, endDate: end, module: input?.module ?? null, result: input?.result ?? null, ncStatus: input?.ncStatus ?? null, orderNumber: input?.orderNumber ?? null, analysisProduct: input?.analysisProduct ?? null, analysisLot: input?.analysisLot ?? null },
+      filters: { startDate: start, endDate: end, module: input?.module ?? null, result: input?.result ?? null, ncStatus: input?.ncStatus ?? null, orderNumber: input?.orderNumber ?? null, analysisProduct: input?.analysisProduct ?? null, analysisClient: input?.analysisClient ?? null },
     };
   }),
 

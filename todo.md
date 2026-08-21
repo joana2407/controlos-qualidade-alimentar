@@ -357,3 +357,6 @@
 - [x] Corrigir o carregamento dos itens da checklist Food Defense no controlo anual.
 - [x] Remover a pré-seleção de C em todas as verificações de todos os controlos.
 - [x] Apresentar no detalhe da incidência todas as fotografias de evidência anexadas.
+- [x] Substituir Ponto de amostragem por Cliente nas análises internas e criar filtros por produto, cliente, data e resultado.
+- [x] Adicionar filtros de resultados de Temperaturas por intervalo de datas e equipamento.
+- [x] Ligar o botão Plataforma automática de Temperaturas ao portal Tekon Electronics fornecido.

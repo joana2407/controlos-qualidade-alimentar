@@ -28,7 +28,7 @@ describe("controlo de análises internas", () => {
     expect(screen.getByText("Análises internas")).toBeTruthy();
     expect(screen.getByText("Analista responsável")).toBeTruthy();
     expect(screen.getByDisplayValue("Sabrina Esteves")).toBeTruthy();
-    expect(screen.getByText("Ponto de amostragem")).toBeTruthy();
+    expect(screen.getByText("Cliente")).toBeTruthy();
     expect(screen.getByText("Observações (obrigatórias)")).toBeTruthy();
     expect(screen.getByText("Fotografias de evidência")).toBeTruthy();
     expect(screen.getByRole("button", { name: /amostra/i })).toBeTruthy();
