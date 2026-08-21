@@ -349,3 +349,5 @@
 - [x] Assinalar a abertura obrigatória de NC ao atingir três verificações NC semelhantes no período de seis meses.
 - [x] Explicar na Plataforma as regras de incidências, fotos de evidência e abertura obrigatória de NC após três repetições em seis meses.
 - [x] Permitir ao técnico que criou a incidência editá-la e adicionar fotografias, mantendo a Responsável de Qualidade autorizada.
+- [x] Integrar a checklist e a análise de riscos do ficheiro Food Defense no controlo anual das três fábricas.
+- [x] Incluir no guia de preenchimento BPHF as regras de incidências, fotografias e abertura obrigatória de NC.
