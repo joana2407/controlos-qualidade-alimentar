@@ -67,6 +67,20 @@ describe("fluxo de interface de pontos de controlo de quebráveis", () => {
     await waitFor(() => expect(uploadMutate).toHaveBeenCalledWith(expect.objectContaining({ itemId: 9, fileName: "referencia.png", mimeType: "image/png" })));
   }, 10_000);
 
+  it("sugere a periodicidade a partir do nível de risco ao criar um ponto", async () => {
+    const user = userEvent.setup();
+    render(<FragileOperationsPanel createEntry={{ mutate: vi.fn(), isPending: false }} factoryId="1" />);
+
+    await user.click(screen.getByRole("button", { name: /gerir pontos/i }));
+    await user.click(screen.getByRole("button", { name: /adicionar ponto/i }));
+    const riskSelect = screen.getByText("Nível de risco").parentElement?.querySelector('[role="combobox"]');
+    expect(riskSelect).toBeTruthy();
+    await user.click(riskSelect!);
+    await user.click(screen.getByRole("option", { name: /nível 3 · elevado · diário/i }));
+
+    expect(screen.getByText("Sugestão: Diário (D)")).toBeTruthy();
+  });
+
   it("abre a pendência selecionada num painel próprio de inspeção", () => {
     const createEntry = { mutate: vi.fn(), isPending: false };
     render(<FragileOperationsPanel createEntry={createEntry} factoryId="1" />);

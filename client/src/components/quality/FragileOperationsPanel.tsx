@@ -12,6 +12,7 @@ import React, { FormEvent, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
 type Periodicity = "D" | "S" | "Q" | "M";
+type RiskLevel = "1" | "2" | "3";
 type EvidencePhoto = { url: string; key: string; fileName: string; mimeType: "image/jpeg" | "image/png" | "image/webp" };
 type FragilePoint = {
   id: number;
@@ -29,6 +30,11 @@ type FragilePoint = {
 };
 
 const periodLabel: Record<Periodicity, string> = { D: "Diário", S: "Semanal", Q: "Quinzenal", M: "Mensal" };
+const fragileRiskRecommendations: Record<RiskLevel, { periodicity: Periodicity; label: string; summary: string }> = {
+  "1": { periodicity: "M", label: "Nível 1 · baixo", summary: "Sem risco direto para a segurança alimentar: abaixo ou acima de produto fechado, abaixo de produto aberto ou utensílio detetável." },
+  "2": { periodicity: "S", label: "Nível 2 · moderado", summary: "Fragmentos identificáveis ou sem contacto direto; contacto com matérias-primas, material detetável ou equipamento de menor exposição." },
+  "3": { periodicity: "D", label: "Nível 3 · elevado", summary: "Pode quebrar ou cair sem ser detetado e contaminar produto aberto, massas ou superfícies de contacto." },
+};
 
 function fileAsDataUrl(file: File) {
   return new Promise<string>((resolve, reject) => {
@@ -68,6 +74,7 @@ export function FragileOperationsPanel({ createEntry, factoryId, showHeader = tr
   const [editorFactoryId, setEditorFactoryId] = useState("");
   const [editorPeriodicity, setEditorPeriodicity] = useState<Periodicity>("M");
   const [editorType, setEditorType] = useState<FragilePoint["itemType"]>("Outro");
+  const [riskLevel, setRiskLevel] = useState<"" | RiskLevel>("");
 
   const pendingInput = useMemo(() => factoryId ? { factoryId: Number(factoryId) } : undefined, [factoryId]);
   const items = trpc.quality.listFragileItems.useQuery();
@@ -111,6 +118,7 @@ export function FragileOperationsPanel({ createEntry, factoryId, showHeader = tr
     setEditorFactoryId(String(item?.factoryId ?? factoryId ?? ""));
     setEditorPeriodicity(item?.periodicity ?? "M");
     setEditorType(item?.itemType ?? "Outro");
+    setRiskLevel("");
   }
 
   function openInspection(item: FragilePoint) {
@@ -160,10 +168,13 @@ export function FragileOperationsPanel({ createEntry, factoryId, showHeader = tr
     setInspectionOpen(false);
   }
 
+  const selectedRisk = riskLevel ? fragileRiskRecommendations[riskLevel] : null;
   const pointForm = (onSubmit: (event: FormEvent) => void, label: string, allowImage = false) => <form onSubmit={onSubmit} className="space-y-4">
     <div className="space-y-2"><Label>Nome do ponto de controlo</Label><Input required value={name} onChange={(event) => setName(event.target.value)} /></div>
     <div className="grid gap-4 sm:grid-cols-2"><div className="space-y-2"><Label>Fábrica / linha</Label><Select value={editorFactoryId} onValueChange={setEditorFactoryId}><SelectTrigger><SelectValue placeholder="Selecione a fábrica" /></SelectTrigger><SelectContent>{factories.map((factory) => <SelectItem key={factory.id} value={String(factory.id)}>{factory.name}</SelectItem>)}</SelectContent></Select></div><div className="space-y-2"><Label>Área</Label><Input required value={location} onChange={(event) => setLocation(event.target.value)} /></div></div>
-    <div className="grid gap-4 sm:grid-cols-2"><div className="space-y-2"><Label>Periodicidade</Label><Select value={editorPeriodicity} onValueChange={(value) => setEditorPeriodicity(value as Periodicity)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{Object.entries(periodLabel).map(([code, text]) => <SelectItem key={code} value={code}>{code} — {text}</SelectItem>)}</SelectContent></Select></div><div className="space-y-2"><Label>Tipo</Label><Select value={editorType} onValueChange={(value) => setEditorType(value as FragilePoint["itemType"])}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{["Vidro", "Plástico rígido", "Outro"].map((type) => <SelectItem key={type} value={type}>{type}</SelectItem>)}</SelectContent></Select></div></div>
+    <div className="grid gap-4 sm:grid-cols-2"><div className="space-y-2"><Label>Nível de risco</Label><Select value={riskLevel || "none"} onValueChange={(value) => { if (value === "none") return setRiskLevel(""); const level = value as RiskLevel; setRiskLevel(level); setEditorPeriodicity(fragileRiskRecommendations[level].periodicity); }}><SelectTrigger><SelectValue placeholder="Selecionar para sugerir periodicidade" /></SelectTrigger><SelectContent><SelectItem value="none">Sem classificação</SelectItem>{Object.entries(fragileRiskRecommendations).map(([level, recommendation]) => <SelectItem key={level} value={level}>{recommendation.label} · {periodLabel[recommendation.periodicity]}</SelectItem>)}</SelectContent></Select></div><div className="space-y-2"><Label>Periodicidade</Label><Select value={editorPeriodicity} onValueChange={(value) => setEditorPeriodicity(value as Periodicity)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{Object.entries(periodLabel).map(([code, text]) => <SelectItem key={code} value={code}>{code} — {text}</SelectItem>)}</SelectContent></Select></div></div>
+    {selectedRisk && <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950"><p className="font-medium">Sugestão: {periodLabel[selectedRisk.periodicity]} ({selectedRisk.periodicity})</p><p className="mt-1 text-xs leading-5">{selectedRisk.summary} Pode ajustar a periodicidade se a avaliação local justificar uma frequência diferente.</p></div>}
+    <div className="space-y-2"><Label>Tipo</Label><Select value={editorType} onValueChange={(value) => setEditorType(value as FragilePoint["itemType"])}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{["Vidro", "Plástico rígido", "Outro"].map((type) => <SelectItem key={type} value={type}>{type}</SelectItem>)}</SelectContent></Select></div>
     {allowImage && <div className="space-y-3 rounded-xl border border-dashed border-teal-200 bg-teal-50/60 p-4"><div className="flex items-center gap-2 text-sm font-medium text-teal-900"><ImagePlus className="h-4 w-4" />Imagem de referência</div>{editing?.referenceImageUrl && <img src={editing.referenceImageUrl} alt={`Referência: ${editing.name}`} className="h-32 w-full rounded-lg border border-teal-100 object-cover" />}<Input type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => uploadReference(event.target.files?.[0])} disabled={uploadImage.isPending} /></div>}
     <Button className="w-full" disabled={addItem.isPending || updateItem.isPending}>{addItem.isPending || updateItem.isPending ? "A guardar…" : label}</Button>
   </form>;
