@@ -82,6 +82,17 @@ describe("fluxo de interface de pontos de controlo de quebráveis", () => {
     expect(screen.getByRole("dialog").textContent).toContain("Verificação de Proteção acrílica.");
   });
 
+  it("pesquisa os pontos pendentes por nome ou área sem alterar o filtro de periodicidade", async () => {
+    const user = userEvent.setup();
+    render(<FragileOperationsPanel createEntry={{ mutate: vi.fn(), isPending: false }} factoryId="1" />);
+
+    await user.type(screen.getByLabelText("Pesquisar pendências"), "embalamento");
+    expect(screen.getByText("Proteção acrílica")).toBeTruthy();
+    await user.clear(screen.getByLabelText("Pesquisar pendências"));
+    await user.type(screen.getByLabelText("Pesquisar pendências"), "inexistente");
+    expect(screen.getByText("Não existem pendências que correspondam à pesquisa.")).toBeTruthy();
+  });
+
   it("permite adicionar fotografia de evidência quando o item está danificado", async () => {
     const user = userEvent.setup();
     const createEntry = { mutate: vi.fn(), isPending: false };

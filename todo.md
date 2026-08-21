@@ -336,3 +336,4 @@
 - [x] Permitir anexar e consultar fotografia de evidência quando um item de Quebráveis é registado como danificado.
 - [x] Ativar o controlo de Temperaturas no Plano do Dia e no acesso dos utilizadores atribuídos.
 - [x] Aplicar fundo escuro legível e espaçamento sem sobreposição ao submenu Controlos expandido.
+- [x] Adicionar pesquisa por nome ou área às inspeções pendentes de Quebráveis.

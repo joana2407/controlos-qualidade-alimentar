@@ -48,6 +48,7 @@ export function FragileOperationsPanel({ createEntry, factoryId, showHeader = tr
   const utils = trpc.useUtils();
   const metadata = trpc.quality.metadata.useQuery();
   const [periodicity, setPeriodicity] = useState<"all" | Periodicity>("all");
+  const [pendingSearch, setPendingSearch] = useState("");
   const [area, setArea] = useState("all");
   const [catalogFactoryId, setCatalogFactoryId] = useState(factoryId || "all");
   const [catalogSearch, setCatalogSearch] = useState("");
@@ -80,7 +81,11 @@ export function FragileOperationsPanel({ createEntry, factoryId, showHeader = tr
   const visibleItems = catalogForFactory.filter((item) =>
     (area === "all" || item.location === area) && (!searchTerm || item.name.toLocaleLowerCase("pt-PT").includes(searchTerm)),
   );
-  const pendingPoints = pendingAll.filter((item) => periodicity === "all" || item.periodicity === periodicity);
+  const pendingSearchTerm = pendingSearch.trim().toLocaleLowerCase("pt-PT");
+  const pendingPoints = pendingAll.filter((item) =>
+    (periodicity === "all" || item.periodicity === periodicity)
+    && (!pendingSearchTerm || item.name.toLocaleLowerCase("pt-PT").includes(pendingSearchTerm) || item.location.toLocaleLowerCase("pt-PT").includes(pendingSearchTerm)),
+  );
   const pendingCounts = pendingAll.reduce<Record<Periodicity, number>>((result, item) => {
     result[item.periodicity] += 1;
     return result;
@@ -97,7 +102,7 @@ export function FragileOperationsPanel({ createEntry, factoryId, showHeader = tr
   const uploadImage = trpc.quality.uploadFragileReferenceImage.useMutation({ onSuccess: () => { utils.quality.listFragileItems.invalidate(); toast.success("Imagem de referência carregada."); }, onError: (error) => toast.error(error.message) });
   const uploadDamageEvidence = trpc.quality.uploadFragileInspectionEvidence.useMutation({ onError: (error) => toast.error(error.message) });
 
-  useEffect(() => { setCatalogFactoryId(factoryId || "all"); setArea("all"); setCatalogSearch(""); }, [factoryId]);
+  useEffect(() => { setCatalogFactoryId(factoryId || "all"); setArea("all"); setCatalogSearch(""); setPendingSearch(""); }, [factoryId]);
 
   function resetEditor(item?: FragilePoint) {
     setEditing(item ?? null);
@@ -170,7 +175,8 @@ export function FragileOperationsPanel({ createEntry, factoryId, showHeader = tr
       <CardContent className="space-y-6 p-5">
         {!factoryId ? <div className="rounded-xl border border-dashed bg-slate-50 p-5 text-sm text-muted-foreground">Selecione uma fábrica ou linha no topo para visualizar e inspecionar os respetivos pontos de controlo.</div> : <>
           <div className="flex flex-wrap gap-2" aria-label="Filtro de periodicidade">{(["all", "D", "S", "Q", "M"] as const).map((code) => <Button key={code} type="button" variant={periodicity === code ? "default" : "outline"} size="sm" className="gap-2" onClick={() => setPeriodicity(code)}><span>{code === "all" ? "Todas" : `${code} · ${periodLabel[code]}`}</span><Badge variant="secondary" className="h-5 min-w-5 justify-center px-1 text-[10px]">{code === "all" ? pendingAll.length : pendingCounts[code]}</Badge></Button>)}</div>
-          <section><div className="mb-3 flex items-center justify-between"><p className="text-sm text-muted-foreground">{periodicity === "all" ? "Pontos sem registo no ciclo aplicável." : `Pendências ${periodLabel[periodicity].toLowerCase()}.`}</p><Badge className="bg-teal-700 text-white hover:bg-teal-700">{pendingPoints.length} pendentes</Badge></div>{pending.isLoading ? <p className="rounded-xl bg-slate-50 p-4 text-sm text-muted-foreground">A calcular pendências…</p> : pendingPoints.length ? <div className="divide-y rounded-xl border border-slate-100">{pendingPoints.map((point) => <div key={point.id} className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center"><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><p className="font-medium">{point.name}</p><Badge variant="outline">{point.periodicity} — {periodLabel[point.periodicity]}</Badge><Badge variant={point.delayDays ? "destructive" : "secondary"}>{delayLabel(point)}</Badge></div><p className="mt-1 text-sm text-muted-foreground">{point.location} · {point.lastInspectionAt ? `Última inspeção: ${new Date(point.lastInspectionAt).toLocaleDateString("pt-PT")}` : "Sem inspeções registadas"}</p></div><Button size="sm" onClick={() => openInspection(point)}><ClipboardCheck className="mr-2 h-4 w-4" />Inspecionar</Button></div>)}</div> : <div className="rounded-xl border border-emerald-100 bg-emerald-50 p-4 text-sm text-emerald-900"><CheckCircle2 className="mr-2 inline h-4 w-4" />Não existem pendências para este filtro.</div>}</section>
+          <div className="max-w-xl space-y-2"><Label htmlFor="fragile-pending-search">Pesquisar pendências</Label><div className="relative"><Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" /><Input id="fragile-pending-search" value={pendingSearch} onChange={(event) => setPendingSearch(event.target.value)} className="pl-9" placeholder="Pesquisar por nome do ponto ou área…" /></div></div>
+          <section><div className="mb-3 flex items-center justify-between"><p className="text-sm text-muted-foreground">{periodicity === "all" ? "Pontos sem registo no ciclo aplicável." : `Pendências ${periodLabel[periodicity].toLowerCase()}.`}</p><Badge className="bg-teal-700 text-white hover:bg-teal-700">{pendingPoints.length} pendentes</Badge></div>{pending.isLoading ? <p className="rounded-xl bg-slate-50 p-4 text-sm text-muted-foreground">A calcular pendências…</p> : pendingPoints.length ? <div className="divide-y rounded-xl border border-slate-100">{pendingPoints.map((point) => <div key={point.id} className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center"><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><p className="font-medium">{point.name}</p><Badge variant="outline">{point.periodicity} — {periodLabel[point.periodicity]}</Badge><Badge variant={point.delayDays ? "destructive" : "secondary"}>{delayLabel(point)}</Badge></div><p className="mt-1 text-sm text-muted-foreground">{point.location} · {point.lastInspectionAt ? `Última inspeção: ${new Date(point.lastInspectionAt).toLocaleDateString("pt-PT")}` : "Sem inspeções registadas"}</p></div><Button size="sm" onClick={() => openInspection(point)}><ClipboardCheck className="mr-2 h-4 w-4" />Inspecionar</Button></div>)}</div> : <div className="rounded-xl border border-emerald-100 bg-emerald-50 p-4 text-sm text-emerald-900"><CheckCircle2 className="mr-2 inline h-4 w-4" />{pendingSearchTerm ? "Não existem pendências que correspondam à pesquisa." : "Não existem pendências para este filtro."}</div>}</section>
         </>}
       </CardContent>
     </Card>
