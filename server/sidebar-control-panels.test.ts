@@ -21,6 +21,14 @@ describe("navegação lateral dos painéis de controlo", () => {
       "Fábrica 3",
     ].forEach((label) => expect(source).toContain(label));
     [
+      "https://analiseocorrencias.manus.space/login",
+      "https://gestaomateriasprimas.manus.space/materias-primas",
+      "https://planocalibracao.manus.space/",
+      "https://manutencaoprenventiva-as.manus.space/",
+      "https://quebrasdash-tyuemnk4.manus.space/",
+      "https://quebrasdash-fce2dkya.manus.space/",
+    ].forEach((url) => expect(source).toContain(url));
+    [
       "/controlos/bphf",
       "/controlos/metal_detectors",
       "/controlos/sensory",

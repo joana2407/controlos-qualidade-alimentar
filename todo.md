@@ -351,3 +351,6 @@
 - [x] Permitir ao técnico que criou a incidência editá-la e adicionar fotografias, mantendo a Responsável de Qualidade autorizada.
 - [x] Integrar a checklist e a análise de riscos do ficheiro Food Defense no controlo anual das três fábricas.
 - [x] Incluir no guia de preenchimento BPHF as regras de incidências, fotografias e abertura obrigatória de NC.
+- [x] Remover o cartão informativo de conclusão por área apresentado no topo do controlo BPHF.
+- [x] Associar os URLs fornecidos aos atalhos externos e às três fábricas de Quebras de Produção.
+- [x] Reorganizar o submenu Controlos Operacionais para não ocultar itens da barra lateral em ecrãs estreitos.
