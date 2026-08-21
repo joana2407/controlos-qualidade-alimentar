@@ -46,7 +46,10 @@ describe("atalhos laterais dos painéis de controlo", () => {
     expect(fragile.getAttribute("data-active")).toBe("true");
     const controls = screen.getByRole("button", { name: "Controlos" });
     expect(controls).toBeTruthy();
-    expect(controls.closest("li")?.contains(screen.getByRole("button", { name: "BPHF" }))).toBe(true);
+    const controlPanel = screen.getByText("Controlos operacionais").parentElement;
+    expect(controlPanel?.className).toContain("bg-slate-950");
+    expect(controlPanel?.contains(screen.getByRole("button", { name: "BPHF" }))).toBe(true);
+    expect((controlPanel?.compareDocumentPosition(screen.getByText("Painéis externos")) ?? 0) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "BPHF" }));
     expect(setLocation).toHaveBeenLastCalledWith("/controlos/bphf");
 
