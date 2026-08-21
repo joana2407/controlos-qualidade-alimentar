@@ -372,3 +372,4 @@
 - [x] Sugerir, com apoio de IA, medidas de controlo editáveis para critérios Food Defense marcados como NC.
 - [x] Confirmar e reforçar a instalação PWA em Android e iPhone com todas as funcionalidades existentes.
 - [x] Adicionar filtro por área à lista de Quebráveis, combinado com pesquisa, periodicidade e risco.
+- [x] Tornar visível e fiável o acesso de instalação PWA no telemóvel para Android e iPhone.

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import React from "react";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("wouter", () => ({ Link: ({ children, href }: { children: React.ReactNode; href: string }) => <a href={href}>{children}</a> }));
@@ -35,7 +35,11 @@ describe("visão geral da plataforma", () => {
   it("apresenta orientação PWA para Android e iPhone sem depender de uma instalação pendente", () => {
     render(<PlatformOverview />);
     expect(screen.getByText("Instale o QualiControl no telemóvel.")).toBeTruthy();
-    expect(screen.getByText(/No iPhone, abra Partilhar no Safari/)).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Instalação disponível no menu" })).toBeTruthy();
+    const installButton = screen.getByRole("button", { name: "Instalar no telemóvel" });
+    expect(installButton).toBeTruthy();
+    fireEvent.click(installButton);
+    expect(screen.getByText("Instalar QualiControl no telemóvel")).toBeTruthy();
+    expect(screen.getByText("Android — Chrome ou Edge")).toBeTruthy();
+    expect(screen.getByText("iPhone — Safari")).toBeTruthy();
   });
 });
