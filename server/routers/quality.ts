@@ -1467,6 +1467,28 @@ export const qualityRouter = router({
     return { success: true, updated: matchingItems.length };
   }),
 
+  mergeFragileAreas: qualityOperatorProcedure.input(z.object({
+    factoryId: z.number().int(),
+    sourceArea: z.string().trim().min(2).max(120),
+    targetArea: z.string().trim().min(2).max(120),
+  })).mutation(async ({ ctx, input }) => {
+    if (input.sourceArea === input.targetArea) throw new TRPCError({ code: "BAD_REQUEST", message: "Selecione duas áreas diferentes para fundir." });
+    const db = await requireDb();
+    const [sourceItems, targetItems] = await Promise.all([
+      db.select().from(fragileItems).where(and(eq(fragileItems.factoryId, input.factoryId), eq(fragileItems.location, input.sourceArea), eq(fragileItems.status, "active"))),
+      db.select().from(fragileItems).where(and(eq(fragileItems.factoryId, input.factoryId), eq(fragileItems.location, input.targetArea), eq(fragileItems.status, "active"))),
+    ]);
+    if (!sourceItems.length) throw new TRPCError({ code: "NOT_FOUND", message: "Não foram encontrados pontos ativos na área de origem." });
+    if (!targetItems.length) throw new TRPCError({ code: "NOT_FOUND", message: "A área de destino tem de existir na fábrica selecionada." });
+    await db.update(fragileItems).set({
+      location: input.targetArea,
+      updatedBy: ctx.user!.openId,
+      updatedByProfileId: ctx.operatorProfile!.id,
+      updatedByName: ctx.operatorProfile!.name,
+    }).where(and(eq(fragileItems.factoryId, input.factoryId), eq(fragileItems.location, input.sourceArea), eq(fragileItems.status, "active")));
+    return { success: true, updated: sourceItems.length };
+  }),
+
   uploadFragileReferenceImage: qualityOperatorProcedure.input(z.object({
     itemId: z.number().int(),
     fileName: z.string().min(1).max(255),
