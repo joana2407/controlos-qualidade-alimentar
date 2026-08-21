@@ -364,3 +364,4 @@
 - [x] Abrir sempre o controlo do dia na data atual e cada pendência na respetiva data prevista anterior.
 - [x] Retirar uma pendência da lista assim que todos os pontos aplicáveis do controlo na data prevista forem registados.
 - [x] Mostrar no Food Defense o preenchimento das três fábricas, transferir as explicações para a Plataforma e permitir observações opcionais por critério.
+- [x] Corrigir a apresentação simultânea da evolução anual das três fábricas no painel Food Defense.

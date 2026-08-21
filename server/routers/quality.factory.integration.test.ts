@@ -136,6 +136,17 @@ describe("procedimentos de qualidade por fábrica", () => {
     expect(access).toMatchObject({ allowed: true, taskId: expect.any(Number) });
   });
 
+  it("mostra sempre o progresso anual Food Defense nas três fábricas", async () => {
+    const caller = qualityRouter.createCaller(createContext());
+    const dashboard = await caller.dashboard();
+
+    expect(dashboard.moduleProgressByFactory.food_defense).toEqual([
+      { factoryId: 1, expected: 131, completed: 0, registeredToday: 0, percentage: 0 },
+      { factoryId: 2, expected: 131, completed: 0, registeredToday: 0, percentage: 0 },
+      { factoryId: 3, expected: 131, completed: 0, registeredToday: 0, percentage: 0 },
+    ]);
+  });
+
   it("publica Controlos de Temperatura para F1 e F2 sem bloquear um Plano do Dia que também inclua F3", async () => {
     const caller = qualityRouter.createCaller(createContext());
 
