@@ -276,6 +276,18 @@ describe("procedimentos de qualidade por fábrica", () => {
     expect(dbInserts).toHaveLength(2);
   });
 
+  it("permite ao responsável concluir um controlo pendente de um dia útil anterior com rastreabilidade", async () => {
+    const previousDueAt = new Date(2026, 7, 13, 10, 0, 0);
+    tasks.push({ id: 77, factoryId: 1, status: "pending", dueAt: previousDueAt, completedAt: null, module: "bphf", area: "Plano do Dia", title: "Plano do Dia — BPHF F1", responsible: "Sabrina Esteves", assigneeProfileIds: [1] });
+    const sabrina = qualityRouter.createCaller(createContext({ id: 1, name: "Sabrina Esteves", title: "Tec. Qualidade", role: "technician" }));
+
+    const authorization = await sabrina.controlAuthorization({ module: "bphf", factoryId: 1 });
+    await expect(sabrina.createEntry({ module: "bphf", title: "Verificação BPHF", area: "Produção", factoryId: 1, result: "C", payload: { criterion: "Fardamento" } })).resolves.toMatchObject({ success: true });
+
+    expect(authorization).toMatchObject({ allowed: true, taskId: 77, dueAt: previousDueAt, isPreviousPending: true });
+    expect(dbInserts.at(-1)).toMatchObject({ payload: { criterion: "Fardamento", plannedTaskId: 77, plannedDate: previousDueAt.toISOString(), registeredAgainstPreviousPlan: true } });
+  });
+
   it("cria uma tarefa pontual com descrição e responsáveis atribuídos", async () => {
     const caller = qualityRouter.createCaller(createContext());
     await caller.createTask({ title: "Verificação geral", description: "Confirmar a condição da área.", factoryId: 1, dueAt: now, assigneeProfileIds: [1, 2] });

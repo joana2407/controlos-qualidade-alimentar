@@ -24,7 +24,7 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 import { useIsMobile } from "@/hooks/useMobile";
-import { AlertTriangle, ArrowLeft, BarChart3, BookOpenCheck, Boxes, ChevronDown, ClipboardCheck, ClipboardList, FilePlus2, FileWarning, FlaskConical, KeyRound, LayoutDashboard, ListChecks, Magnet, MessageSquareMore, MessageSquareWarning, Microscope, PackageSearch, PanelLeft, Ruler, Settings2, ShieldCheck, TimerReset, TrendingDown, Truck, Wrench } from "lucide-react";
+import { AlertTriangle, ArrowLeft, BarChart3, BookOpenCheck, Boxes, ChevronDown, ClipboardCheck, ClipboardList, Factory, FilePlus2, FileWarning, FlaskConical, KeyRound, LayoutDashboard, ListChecks, Magnet, MessageSquareMore, MessageSquareWarning, Microscope, PackageSearch, PanelLeft, Ruler, Settings2, ShieldCheck, TimerReset, TrendingDown, Truck, Wrench } from "lucide-react";
 import React, { CSSProperties, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { useLocation } from "wouter";
@@ -65,7 +65,16 @@ const preparedExternalPanels = [
   { icon: PackageSearch, label: "Gestão de MP", iconClass: "bg-amber-50 text-amber-700" },
   { icon: Ruler, label: "Plano Calibração", iconClass: "bg-violet-50 text-violet-700" },
   { icon: Wrench, label: "Plano de Manutenção", iconClass: "bg-blue-50 text-blue-700" },
-  { icon: TrendingDown, label: "Quebras de produção", iconClass: "bg-rose-50 text-rose-700" },
+  {
+    icon: TrendingDown,
+    label: "Quebras de produção",
+    iconClass: "bg-rose-50 text-rose-700",
+    factories: [
+      { label: "Fábrica 1", iconClass: "text-teal-700" },
+      { label: "Fábrica 2", iconClass: "text-amber-700" },
+      { label: "Fábrica 3", iconClass: "text-violet-700" },
+    ],
+  },
 ];
 
 const SIDEBAR_WIDTH_KEY = "sidebar-width";
@@ -162,6 +171,7 @@ function DashboardLayoutContent({
   const { state, toggleSidebar } = useSidebar();
   const isCollapsed = state === "collapsed";
   const [controlsOpen, setControlsOpen] = useState(() => location.startsWith("/controlos"));
+  const [productionBreakdownsOpen, setProductionBreakdownsOpen] = useState(false);
   const [isResizing, setIsResizing] = useState(false);
   const sidebarRef = useRef<HTMLDivElement>(null);
   const activeMenuItem = [...menuItems, ...controlPanels].find(item => item.path === location);
@@ -265,7 +275,7 @@ function DashboardLayoutContent({
             </SidebarMenu>
             <SidebarMenu className="mt-2 border-t border-border/70 px-2 py-2">
               {!isCollapsed && <p className="px-2 pb-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Painéis externos</p>}
-              {preparedExternalPanels.map((panel) => <SidebarMenuItem key={panel.label}><SidebarMenuButton onClick={() => toast.info(`${panel.label}: aguarda a configuração do link de acesso.`)} tooltip={`${panel.label} — link em configuração`} className="h-10 text-muted-foreground transition-all hover:text-foreground"><span className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-md ${panel.iconClass}`}><panel.icon className="h-3.5 w-3.5" /></span><span>{panel.label}</span></SidebarMenuButton></SidebarMenuItem>)}
+              {preparedExternalPanels.map((panel) => panel.factories ? <React.Fragment key={panel.label}><SidebarMenuItem><SidebarMenuButton onClick={() => isCollapsed ? toast.info(`${panel.label}: abra a barra lateral para escolher a fábrica.`) : setProductionBreakdownsOpen((open) => !open)} tooltip={`${panel.label} — selecionar fábrica`} aria-expanded={productionBreakdownsOpen} className="h-10 text-muted-foreground transition-all hover:text-foreground"><span className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-md ${panel.iconClass}`}><panel.icon className="h-3.5 w-3.5" /></span><span>{panel.label}</span>{!isCollapsed && <ChevronDown className={`ml-auto h-4 w-4 transition-transform ${productionBreakdownsOpen ? "rotate-0" : "-rotate-90"}`} />}</SidebarMenuButton></SidebarMenuItem>{productionBreakdownsOpen && !isCollapsed && <div className="ml-8 border-l border-border/70 py-1"><SidebarMenu className="px-2 py-0">{panel.factories.map((factory) => <SidebarMenuItem key={factory.label}><SidebarMenuButton onClick={() => toast.info(`${factory.label}: aguarda a configuração do link de acesso.`)} tooltip={`${factory.label} — link em configuração`} className="h-8 text-sm text-muted-foreground transition-all hover:text-foreground"><Factory className={`h-3.5 w-3.5 ${factory.iconClass}`} /><span>{factory.label}</span></SidebarMenuButton></SidebarMenuItem>)}</SidebarMenu></div>}</React.Fragment> : <SidebarMenuItem key={panel.label}><SidebarMenuButton onClick={() => toast.info(`${panel.label}: aguarda a configuração do link de acesso.`)} tooltip={`${panel.label} — link em configuração`} className="h-10 text-muted-foreground transition-all hover:text-foreground"><span className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-md ${panel.iconClass}`}><panel.icon className="h-3.5 w-3.5" /></span><span>{panel.label}</span></SidebarMenuButton></SidebarMenuItem>)}
             </SidebarMenu>
           </SidebarContent>
 

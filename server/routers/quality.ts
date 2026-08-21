@@ -123,14 +123,20 @@ type OperationalProfile = { id: number; role: string; name: string };
 
 async function assessControlAuthorization(db: any, input: { module: typeof qualityModuleValues[number]; factoryId?: number | null; profile: OperationalProfile }) {
   const isShared = sharedPlanModules.has(input.module);
-  if (!isShared && !input.factoryId) return { allowed: false, reason: "Selecione a fábrica ou linha antes de consultar ou preencher este controlo.", task: null };
+  if (!isShared && !input.factoryId) return { allowed: false, reason: "Selecione a fábrica ou linha antes de consultar ou preencher este controlo.", task: null, isPreviousPending: false };
   const today = localDateKey(new Date());
   const tasks = await db.select().from(controlTasks).orderBy(controlTasks.dueAt);
-  const task = tasks.find((item: any) => item.status === "pending" && item.area === "Plano do Dia" && item.module === input.module && localDateKey(new Date(item.dueAt)) === today && (isShared ? item.factoryId === null : item.factoryId === input.factoryId));
-  if (!task) return { allowed: false, reason: "Este controlo não está incluído num Plano do Dia publicado para hoje.", task: null };
+  const matchingTasks = tasks.filter((item: any) => item.status === "pending" && item.area === "Plano do Dia" && item.module === input.module && isBusinessDay(new Date(item.dueAt)) && localDateKey(new Date(item.dueAt)) <= today && (isShared ? item.factoryId === null : item.factoryId === input.factoryId));
+  const task = matchingTasks.find((item: any) => input.profile.role === "manager" || (Array.isArray(item.assigneeProfileIds) && item.assigneeProfileIds.includes(input.profile.id))) ?? matchingTasks[0];
+  if (!task) return { allowed: false, reason: "Este controlo não está incluído num Plano do Dia publicado para hoje nem existem pendências anteriores atribuídas.", task: null, isPreviousPending: false };
   const assignees = Array.isArray(task.assigneeProfileIds) ? task.assigneeProfileIds : [];
-  if (input.profile.role !== "manager" && !assignees.includes(input.profile.id)) return { allowed: false, reason: "Este controlo foi agendado para outro colaborador. Apenas os responsáveis designados ou a Responsável de Qualidade podem preenchê-lo.", task };
-  return { allowed: true, reason: input.profile.role === "manager" ? "Preenchimento autorizado como Responsável de Qualidade." : "Preenchimento autorizado pelo Plano do Dia.", task };
+  if (input.profile.role !== "manager" && !assignees.includes(input.profile.id)) return { allowed: false, reason: "Este controlo foi agendado para outro colaborador. Apenas os responsáveis designados ou a Responsável de Qualidade podem preenchê-lo.", task, isPreviousPending: false };
+  const isPreviousPending = localDateKey(new Date(task.dueAt)) < today;
+  const plannedDate = new Date(task.dueAt).toLocaleDateString("pt-PT");
+  const reason = isPreviousPending
+    ? `Preenchimento autorizado para a pendência do Plano do Dia de ${plannedDate}. A data prevista será mantida no registo.`
+    : input.profile.role === "manager" ? "Preenchimento autorizado como Responsável de Qualidade." : "Preenchimento autorizado pelo Plano do Dia.";
+  return { allowed: true, reason, task, isPreviousPending };
 }
 
 async function requireControlAuthorization(db: any, input: { module: typeof qualityModuleValues[number]; factoryId?: number | null; profile: OperationalProfile }) {
@@ -283,6 +289,7 @@ export const qualityRouter = router({
       taskId: access.task?.id ?? null,
       assignedTo: access.task?.responsible ?? null,
       dueAt: access.task?.dueAt ?? null,
+      isPreviousPending: access.isPreviousPending ?? false,
     };
   }),
 
@@ -633,7 +640,7 @@ export const qualityRouter = router({
     severity: z.enum(["critical", "high", "medium", "low"]).default("medium"),
   })).mutation(async ({ ctx, input }) => {
     const db = await requireDb();
-    await requireControlAuthorization(db, { module: input.module, factoryId: input.factoryId ?? null, profile: ctx.operatorProfile! });
+    const authorization = await requireControlAuthorization(db, { module: input.module, factoryId: input.factoryId ?? null, profile: ctx.operatorProfile! });
     const completedAt = new Date();
     await db.insert(controlEntries).values({
       module: input.module,
@@ -642,7 +649,12 @@ export const qualityRouter = router({
       factoryId: input.factoryId ?? null,
       result: input.result ?? null,
       notes: input.notes ?? null,
-      payload: input.payload,
+      payload: {
+        ...input.payload,
+        plannedTaskId: authorization.task?.id ?? null,
+        plannedDate: authorization.task?.dueAt ? new Date(authorization.task.dueAt).toISOString() : null,
+        registeredAgainstPreviousPlan: authorization.isPreviousPending ?? false,
+      },
       completedAt,
       registeredByProfileId: ctx.operatorProfile!.id,
       registeredByName: ctx.operatorProfile!.name,

@@ -16,6 +16,9 @@ describe("navegação lateral dos painéis de controlo", () => {
       "Plano Calibração",
       "Plano de Manutenção",
       "Quebras de produção",
+      "Fábrica 1",
+      "Fábrica 2",
+      "Fábrica 3",
     ].forEach((label) => expect(source).toContain(label));
     [
       "/controlos/bphf",

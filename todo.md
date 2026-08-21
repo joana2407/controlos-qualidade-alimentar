@@ -311,3 +311,7 @@
 - [x] Tentar sincronizar incidências em segundo plano quando o sistema móvel suportar essa capacidade.
 - [x] Adicionar à barra lateral atalhos preparados para Gestão de Ocorrências, Gestão de MP, Plano Calibração, Plano de Manutenção e Quebras de produção.
 - [x] Reforçar com ícones distintos e representativos os atalhos externos da barra lateral.
+- [x] Subdividir o atalho Quebras de produção em acessos para Fábrica 1, Fábrica 2 e Fábrica 3.
+- [x] Permitir que os responsáveis atribuídos concluam controlos pendentes de dias úteis anteriores.
+- [x] Permitir que os responsáveis atribuídos concluam tarefas pendentes de dias úteis anteriores.
+- [x] Preservar a data prevista original e a rastreabilidade do registo retroativo.
