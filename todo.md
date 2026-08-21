@@ -368,3 +368,4 @@
 - [x] Integrar a matriz de risco de Quebráveis na Plataforma e sugerir a periodicidade ao criar novos pontos de controlo.
 - [x] Remover Área e adicionar validade obrigatória ao controlo de Análise Sensorial.
 - [x] Adicionar código de cores de risco à lista de pontos de Quebráveis conforme a periodicidade de verificação.
+- [x] Adicionar filtro direto por nível de risco na lista de pontos de Quebráveis.

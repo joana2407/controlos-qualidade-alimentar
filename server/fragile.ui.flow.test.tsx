@@ -162,4 +162,15 @@ describe("fluxo de interface de pontos de controlo de quebráveis", () => {
     expect(screen.getAllByText("Risco moderado").length).toBeGreaterThan(0);
     expect(screen.queryByText("Pendências e catálogo")).toBeNull();
   });
+
+  it("filtra diretamente as pendências pelo nível de risco", async () => {
+    const user = userEvent.setup();
+    render(<FragileOperationsPanel createEntry={{ mutate: vi.fn(), isPending: false }} factoryId="1" />);
+
+    await user.click(screen.getByRole("button", { name: "Moderado" }));
+    expect(screen.getByText("Proteção acrílica")).toBeTruthy();
+
+    await user.click(screen.getByRole("button", { name: "Elevado" }));
+    expect(screen.getByText("Não existem pendências para este nível de risco.")).toBeTruthy();
+  });
 });

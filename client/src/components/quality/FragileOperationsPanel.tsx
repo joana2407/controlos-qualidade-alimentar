@@ -13,6 +13,7 @@ import { toast } from "sonner";
 
 type Periodicity = "D" | "S" | "Q" | "M";
 type RiskLevel = "1" | "2" | "3";
+type RiskFilter = "all" | "low" | "moderate" | "high" | "intermediate";
 type EvidencePhoto = { url: string; key: string; fileName: string; mimeType: "image/jpeg" | "image/png" | "image/webp" };
 type FragilePoint = {
   id: number;
@@ -36,6 +37,13 @@ const periodicityRiskStyle: Record<Periodicity, { label: string; className: stri
   Q: { label: "Periodicidade intermédia", className: "border-sky-200 bg-sky-50 text-sky-800", dotClassName: "bg-sky-500", borderColor: "#0ea5e9" },
   M: { label: "Risco baixo", className: "border-emerald-200 bg-emerald-50 text-emerald-800", dotClassName: "bg-emerald-500", borderColor: "#10b981" },
 };
+const riskFilterOptions: { value: RiskFilter; label: string; periodicities?: Periodicity[]; className?: string }[] = [
+  { value: "all", label: "Todos os riscos" },
+  { value: "low", label: "Baixo", periodicities: ["M"], className: "border-emerald-200 text-emerald-800 hover:bg-emerald-50" },
+  { value: "moderate", label: "Moderado", periodicities: ["S"], className: "border-amber-200 text-amber-900 hover:bg-amber-50" },
+  { value: "high", label: "Elevado", periodicities: ["D"], className: "border-red-200 text-red-800 hover:bg-red-50" },
+  { value: "intermediate", label: "Intermédio", periodicities: ["Q"], className: "border-sky-200 text-sky-800 hover:bg-sky-50" },
+];
 const fragileRiskRecommendations: Record<RiskLevel, { periodicity: Periodicity; label: string; summary: string }> = {
   "1": { periodicity: "M", label: "Nível 1 · baixo", summary: "Sem risco direto para a segurança alimentar: abaixo ou acima de produto fechado, abaixo de produto aberto ou utensílio detetável." },
   "2": { periodicity: "S", label: "Nível 2 · moderado", summary: "Fragmentos identificáveis ou sem contacto direto; contacto com matérias-primas, material detetável ou equipamento de menor exposição." },
@@ -65,6 +73,7 @@ export function FragileOperationsPanel({ createEntry, factoryId, showHeader = tr
   const utils = trpc.useUtils();
   const metadata = trpc.quality.metadata.useQuery();
   const [periodicity, setPeriodicity] = useState<"all" | Periodicity>("all");
+  const [riskFilter, setRiskFilter] = useState<RiskFilter>("all");
   const [pendingSearch, setPendingSearch] = useState("");
   const [area, setArea] = useState("all");
   const [catalogFactoryId, setCatalogFactoryId] = useState(factoryId || "all");
@@ -102,6 +111,7 @@ export function FragileOperationsPanel({ createEntry, factoryId, showHeader = tr
   const pendingSearchTerm = pendingSearch.trim().toLocaleLowerCase("pt-PT");
   const pendingPoints = pendingAll.filter((item) =>
     (periodicity === "all" || item.periodicity === periodicity)
+    && (riskFilter === "all" || riskFilterOptions.find((option) => option.value === riskFilter)?.periodicities?.includes(item.periodicity))
     && (!pendingSearchTerm || item.name.toLocaleLowerCase("pt-PT").includes(pendingSearchTerm) || item.location.toLocaleLowerCase("pt-PT").includes(pendingSearchTerm)),
   );
   const pendingCounts = pendingAll.reduce<Record<Periodicity, number>>((result, item) => {
@@ -120,7 +130,7 @@ export function FragileOperationsPanel({ createEntry, factoryId, showHeader = tr
   const uploadImage = trpc.quality.uploadFragileReferenceImage.useMutation({ onSuccess: () => { utils.quality.listFragileItems.invalidate(); toast.success("Imagem de referência carregada."); }, onError: (error) => toast.error(error.message) });
   const uploadDamageEvidence = trpc.quality.uploadFragileInspectionEvidence.useMutation({ onError: (error) => toast.error(error.message) });
 
-  useEffect(() => { setCatalogFactoryId(factoryId || "all"); setArea("all"); setCatalogSearch(""); setPendingSearch(""); }, [factoryId]);
+  useEffect(() => { setCatalogFactoryId(factoryId || "all"); setArea("all"); setCatalogSearch(""); setPendingSearch(""); setRiskFilter("all"); }, [factoryId]);
 
   function resetEditor(item?: FragilePoint) {
     setEditing(item ?? null);
@@ -196,9 +206,9 @@ export function FragileOperationsPanel({ createEntry, factoryId, showHeader = tr
       <CardHeader className="border-b border-slate-100"><div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between"><div><p className="font-mono-ui text-[11px] uppercase tracking-[0.16em] text-teal-700">Operação diária</p><CardTitle className="mt-1 flex items-center gap-2"><CalendarClock className="h-5 w-5 text-teal-700" />Inspeções pendentes</CardTitle><CardDescription className="mt-1">Pontos diários vencem em dias úteis; pontos S, Q e M são verificados à sexta-feira.</CardDescription></div><Button variant="outline" onClick={() => { setCatalogFactoryId(factoryId || "all"); setArea("all"); setCatalogSearch(""); setCatalogOpen(true); }}><SlidersHorizontal className="mr-2 h-4 w-4" />Gerir pontos</Button></div></CardHeader>
       <CardContent className="space-y-6 p-5">
         {!factoryId ? <div className="rounded-xl border border-dashed bg-slate-50 p-5 text-sm text-muted-foreground">Selecione uma fábrica ou linha no topo para visualizar e inspecionar os respetivos pontos de controlo.</div> : <>
-          <div className="space-y-3"><div className="flex flex-wrap gap-2" aria-label="Filtro de periodicidade">{(["all", "D", "S", "Q", "M"] as const).map((code) => <Button key={code} type="button" variant={periodicity === code ? "default" : "outline"} size="sm" className="gap-2" onClick={() => setPeriodicity(code)}><span>{code === "all" ? "Todas" : `${code} · ${periodLabel[code]}`}</span><Badge variant="secondary" className="h-5 min-w-5 justify-center px-1 text-[10px]">{code === "all" ? pendingAll.length : pendingCounts[code]}</Badge></Button>)}</div><div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground" aria-label="Código de cores do risco"><span className="font-medium text-slate-700">Código de risco:</span>{(["M", "S", "D"] as Periodicity[]).map((code) => <PeriodicityRiskBadge key={code} periodicity={code} />)}<span className="rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-sky-800">Q · intermédia</span></div></div>
+          <div className="space-y-3"><div className="flex flex-wrap gap-2" aria-label="Filtro de periodicidade">{(["all", "D", "S", "Q", "M"] as const).map((code) => <Button key={code} type="button" variant={periodicity === code ? "default" : "outline"} size="sm" className="gap-2" onClick={() => setPeriodicity(code)}><span>{code === "all" ? "Todas" : `${code} · ${periodLabel[code]}`}</span><Badge variant="secondary" className="h-5 min-w-5 justify-center px-1 text-[10px]">{code === "all" ? pendingAll.length : pendingCounts[code]}</Badge></Button>)}</div><div className="flex flex-wrap items-center gap-2" aria-label="Filtro de nível de risco"><span className="mr-1 text-xs font-medium text-slate-700">Filtrar risco:</span>{riskFilterOptions.map((option) => <Button key={option.value} type="button" variant={riskFilter === option.value ? "default" : "outline"} size="sm" className={option.className} onClick={() => setRiskFilter(option.value)}>{option.label}</Button>)}</div><div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground" aria-label="Código de cores do risco"><span className="font-medium text-slate-700">Código de risco:</span>{(["M", "S", "D"] as Periodicity[]).map((code) => <PeriodicityRiskBadge key={code} periodicity={code} />)}<span className="rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-sky-800">Q · intermédia</span></div></div>
           <div className="max-w-xl space-y-2"><Label htmlFor="fragile-pending-search">Pesquisar pendências</Label><div className="relative"><Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" /><Input id="fragile-pending-search" value={pendingSearch} onChange={(event) => setPendingSearch(event.target.value)} className="pl-9" placeholder="Pesquisar por nome do ponto ou área…" /></div></div>
-          <section><div className="mb-3 flex items-center justify-between"><p className="text-sm text-muted-foreground">{periodicity === "all" ? "Pontos sem registo no ciclo aplicável." : `Pendências ${periodLabel[periodicity].toLowerCase()}.`}</p><Badge className="bg-teal-700 text-white hover:bg-teal-700">{pendingPoints.length} pendentes</Badge></div>{pending.isLoading ? <p className="rounded-xl bg-slate-50 p-4 text-sm text-muted-foreground">A calcular pendências…</p> : pendingPoints.length ? <div className="divide-y rounded-xl border border-slate-100">{pendingPoints.map((point) => <div key={point.id} className="flex flex-col gap-3 border-l-4 p-4 sm:flex-row sm:items-center" style={{ borderLeftColor: periodicityRiskStyle[point.periodicity].borderColor }}><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><p className="font-medium">{point.name}</p><Badge variant="outline">{point.periodicity} — {periodLabel[point.periodicity]}</Badge><PeriodicityRiskBadge periodicity={point.periodicity} /><Badge variant={point.delayDays ? "destructive" : "secondary"}>{delayLabel(point)}</Badge></div><p className="mt-1 text-sm text-muted-foreground">{point.location} · {point.lastInspectionAt ? `Última inspeção: ${new Date(point.lastInspectionAt).toLocaleDateString("pt-PT")}` : "Sem inspeções registadas"}</p></div><Button size="sm" onClick={() => openInspection(point)}><ClipboardCheck className="mr-2 h-4 w-4" />Inspecionar</Button></div>)}</div> : <div className="rounded-xl border border-emerald-100 bg-emerald-50 p-4 text-sm text-emerald-900"><CheckCircle2 className="mr-2 inline h-4 w-4" />{pendingSearchTerm ? "Não existem pendências que correspondam à pesquisa." : "Não existem pendências para este filtro."}</div>}</section>
+          <section><div className="mb-3 flex items-center justify-between"><p className="text-sm text-muted-foreground">{periodicity === "all" ? "Pontos sem registo no ciclo aplicável." : `Pendências ${periodLabel[periodicity].toLowerCase()}.`}</p><Badge className="bg-teal-700 text-white hover:bg-teal-700">{pendingPoints.length} pendentes</Badge></div>{pending.isLoading ? <p className="rounded-xl bg-slate-50 p-4 text-sm text-muted-foreground">A calcular pendências…</p> : pendingPoints.length ? <div className="divide-y rounded-xl border border-slate-100">{pendingPoints.map((point) => <div key={point.id} className="flex flex-col gap-3 border-l-4 p-4 sm:flex-row sm:items-center" style={{ borderLeftColor: periodicityRiskStyle[point.periodicity].borderColor }}><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><p className="font-medium">{point.name}</p><Badge variant="outline">{point.periodicity} — {periodLabel[point.periodicity]}</Badge><PeriodicityRiskBadge periodicity={point.periodicity} /><Badge variant={point.delayDays ? "destructive" : "secondary"}>{delayLabel(point)}</Badge></div><p className="mt-1 text-sm text-muted-foreground">{point.location} · {point.lastInspectionAt ? `Última inspeção: ${new Date(point.lastInspectionAt).toLocaleDateString("pt-PT")}` : "Sem inspeções registadas"}</p></div><Button size="sm" onClick={() => openInspection(point)}><ClipboardCheck className="mr-2 h-4 w-4" />Inspecionar</Button></div>)}</div> : <div className="rounded-xl border border-emerald-100 bg-emerald-50 p-4 text-sm text-emerald-900"><CheckCircle2 className="mr-2 inline h-4 w-4" />{pendingSearchTerm ? "Não existem pendências que correspondam à pesquisa." : riskFilter !== "all" ? "Não existem pendências para este nível de risco." : "Não existem pendências para este filtro."}</div>}</section>
         </>}
       </CardContent>
     </Card>
