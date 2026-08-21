@@ -377,3 +377,5 @@
 - [x] Corrigir o fluxo de instalação PWA no telemóvel para Android e iPhone.
 - [x] Permitir fundir duas áreas de Quebráveis numa única, atualizando os pontos ativos associados.
 - [x] Substituir a escrita livre de Área por seleção de áreas existentes ao criar pontos de Quebráveis.
+- [x] Corrigir o formulário móvel ativo de Quebráveis para apresentar Área como lista de seleção.
+- [x] Forçar a verificação de atualização da PWA para disponibilizar a versão atual do formulário móvel.

@@ -29,6 +29,18 @@ if (typeof window !== "undefined") {
   window.addEventListener("appinstalled", () => {
     window.__qualicontrolInstallPrompt = undefined;
   });
+
+  if ("serviceWorker" in navigator) {
+    let isRefreshingForNewWorker = false;
+    navigator.serviceWorker.ready
+      .then((registration) => registration.update())
+      .catch(() => undefined);
+    navigator.serviceWorker.addEventListener("controllerchange", () => {
+      if (isRefreshingForNewWorker) return;
+      isRefreshingForNewWorker = true;
+      window.location.reload();
+    });
+  }
 }
 
 const queryClient = new QueryClient();
