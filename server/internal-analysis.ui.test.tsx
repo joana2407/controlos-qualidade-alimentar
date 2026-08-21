@@ -33,8 +33,12 @@ describe("controlo de análises internas", () => {
     expect(screen.getByText("Fotografias de evidência")).toBeTruthy();
     expect(screen.getByRole("button", { name: /amostra/i })).toBeTruthy();
 
-    fireEvent.click(screen.getAllByRole("combobox")[0]);
     expect(screen.getByText("Glúten")).toBeTruthy();
-    expect(screen.getAllByText("Teste Elisa Tremoço").length).toBeGreaterThan(0);
+    const elisaButton = screen.getByRole("button", { name: "Teste Elisa Tremoço" });
+    fireEvent.click(elisaButton);
+    fireEvent.click(screen.getByRole("button", { name: "Teste rápido soja" }));
+    expect(screen.getByText("2 análises selecionadas.")).toBeTruthy();
+    expect(screen.getByText(/Resultado Elisa/)).toBeTruthy();
+    expect(screen.getByPlaceholderText("Valor numérico ou <L.Q.")).toBeTruthy();
   });
 });

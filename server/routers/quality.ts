@@ -636,12 +636,16 @@ export const qualityRouter = router({
     result: resultSchema.optional(),
     notes: z.string().max(3000).optional(),
     payload: z.record(z.string(), z.unknown()).default({}),
+    performedAt: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
     createNonconformity: z.boolean().default(false),
     severity: z.enum(["critical", "high", "medium", "low"]).default("medium"),
   })).mutation(async ({ ctx, input }) => {
     const db = await requireDb();
     const authorization = await requireControlAuthorization(db, { module: input.module, factoryId: input.factoryId ?? null, profile: ctx.operatorProfile! });
-    const completedAt = new Date();
+    const plannedDateKey = authorization.task?.dueAt ? localDateKey(new Date(authorization.task.dueAt)) : null;
+    const todayKey = localDateKey(new Date());
+    if (input.performedAt && (!authorization.isPreviousPending || !plannedDateKey || input.performedAt < plannedDateKey || input.performedAt > todayKey)) throw new TRPCError({ code: "BAD_REQUEST", message: "A data de realização deve situar-se entre a data prevista do controlo e hoje." });
+    const completedAt = input.performedAt ? new Date(`${input.performedAt}T12:00:00`) : new Date();
     await db.insert(controlEntries).values({
       module: input.module,
       title: input.title,
@@ -654,6 +658,7 @@ export const qualityRouter = router({
         plannedTaskId: authorization.task?.id ?? null,
         plannedDate: authorization.task?.dueAt ? new Date(authorization.task.dueAt).toISOString() : null,
         registeredAgainstPreviousPlan: authorization.isPreviousPending ?? false,
+        actualVerificationDate: input.performedAt ?? localDateKey(completedAt),
       },
       completedAt,
       registeredByProfileId: ctx.operatorProfile!.id,

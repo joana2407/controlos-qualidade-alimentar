@@ -282,10 +282,10 @@ describe("procedimentos de qualidade por fábrica", () => {
     const sabrina = qualityRouter.createCaller(createContext({ id: 1, name: "Sabrina Esteves", title: "Tec. Qualidade", role: "technician" }));
 
     const authorization = await sabrina.controlAuthorization({ module: "bphf", factoryId: 1 });
-    await expect(sabrina.createEntry({ module: "bphf", title: "Verificação BPHF", area: "Produção", factoryId: 1, result: "C", payload: { criterion: "Fardamento" } })).resolves.toMatchObject({ success: true });
+    await expect(sabrina.createEntry({ module: "bphf", title: "Verificação BPHF", area: "Produção", factoryId: 1, result: "C", performedAt: "2026-08-13", payload: { criterion: "Fardamento" } })).resolves.toMatchObject({ success: true });
 
     expect(authorization).toMatchObject({ allowed: true, taskId: 77, dueAt: previousDueAt, isPreviousPending: true });
-    expect(dbInserts.at(-1)).toMatchObject({ payload: { criterion: "Fardamento", plannedTaskId: 77, plannedDate: previousDueAt.toISOString(), registeredAgainstPreviousPlan: true } });
+    expect(dbInserts.at(-1)).toMatchObject({ completedAt: new Date("2026-08-13T12:00:00"), payload: { criterion: "Fardamento", plannedTaskId: 77, plannedDate: previousDueAt.toISOString(), registeredAgainstPreviousPlan: true, actualVerificationDate: "2026-08-13" } });
   });
 
   it("cria uma tarefa pontual com descrição e responsáveis atribuídos", async () => {

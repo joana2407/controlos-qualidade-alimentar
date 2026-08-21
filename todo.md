@@ -315,3 +315,6 @@
 - [x] Permitir que os responsáveis atribuídos concluam controlos pendentes de dias úteis anteriores.
 - [x] Permitir que os responsáveis atribuídos concluam tarefas pendentes de dias úteis anteriores.
 - [x] Preservar a data prevista original e a rastreabilidade do registo retroativo.
+- [x] Permitir selecionar várias análises internas em simultâneo numa única submissão.
+- [x] Associar a mesma imagem de resultado às análises internas selecionadas.
+- [x] Permitir indicar a data efetiva de realização ao concluir controlos pendentes de dias anteriores.
