@@ -935,20 +935,28 @@ export const qualityRouter = router({
     })).sort((left, right) => right.total - left.total || right.mostRecentAt.getTime() - left.mostRecentAt.getTime());
   }),
 
-  updateIncidence: qualityManagerProcedure.input(z.object({
+  updateIncidence: qualityOperatorProcedure.input(z.object({
     id: z.number().int(),
     title: z.string().min(2).max(180).optional(),
     area: z.string().min(2).max(120).optional(),
     notes: z.string().max(3000).optional(),
     generatedNonconformity: z.boolean().optional(),
     occurrenceNumber: z.string().max(80).optional(),
-  })).mutation(async ({ input }) => {
+    evidencePhotos: z.array(z.object({ key: z.string().min(1), url: z.string().startsWith("/manus-storage/"), fileName: z.string().min(1).max(255), mimeType: z.enum(["image/jpeg", "image/png", "image/webp"]) })).max(8).optional(),
+  })).mutation(async ({ ctx, input }) => {
     const db = await requireDb();
     const entry = (await db.select().from(controlEntries).where(eq(controlEntries.id, input.id)).limit(1))[0];
     if (!entry || entry.result !== "NC") throw new TRPCError({ code: "NOT_FOUND", message: "Incidência diária não encontrada." });
+    const isManager = ctx.operatorProfile!.role === "manager";
+    const isAuthor = entry.registeredByProfileId === ctx.operatorProfile!.id || (!entry.registeredByProfileId && entry.registeredByName === ctx.operatorProfile!.name);
+    if (!isManager && !isAuthor) throw new TRPCError({ code: "FORBIDDEN", message: "Apenas o técnico que registou a incidência ou a Responsável de Qualidade a pode editar." });
+    if (!isManager && (input.generatedNonconformity !== undefined || input.occurrenceNumber !== undefined)) throw new TRPCError({ code: "FORBIDDEN", message: "A decisão e o número de NC são geridos pela Responsável de Qualidade." });
     const payload = entry.payload && typeof entry.payload === "object" && !Array.isArray(entry.payload) ? { ...entry.payload } as Record<string, unknown> : {};
     if (input.generatedNonconformity !== undefined) payload.generatedNonconformity = input.generatedNonconformity;
     if (input.occurrenceNumber !== undefined) payload.nonconformityOccurrenceNumber = input.occurrenceNumber.trim() || null;
+    if (input.evidencePhotos !== undefined) payload.evidencePhotos = input.evidencePhotos;
+    const history = Array.isArray(payload.editHistory) ? payload.editHistory : [];
+    payload.editHistory = [...history, { action: "updated_incidence", at: new Date().toISOString(), byProfileId: ctx.operatorProfile!.id, byName: ctx.operatorProfile!.name, byTitle: ctx.operatorProfile!.title }];
     await db.update(controlEntries).set({ title: input.title ?? entry.title, area: input.area ?? entry.area, notes: input.notes === undefined ? entry.notes : input.notes.trim() || null, payload }).where(eq(controlEntries.id, input.id));
     return { success: true };
   }),

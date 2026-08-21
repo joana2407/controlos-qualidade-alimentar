@@ -347,3 +347,5 @@
 - [x] Mostrar o utilizador que abriu cada incidência e permitir à Responsável editar ou eliminar incidências com rastreabilidade.
 - [x] Alertar a Responsável para abrir NC quando existirem mais de três incidências semelhantes ainda sem NC. — Substituído pelo limiar posterior de três incidências.
 - [x] Assinalar a abertura obrigatória de NC ao atingir três verificações NC semelhantes no período de seis meses.
+- [x] Explicar na Plataforma as regras de incidências, fotos de evidência e abertura obrigatória de NC após três repetições em seis meses.
+- [x] Permitir ao técnico que criou a incidência editá-la e adicionar fotografias, mantendo a Responsável de Qualidade autorizada.
