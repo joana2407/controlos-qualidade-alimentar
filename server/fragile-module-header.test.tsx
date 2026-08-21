@@ -21,6 +21,7 @@ vi.mock("@/lib/trpc", () => ({
       addFragileItem: { useMutation: () => noopMutation },
       updateFragileItem: { useMutation: () => noopMutation },
       deleteFragileItem: { useMutation: () => noopMutation },
+      renameFragileArea: { useMutation: () => noopMutation },
       uploadFragileReferenceImage: { useMutation: () => noopMutation },
       uploadFragileInspectionEvidence: { useMutation: () => noopMutation },
     },

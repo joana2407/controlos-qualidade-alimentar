@@ -1441,6 +1441,32 @@ export const qualityRouter = router({
     return { success: true };
   }),
 
+  renameFragileArea: qualityOperatorProcedure.input(z.object({
+    factoryId: z.number().int(),
+    currentName: z.string().trim().min(2).max(120),
+    nextName: z.string().trim().min(2).max(120),
+  })).mutation(async ({ ctx, input }) => {
+    const db = await requireDb();
+    if (input.currentName === input.nextName) return { success: true, updated: 0 };
+    const matchingItems = await db.select().from(fragileItems).where(and(
+      eq(fragileItems.factoryId, input.factoryId),
+      eq(fragileItems.location, input.currentName),
+      eq(fragileItems.status, "active"),
+    ));
+    if (!matchingItems.length) throw new TRPCError({ code: "NOT_FOUND", message: "Não foram encontrados pontos ativos nesta área." });
+    await db.update(fragileItems).set({
+      location: input.nextName,
+      updatedBy: ctx.user!.openId,
+      updatedByProfileId: ctx.operatorProfile!.id,
+      updatedByName: ctx.operatorProfile!.name,
+    }).where(and(
+      eq(fragileItems.factoryId, input.factoryId),
+      eq(fragileItems.location, input.currentName),
+      eq(fragileItems.status, "active"),
+    ));
+    return { success: true, updated: matchingItems.length };
+  }),
+
   uploadFragileReferenceImage: qualityOperatorProcedure.input(z.object({
     itemId: z.number().int(),
     fileName: z.string().min(1).max(255),

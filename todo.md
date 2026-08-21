@@ -373,3 +373,4 @@
 - [x] Confirmar e reforçar a instalação PWA em Android e iPhone com todas as funcionalidades existentes.
 - [x] Adicionar filtro por área à lista de Quebráveis, combinado com pesquisa, periodicidade e risco.
 - [x] Tornar visível e fiável o acesso de instalação PWA no telemóvel para Android e iPhone.
+- [x] Permitir editar áreas de Quebráveis e atualizar os pontos associados com rastreabilidade.

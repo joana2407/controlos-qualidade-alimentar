@@ -7,6 +7,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const addMutate = vi.fn();
 const updateMutate = vi.fn();
 const deleteMutate = vi.fn();
+const renameAreaMutate = vi.fn();
 const uploadMutate = vi.fn();
 const uploadDamageMutate = vi.fn();
 const invalidate = vi.fn();
@@ -21,6 +22,7 @@ vi.mock("@/lib/trpc", () => ({
       addFragileItem: { useMutation: (options?: { onSuccess?: () => void }) => ({ isPending: false, mutate: (input: unknown) => { addMutate(input); options?.onSuccess?.(); } }) },
       updateFragileItem: { useMutation: () => ({ isPending: false, mutate: (input: unknown, options?: { onSuccess?: () => void }) => { updateMutate(input); options?.onSuccess?.(); } }) },
       deleteFragileItem: { useMutation: (options?: { onSuccess?: () => void }) => ({ isPending: false, mutate: (input: unknown) => { deleteMutate(input); options?.onSuccess?.(); } }) },
+      renameFragileArea: { useMutation: (options?: { onSuccess?: (result: { updated: number }, variables: { currentName: string; nextName: string }) => void }) => ({ isPending: false, mutate: (input: { factoryId: number; currentName: string; nextName: string }) => { renameAreaMutate(input); options?.onSuccess?.({ updated: 1 }, input); } }) },
       uploadFragileReferenceImage: { useMutation: () => ({ isPending: false, mutate: (input: unknown, options?: { onSuccess?: (result: { url: string }) => void }) => { uploadMutate(input); options?.onSuccess?.({ url: "/manus-storage/referencia.png" }); } }) },
       uploadFragileInspectionEvidence: { useMutation: () => ({ isPending: false, mutate: (input: unknown, options?: { onSuccess?: (result: { key: string; url: string; fileName: string; mimeType: "image/png" }) => void }) => { uploadDamageMutate(input); options?.onSuccess?.({ key: "fragile-evidence/9/1/dano.png", url: "/manus-storage/dano.png", fileName: "dano.png", mimeType: "image/png" }); } }) },
     },
@@ -35,7 +37,7 @@ import { FragileOperationsPanel } from "../client/src/components/quality/Fragile
 describe("fluxo de interface de pontos de controlo de quebráveis", () => {
   beforeEach(() => {
     cleanup();
-    addMutate.mockClear(); updateMutate.mockClear(); deleteMutate.mockClear(); uploadMutate.mockClear(); uploadDamageMutate.mockClear(); invalidate.mockClear();
+    addMutate.mockClear(); updateMutate.mockClear(); deleteMutate.mockClear(); renameAreaMutate.mockClear(); uploadMutate.mockClear(); uploadDamageMutate.mockClear(); invalidate.mockClear();
     Object.defineProperty(HTMLElement.prototype, "hasPointerCapture", { configurable: true, value: () => false });
     Object.defineProperty(HTMLElement.prototype, "setPointerCapture", { configurable: true, value: () => undefined });
     Object.defineProperty(HTMLElement.prototype, "releasePointerCapture", { configurable: true, value: () => undefined });
@@ -148,6 +150,17 @@ describe("fluxo de interface de pontos de controlo de quebráveis", () => {
     expect(screen.getByText(/Pretende eliminar «Proteção acrílica»/)).toBeTruthy();
     await user.click(screen.getByRole("button", { name: "Eliminar ponto" }));
     expect(deleteMutate).toHaveBeenCalledWith({ id: 9 });
+  });
+
+  it("permite renomear uma área e atualizar os pontos associados", async () => {
+    const user = userEvent.setup();
+    render(<FragileOperationsPanel createEntry={{ mutate: vi.fn(), isPending: false }} factoryId="1" />);
+    await user.click(screen.getByRole("button", { name: /gerir pontos/i }));
+    await user.click(screen.getByRole("button", { name: "Editar áreas" }));
+    await user.clear(screen.getByLabelText("Nova designação"));
+    await user.type(screen.getByLabelText("Nova designação"), "Embalamento principal");
+    await user.click(screen.getByRole("button", { name: "Guardar área" }));
+    expect(renameAreaMutate).toHaveBeenCalledWith({ factoryId: 1, currentName: "Embalamento", nextName: "Embalamento principal" });
   });
 
   it("filtra o catálogo por fábrica ou linha no gestor de pontos", async () => {
