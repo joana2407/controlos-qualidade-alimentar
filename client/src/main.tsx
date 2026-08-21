@@ -9,6 +9,28 @@ import { startLogin } from "./const";
 import { initialiseOfflineIncidenceSync } from "./lib/offlineIncidences";
 import "./index.css";
 
+type DeferredInstallPrompt = Event & {
+  prompt: () => Promise<void>;
+  userChoice: Promise<{ outcome: "accepted" | "dismissed" }>;
+};
+
+declare global {
+  interface Window {
+    __qualicontrolInstallPrompt?: DeferredInstallPrompt;
+  }
+}
+
+if (typeof window !== "undefined") {
+  window.addEventListener("beforeinstallprompt", (event) => {
+    event.preventDefault();
+    window.__qualicontrolInstallPrompt = event as DeferredInstallPrompt;
+    window.dispatchEvent(new Event("qualicontrol-install-available"));
+  });
+  window.addEventListener("appinstalled", () => {
+    window.__qualicontrolInstallPrompt = undefined;
+  });
+}
+
 const queryClient = new QueryClient();
 
 const redirectToLoginIfUnauthorized = (error: unknown) => {

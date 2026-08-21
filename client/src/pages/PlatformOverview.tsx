@@ -19,6 +19,12 @@ type DeferredInstallPrompt = Event & {
   userChoice: Promise<{ outcome: "accepted" | "dismissed" }>;
 };
 
+declare global {
+  interface Window {
+    __qualicontrolInstallPrompt?: DeferredInstallPrompt;
+  }
+}
+
 export default function PlatformOverview() {
   const [deferredInstallPrompt, setDeferredInstallPrompt] = React.useState<DeferredInstallPrompt | null>(null);
   const [isInstalled, setIsInstalled] = React.useState(false);
@@ -28,14 +34,20 @@ export default function PlatformOverview() {
     const updateInstalledState = () => setIsInstalled((typeof window.matchMedia === "function" && window.matchMedia("(display-mode: standalone)").matches) || (navigator as Navigator & { standalone?: boolean }).standalone === true);
     const captureInstallPrompt = (event: Event) => {
       event.preventDefault();
-      setDeferredInstallPrompt(event as DeferredInstallPrompt);
+      const prompt = event as DeferredInstallPrompt;
+      window.__qualicontrolInstallPrompt = prompt;
+      setDeferredInstallPrompt(prompt);
     };
-    const handleInstalled = () => { setDeferredInstallPrompt(null); setIsInstalled(true); };
+    const restoreCapturedPrompt = () => setDeferredInstallPrompt(window.__qualicontrolInstallPrompt ?? null);
+    const handleInstalled = () => { window.__qualicontrolInstallPrompt = undefined; setDeferredInstallPrompt(null); setIsInstalled(true); };
     updateInstalledState();
+    restoreCapturedPrompt();
     window.addEventListener("beforeinstallprompt", captureInstallPrompt);
+    window.addEventListener("qualicontrol-install-available", restoreCapturedPrompt);
     window.addEventListener("appinstalled", handleInstalled);
     return () => {
       window.removeEventListener("beforeinstallprompt", captureInstallPrompt);
+      window.removeEventListener("qualicontrol-install-available", restoreCapturedPrompt);
       window.removeEventListener("appinstalled", handleInstalled);
     };
   }, []);
