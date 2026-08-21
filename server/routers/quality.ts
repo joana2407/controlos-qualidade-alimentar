@@ -1131,7 +1131,7 @@ export const qualityRouter = router({
   listChecklistItems: qualitySessionProcedure.input(z.object({ factoryId: z.number().int().min(1).max(3) }).optional()).query(async ({ input }) => {
     const db = await requireDb();
     const [items, assignments] = await Promise.all([db.select().from(checklistItems).orderBy(checklistItems.area, checklistItems.sortOrder), db.select().from(checklistItemFactories)]);
-    return items.map((item) => ({ ...item, factoryIds: assignments.filter((assignment) => assignment.checklistItemId === item.id).map((assignment) => assignment.factoryId) })).filter((item) => !input?.factoryId || item.factoryIds.includes(input.factoryId));
+    return items.map((item) => ({ ...item, factoryIds: assignments.filter((assignment) => assignment.checklistItemId === item.id).map((assignment) => assignment.factoryId) })).filter((item) => item.active === "true" && (!input?.factoryId || item.factoryIds.includes(input.factoryId)));
   }),
 
   addChecklistItem: qualityManagerProcedure.input(z.object({

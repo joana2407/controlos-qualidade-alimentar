@@ -337,3 +337,6 @@
 - [x] Ativar o controlo de Temperaturas no Plano do Dia e no acesso dos utilizadores atribuídos.
 - [x] Aplicar fundo escuro legível e espaçamento sem sobreposição ao submenu Controlos expandido.
 - [x] Adicionar pesquisa por nome ou área às inspeções pendentes de Quebráveis.
+- [x] Integrar no cabeçalho do Checklist mensal o estado das três fábricas, remover o painel duplicado e manter Novo ponto.
+- [x] Corrigir o carregamento dos pontos da Checklist mensal para a fábrica selecionada.
+- [x] Adicionar o botão Gerir pontos à Checklist mensal, com criação, edição e eliminação de pontos.
