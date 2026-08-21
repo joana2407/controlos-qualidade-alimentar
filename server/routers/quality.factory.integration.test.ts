@@ -199,11 +199,14 @@ describe("procedimentos de qualidade por fábrica", () => {
   });
 
   it("não apresenta controlos pendentes quando não existe Plano do Dia", async () => {
-    tasks.length = 0;
     const caller = qualityRouter.createCaller(createContext());
-    const dashboard = await caller.dashboard({ factoryId: 1 });
+    const dateWithoutSchedule = new Date(2026, 7, 23, 10, 0, 0);
+    const dashboard = await caller.dashboard({ factoryId: 1, date: dateWithoutSchedule });
 
     expect(dashboard.metrics.dailyExecutionRate).toBe(0);
+    expect(dashboard.metrics).toMatchObject({ pending: 0, overdue: 0, completedToday: 0 });
+    expect(dashboard.tasks).toEqual([]);
+    expect(dashboard.taskGroups).toEqual({ today: [], tomorrow: [], thisWeek: [] });
     expect(dashboard.plannedControls).toEqual([]);
     expect(dashboard.moduleProgress.bphf).toMatchObject({ expected: 0, completed: 0, registeredToday: 0, percentage: 0 });
   });

@@ -399,6 +399,10 @@ export const qualityRouter = router({
     const todayTasks = businessTasks.filter((task) => task.dueAt >= start && task.dueAt < end);
     const plannedControls = todayTasks.filter((task) => task.area === "Plano do Dia");
     const adHocTasks = businessTasks.filter((task) => task.area !== "Plano do Dia");
+    const hasScheduleForSelectedDate = todayTasks.length > 0;
+    const visibleAdHocTasks = hasScheduleForSelectedDate ? adHocTasks.filter((task) => task.dueAt >= start && task.dueAt < end) : [];
+    const visiblePending = hasScheduleForSelectedDate ? pending : [];
+    const visibleOverdue = hasScheduleForSelectedDate ? overdue : [];
     const completedTasksToday = todayTasks.filter((task) => task.status === "completed" && task.completedAt && task.completedAt >= start && task.completedAt < end);
     const monthlyChecklistPlannedThisMonth = businessTasks.some((task) => task.module === "monthly_checklist" && task.dueAt.getFullYear() === operationalDate.getFullYear() && task.dueAt.getMonth() === operationalDate.getMonth());
     const monthlyChecklistReminder = !input?.factoryId && operationalDate.getDate() >= 20 && !monthlyChecklistPlannedThisMonth;
@@ -479,19 +483,19 @@ export const qualityRouter = router({
     const fragilePending = plannedControls.some((task) => task.module === "fragile_items") ? scopedFragileCatalog.filter((item) => item.status === "active" && isFragileInspectionPending(item.periodicity, lastFragileInspections.get(item.id), now)) : [];
 
     return {
-      tasks: adHocTasks.slice(0, 20),
+      tasks: visibleAdHocTasks.slice(0, 20),
       plannedControls: plannedControls.map((task) => ({ ...task, completed: isPlannedControlCompleted(task) })),
       operationalDate,
       taskGroups: {
-        today: adHocTasks.filter((task) => task.dueAt >= start && task.dueAt < end),
-        tomorrow: adHocTasks.filter((task) => task.dueAt >= tomorrowStart && task.dueAt < tomorrowEnd),
-        thisWeek: adHocTasks.filter((task) => task.dueAt >= workingWeekStart && task.dueAt < workingWeekEnd && !(task.dueAt >= start && task.dueAt < tomorrowEnd)),
+        today: visibleAdHocTasks,
+        tomorrow: hasScheduleForSelectedDate ? adHocTasks.filter((task) => task.dueAt >= tomorrowStart && task.dueAt < tomorrowEnd) : [],
+        thisWeek: hasScheduleForSelectedDate ? adHocTasks.filter((task) => task.dueAt >= workingWeekStart && task.dueAt < workingWeekEnd && !(task.dueAt >= start && task.dueAt < tomorrowEnd)) : [],
       },
       criticalNcs: critical.slice(0, 6),
       dueActions: openActions.filter((action) => action.dueAt && action.dueAt < now).slice(0, 6),
       metrics: {
-        pending: pending.length,
-        overdue: overdue.length,
+        pending: visiblePending.length,
+        overdue: visibleOverdue.length,
         criticalOpen: critical.length,
         completedToday: completedToday.length,
         fragilePending: fragilePending.length,
