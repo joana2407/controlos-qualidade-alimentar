@@ -383,3 +383,8 @@
 - [x] Adicionar seletor de data ao painel geral de Controlos para atualizar completude por fábrica e controlo.
 - [x] Incluir na Plataforma a explicação e tabela de datas do preenchimento retroativo de pendências.
 - [x] Encaminhar uma pendência aberta para o formulário com a respetiva data prevista original.
+- [x] Simplificar os indicadores do painel Hoje, eliminando a duplicação entre tarefas pendentes e atrasadas.
+- [x] Substituir o indicador de NC críticas por incidências registadas na data selecionada.
+- [x] Remover o cartão de Quebráveis pendentes do painel Hoje.
+- [x] Tornar cada controlo agendado no painel Hoje num acesso direto ao respetivo formulário de preenchimento.
+- [x] Destacar no topo do formulário a data prevista de um controlo aberto como pendência de dia anterior.

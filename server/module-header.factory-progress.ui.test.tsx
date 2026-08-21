@@ -9,6 +9,7 @@ vi.mock("@/lib/trpc", () => ({
     quality: {
       metadata: { useQuery: () => ({ data: { factories: [{ id: 1, name: "Fábrica 1 (Fatiado)" }, { id: 2, name: "Fábrica 2 (granel)" }], areas: [{ id: 1, name: "Produção", group: "bphf", factoryId: 1 }, { id: 2, name: "Produção", group: "bphf", factoryId: 2 }] } }) },
       dashboard: { useQuery: () => ({ isLoading: false, data: { moduleProgress: { bphf: { expected: 2, completed: 1, registeredToday: 1, pending: ["Plano do Dia — bphf"], percentage: 50 } }, moduleProgressByFactory: { bphf: [{ factoryId: 1, expected: 1, completed: 0, registeredToday: 0, percentage: 0 }, { factoryId: 2, expected: 1, completed: 1, registeredToday: 1, percentage: 100 }] } } }) },
+      controlAuthorization: { useQuery: () => ({ isLoading: false, data: { allowed: true, taskId: 51, dueAt: new Date("2026-08-20T12:00:00"), isPreviousPending: true } }) },
       listBphfInspectionEmployees: { useQuery: () => ({ data: [{ id: 1, name: "Colaborador de teste" }] }) },
       listBphfCollaboratorInspections: { useQuery: () => ({ isLoading: false, data: [] }) },
       addBphfInspectionEmployee: { useMutation: () => ({ isPending: false, mutate: vi.fn() }) },
@@ -35,5 +36,13 @@ describe("cabeçalho de controlo — progresso por fábrica", () => {
     expect(screen.getAllByText("0%").length).toBeGreaterThan(0);
     expect(screen.getAllByText("100%").length).toBeGreaterThan(0);
     expect(screen.queryByText("Preenchimento de hoje")).toBeNull();
+  });
+
+  it("destaca a data prevista quando o formulário abre uma pendência de dia anterior", () => {
+    render(<ModuleControl />);
+    expect(screen.getByText("Controlo retroativo")).toBeTruthy();
+    expect(screen.getByText(/Este controlo é relativo ao dia/)).toBeTruthy();
+    expect(screen.getByText("20/08/2026")).toBeTruthy();
+    expect(screen.getByText(/e não para o dia atual/)).toBeTruthy();
   });
 });
