@@ -107,6 +107,17 @@ describe("fluxo de interface de pontos de controlo de quebráveis", () => {
     expect(screen.getByText("Não existem pendências que correspondam à pesquisa.")).toBeTruthy();
   });
 
+  it("permite filtrar diretamente as pendências por área", async () => {
+    const user = userEvent.setup();
+    render(<FragileOperationsPanel createEntry={{ mutate: vi.fn(), isPending: false }} factoryId="1" />);
+
+    await user.click(screen.getByLabelText("Filtrar pendências por área"));
+    await user.click(screen.getByRole("option", { name: "Embalamento" }));
+
+    expect(screen.getByText("Proteção acrílica")).toBeTruthy();
+    expect(screen.getByText("1 pendentes")).toBeTruthy();
+  });
+
   it("permite adicionar fotografia de evidência quando o item está danificado", async () => {
     const user = userEvent.setup();
     const createEntry = { mutate: vi.fn(), isPending: false };

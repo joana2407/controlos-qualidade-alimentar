@@ -371,3 +371,4 @@
 - [x] Adicionar filtro direto por nível de risco na lista de pontos de Quebráveis.
 - [x] Sugerir, com apoio de IA, medidas de controlo editáveis para critérios Food Defense marcados como NC.
 - [x] Confirmar e reforçar a instalação PWA em Android e iPhone com todas as funcionalidades existentes.
+- [x] Adicionar filtro por área à lista de Quebráveis, combinado com pesquisa, periodicidade e risco.
