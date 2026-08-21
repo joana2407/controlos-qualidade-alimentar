@@ -35,6 +35,7 @@ const qualityModuleSchema = z.enum(qualityModuleValues);
 const resultSchema = z.enum(resultValues);
 const dateInput = z.coerce.date();
 const BPHF_AREA_NAMES = ["Produção", "Embalagem", "Limpeza"] as const;
+const BPHF_PROGRESS_CRITERIA_COUNT = 4;
 const REQUIRED_MODULE_FREQUENCIES = [
   { module: "bphf", frequency: "daily", title: "BPHF obrigatório" },
   { module: "shelf_life", frequency: "daily", title: "Shelf-life obrigatório" },
@@ -121,14 +122,16 @@ const sharedPlanModules = new Set(["dispatch_control", "internal_analysis"]);
 
 type OperationalProfile = { id: number; role: string; name: string };
 
-async function assessControlAuthorization(db: any, input: { module: typeof qualityModuleValues[number]; factoryId?: number | null; profile: OperationalProfile }) {
+async function assessControlAuthorization(db: any, input: { module: typeof qualityModuleValues[number]; factoryId?: number | null; plannedTaskId?: number; profile: OperationalProfile }) {
   const isShared = sharedPlanModules.has(input.module);
   const spansAllFoodDefenseFactories = input.module === "food_defense";
   if (!isShared && !input.factoryId) return { allowed: false, reason: "Selecione a fábrica ou linha antes de consultar ou preencher este controlo.", task: null, isPreviousPending: false };
   const today = localDateKey(new Date());
   const tasks = await db.select().from(controlTasks).orderBy(controlTasks.dueAt);
   const matchingTasks = tasks.filter((item: any) => item.status === "pending" && item.area === "Plano do Dia" && item.module === input.module && isBusinessDay(new Date(item.dueAt)) && localDateKey(new Date(item.dueAt)) <= today && (isShared ? item.factoryId === null : spansAllFoodDefenseFactories ? item.factoryId !== null : item.factoryId === input.factoryId));
-  const task = matchingTasks.find((item: any) => input.profile.role === "manager" || (Array.isArray(item.assigneeProfileIds) && item.assigneeProfileIds.includes(input.profile.id))) ?? matchingTasks[0];
+  const task = input.plannedTaskId
+    ? matchingTasks.find((item: any) => item.id === input.plannedTaskId)
+    : [...matchingTasks].sort((left: any, right: any) => Number(localDateKey(new Date(right.dueAt)) === today) - Number(localDateKey(new Date(left.dueAt)) === today) || new Date(right.dueAt).getTime() - new Date(left.dueAt).getTime())[0];
   if (!task) return { allowed: false, reason: "Este controlo não está incluído num Plano do Dia publicado para hoje nem existem pendências anteriores atribuídas.", task: null, isPreviousPending: false };
   const assignees = Array.isArray(task.assigneeProfileIds) ? task.assigneeProfileIds : [];
   if (input.profile.role !== "manager" && !assignees.includes(input.profile.id)) return { allowed: false, reason: "Este controlo foi agendado para outro colaborador. Apenas os responsáveis designados ou a Responsável de Qualidade podem preenchê-lo.", task, isPreviousPending: false };
@@ -140,7 +143,7 @@ async function assessControlAuthorization(db: any, input: { module: typeof quali
   return { allowed: true, reason, task, isPreviousPending };
 }
 
-async function requireControlAuthorization(db: any, input: { module: typeof qualityModuleValues[number]; factoryId?: number | null; profile: OperationalProfile }) {
+async function requireControlAuthorization(db: any, input: { module: typeof qualityModuleValues[number]; factoryId?: number | null; plannedTaskId?: number; profile: OperationalProfile }) {
   const access = await assessControlAuthorization(db, input);
   if (!access.allowed) throw new TRPCError({ code: "FORBIDDEN", message: access.reason });
   return access;
@@ -281,9 +284,10 @@ export const qualityRouter = router({
   controlAuthorization: qualitySessionProcedure.input(z.object({
     module: qualityModuleSchema,
     factoryId: z.number().int().optional(),
+    plannedTaskId: z.number().int().optional(),
   })).query(async ({ ctx, input }) => {
     const db = await requireDb();
-    const access = await assessControlAuthorization(db, { module: input.module, factoryId: input.factoryId ?? null, profile: ctx.operatorProfile! });
+    const access = await assessControlAuthorization(db, { module: input.module, factoryId: input.factoryId ?? null, plannedTaskId: input.plannedTaskId, profile: ctx.operatorProfile! });
     return {
       allowed: access.allowed,
       reason: access.reason,
@@ -364,13 +368,16 @@ export const qualityRouter = router({
 
   dashboard: qualitySessionProcedure.input(z.object({ factoryId: z.number().int().optional(), date: dateInput.optional() }).optional()).query(async ({ input }) => {
     const db = await requireDb();
-    const [tasks, ncs, entries, actions, fragileCatalog, factoryCatalog] = await Promise.all([
+    const [tasks, ncs, entries, actions, fragileCatalog, factoryCatalog, areaCatalog, monthlyItems, monthlyAssignments] = await Promise.all([
       db.select().from(controlTasks).orderBy(controlTasks.dueAt),
       db.select().from(nonconformities).orderBy(desc(nonconformities.detectedAt)),
       db.select().from(controlEntries).orderBy(desc(controlEntries.completedAt)),
       db.select().from(correctiveActions).orderBy(correctiveActions.dueAt),
       db.select().from(fragileItems).orderBy(fragileItems.location, fragileItems.sortOrder, fragileItems.name),
       db.select().from(factories).orderBy(factories.name),
+      db.select().from(areas).orderBy(areas.name),
+      db.select().from(checklistItems).orderBy(checklistItems.sortOrder),
+      db.select().from(checklistItemFactories).orderBy(checklistItemFactories.factoryId),
     ]);
     const scopedTasks = scopeToFactory(tasks, input?.factoryId);
     const scopedNcs = scopeToFactory(ncs, input?.factoryId);
@@ -397,40 +404,73 @@ export const qualityRouter = router({
     const monthlyChecklistReminder = !input?.factoryId && operationalDate.getDate() >= 20 && !monthlyChecklistPlannedThisMonth;
     const foodDefensePlannedThisYear = businessTasks.some((task) => task.module === "food_defense" && task.dueAt.getFullYear() === operationalDate.getFullYear());
     const foodDefenseReminder = !input?.factoryId && !foodDefensePlannedThisYear;
+    const payloadFor = (entry: typeof entries[number]) => entry.payload && typeof entry.payload === "object" && !Array.isArray(entry.payload) ? entry.payload as Record<string, unknown> : {};
     const lastFragileInspections = new Map<number, Date>();
+    const lastFragileInspectionsBeforeDay = new Map<number, Date>();
     scopedEntries.filter((entry) => entry.module === "fragile_items").forEach((entry) => {
       const payload = entry.payload;
       const fragileItemId = payload && typeof payload === "object" && !Array.isArray(payload) ? (payload as { fragileItemId?: unknown }).fragileItemId : null;
-      if (typeof fragileItemId === "number" && !lastFragileInspections.has(fragileItemId)) lastFragileInspections.set(fragileItemId, entry.completedAt);
+      if (typeof fragileItemId === "number") {
+        if (!lastFragileInspections.has(fragileItemId)) lastFragileInspections.set(fragileItemId, entry.completedAt);
+        if (entry.completedAt < start && !lastFragileInspectionsBeforeDay.has(fragileItemId)) lastFragileInspectionsBeforeDay.set(fragileItemId, entry.completedAt);
+      }
     });
     const isPlannedControlCompleted = (task: typeof plannedControls[number]) => task.status === "completed" || completedToday.some((entry) => entry.module === task.module && (task.factoryId === null || entry.factoryId === task.factoryId));
     const completedPlannedControls = plannedControls.filter(isPlannedControlCompleted);
     const dailyExpectedCount = todayTasks.length;
     const dailyCompletedCount = completedTasksToday.length + completedPlannedControls.filter((task) => task.status !== "completed").length;
     const effectiveDailyExpectedCount = dailyExpectedCount;
-    const moduleProgress = Object.fromEntries(qualityModuleValues.map((module) => {
-      const moduleControls = plannedControls.filter((task) => task.module === module);
-      const moduleCompletedControls = completedPlannedControls.filter((task) => task.module === module);
-      const expected = moduleControls.length;
-      const completed = moduleCompletedControls.length;
-      const registeredToday = expected ? completed : 0;
-      const denominator = expected;
-      const pendingTaskTitles = moduleControls.filter((task) => !isPlannedControlCompleted(task)).map((task) => task.title);
-      const completionTimes = [
-        ...moduleCompletedControls.map((task) => task.completedAt),
-        ...completedToday.filter((entry) => entry.module === module && moduleControls.some((task) => task.factoryId === null || task.factoryId === entry.factoryId)).map((entry) => entry.completedAt),
-      ].filter((date): date is Date => Boolean(date));
-      const lastCompletedAt = completionTimes.reduce<Date | undefined>((latest, date) => !latest || date > latest ? date : latest, undefined);
-      return [module, { expected, completed, registeredToday, pending: Array.from(new Set(pendingTaskTitles)), percentage: denominator ? Number((completed / denominator * 100).toFixed(1)) : 0, lastCompletedAt }];
-    }));
     const visibleFactories = input?.factoryId ? factoryCatalog.filter((factory) => factory.id === input.factoryId) : factoryCatalog;
     const moduleProgressByFactory = Object.fromEntries(qualityModuleValues.map((module) => [module, visibleFactories.map((factory) => {
       const factoryControls = plannedControls.filter((task) => task.module === module && task.factoryId === factory.id);
-      const completedFactoryControls = factoryControls.filter(isPlannedControlCompleted);
-      const expected = factoryControls.length;
-      const completed = completedFactoryControls.length;
+      if (!factoryControls.length) return { factoryId: factory.id, expected: 0, completed: 0, registeredToday: 0, percentage: 0 };
+      const factoryEntriesToday = completedToday.filter((entry) => entry.module === module && entry.factoryId === factory.id);
+      let expected = factoryControls.length;
+      let completed = factoryControls.filter(isPlannedControlCompleted).length;
+      if (module === "fragile_items") {
+        const applicablePoints = fragileCatalog.filter((item) => item.factoryId === factory.id && item.status === "active" && isFragileInspectionPending(item.periodicity, lastFragileInspectionsBeforeDay.get(item.id), operationalDate));
+        expected = applicablePoints.length;
+        const completedPointIds = new Set(factoryEntriesToday.map((entry) => payloadFor(entry).fragileItemId).filter((id): id is number => typeof id === "number"));
+        completed = applicablePoints.filter((item) => completedPointIds.has(item.id)).length;
+      } else if (module === "bphf") {
+        const bphfAreaCount = areaCatalog.filter((area) => area.group === "bphf" && area.factoryId === factory.id && area.active === "true" && BPHF_AREA_NAMES.includes(area.name as typeof BPHF_AREA_NAMES[number])).length || BPHF_AREA_NAMES.length;
+        expected = BPHF_PROGRESS_CRITERIA_COUNT * bphfAreaCount;
+        const completedKeys = new Set(factoryEntriesToday.map((entry) => {
+          const payload = payloadFor(entry);
+          const criterion = typeof payload.criterion === "string" ? payload.criterion : entry.title;
+          return `${criterion}::${entry.area}`;
+        }));
+        completed = completedKeys.size;
+      } else if (module === "monthly_checklist") {
+        const activeItems = monthlyItems.filter((item) => item.active === "true" && (monthlyAssignments.some((assignment) => assignment.checklistItemId === item.id) ? monthlyAssignments.some((assignment) => assignment.checklistItemId === item.id && assignment.factoryId === factory.id) : true));
+        expected = activeItems.length;
+        const currentMonthStart = new Date(operationalDate.getFullYear(), operationalDate.getMonth(), 1);
+        const currentMonthEnd = new Date(operationalDate.getFullYear(), operationalDate.getMonth() + 1, 1);
+        const completedItemIds = new Set(scopedEntries.filter((entry) => entry.module === "monthly_checklist" && entry.factoryId === factory.id && entry.completedAt >= currentMonthStart && entry.completedAt < currentMonthEnd).map((entry) => payloadFor(entry).checklistItemId).filter((id): id is number => typeof id === "number"));
+        completed = activeItems.filter((item) => completedItemIds.has(item.id)).length;
+      } else if (module === "temperature_controls") {
+        expected = factory.id === 1 ? 2 : factory.id === 2 ? 1 : 0;
+        const completedEquipmentIds = new Set(factoryEntriesToday.flatMap((entry) => Array.isArray(payloadFor(entry).equipment) ? payloadFor(entry).equipment : []).map((item) => item && typeof item === "object" ? (item as Record<string, unknown>).id : null).filter((id): id is string => typeof id === "string"));
+        completed = completedEquipmentIds.size;
+      } else if (module === "food_defense") {
+        expected = 131;
+        const latestAssessment = factoryEntriesToday[0];
+        const criteria: unknown[] = latestAssessment && Array.isArray(payloadFor(latestAssessment).criteria) ? payloadFor(latestAssessment).criteria as unknown[] : [];
+        completed = criteria.length;
+      }
+      completed = Math.min(completed, expected);
       return { factoryId: factory.id, expected, completed, registeredToday: expected ? completed : 0, percentage: expected ? Number((completed / expected * 100).toFixed(1)) : 0 };
     })]));
+    const moduleProgress = Object.fromEntries(qualityModuleValues.map((module) => {
+      const factoryProgress = moduleProgressByFactory[module] ?? [];
+      const expected = factoryProgress.reduce((sum, item) => sum + item.expected, 0);
+      const completed = factoryProgress.reduce((sum, item) => sum + item.completed, 0);
+      const moduleControls = plannedControls.filter((task) => task.module === module);
+      const pendingTaskTitles = moduleControls.filter((task) => !isPlannedControlCompleted(task)).map((task) => task.title);
+      const completionTimes = completedToday.filter((entry) => entry.module === module && moduleControls.some((task) => task.factoryId === null || task.factoryId === entry.factoryId)).map((entry) => entry.completedAt);
+      const lastCompletedAt = completionTimes.reduce<Date | undefined>((latest, date) => !latest || date > latest ? date : latest, undefined);
+      return [module, { expected, completed, registeredToday: expected ? completed : 0, pending: Array.from(new Set(pendingTaskTitles)), percentage: expected ? Number((completed / expected * 100).toFixed(1)) : 0, lastCompletedAt }];
+    }));
     const critical = scopedNcs.filter((nc) => nc.status !== "closed" && nc.severity === "critical");
     const openActions = scopedActions.filter((action) => action.status !== "verified");
     const fragilePending = plannedControls.some((task) => task.module === "fragile_items") ? scopedFragileCatalog.filter((item) => item.status === "active" && isFragileInspectionPending(item.periodicity, lastFragileInspections.get(item.id), now)) : [];
@@ -519,9 +559,15 @@ export const qualityRouter = router({
       db.select().from(controlEntries).orderBy(desc(controlEntries.completedAt)),
     ]);
     const profile = ctx.operatorProfile!;
+    const oneSubmissionModules = new Set<typeof qualityModuleValues[number]>(["sensory", "shelf_life", "suggestion_boxes", "dispatch_control", "internal_analysis", "temperature_controls", "food_defense"]);
     return scopeToFactory(tasks, input?.factoryId).filter((task) => {
       const assignees = Array.isArray(task.assigneeProfileIds) ? task.assigneeProfileIds : [];
-      return isBusinessDay(task.dueAt) && task.status !== "cancelled" && (profile.role === "manager" || assignees.includes(profile.id));
+      const completedFromPreviousRegistration = task.status === "pending" && task.area === "Plano do Dia" && oneSubmissionModules.has(task.module) && entries.some((entry) => {
+        if (entry.module !== task.module || entry.factoryId !== task.factoryId) return false;
+        const payload = entry.payload && typeof entry.payload === "object" && !Array.isArray(entry.payload) ? entry.payload as Record<string, unknown> : {};
+        return payload.plannedTaskId === task.id || payload.plannedDate === new Date(task.dueAt).toISOString();
+      });
+      return isBusinessDay(task.dueAt) && task.status !== "cancelled" && !completedFromPreviousRegistration && (profile.role === "manager" || assignees.includes(profile.id));
     }).map((task) => {
       const report = entries.find((entry) => entry.payload?.taskId === task.id);
       const storedPhotos = report?.payload && typeof report.payload.executionReport === "object" && report.payload.executionReport && !Array.isArray(report.payload.executionReport) ? (report.payload.executionReport as { evidencePhotos?: unknown }).evidencePhotos : [];
@@ -724,11 +770,12 @@ export const qualityRouter = router({
     notes: z.string().max(3000).optional(),
     payload: z.record(z.string(), z.unknown()).default({}),
     performedAt: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+    plannedTaskId: z.number().int().optional(),
     createNonconformity: z.boolean().default(false),
     severity: z.enum(["critical", "high", "medium", "low"]).default("medium"),
   })).mutation(async ({ ctx, input }) => {
     const db = await requireDb();
-    const authorization = await requireControlAuthorization(db, { module: input.module, factoryId: input.factoryId ?? null, profile: ctx.operatorProfile! });
+    const authorization = await requireControlAuthorization(db, { module: input.module, factoryId: input.factoryId ?? null, plannedTaskId: input.plannedTaskId, profile: ctx.operatorProfile! });
     const plannedDateKey = authorization.task?.dueAt ? localDateKey(new Date(authorization.task.dueAt)) : null;
     const todayKey = localDateKey(new Date());
     if (input.performedAt && (!authorization.isPreviousPending || !plannedDateKey || input.performedAt < plannedDateKey || input.performedAt > todayKey)) throw new TRPCError({ code: "BAD_REQUEST", message: "A data de realização deve situar-se entre a data prevista do controlo e hoje." });
@@ -753,6 +800,41 @@ export const qualityRouter = router({
       registeredByTitle: ctx.operatorProfile!.title,
       createdBy: ctx.user!.openId,
     });
+    const oneSubmissionModules: Array<typeof qualityModuleValues[number]> = ["sensory", "shelf_life", "suggestion_boxes", "dispatch_control", "internal_analysis", "temperature_controls", "food_defense"];
+    let plannedControlComplete = Boolean(authorization.task && oneSubmissionModules.includes(input.module));
+    if (authorization.task && ["bphf", "fragile_items", "monthly_checklist"].includes(input.module)) {
+      const [taskEntries, progressAreas, progressFragileItems, progressChecklistItems, progressChecklistAssignments] = await Promise.all([
+        db.select().from(controlEntries).orderBy(desc(controlEntries.completedAt)),
+        db.select().from(areas).orderBy(areas.name),
+        db.select().from(fragileItems).orderBy(fragileItems.sortOrder),
+        db.select().from(checklistItems).orderBy(checklistItems.sortOrder),
+        db.select().from(checklistItemFactories).orderBy(checklistItemFactories.factoryId),
+      ]);
+      const taskPayload = (entry: typeof taskEntries[number]) => entry.payload && typeof entry.payload === "object" && !Array.isArray(entry.payload) ? entry.payload as Record<string, unknown> : {};
+      const taskEntriesForPlan = taskEntries.filter((entry) => entry.module === input.module && entry.factoryId === authorization.task!.factoryId && taskPayload(entry).plannedTaskId === authorization.task!.id);
+      if (input.module === "bphf") {
+        const expectedAreas = progressAreas.filter((area) => area.group === "bphf" && area.factoryId === authorization.task!.factoryId && area.active === "true" && BPHF_AREA_NAMES.includes(area.name as typeof BPHF_AREA_NAMES[number])).map((area) => area.name);
+        const expected = (expectedAreas.length || BPHF_AREA_NAMES.length) * BPHF_PROGRESS_CRITERIA_COUNT;
+        const completePointAreas = new Set(taskEntriesForPlan.map((entry) => `${taskPayload(entry).criterion ?? entry.title}::${entry.area}`));
+        plannedControlComplete = completePointAreas.size >= expected;
+      } else if (input.module === "monthly_checklist") {
+        const expectedItemIds = progressChecklistItems.filter((item) => item.active === "true" && (progressChecklistAssignments.some((assignment) => assignment.checklistItemId === item.id) ? progressChecklistAssignments.some((assignment) => assignment.checklistItemId === item.id && assignment.factoryId === authorization.task!.factoryId) : true)).map((item) => item.id);
+        const completedItemIds = new Set(taskEntriesForPlan.map((entry) => taskPayload(entry).checklistItemId).filter((id): id is number => typeof id === "number"));
+        plannedControlComplete = expectedItemIds.length > 0 && expectedItemIds.every((id) => completedItemIds.has(id));
+      } else if (input.module === "fragile_items") {
+        const priorInspections = new Map<number, Date>();
+        taskEntries.filter((entry) => entry.module === "fragile_items" && entry.completedAt < new Date(authorization.task!.dueAt)).forEach((entry) => {
+          const itemId = taskPayload(entry).fragileItemId;
+          if (typeof itemId === "number" && !priorInspections.has(itemId)) priorInspections.set(itemId, entry.completedAt);
+        });
+        const expectedItemIds = progressFragileItems.filter((item) => item.factoryId === authorization.task!.factoryId && item.status === "active" && isFragileInspectionPending(item.periodicity, priorInspections.get(item.id), new Date(authorization.task!.dueAt))).map((item) => item.id);
+        const completedItemIds = new Set(taskEntriesForPlan.map((entry) => taskPayload(entry).fragileItemId).filter((id): id is number => typeof id === "number"));
+        plannedControlComplete = expectedItemIds.length > 0 && expectedItemIds.every((id) => completedItemIds.has(id));
+      }
+    }
+    if (authorization.task && plannedControlComplete) {
+      await db.update(controlTasks).set({ status: "completed", completedAt, completedByProfileId: ctx.operatorProfile!.id, completedByName: ctx.operatorProfile!.name, completedByTitle: ctx.operatorProfile!.title }).where(eq(controlTasks.id, authorization.task.id));
+    }
     const isCriticalMetal = shouldCreateCriticalMetalAlert(input.module, input.result);
     return { success: true, critical: isCriticalMetal, incidence: input.result === "NC" };
   }),

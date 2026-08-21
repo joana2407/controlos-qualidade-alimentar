@@ -360,3 +360,6 @@
 - [x] Substituir Ponto de amostragem por Cliente nas análises internas e criar filtros por produto, cliente, data e resultado.
 - [x] Adicionar filtros de resultados de Temperaturas por intervalo de datas e equipamento.
 - [x] Ligar o botão Plataforma automática de Temperaturas ao portal Tekon Electronics fornecido.
+- [x] Corrigir a evolução por fábrica para contabilizar todos os pontos aplicáveis de Quebráveis e dos restantes controlos.
+- [x] Abrir sempre o controlo do dia na data atual e cada pendência na respetiva data prevista anterior.
+- [x] Retirar uma pendência da lista assim que todos os pontos aplicáveis do controlo na data prevista forem registados.

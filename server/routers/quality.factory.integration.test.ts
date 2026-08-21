@@ -213,10 +213,10 @@ describe("procedimentos de qualidade por fábrica", () => {
     const dashboard = await caller.dashboard();
 
     expect(dashboard.plannedControls.map((control) => control.factoryId)).toEqual([1, 2]);
-    expect(dashboard.moduleProgress.bphf).toMatchObject({ expected: 2, completed: 2, registeredToday: 2, percentage: 100 });
+    expect(dashboard.moduleProgress.bphf).toMatchObject({ expected: 24, completed: 2, registeredToday: 2, percentage: 8.3 });
     expect(dashboard.moduleProgressByFactory.bphf).toEqual([
-      { factoryId: 1, expected: 1, completed: 1, registeredToday: 1, percentage: 100 },
-      { factoryId: 2, expected: 1, completed: 1, registeredToday: 1, percentage: 100 },
+      { factoryId: 1, expected: 12, completed: 1, registeredToday: 1, percentage: 8.3 },
+      { factoryId: 2, expected: 12, completed: 1, registeredToday: 1, percentage: 8.3 },
       { factoryId: 3, expected: 0, completed: 0, registeredToday: 0, percentage: 0 },
     ]);
   });
@@ -327,6 +327,28 @@ describe("procedimentos de qualidade por fábrica", () => {
 
     expect(authorization).toMatchObject({ allowed: true, taskId: 77, dueAt: previousDueAt, isPreviousPending: true });
     expect(dbInserts.at(-1)).toMatchObject({ completedAt: new Date("2026-08-13T12:00:00"), payload: { criterion: "Fardamento", plannedTaskId: 77, plannedDate: previousDueAt.toISOString(), registeredAgainstPreviousPlan: true, actualVerificationDate: "2026-08-13" } });
+  });
+
+  it("prioriza o Plano do Dia atual e abre uma pendência específica apenas quando é solicitada", async () => {
+    const previousDueAt = new Date(2026, 7, 13, 10, 0, 0);
+    tasks.push(
+      { id: 78, factoryId: 1, status: "pending", dueAt: previousDueAt, completedAt: null, module: "sensory", area: "Plano do Dia", title: "Plano do Dia — Sensorial F1 anterior", responsible: "Sabrina Esteves", assigneeProfileIds: [1] },
+      { id: 79, factoryId: 1, status: "pending", dueAt: now, completedAt: null, module: "sensory", area: "Plano do Dia", title: "Plano do Dia — Sensorial F1 hoje", responsible: "Sabrina Esteves", assigneeProfileIds: [1] },
+    );
+    const caller = qualityRouter.createCaller(createContext({ id: 1, name: "Sabrina Esteves", title: "Tec. Qualidade", role: "technician" }));
+
+    await expect(caller.controlAuthorization({ module: "sensory", factoryId: 1 })).resolves.toMatchObject({ taskId: 79, isPreviousPending: false });
+    await expect(caller.controlAuthorization({ module: "sensory", factoryId: 1, plannedTaskId: 78 })).resolves.toMatchObject({ taskId: 78, isPreviousPending: true, dueAt: previousDueAt });
+  });
+
+  it("conclui uma pendência sensorial após o registo integral da verificação", async () => {
+    const previousDueAt = new Date(2026, 7, 13, 10, 0, 0);
+    tasks.push({ id: 80, factoryId: 1, status: "pending", dueAt: previousDueAt, completedAt: null, module: "sensory", area: "Plano do Dia", title: "Plano do Dia — Sensorial F1", responsible: "Sabrina Esteves", assigneeProfileIds: [1] });
+    const caller = qualityRouter.createCaller(createContext({ id: 1, name: "Sabrina Esteves", title: "Tec. Qualidade", role: "technician" }));
+
+    await caller.createEntry({ module: "sensory", title: "Controlo sensorial — Pão de forma", area: "Produção", factoryId: 1, result: "C", plannedTaskId: 80, performedAt: "2026-08-13", payload: { product: "Pão de forma", lot: "L-1" } });
+
+    expect(dbUpdates.at(-1)).toMatchObject({ status: "completed", completedByProfileId: 1, completedByName: "Sabrina Esteves" });
   });
 
   it("cria uma tarefa pontual com descrição e responsáveis atribuídos", async () => {
