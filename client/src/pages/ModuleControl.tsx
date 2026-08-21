@@ -36,7 +36,7 @@ type ControlFactoryScope = { factories: FactoryOption[]; factoryId: string; setF
 export const ControlFactoryContext = React.createContext<ControlFactoryScope>({ factories: [], factoryId: "", setFactoryId: () => undefined });
 const useControlFactory = () => React.useContext(ControlFactoryContext);
 type ModuleProgress = { expected: number; completed: number; registeredToday: number; pending: string[]; percentage: number };
-type FactoryModuleProgress = { factoryId: number; expected: number; completed: number; registeredToday: number; percentage: number };
+type FactoryModuleProgress = { factoryId: number; expected: number; completed: number; registeredToday: number; percentage: number; pendingTaskId?: number };
 const ModuleProgressContext = React.createContext<{ items: Record<string, ModuleProgress>; byFactory: Record<string, FactoryModuleProgress[]>; isLoading: boolean }>({ items: {}, byFactory: {}, isLoading: false });
 
 function ModuleHeader({ label, description, icon: Icon, critical = false, commonToAllOperations = false, hideProgress = false, children }: { label: string; description: string; icon: typeof ClipboardCheck; critical?: boolean; commonToAllOperations?: boolean; hideProgress?: boolean; children?: React.ReactNode }) {

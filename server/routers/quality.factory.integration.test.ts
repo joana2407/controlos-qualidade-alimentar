@@ -136,6 +136,18 @@ describe("procedimentos de qualidade por fábrica", () => {
     expect(access).toMatchObject({ allowed: true, taskId: expect.any(Number) });
   });
 
+  it("associa o progresso de uma pendência à tarefa e à data prevista original", async () => {
+    const previousDate = new Date(2026, 7, 13, 10, 0, 0);
+    tasks.push({ id: 501, factoryId: 1, status: "pending", dueAt: previousDate, completedAt: null, module: "bphf", area: "Plano do Dia", title: "Plano do Dia — BPHF F1", responsible: "Sabrina Esteves", assigneeProfileIds: [1] });
+    const caller = qualityRouter.createCaller(createContext({ id: 1, name: "Sabrina Esteves", title: "Tec. Qualidade", role: "technician" }));
+
+    const dashboard = await caller.dashboard({ date: previousDate });
+    const access = await caller.controlAuthorization({ module: "bphf", factoryId: 1, plannedTaskId: 501 });
+
+    expect(dashboard.moduleProgressByFactory.bphf[0]).toMatchObject({ factoryId: 1, pendingTaskId: 501 });
+    expect(access).toMatchObject({ allowed: true, taskId: 501, dueAt: previousDate, isPreviousPending: true });
+  });
+
   it("mostra sempre o progresso anual Food Defense nas três fábricas", async () => {
     const caller = qualityRouter.createCaller(createContext());
     const dashboard = await caller.dashboard();
@@ -229,8 +241,8 @@ describe("procedimentos de qualidade por fábrica", () => {
     expect(dashboard.plannedControls.map((control) => control.factoryId)).toEqual([1, 2]);
     expect(dashboard.moduleProgress.bphf).toMatchObject({ expected: 24, completed: 2, registeredToday: 2, percentage: 8.3 });
     expect(dashboard.moduleProgressByFactory.bphf).toEqual([
-      { factoryId: 1, expected: 12, completed: 1, registeredToday: 1, percentage: 8.3 },
-      { factoryId: 2, expected: 12, completed: 1, registeredToday: 1, percentage: 8.3 },
+      { factoryId: 1, expected: 12, completed: 1, registeredToday: 1, percentage: 8.3, pendingTaskId: 4 },
+      { factoryId: 2, expected: 12, completed: 1, registeredToday: 1, percentage: 8.3, pendingTaskId: 5 },
       { factoryId: 3, expected: 0, completed: 0, registeredToday: 0, percentage: 0 },
     ]);
   });

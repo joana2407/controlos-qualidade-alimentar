@@ -381,3 +381,5 @@
 - [x] Forçar a verificação de atualização da PWA para disponibilizar a versão atual do formulário móvel.
 - [x] Não apresentar tarefas pendentes ou atrasadas no painel Hoje quando a data selecionada não tem Plano do Dia publicado.
 - [x] Adicionar seletor de data ao painel geral de Controlos para atualizar completude por fábrica e controlo.
+- [x] Incluir na Plataforma a explicação e tabela de datas do preenchimento retroativo de pendências.
+- [x] Encaminhar uma pendência aberta para o formulário com a respetiva data prevista original.

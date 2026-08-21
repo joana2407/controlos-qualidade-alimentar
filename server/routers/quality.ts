@@ -429,6 +429,7 @@ export const qualityRouter = router({
       const factoryControls = plannedControls.filter((task) => task.module === module && task.factoryId === factory.id);
       const isAnnualFoodDefense = module === "food_defense";
       if (!isAnnualFoodDefense && !factoryControls.length) return { factoryId: factory.id, expected: 0, completed: 0, registeredToday: 0, percentage: 0 };
+      const pendingControl = factoryControls.find((task) => task.status === "pending");
       const factoryEntriesToday = module === "food_defense"
         ? scopedEntries.filter((entry) => entry.module === module && entry.factoryId === factory.id && entry.completedAt.getFullYear() === operationalDate.getFullYear())
         : completedToday.filter((entry) => entry.module === module && entry.factoryId === factory.id);
@@ -466,7 +467,7 @@ export const qualityRouter = router({
         completed = criteria.length;
       }
       completed = Math.min(completed, expected);
-      return { factoryId: factory.id, expected, completed, registeredToday: expected ? completed : 0, percentage: expected ? Number((completed / expected * 100).toFixed(1)) : 0 };
+      return { factoryId: factory.id, expected, completed, registeredToday: expected ? completed : 0, percentage: expected ? Number((completed / expected * 100).toFixed(1)) : 0, ...(pendingControl ? { pendingTaskId: pendingControl.id } : {}) };
     })]));
     const moduleProgress = Object.fromEntries(qualityModuleValues.map((module) => {
       const factoryProgress = moduleProgressByFactory[module] ?? [];

@@ -21,6 +21,11 @@ describe("visão geral da plataforma", () => {
     expect(screen.getByText("1. Registar e evidenciar")).toBeTruthy();
     expect(screen.getByText("2. Abrir NC obrigatória")).toBeTruthy();
     expect(screen.getByText(/3 verificações NC semelhantes/)).toBeTruthy();
+    expect(screen.getByText("Concluir uma pendência de um dia anterior.")).toBeTruthy();
+    expect(screen.getByText("Data prevista")).toBeTruthy();
+    expect(screen.getByText("Data de realização")).toBeTruthy();
+    expect(screen.getByText("Data e hora de registo")).toBeTruthy();
+    expect(screen.getByText("Autor")).toBeTruthy();
   });
 
   it("liga o painel Hoje e os guias aos destinos operacionais", () => {
