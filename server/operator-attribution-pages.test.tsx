@@ -52,8 +52,9 @@ describe("autoria operacional nas páginas", () => {
     expect(screen.getByLabelText("Linha temporal de conclusão de Verificação de BPHF: Em preenchimento")).toBeTruthy();
     expect(screen.getByLabelText("Conclusão de Verificação de BPHF: 50%")).toBeTruthy();
     expect(screen.getByText("1 de 2 fábricas/linhas")).toBeTruthy();
-    expect(screen.getByText("Pendente hoje: 1 fábrica/linha por concluir")).toBeTruthy();
-    expect(screen.getAllByText("Por fábrica / linha agendada").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText(/Pendente em \d{2}\/\d{2}\/2026: 1 fábrica\/linha por concluir/)).toBeTruthy();
+    expect(screen.getAllByText(/Por fábrica \/ linha em \d{2}\/\d{2}\/2026/).length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByLabelText("Data de análise de completude")).toBeTruthy();
     expect(screen.getByRole("link", { name: /abrir registos pendentes de bphf para fábrica 2/i }).getAttribute("href")).toBe("/controlos/bphf?factoryId=2&pending=1");
     expect(screen.getByRole("button", { name: /preencher relatório/i })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Editar Tarefa pendente" })).toBeTruthy();
