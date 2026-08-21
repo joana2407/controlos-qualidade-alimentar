@@ -48,6 +48,7 @@ describe("fluxo de interface do controlo à expedição", () => {
     fireEvent.change(numbers[2], { target: { value: "20" } });
     fireEvent.change(numbers[3], { target: { value: "20" } });
     fireEvent.click(screen.getAllByRole("button", { name: "NC" })[0]);
+    fireEvent.click(screen.getAllByRole("button", { name: "C" })[1]);
 
     expect(screen.getByText("Não conforme")).toBeTruthy();
     const observations = textboxes[5] as HTMLTextAreaElement;

@@ -127,6 +127,15 @@ describe("procedimentos de qualidade por fábrica", () => {
     expect(listedTasks).toEqual(expect.arrayContaining([expect.objectContaining({ area: "Produção T", qualityModule: null })]));
   });
 
+  it("autoriza Food Defense nas três fábricas quando a avaliação anual foi publicada para a técnica", async () => {
+    addPublishedControlTask("food_defense", 1, [1]);
+    const caller = qualityRouter.createCaller(createContext({ id: 1, name: "Sabrina Esteves", title: "Tec. Qualidade", role: "technician" }));
+
+    const access = await caller.controlAuthorization({ module: "food_defense", factoryId: 3 });
+
+    expect(access).toMatchObject({ allowed: true, taskId: expect.any(Number) });
+  });
+
   it("publica Controlos de Temperatura para F1 e F2 sem bloquear um Plano do Dia que também inclua F3", async () => {
     const caller = qualityRouter.createCaller(createContext());
 

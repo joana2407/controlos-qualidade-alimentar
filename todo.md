@@ -354,3 +354,5 @@
 - [x] Remover o cartão informativo de conclusão por área apresentado no topo do controlo BPHF.
 - [x] Associar os URLs fornecidos aos atalhos externos e às três fábricas de Quebras de Produção.
 - [x] Reorganizar o submenu Controlos Operacionais para não ocultar itens da barra lateral em ecrãs estreitos.
+- [x] Corrigir o carregamento dos itens da checklist Food Defense no controlo anual.
+- [x] Remover a pré-seleção de C em todas as verificações de todos os controlos.

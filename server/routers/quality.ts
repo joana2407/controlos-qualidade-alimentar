@@ -123,10 +123,11 @@ type OperationalProfile = { id: number; role: string; name: string };
 
 async function assessControlAuthorization(db: any, input: { module: typeof qualityModuleValues[number]; factoryId?: number | null; profile: OperationalProfile }) {
   const isShared = sharedPlanModules.has(input.module);
+  const spansAllFoodDefenseFactories = input.module === "food_defense";
   if (!isShared && !input.factoryId) return { allowed: false, reason: "Selecione a fábrica ou linha antes de consultar ou preencher este controlo.", task: null, isPreviousPending: false };
   const today = localDateKey(new Date());
   const tasks = await db.select().from(controlTasks).orderBy(controlTasks.dueAt);
-  const matchingTasks = tasks.filter((item: any) => item.status === "pending" && item.area === "Plano do Dia" && item.module === input.module && isBusinessDay(new Date(item.dueAt)) && localDateKey(new Date(item.dueAt)) <= today && (isShared ? item.factoryId === null : item.factoryId === input.factoryId));
+  const matchingTasks = tasks.filter((item: any) => item.status === "pending" && item.area === "Plano do Dia" && item.module === input.module && isBusinessDay(new Date(item.dueAt)) && localDateKey(new Date(item.dueAt)) <= today && (isShared ? item.factoryId === null : spansAllFoodDefenseFactories ? item.factoryId !== null : item.factoryId === input.factoryId));
   const task = matchingTasks.find((item: any) => input.profile.role === "manager" || (Array.isArray(item.assigneeProfileIds) && item.assigneeProfileIds.includes(input.profile.id))) ?? matchingTasks[0];
   if (!task) return { allowed: false, reason: "Este controlo não está incluído num Plano do Dia publicado para hoje nem existem pendências anteriores atribuídas.", task: null, isPreviousPending: false };
   const assignees = Array.isArray(task.assigneeProfileIds) ? task.assigneeProfileIds : [];

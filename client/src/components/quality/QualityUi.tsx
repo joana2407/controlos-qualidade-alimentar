@@ -9,7 +9,7 @@ export function ContextualHelpIcon({ label, children, className }: { label: stri
   return <Tooltip><TooltipTrigger asChild><button type="button" aria-label={label} className={cn("rounded-full text-teal-700 transition-colors hover:text-teal-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600 focus-visible:ring-offset-2", className)}><CircleHelp className="h-4 w-4" /></button></TooltipTrigger><TooltipContent side="right" sideOffset={8} className="max-w-xs leading-5">{children}</TooltipContent></Tooltip>;
 }
 
-export function ResultPicker({ value, onChange, compact = false }: { value: "C" | "NC" | "N/A"; onChange: (value: "C" | "NC" | "N/A") => void; compact?: boolean }) {
+export function ResultPicker({ value, onChange, compact = false }: { value: "" | "C" | "NC" | "N/A"; onChange: (value: "C" | "NC" | "N/A") => void; compact?: boolean }) {
   const choices = [
     { value: "C" as const, label: "C", icon: Check, className: "result-c" },
     { value: "NC" as const, label: "NC", icon: X, className: "result-nc" },
@@ -25,7 +25,7 @@ export function ResultPicker({ value, onChange, compact = false }: { value: "C" 
   );
 }
 
-export function BinaryResultPicker({ value, onChange, showHelp = true }: { value: "C" | "NC"; onChange: (value: "C" | "NC") => void; showHelp?: boolean }) {
+export function BinaryResultPicker({ value, onChange, showHelp = true }: { value: "" | "C" | "NC"; onChange: (value: "C" | "NC") => void; showHelp?: boolean }) {
   const choices = [
     { value: "C" as const, label: "C", icon: Check, className: "result-c" },
     { value: "NC" as const, label: "NC", icon: X, className: "result-nc" },

@@ -39,6 +39,8 @@ describe("fluxo shelf-life", () => {
     render(<ShelfLife createEntry={{ isPending: false, mutate }} />);
 
     expect(screen.queryByLabelText("Produto")).toBeNull();
+    expect((screen.getByRole("button", { name: "Selecione o resultado" }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "C" }));
     expect((screen.getByRole("button", { name: "Registar verificação conforme" }) as HTMLButtonElement).disabled).toBe(false);
     fireEvent.click(screen.getByRole("button", { name: "Registar verificação conforme" }));
 
