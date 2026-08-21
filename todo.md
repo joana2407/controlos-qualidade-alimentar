@@ -310,3 +310,4 @@
 - [x] Mostrar o estado de incidências pendentes e sincronizadas ao utilizador.
 - [x] Tentar sincronizar incidências em segundo plano quando o sistema móvel suportar essa capacidade.
 - [x] Adicionar à barra lateral atalhos preparados para Gestão de Ocorrências, Gestão de MP, Plano Calibração, Plano de Manutenção e Quebras de produção.
+- [x] Reforçar com ícones distintos e representativos os atalhos externos da barra lateral.
