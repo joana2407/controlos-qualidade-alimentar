@@ -158,6 +158,8 @@ describe("fluxo de interface de pontos de controlo de quebráveis", () => {
     const title = screen.getByRole("heading", { name: "Quebráveis" });
     expect(title.closest("header")?.className).toContain("flex");
     expect(screen.getByText("Pontos diários vencem em dias úteis; pontos S, Q e M são verificados à sexta-feira.")).toBeTruthy();
+    expect(screen.getByText("Código de risco:")).toBeTruthy();
+    expect(screen.getAllByText("Risco moderado").length).toBeGreaterThan(0);
     expect(screen.queryByText("Pendências e catálogo")).toBeNull();
   });
 });
