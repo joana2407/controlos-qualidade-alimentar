@@ -9,6 +9,10 @@ vi.mock("@/components/ui/tooltip", () => ({
   TooltipContent: ({ children }: { children: React.ReactNode }) => <div role="tooltip">{children}</div>,
 }));
 
+vi.mock("@/lib/trpc", () => ({
+  trpc: { quality: { uploadVerificationEvidence: { useMutation: () => ({ mutate: vi.fn(), isPending: false }) } } },
+}));
+
 import { ShelfLife } from "../client/src/pages/ModuleControl";
 
 class ResizeObserverMock {

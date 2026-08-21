@@ -1,13 +1,15 @@
 export const OFFLINE_INCIDENCE_EVENT = "qualicontrol:offline-incidences";
 export const OFFLINE_INCIDENCE_SYNC_TAG = "qualicontrol-incidence-sync";
 
+export type OfflineIncidencePhoto = { fileName: string; mimeType: "image/jpeg" | "image/png" | "image/webp"; dataUrl: string };
+
 export type OfflineIncidenceDraft = {
   offlineSyncId: string;
   title: string;
   description: string;
   factoryId: number | null;
-  area: string;
   module: string;
+  photos: OfflineIncidencePhoto[];
   occurredAt: string;
   queuedAt: string;
   authorProfileId: number;

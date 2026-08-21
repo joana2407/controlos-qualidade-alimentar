@@ -394,6 +394,8 @@ export const qualityRouter = router({
     const completedTasksToday = todayTasks.filter((task) => task.status === "completed" && task.completedAt && task.completedAt >= start && task.completedAt < end);
     const monthlyChecklistPlannedThisMonth = businessTasks.some((task) => task.module === "monthly_checklist" && task.dueAt.getFullYear() === operationalDate.getFullYear() && task.dueAt.getMonth() === operationalDate.getMonth());
     const monthlyChecklistReminder = !input?.factoryId && operationalDate.getDate() >= 20 && !monthlyChecklistPlannedThisMonth;
+    const foodDefensePlannedThisYear = businessTasks.some((task) => task.module === "food_defense" && task.dueAt.getFullYear() === operationalDate.getFullYear());
+    const foodDefenseReminder = !input?.factoryId && !foodDefensePlannedThisYear;
     const lastFragileInspections = new Map<number, Date>();
     scopedEntries.filter((entry) => entry.module === "fragile_items").forEach((entry) => {
       const payload = entry.payload;
@@ -454,6 +456,7 @@ export const qualityRouter = router({
       moduleProgress,
       moduleProgressByFactory,
       monthlyChecklistReminder,
+      foodDefenseReminder,
     };
   }),
 
@@ -807,6 +810,7 @@ export const qualityRouter = router({
       productTemperature: z.number().min(-100).max(100),
       observations: z.string().max(3000).optional(),
     })).min(1).max(30).optional(),
+    evidencePhotos: z.array(z.object({ key: z.string().min(1), url: z.string().startsWith("/manus-storage/"), fileName: z.string().min(1).max(255), mimeType: z.enum(["image/jpeg", "image/png", "image/webp"]) })).max(5).optional(),
     sourceOrderDocument: z.object({ name: z.string().min(1).max(180), url: z.string().startsWith("/manus-storage/") }).optional(),
   })).mutation(async ({ ctx, input }) => {
     const db = await requireDb();
@@ -857,7 +861,10 @@ export const qualityRouter = router({
       db.select().from(nonconformities).orderBy(desc(nonconformities.detectedAt)),
     ]);
     const factoryNames = new Map(factoryRows.map((factory) => [factory.id, factory.name]));
-    return entries.filter((entry) => entry.result === "NC" && entry.completedAt >= start && entry.completedAt < end && (!input?.factoryId || entry.factoryId === input.factoryId)).map((entry) => {
+    return entries.filter((entry) => {
+      const payload = entry.payload && typeof entry.payload === "object" && !Array.isArray(entry.payload) ? entry.payload as Record<string, unknown> : {};
+      return entry.result === "NC" && !payload.deletedAt && entry.completedAt >= start && entry.completedAt < end && (!input?.factoryId || entry.factoryId === input.factoryId);
+    }).map((entry) => {
       const linked = ncRows.find((nc) => nc.sourceEntryId === entry.id);
       const payload = entry.payload && typeof entry.payload === "object" && !Array.isArray(entry.payload) ? entry.payload as Record<string, unknown> : {};
       const occurrenceNumber = typeof payload.nonconformityOccurrenceNumber === "string" ? payload.nonconformityOccurrenceNumber : null;
@@ -897,7 +904,38 @@ export const qualityRouter = router({
     })).sort((left, right) => right.total - left.total || right.mostRecentAt.getTime() - left.mostRecentAt.getTime());
   }),
 
-  updateIncidence: qualityOperatorProcedure.input(z.object({
+  similarIncidenceAlerts: qualitySessionProcedure.query(async () => {
+    const db = await requireDb();
+    const [entries, ncs, factoryRows] = await Promise.all([
+      db.select().from(controlEntries).orderBy(desc(controlEntries.completedAt)),
+      db.select().from(nonconformities),
+      db.select().from(factories),
+    ]);
+    const since = new Date();
+    since.setMonth(since.getMonth() - 6);
+    const linkedEntryIds = new Set(ncs.map((nc) => nc.sourceEntryId).filter((id): id is number => Boolean(id)));
+    const factoryNames = new Map(factoryRows.map((factory) => [factory.id, factory.name]));
+    const grouped = new Map<string, { title: string; module: typeof qualityModuleValues[number]; factoryId: number | null; entries: typeof entries }>();
+    entries.forEach((entry) => {
+      const payload = entry.payload && typeof entry.payload === "object" && !Array.isArray(entry.payload) ? entry.payload as Record<string, unknown> : {};
+      if (entry.result !== "NC" || entry.completedAt < since || linkedEntryIds.has(entry.id) || payload.generatedNonconformity === true || payload.deletedAt) return;
+      const normalizedTitle = entry.title.trim().toLocaleLowerCase("pt-PT").replace(/\s+/g, " ");
+      const key = `${entry.module}|${entry.factoryId ?? "none"}|${normalizedTitle}`;
+      const group = grouped.get(key) ?? { title: entry.title, module: entry.module, factoryId: entry.factoryId, entries: [] as typeof entries };
+      group.entries.push(entry);
+      grouped.set(key, group);
+    });
+    return Array.from(grouped.values()).filter((group) => group.entries.length >= 3).map((group) => ({
+      title: group.title,
+      module: group.module,
+      factoryId: group.factoryId,
+      factoryName: group.factoryId ? factoryNames.get(group.factoryId) ?? "Fábrica não identificada" : "Sem fábrica/linha",
+      total: group.entries.length,
+      mostRecentAt: group.entries.reduce((latest, entry) => entry.completedAt > latest ? entry.completedAt : latest, group.entries[0].completedAt),
+    })).sort((left, right) => right.total - left.total || right.mostRecentAt.getTime() - left.mostRecentAt.getTime());
+  }),
+
+  updateIncidence: qualityManagerProcedure.input(z.object({
     id: z.number().int(),
     title: z.string().min(2).max(180).optional(),
     area: z.string().min(2).max(120).optional(),
@@ -912,6 +950,18 @@ export const qualityRouter = router({
     if (input.generatedNonconformity !== undefined) payload.generatedNonconformity = input.generatedNonconformity;
     if (input.occurrenceNumber !== undefined) payload.nonconformityOccurrenceNumber = input.occurrenceNumber.trim() || null;
     await db.update(controlEntries).set({ title: input.title ?? entry.title, area: input.area ?? entry.area, notes: input.notes === undefined ? entry.notes : input.notes.trim() || null, payload }).where(eq(controlEntries.id, input.id));
+    return { success: true };
+  }),
+
+  deleteIncidence: qualityManagerProcedure.input(z.object({ id: z.number().int() })).mutation(async ({ ctx, input }) => {
+    const db = await requireDb();
+    const entry = (await db.select().from(controlEntries).where(eq(controlEntries.id, input.id)).limit(1))[0];
+    if (!entry || entry.result !== "NC") throw new TRPCError({ code: "NOT_FOUND", message: "Incidência diária não encontrada." });
+    const payload = entry.payload && typeof entry.payload === "object" && !Array.isArray(entry.payload) ? { ...entry.payload } as Record<string, unknown> : {};
+    payload.deletedAt = new Date().toISOString();
+    payload.deletedByProfileId = ctx.operatorProfile!.id;
+    payload.deletedByName = ctx.operatorProfile!.name;
+    await db.update(controlEntries).set({ payload }).where(eq(controlEntries.id, input.id));
     return { success: true };
   }),
 
@@ -1289,6 +1339,23 @@ export const qualityRouter = router({
     if (!base64) throw new TRPCError({ code: "BAD_REQUEST", message: "Imagem inválida." });
     const safeName = input.fileName.replace(/[^a-zA-Z0-9._-]/g, "_");
     const { key, url } = await storagePut(`fragile-evidence/${input.itemId}/${ctx.operatorProfile!.id}/${Date.now()}-${safeName}`, Buffer.from(base64, "base64"), input.mimeType);
+    return { success: true, key, url, fileName: input.fileName, mimeType: input.mimeType };
+  }),
+
+  uploadVerificationEvidence: qualityOperatorProcedure.input(z.object({
+    module: qualityModuleSchema,
+    factoryId: z.number().int().nullable().optional(),
+    fileName: z.string().min(1).max(255),
+    mimeType: z.enum(["image/jpeg", "image/png", "image/webp"]),
+    dataUrl: z.string().min(20).max(7_000_000),
+  })).mutation(async ({ ctx, input }) => {
+    const db = await requireDb();
+    await requireControlAuthorization(db, { module: input.module, factoryId: input.factoryId ?? null, profile: ctx.operatorProfile! });
+    const base64 = input.dataUrl.split(",")[1];
+    if (!base64) throw new TRPCError({ code: "BAD_REQUEST", message: "Imagem inválida." });
+    const safeName = input.fileName.replace(/[^a-zA-Z0-9._-]/g, "_");
+    const scope = input.factoryId ?? "comum";
+    const { key, url } = await storagePut(`control-evidence/${input.module}/${scope}/${ctx.operatorProfile!.id}/${Date.now()}-${safeName}`, Buffer.from(base64, "base64"), input.mimeType);
     return { success: true, key, url, fileName: input.fileName, mimeType: input.mimeType };
   }),
 

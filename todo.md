@@ -340,3 +340,10 @@
 - [x] Integrar no cabeçalho do Checklist mensal o estado das três fábricas, remover o painel duplicado e manter Novo ponto.
 - [x] Corrigir o carregamento dos pontos da Checklist mensal para a fábrica selecionada.
 - [x] Adicionar o botão Gerir pontos à Checklist mensal, com criação, edição e eliminação de pontos.
+- [x] Permitir anexar e consultar fotografia de incidência quando uma verificação é marcada como NC.
+- [x] Ocultar do detalhe das NC os identificadores e datas técnicas de planeamento sem relevância operacional.
+- [x] Criar o controlo anual Food Defense para as três fábricas, com alerta à Responsável de Qualidade quando não estiver planeado.
+- [x] Remover Área na criação de incidências, permitir controlo relacionado não aplicável e anexar fotografias também em modo offline.
+- [x] Mostrar o utilizador que abriu cada incidência e permitir à Responsável editar ou eliminar incidências com rastreabilidade.
+- [x] Alertar a Responsável para abrir NC quando existirem mais de três incidências semelhantes ainda sem NC. — Substituído pelo limiar posterior de três incidências.
+- [x] Assinalar a abertura obrigatória de NC ao atingir três verificações NC semelhantes no período de seis meses.

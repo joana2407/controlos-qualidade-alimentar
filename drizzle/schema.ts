@@ -25,7 +25,7 @@ export const users = mysqlTable("users", {
 export type User = typeof users.$inferSelect;
 export type InsertUser = typeof users.$inferInsert;
 
-export const qualityModuleValues = ["bphf", "metal_detectors", "sensory", "shelf_life", "monthly_checklist", "suggestion_boxes", "fragile_items", "dispatch_control", "internal_analysis", "temperature_controls"] as const;
+export const qualityModuleValues = ["bphf", "metal_detectors", "sensory", "shelf_life", "monthly_checklist", "suggestion_boxes", "fragile_items", "dispatch_control", "internal_analysis", "temperature_controls", "food_defense", "not_applicable"] as const;
 export const resultValues = ["C", "NC", "N/A"] as const;
 
 const qualityModule = mysqlEnum("quality_module", qualityModuleValues);

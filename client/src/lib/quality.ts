@@ -9,6 +9,7 @@ export const MODULES = [
   { id: "dispatch_control", label: "Controlo à expedição", shortLabel: "Expedição", description: "Encomenda, rotulagem, quantidades e temperaturas", color: "teal" },
   { id: "internal_analysis", label: "Análises internas", shortLabel: "Análises", description: "Monitorização de alergénios por teste", color: "rose" },
   { id: "temperature_controls", label: "Controlos de Temperatura", shortLabel: "Temperaturas", description: "Verificação manual de equipamentos de congelação e frio", color: "sky" },
+  { id: "food_defense", label: "Food Defense", shortLabel: "Food Defense", description: "Verificação anual de proteção contra atos intencionais", color: "amber" },
 ] as const;
 
 export const BPHF_AREAS = ["Embalagem T", "Produção T", "Embalagem SG", "Produção SG"] as const;
@@ -34,6 +35,7 @@ export const SENSORY_FIELDS = [
 export type QualityModule = (typeof MODULES)[number]["id"];
 
 export function moduleLabel(module: string) {
+  if (module === "not_applicable") return "Não aplicável";
   return MODULES.find((item) => item.id === module)?.label ?? module;
 }
 

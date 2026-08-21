@@ -3,14 +3,16 @@ import { z } from "zod";
 import { controlEntries, qualityModuleValues } from "../drizzle/schema";
 import { getDb } from "./db";
 import type { QualityOperator } from "./_core/context";
+import { storagePut } from "./storage";
 
 export const offlineIncidenceInputSchema = z.object({
   offlineSyncId: z.string().uuid(),
   title: z.string().trim().min(3).max(180),
   description: z.string().trim().min(2).max(3000),
   factoryId: z.number().int().positive().nullable(),
-  area: z.string().trim().min(2).max(120),
+  area: z.string().trim().min(2).max(120).optional().default("Não aplicável"),
   module: z.enum(qualityModuleValues),
+  photos: z.array(z.object({ fileName: z.string().min(1).max(255), mimeType: z.enum(["image/jpeg", "image/png", "image/webp"]), dataUrl: z.string().min(20).max(7_000_000) })).max(5).optional().default([]),
   occurredAt: z.string().datetime(),
   queuedAt: z.string().datetime(),
 });
@@ -25,6 +27,13 @@ export async function persistOfflineIncidence(input: OfflineIncidenceInput, oper
   if (existing) return { id: existing.id, duplicate: true };
 
   const completedAt = new Date(input.occurredAt);
+  const evidencePhotos = await Promise.all(input.photos.map(async (photo) => {
+    const base64 = photo.dataUrl.split(",")[1];
+    if (!base64) throw new Error("Uma das fotografias da incidência é inválida.");
+    const safeName = photo.fileName.replace(/[^a-zA-Z0-9._-]/g, "_");
+    const { key, url } = await storagePut(`offline-incidences/${input.offlineSyncId}/${Date.now()}-${safeName}`, Buffer.from(base64, "base64"), photo.mimeType);
+    return { key, url, fileName: photo.fileName, mimeType: photo.mimeType };
+  }));
   const inserted = await db.insert(controlEntries).values({
     module: input.module,
     title: input.title,
@@ -36,6 +45,7 @@ export async function persistOfflineIncidence(input: OfflineIncidenceInput, oper
       offlineManualIncidence: true,
       offlineQueuedAt: input.queuedAt,
       offlineSyncId: input.offlineSyncId,
+      evidencePhotos,
     },
     offlineSyncId: input.offlineSyncId,
     completedAt: Number.isNaN(completedAt.getTime()) ? new Date() : completedAt,

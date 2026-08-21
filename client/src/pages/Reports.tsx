@@ -40,7 +40,7 @@ function flattenPayload(value: unknown, prefix = ""): DetailRow[] {
   if (value === null || value === undefined || value === "") return [];
   if (Array.isArray(value)) return value.flatMap((item, index) => flattenPayload(item, `${prefix}${prefix ? " · " : ""}${index + 1}`));
   if (typeof value === "object") return Object.entries(value as Record<string, unknown>).flatMap(([key, item]) => {
-    if (["key", "url", "mimeType", "collaboratorId", "analystProfileId", "fileName"].includes(key)) return [];
+    if (["key", "url", "mimeType", "collaboratorId", "analystProfileId", "fileName", "checklistItemId", "actualVerificationDate", "plannedDate", "plannedTaskId", "registeredAgainstPreviousPlan", "plannedAt", "taskId"].includes(key)) return [];
     if (["photos", "evidencePhotos"].includes(key) && Array.isArray(item)) return item.length ? [{ label: humanLabel(key), value: `${item.length} fotografia${item.length === 1 ? "" : "s"} anexada${item.length === 1 ? "" : "s"}` }] : [];
     return flattenPayload(item, `${prefix}${prefix ? " · " : ""}${humanLabel(key)}`);
   });

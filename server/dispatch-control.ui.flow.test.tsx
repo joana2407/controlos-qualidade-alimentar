@@ -12,6 +12,7 @@ vi.mock("@/lib/trpc", () => ({
       calculateDispatchConformity: { useQuery: (input: Parameters<typeof calculateDispatchConformity>[0]) => ({ data: calculateDispatchConformity(input) }) },
       parseDispatchOrderPdf: { useMutation: () => ({ mutate: vi.fn(), isPending: false }) },
       registerDispatchControl: { useMutation: () => ({ mutate, isPending: false }) },
+      uploadVerificationEvidence: { useMutation: () => ({ mutate: vi.fn(), isPending: false }) },
     },
   },
 }));
