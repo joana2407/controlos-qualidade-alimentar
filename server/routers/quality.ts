@@ -422,9 +422,13 @@ export const qualityRouter = router({
     const effectiveDailyExpectedCount = dailyExpectedCount;
     const visibleFactories = input?.factoryId ? factoryCatalog.filter((factory) => factory.id === input.factoryId) : factoryCatalog;
     const moduleProgressByFactory = Object.fromEntries(qualityModuleValues.map((module) => [module, visibleFactories.map((factory) => {
-      const factoryControls = plannedControls.filter((task) => task.module === module && task.factoryId === factory.id);
+      const factoryControls = module === "food_defense"
+        ? businessTasks.filter((task) => task.module === module && task.factoryId === factory.id && task.dueAt.getFullYear() === operationalDate.getFullYear())
+        : plannedControls.filter((task) => task.module === module && task.factoryId === factory.id);
       if (!factoryControls.length) return { factoryId: factory.id, expected: 0, completed: 0, registeredToday: 0, percentage: 0 };
-      const factoryEntriesToday = completedToday.filter((entry) => entry.module === module && entry.factoryId === factory.id);
+      const factoryEntriesToday = module === "food_defense"
+        ? scopedEntries.filter((entry) => entry.module === module && entry.factoryId === factory.id && entry.completedAt.getFullYear() === operationalDate.getFullYear())
+        : completedToday.filter((entry) => entry.module === module && entry.factoryId === factory.id);
       let expected = factoryControls.length;
       let completed = factoryControls.filter(isPlannedControlCompleted).length;
       if (module === "fragile_items") {

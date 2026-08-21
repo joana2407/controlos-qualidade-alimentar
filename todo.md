@@ -363,3 +363,4 @@
 - [x] Corrigir a evolução por fábrica para contabilizar todos os pontos aplicáveis de Quebráveis e dos restantes controlos.
 - [x] Abrir sempre o controlo do dia na data atual e cada pendência na respetiva data prevista anterior.
 - [x] Retirar uma pendência da lista assim que todos os pontos aplicáveis do controlo na data prevista forem registados.
+- [x] Mostrar no Food Defense o preenchimento das três fábricas, transferir as explicações para a Plataforma e permitir observações opcionais por critério.

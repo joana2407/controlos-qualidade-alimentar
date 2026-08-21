@@ -14,5 +14,13 @@ describe("checklist anual Food Defense", () => {
     expect(page).toContain("Conclua todos os critérios da checklist Food Defense");
     expect(page).toContain("Vulnerabilidade (V)");
     expect(page).toContain("Ação indicada:");
+    expect(page).not.toContain("Referência 2025:");
+    expect(page).toContain("<Notes value={value.notes} onChange={(notes) => update(item.id, { notes })} />");
+  });
+
+  it("inclui a explicação operacional Food Defense na Plataforma", () => {
+    const guides = readFileSync(new URL("../client/src/lib/helpGuides.ts", import.meta.url), "utf8");
+    expect(guides).toContain('id: "food_defense"');
+    expect(guides).toContain("Avaliação anual de vulnerabilidades");
   });
 });
