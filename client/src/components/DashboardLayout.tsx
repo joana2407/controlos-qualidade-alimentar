@@ -95,16 +95,32 @@ export default function DashboardLayout({
     const saved = localStorage.getItem(SIDEBAR_WIDTH_KEY);
     return saved ? parseInt(saved, 10) : DEFAULT_WIDTH;
   });
-  const [location] = useLocation();
   const access = trpc.quality.accessStatus.useQuery();
+  const utils = trpc.useUtils();
+  const initialPinSessionHandled = useRef(false);
+  const [initialLoginReady, setInitialLoginReady] = useState(false);
+  const deactivateInitialPinSession = trpc.quality.deactivatePinProfile.useMutation({
+    onSettled: async () => {
+      await utils.quality.accessStatus.invalidate();
+      setInitialLoginReady(true);
+    },
+  });
 
   useEffect(() => {
     localStorage.setItem(SIDEBAR_WIDTH_KEY, sidebarWidth.toString());
   }, [sidebarWidth]);
 
-  if (location === "/plataforma") return <>{children}</>;
+  useEffect(() => {
+    if (!access.data || initialPinSessionHandled.current) return;
+    initialPinSessionHandled.current = true;
+    if (access.data.activeProfile) {
+      deactivateInitialPinSession.mutate();
+      return;
+    }
+    setInitialLoginReady(true);
+  }, [access.data, deactivateInitialPinSession]);
 
-  if (access.isLoading || !access.data) return <DashboardLayoutSkeleton />;
+  if (access.isLoading || !access.data || !initialLoginReady) return <DashboardLayoutSkeleton />;
   if (!access.data.activeProfile) return <OperatorPinGate access={access.data} />;
   const accessValue = { activeProfile: access.data.activeProfile, canManage: access.data.canManage, canOperate: access.data.activeProfile?.role !== "viewer" };
   if (workspace === "selector") return <QualityAccessProvider value={accessValue}>{children}</QualityAccessProvider>;

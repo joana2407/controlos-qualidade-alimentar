@@ -19,7 +19,7 @@ vi.mock("@/lib/trpc", () => ({
     useUtils: () => ({ quality: { accessStatus: { invalidate: vi.fn() } } }),
     quality: {
       accessStatus: { useQuery: () => ({ isLoading: false, data: { activeProfile: { id: 3, name: "Joana Pina", title: "Resp. Qualidade", role: "manager" }, canManage: true, profiles: [], canBootstrap: false, needsInitialSetup: false } }) },
-      deactivatePinProfile: { useMutation: () => ({ mutate: vi.fn() }) },
+      deactivatePinProfile: { useMutation: (options: { onSettled?: () => void } = {}) => ({ mutate: () => options.onSettled?.() }) },
     },
     occurrences: { access: { useQuery: () => ({ data: { role: "admin", scope: occurrenceScope } }) } },
   },
@@ -39,8 +39,9 @@ describe("atalhos laterais dos painéis de controlo", () => {
     vi.stubGlobal("ResizeObserver", ResizeObserverMock);
   });
 
-  it("mostra os painéis, marca a rota ativa e permite foco e ativação dos atalhos", () => {
+  it("mostra os painéis, marca a rota ativa e permite foco e ativação dos atalhos", async () => {
     render(<DashboardLayout><div>Conteúdo</div></DashboardLayout>);
+    await waitFor(() => expect(screen.getByRole("button", { name: "Controlos" })).toBeTruthy());
 
     const fragile = screen.getByRole("button", { name: "Quebráveis" });
     expect(fragile.getAttribute("data-active")).toBe("true");
@@ -68,6 +69,7 @@ describe("atalhos laterais dos painéis de controlo", () => {
   it("abre os atalhos e permite navegar para um painel no fluxo de ecrã móvel", async () => {
     isMobile = true;
     render(<DashboardLayout><div>Conteúdo</div></DashboardLayout>);
+    await waitFor(() => expect(screen.getByRole("button", { name: /toggle sidebar/i })).toBeTruthy());
     fireEvent.click(screen.getByRole("button", { name: /toggle sidebar/i }));
     await waitFor(() => expect(screen.getByRole("button", { name: "Controlos" })).toBeTruthy());
     ["BPHF", "Detetores de metais", "Controlo sensorial", "Shelf-life", "Checklist mensal", "Caixas de sugestões", "Quebráveis"].forEach((label) => {
@@ -77,17 +79,19 @@ describe("atalhos laterais dos painéis de controlo", () => {
     expect(setLocation).toHaveBeenLastCalledWith("/controlos/fragile_items");
   });
 
-  it("disponibiliza o atalho de Ocorrências sem expor os menus da área histórica de reclamações", () => {
+  it("disponibiliza o atalho de Ocorrências sem expor os menus da área histórica de reclamações", async () => {
     occurrenceScope = "reclamacoes";
     currentLocation = "/qualicontrol";
     render(<DashboardLayout workspace="quality"><div>Conteúdo</div></DashboardLayout>);
+    await waitFor(() => expect(screen.getByRole("button", { name: "Incidências" })).toBeTruthy());
     expect(screen.getByRole("button", { name: "Incidências" })).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Reclamações a fornecedores" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Nova reclamação" })).toBeNull();
   });
 
-  it("apresenta o atalho direto de Incidências sem incluir os menus de Gestão de Ocorrências", () => {
+  it("apresenta o atalho direto de Incidências sem incluir os menus de Gestão de Ocorrências", async () => {
     render(<DashboardLayout workspace="quality"><div>Conteúdo</div></DashboardLayout>);
+    await waitFor(() => expect(screen.getByRole("button", { name: "Incidências" })).toBeTruthy());
     fireEvent.click(screen.getByRole("button", { name: "Incidências" }));
     expect(setLocation).toHaveBeenLastCalledWith("/incidencias");
     expect(screen.queryByRole("button", { name: "Reclamações a fornecedores" })).toBeNull();

@@ -1,5 +1,5 @@
-import { Skeleton } from './ui/skeleton';
-
+import React from "react";
+import { Skeleton } from "@/components/ui/skeleton";
 export function DashboardLayoutSkeleton() {
   return (
     <div className="flex min-h-screen bg-background">
