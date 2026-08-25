@@ -800,7 +800,7 @@ export const qualityRouter = router({
     if (authorization.isPreviousPending && input.retroactiveReason === "technical_unavailability" && !input.performedAt) throw new TRPCError({ code: "BAD_REQUEST", message: "Indique a data real da verificação efetuada após a indisponibilidade técnica." });
     if (authorization.isPreviousPending && input.retroactiveReason === "other" && !input.retroactiveJustification?.trim()) throw new TRPCError({ code: "BAD_REQUEST", message: "Indique a justificação para a opção selecionada." });
     const completedAt = input.performedAt ? new Date(`${input.performedAt}T12:00:00`) : new Date();
-    await db.insert(controlEntries).values({
+    const insertedEntry = await db.insert(controlEntries).values({
       module: input.module,
       title: input.title,
       area: input.area,
@@ -857,7 +857,7 @@ export const qualityRouter = router({
       await db.update(controlTasks).set({ status: "completed", completedAt, completedByProfileId: ctx.operatorProfile!.id, completedByName: ctx.operatorProfile!.name, completedByTitle: ctx.operatorProfile!.title }).where(eq(controlTasks.id, authorization.task.id));
       if (authorization.isPreviousPending) {
         try {
-          await createRetroactiveDailyReportRevision({ taskId: authorization.task.id, dueAt: new Date(authorization.task.dueAt), module: input.module, reason: retroactiveReasonLabels[input.retroactiveReason!], createdBy: ctx.operatorProfile!.name });
+          await createRetroactiveDailyReportRevision({ taskId: authorization.task.id, entryId: Number((insertedEntry as any)?.[0]?.insertId) || null, dueAt: new Date(authorization.task.dueAt), module: input.module, reason: retroactiveReasonLabels[input.retroactiveReason!], createdBy: ctx.operatorProfile!.name });
         } catch (error) {
           console.error("[DailyReportArchive] Não foi possível criar a revisão retroativa", error);
         }

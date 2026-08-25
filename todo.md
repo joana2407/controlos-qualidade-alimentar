@@ -397,11 +397,11 @@
 - [x] Fazer o QualiControl abrir sempre no login por PIN, sem perfil previamente selecionado ou sessão operacional persistida.
 - [x] Atualizar o atalho Gestão de Matérias-Primas para a respetiva página inicial.
 - [x] Preservar a sessão PIN durante a navegação interna entre painéis e controlos.
-- [ ] Definir e implementar o backup diário de relatórios, incluindo revisões de registos concluídos retroativamente.
-- [ ] Criar arquivos imutáveis por data operacional, versão e metadados de revisão.
-- [ ] Gerar uma nova revisão quando um controlo retroativo for concluído.
-- [ ] Agendar o arquivo diário inicial e disponibilizar o histórico de versões nos Relatórios.
-- [ ] Executar o arquivo inicial às 23:55 em cada dia útil, com operação idempotente.
+- [x] Definir e implementar o backup diário de relatórios, incluindo revisões de registos concluídos retroativamente.
+- [x] Criar arquivos imutáveis por data operacional, versão e metadados de revisão.
+- [x] Gerar uma nova revisão quando um controlo retroativo for concluído.
+- [x] Agendar o arquivo diário inicial e disponibilizar o histórico de versões nos Relatórios.
+- [x] Executar o arquivo inicial às 23:55 em cada dia útil, com operação idempotente.
 - [x] Mostrar o progresso das três fábricas relativo à data prevista ao preencher um controlo pendente.
 - [x] Exigir e guardar uma justificação quando um controlo é preenchido fora da data prevista.
 - [x] Exigir a data real de verificação quando o controlo foi adiado por indisponibilidade técnica.

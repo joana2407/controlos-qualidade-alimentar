@@ -85,7 +85,7 @@ export async function createInitialDailyReportArchive(operationalDate: string, c
   return { created: true, revision };
 }
 
-export async function createRetroactiveDailyReportRevision(input: { taskId: number; dueAt: Date; module: string; reason: string; createdBy: string }) {
+export async function createRetroactiveDailyReportRevision(input: { taskId: number; entryId?: number | null; dueAt: Date; module: string; reason: string; createdBy: string }) {
   const db = await getDb();
   if (!db) throw new Error("Base de dados indisponível para criar a revisão retroativa.");
   const settings = (await db.select().from(dailyReportArchiveSettings).orderBy(desc(dailyReportArchiveSettings.id)))[0];
@@ -93,9 +93,15 @@ export async function createRetroactiveDailyReportRevision(input: { taskId: numb
   const operationalDate = localDateKey(new Date(input.dueAt));
   const duplicate = (await db.select().from(dailyReportArchives).where(eq(dailyReportArchives.triggerTaskId, input.taskId))).find((archive: any) => archive.archiveKind === "retroactive_revision");
   if (duplicate) return { created: false, skipped: "already_archived" as const };
+  const archivesForDate = await db.select().from(dailyReportArchives).where(eq(dailyReportArchives.operationalDate, operationalDateValue(operationalDate))).orderBy(desc(dailyReportArchives.revision));
+  const hasInitialArchive = archivesForDate.some((archive: any) => archive.archiveKind === "initial");
   const snapshot = await archiveData(db, operationalDate);
+  if (!hasInitialArchive) {
+    const recoveryRevision = (archivesForDate[0]?.revision ?? 0) + 1;
+    await db.insert(dailyReportArchives).values({ operationalDate: operationalDateValue(operationalDate), revision: recoveryRevision, archiveKind: "initial", triggerTaskId: null, triggerEntryId: null, revisionReason: "Recuperação do arquivo inicial — o fecho automático das 23:55 não estava disponível.", snapshot, createdBy: "Arquivo automático (recuperação)" });
+  }
   const revision = await nextRevision(db, operationalDate);
-  await db.insert(dailyReportArchives).values({ operationalDate: operationalDateValue(operationalDate), revision, archiveKind: "retroactive_revision", triggerTaskId: input.taskId, triggerEntryId: null, revisionReason: `${input.module}: ${input.reason}`, snapshot, createdBy: input.createdBy });
+  await db.insert(dailyReportArchives).values({ operationalDate: operationalDateValue(operationalDate), revision, archiveKind: "retroactive_revision", triggerTaskId: input.taskId, triggerEntryId: input.entryId ?? null, revisionReason: `${input.module}: ${input.reason}`, snapshot, createdBy: input.createdBy });
   return { created: true, revision, operationalDate };
 }
 
