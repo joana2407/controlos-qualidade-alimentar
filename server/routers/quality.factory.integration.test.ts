@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { areas, controlPlans, correctiveActions, controlEntries, controlTasks, factories, fragileItems, nonconformities, qualityPinProfiles } from "../../drizzle/schema";
+import { areas, checklistItemFactories, checklistItems, controlPlans, correctiveActions, controlEntries, controlTasks, dailyReportArchives, dailyReportArchiveViews, factories, fragileItems, nonconformities, qualityPinProfiles } from "../../drizzle/schema";
 import type { TrpcContext } from "../_core/context";
 import { getDb } from "../db";
 import { storageGetSignedUrl, storagePut } from "../storage";
@@ -43,6 +43,10 @@ const factoryRows = [
   { id: 3, name: "Fabrica 3 (Sem Gluten)" },
 ];
 const areaRows = [{ id: 101, name: "Produção T", group: "bphf", factoryId: 1, active: "true" }];
+const monthlyRows = [{ id: 301, active: "true" }, { id: 302, active: "true" }];
+const monthlyAssignments = [{ checklistItemId: 301, factoryId: 1 }, { checklistItemId: 302, factoryId: 1 }];
+const archiveRows: any[] = [];
+const archiveViewRows: any[] = [];
 const profileRows = [{ id: 1, name: "Sabrina Esteves", title: "Tec. Qualidade", active: "true", role: "technician" }, { id: 2, name: "Neuza Antunes", title: "Tec. Qualidade", active: "true", role: "technician" }, { id: 3, name: "Joana Pina", title: "Resp. Qualidade", active: "true", role: "manager" }];
 const plans: Array<{ id: number; title: string; module: "bphf"; areaId: number; factoryId: number; frequency: "daily"; active: "true" }> = [];
 const fragile = [
@@ -70,6 +74,10 @@ function mockDatabase() {
     if (table === correctiveActions) return actions;
     if (table === factories) return factoryRows;
     if (table === areas) return areaRows;
+    if (table === checklistItems) return monthlyRows;
+    if (table === checklistItemFactories) return monthlyAssignments;
+    if (table === dailyReportArchives) return archiveRows;
+    if (table === dailyReportArchiveViews) return archiveViewRows;
     if (table === qualityPinProfiles) return profileRows;
     if (table === controlPlans) return plans;
     if (table === fragileItems) return fragile;
@@ -87,12 +95,12 @@ function mockDatabase() {
       },
     }),
     update: () => ({ set: (values: Record<string, unknown>) => ({ where: async () => { dbUpdates.push(values); return { success: true }; } }) }),
-    insert: () => ({ values: (values: Record<string, unknown>) => { dbInserts.push(values); return { $returningId: async () => [{ id: dbInserts.length }], success: true }; } }),
+    insert: () => ({ values: (values: Record<string, unknown>) => { dbInserts.push(values); return { $returningId: async () => [{ id: dbInserts.length }], success: true, onDuplicateKeyUpdate: async () => ({ success: true }) }; } }),
   };
 }
 
 describe("procedimentos de qualidade por fábrica", () => {
-  beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(now); tasks.splice(0, tasks.length, ...initialTasks.map((task) => ({ ...task, assigneeProfileIds: [...task.assigneeProfileIds] }))); plans.length = 0; dbUpdates.length = 0; dbInserts.length = 0; vi.clearAllMocks(); vi.mocked(getDb).mockResolvedValue(mockDatabase() as any); vi.mocked(storagePut).mockResolvedValue({ key: "dispatch-orders/3/encomenda.pdf", url: "/manus-storage/dispatch-orders/3/encomenda.pdf" }); vi.mocked(storageGetSignedUrl).mockResolvedValue("https://storage.example/encomenda.pdf"); });
+  beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(now); tasks.splice(0, tasks.length, ...initialTasks.map((task) => ({ ...task, assigneeProfileIds: [...task.assigneeProfileIds] }))); plans.length = 0; archiveRows.length = 0; archiveViewRows.length = 0; dbUpdates.length = 0; dbInserts.length = 0; vi.clearAllMocks(); vi.mocked(getDb).mockResolvedValue(mockDatabase() as any); vi.mocked(storagePut).mockResolvedValue({ key: "dispatch-orders/3/encomenda.pdf", url: "/manus-storage/dispatch-orders/3/encomenda.pdf" }); vi.mocked(storageGetSignedUrl).mockResolvedValue("https://storage.example/encomenda.pdf"); });
 
   it("filtra o painel e as tarefas pela fábrica selecionada", async () => {
     const caller = qualityRouter.createCaller(createContext());
@@ -179,6 +187,84 @@ describe("procedimentos de qualidade por fábrica", () => {
       expect.objectContaining({ module: "temperature_controls", factoryId: 2, area: "Plano do Dia", assigneeProfileIds: [1, 2, 3] }),
     ]));
     expect(notifyOwner).not.toHaveBeenCalled();
+  });
+
+  it("não mantém Temperaturas como pendência retroativa quando a data operacional já está completa", async () => {
+    const previousDate = new Date(2026, 7, 13, 10, 0, 0);
+    tasks.push({ id: 510, factoryId: 1, status: "pending", dueAt: previousDate, completedAt: null, module: "temperature_controls", area: "Plano do Dia", title: "Plano do Dia — Temperaturas F1", responsible: "Sabrina Esteves", assigneeProfileIds: [1] });
+    entries.push({ id: 510, factoryId: 1, module: "temperature_controls", area: "Área da Qualidade", result: "C", completedAt: now, payload: { plannedTaskId: 510, plannedDate: previousDate.toISOString(), equipment: [{ id: "f1-freezer-1" }, { id: "f1-freezer-2" }] } } as any);
+    try {
+      const caller = qualityRouter.createCaller(createContext({ id: 1, name: "Sabrina Esteves", title: "Tec. Qualidade", role: "technician" }));
+
+      const dashboard = await caller.dashboard({ date: previousDate });
+      const listedTasks = await caller.listTasks();
+      const access = await caller.controlAuthorization({ module: "temperature_controls", factoryId: 1, plannedTaskId: 510 });
+
+      expect(dashboard.moduleProgressByFactory.temperature_controls[0]).toMatchObject({ factoryId: 1, expected: 2, completed: 2, percentage: 100 });
+      expect(dashboard.moduleProgressByFactory.temperature_controls[0]).not.toHaveProperty("pendingTaskId");
+      expect(dashboard.moduleProgress.temperature_controls.pending).toEqual([]);
+      expect(listedTasks.map((task) => task.id)).not.toContain(510);
+      expect(access).toMatchObject({ allowed: false, isPreviousPending: false });
+    } finally {
+      entries.pop();
+    }
+  });
+
+  it("não mantém Detetores de Metais como pendência quando todas as linhas planeadas foram verificadas", async () => {
+    const previousDate = new Date(2026, 7, 13, 10, 0, 0);
+    tasks.push({ id: 511, factoryId: 1, status: "pending", dueAt: previousDate, completedAt: null, module: "metal_detectors", area: "Plano do Dia", title: "Plano do Dia — Detetores F1", responsible: "Sabrina Esteves", assigneeProfileIds: [1] });
+    areaRows.push({ id: 201, name: "Linha 1", group: "metal", factoryId: 1, active: "true" } as any, { id: 202, name: "Linha 2", group: "metal", factoryId: 1, active: "true" } as any, { id: 203, name: "Linha Croutons", group: "metal", factoryId: 1, active: "true" } as any);
+    entries.push(...["Linha 1", "Linha 2", "Linha Croutons"].map((area, index) => ({ id: 511 + index, factoryId: 1, module: "metal_detectors", area, result: "C", completedAt: now, payload: { plannedTaskId: 511, plannedDate: previousDate.toISOString() } } as any)));
+    try {
+      const caller = qualityRouter.createCaller(createContext({ id: 1, name: "Sabrina Esteves", title: "Tec. Qualidade", role: "technician" }));
+
+      const dashboard = await caller.dashboard({ date: previousDate });
+      const listedTasks = await caller.listTasks();
+      const access = await caller.controlAuthorization({ module: "metal_detectors", factoryId: 1, plannedTaskId: 511 });
+
+      expect(dashboard.moduleProgressByFactory.metal_detectors[0]).toMatchObject({ factoryId: 1, expected: 1, completed: 1, percentage: 100 });
+      expect(dashboard.moduleProgressByFactory.metal_detectors[0]).not.toHaveProperty("pendingTaskId");
+      expect(dashboard.moduleProgress.metal_detectors.pending).toEqual([]);
+      expect(listedTasks.map((task) => task.id)).not.toContain(511);
+      expect(access).toMatchObject({ allowed: false, isPreviousPending: false });
+    } finally {
+      entries.splice(-3, 3);
+      areaRows.splice(-3, 3);
+    }
+  });
+
+  it("não mantém Checklist Mensal como pendência quando todos os itens aplicáveis foram registados", async () => {
+    const previousDate = new Date(2026, 7, 13, 10, 0, 0);
+    tasks.push({ id: 512, factoryId: 1, status: "pending", dueAt: previousDate, completedAt: null, module: "monthly_checklist", area: "Plano do Dia", title: "Plano do Dia — Checklist F1", responsible: "Sabrina Esteves", assigneeProfileIds: [1] });
+    entries.push({ id: 512, factoryId: 1, module: "monthly_checklist", area: "Produção", result: "C", completedAt: now, payload: { plannedTaskId: 512, plannedDate: previousDate.toISOString(), checklistItemId: 301 } } as any, { id: 513, factoryId: 1, module: "monthly_checklist", area: "Produção", result: "C", completedAt: now, payload: { plannedTaskId: 512, plannedDate: previousDate.toISOString(), checklistItemId: 302 } } as any);
+    try {
+      const caller = qualityRouter.createCaller(createContext({ id: 1, name: "Sabrina Esteves", title: "Tec. Qualidade", role: "technician" }));
+
+      const dashboard = await caller.dashboard({ date: previousDate });
+      const listedTasks = await caller.listTasks();
+      const access = await caller.controlAuthorization({ module: "monthly_checklist", factoryId: 1, plannedTaskId: 512 });
+
+      expect(dashboard.moduleProgressByFactory.monthly_checklist[0]).toMatchObject({ factoryId: 1, expected: 2, completed: 2, percentage: 100 });
+      expect(dashboard.moduleProgressByFactory.monthly_checklist[0]).not.toHaveProperty("pendingTaskId");
+      expect(dashboard.moduleProgress.monthly_checklist.pending).toEqual([]);
+      expect(listedTasks.map((task) => task.id)).not.toContain(512);
+      expect(access).toMatchObject({ allowed: false, isPreviousPending: false });
+    } finally {
+      entries.splice(-2, 2);
+    }
+  });
+
+  it("identifica para cada perfil as revisões retroativas que ainda não abriu", async () => {
+    const previousDate = new Date(2026, 7, 13, 10, 0, 0);
+    archiveRows.push({ id: 701, operationalDate: previousDate, revision: 2, archiveKind: "retroactive_revision", revisionReason: "Registo retroativo concluído.", createdBy: "Sabrina Esteves", createdAt: now, snapshot: {} }, { id: 702, operationalDate: previousDate, revision: 1, archiveKind: "initial", revisionReason: null, createdBy: "Sistema", createdAt: now, snapshot: {} });
+    const caller = qualityRouter.createCaller(createContext({ id: 1, name: "Sabrina Esteves", title: "Tec. Qualidade", role: "technician" }));
+
+    const attention = await caller.dailyReportArchiveAttention();
+    const marked = await caller.markDailyReportArchiveViewed({ archiveId: 701 });
+
+    expect(attention).toMatchObject({ count: 1, revisions: [expect.objectContaining({ id: 701, revision: 2 })] });
+    expect(marked).toEqual({ success: true, tracked: true });
+    expect(dbInserts.at(-1)).toMatchObject({ archiveId: 701, profileId: 1 });
   });
 
   it("filtra os resultados de Temperaturas por período e equipamento", async () => {

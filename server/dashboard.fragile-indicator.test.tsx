@@ -9,6 +9,7 @@ vi.mock("@/lib/trpc", () => ({
       metadata: { useQuery: () => ({ data: { factories: [{ id: 1, name: "Fábrica 1 (Fatiado)" }] } }) },
       dashboard: { useQuery: () => ({ isLoading: false, data: { operationalDate: new Date("2026-08-18T10:00:00Z"), metrics: { pending: 1, overdue: 0, criticalOpen: 0, fragilePending: 7, completedToday: 2, dailyExecutionRate: 50 }, tasks: [], criticalNcs: [] } }) },
       dailyIncidenceSummary: { useQuery: () => ({ data: { total: 3, withNonconformity: 1, withoutNonconformity: 2, note: "Confirmar fecho do turno.", incidences: [] } }) },
+      dailyReportArchiveAttention: { useQuery: () => ({ isLoading: false, data: { count: 1, revisions: [{ id: 41, operationalDate: new Date("2026-08-14T12:00:00Z"), revision: 2, revisionReason: "Registo retroativo concluído." }] } }) },
     },
   },
 }));
@@ -33,5 +34,11 @@ describe("painel Hoje — resumo operacional diário", () => {
     expect(screen.getAllByText("Relatório do dia")).toHaveLength(1);
     expect(screen.getByText("Confirmar fecho do turno.")).toBeTruthy();
     expect(screen.getByRole("link", { name: /abrir relatório/i }).getAttribute("href")).toBe("/relatorios");
+  });
+
+  it("alerta para uma revisão retroativa ainda por consultar e encaminha para a versão", () => {
+    render(<QualityDashboard />);
+    expect(screen.getByText(/revisão retroativa por consultar/i)).toBeTruthy();
+    expect(screen.getByRole("link", { name: /abrir 1 revisão.*pendente/i }).getAttribute("href")).toBe("/relatorios?archiveId=41");
   });
 });

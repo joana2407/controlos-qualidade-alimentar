@@ -17,6 +17,7 @@ export default function QualityDashboard() {
   const selectedDateValue = useMemo(() => new Date(`${selectedDate}T12:00:00`), [selectedDate]);
   const dashboardInput = useMemo(() => ({ factoryId: factoryId ? Number(factoryId) : undefined, date: selectedDateValue }), [factoryId, selectedDateValue]);
   const dashboard = trpc.quality.dashboard.useQuery(dashboardInput);
+  const archiveAttention = trpc.quality.dailyReportArchiveAttention?.useQuery?.() ?? { data: { count: 0, revisions: [] as Array<{ id: number; operationalDate: Date; revision: number; revisionReason: string | null }> }, isLoading: false };
   const data = dashboard.data;
   const taskGroups = data?.taskGroups ?? { today: [], tomorrow: [], thisWeek: [] };
   const isCurrentDate = selectedDate === new Date().toISOString().slice(0, 10);
@@ -44,6 +45,8 @@ export default function QualityDashboard() {
           <Link href="/controlos"><Button className="bg-teal-500 text-slate-950 hover:bg-teal-400">Registar controlo <ArrowRight className="ml-2 h-4 w-4" /></Button></Link>
         </div>
       </header>
+
+      {!archiveAttention.isLoading && archiveAttention.data?.count ? <Link href={`/relatorios?archiveId=${archiveAttention.data.revisions[0]?.id ?? ""}`} className="block rounded-2xl border border-amber-300 bg-amber-50 p-5 text-amber-950 shadow-sm transition-colors hover:bg-amber-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-600" aria-label={`Abrir ${archiveAttention.data.count} revisão ou revisões retroativas pendentes de consulta`}><div role="alert" className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between"><div className="flex min-w-0 items-start gap-3"><div className="rounded-xl bg-amber-200 p-3 text-amber-950"><AlertTriangle className="h-5 w-5" /></div><div><p className="font-semibold">{archiveAttention.data.count} revisão{archiveAttention.data.count === 1 ? "" : "ões"} retroativa{archiveAttention.data.count === 1 ? "" : "s"} por consultar</p><p className="mt-1 text-sm text-amber-900">{archiveAttention.data.revisions.slice(0, 2).map((revision) => `${dateFormat(revision.operationalDate, false)} · V${revision.revision}`).join(" · ")}{archiveAttention.data.count > 2 ? ` e mais ${archiveAttention.data.count - 2}` : ""}</p><p className="mt-1 text-xs text-amber-800">Abra a versão para consultar a alteração e marcar a revisão como vista no seu perfil.</p></div></div><Button size="sm" variant="outline" className="border-amber-300 bg-white text-amber-950 hover:bg-amber-100">Consultar revisões <ArrowRight className="ml-1 h-4 w-4" /></Button></div></Link> : null}
 
       <div className="grid gap-4 sm:grid-cols-3">
         {dailyMetrics.map((metric) => {

@@ -151,6 +151,17 @@ export const dailyReportArchives = mysqlTable("daily_report_archives", {
   index("daily_report_archive_task_idx").on(table.triggerTaskId),
 ]);
 
+/** Consulta individual de uma revisão retroativa; preserva o alerta até cada perfil a abrir. */
+export const dailyReportArchiveViews = mysqlTable("daily_report_archive_views", {
+  id: int("id").autoincrement().primaryKey(),
+  archiveId: int("archiveId").notNull(),
+  profileId: int("profileId").notNull(),
+  viewedAt: timestamp("viewedAt").defaultNow().notNull(),
+}, (table) => [
+  uniqueIndex("daily_report_archive_view_unique").on(table.archiveId, table.profileId),
+  index("daily_report_archive_view_profile_idx").on(table.profileId),
+]);
+
 /** Configuração persistente do arquivo diário e da respetiva tarefa agendada. */
 export const dailyReportArchiveSettings = mysqlTable("daily_report_archive_settings", {
   id: int("id").autoincrement().primaryKey(),
