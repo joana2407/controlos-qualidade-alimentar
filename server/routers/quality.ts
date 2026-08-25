@@ -795,6 +795,7 @@ export const qualityRouter = router({
     const todayKey = localDateKey(new Date());
     if (input.performedAt && (!authorization.isPreviousPending || !plannedDateKey || input.performedAt < plannedDateKey || input.performedAt > todayKey)) throw new TRPCError({ code: "BAD_REQUEST", message: "A data de realização deve situar-se entre a data prevista do controlo e hoje." });
     if (authorization.isPreviousPending && !input.retroactiveReason) throw new TRPCError({ code: "BAD_REQUEST", message: "Selecione a justificação do preenchimento fora da data prevista." });
+    if (authorization.isPreviousPending && input.retroactiveReason === "technical_unavailability" && !input.performedAt) throw new TRPCError({ code: "BAD_REQUEST", message: "Indique a data real da verificação efetuada após a indisponibilidade técnica." });
     if (authorization.isPreviousPending && input.retroactiveReason === "other" && !input.retroactiveJustification?.trim()) throw new TRPCError({ code: "BAD_REQUEST", message: "Indique a justificação para a opção selecionada." });
     const completedAt = input.performedAt ? new Date(`${input.performedAt}T12:00:00`) : new Date();
     await db.insert(controlEntries).values({

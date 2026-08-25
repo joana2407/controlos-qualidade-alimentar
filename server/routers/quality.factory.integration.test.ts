@@ -371,6 +371,7 @@ describe("procedimentos de qualidade por fábrica", () => {
 
     const authorization = await sabrina.controlAuthorization({ module: "bphf", factoryId: 1 });
     await expect(sabrina.createEntry({ module: "bphf", title: "Verificação BPHF", area: "Produção", factoryId: 1, result: "C", performedAt: "2026-08-13", payload: { criterion: "Fardamento" } })).rejects.toMatchObject({ code: "BAD_REQUEST", message: expect.stringMatching(/justificação/i) });
+    await expect(sabrina.createEntry({ module: "bphf", title: "Verificação BPHF", area: "Produção", factoryId: 1, result: "C", retroactiveReason: "technical_unavailability", payload: { criterion: "Fardamento" } })).rejects.toMatchObject({ code: "BAD_REQUEST", message: expect.stringMatching(/data real/i) });
     await expect(sabrina.createEntry({ module: "bphf", title: "Verificação BPHF", area: "Produção", factoryId: 1, result: "C", performedAt: "2026-08-13", retroactiveReason: "verified_not_registered", payload: { criterion: "Fardamento" } })).resolves.toMatchObject({ success: true });
 
     expect(authorization).toMatchObject({ allowed: true, taskId: 77, dueAt: previousDueAt, isPreviousPending: true });
