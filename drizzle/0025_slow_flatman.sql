@@ -1,0 +1,1 @@
+ALTER TABLE `quality_pin_profiles` MODIFY COLUMN `quality_profile_role` enum('technician','manager','viewer') NOT NULL;

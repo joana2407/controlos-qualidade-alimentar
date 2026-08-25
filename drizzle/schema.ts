@@ -30,7 +30,7 @@ export const resultValues = ["C", "NC", "N/A"] as const;
 
 const qualityModule = mysqlEnum("quality_module", qualityModuleValues);
 const controlResult = mysqlEnum("control_result", resultValues);
-const qualityProfileRole = mysqlEnum("quality_profile_role", ["technician", "manager"]);
+const qualityProfileRole = mysqlEnum("quality_profile_role", ["technician", "manager", "viewer"]);
 
 export const qualityPinProfiles = mysqlTable("quality_pin_profiles", {
   id: int("id").autoincrement().primaryKey(),

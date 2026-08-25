@@ -136,6 +136,13 @@ describe("procedimentos de qualidade por fábrica", () => {
     expect(access).toMatchObject({ allowed: true, taskId: expect.any(Number) });
   });
 
+  it("permite ao perfil Gestão consultar, mas bloqueia operações de alteração", async () => {
+    const caller = qualityRouter.createCaller(createContext({ id: 9, name: "Gestão", title: "Consulta", role: "viewer" }));
+
+    await expect(caller.metadata()).resolves.toMatchObject({ factories: factoryRows });
+    await expect(caller.addBphfInspectionEmployee({ name: "Colaborador bloqueado" })).rejects.toMatchObject({ code: "FORBIDDEN" });
+  });
+
   it("associa o progresso de uma pendência à tarefa e à data prevista original", async () => {
     const previousDate = new Date(2026, 7, 13, 10, 0, 0);
     tasks.push({ id: 501, factoryId: 1, status: "pending", dueAt: previousDate, completedAt: null, module: "bphf", area: "Plano do Dia", title: "Plano do Dia — BPHF F1", responsible: "Sabrina Esteves", assigneeProfileIds: [1] });

@@ -128,11 +128,11 @@ async function requireDb() {
 }
 
 type OccurrenceAccess = { role: "user" | "admin" | "gestao"; scope: "all" | "reclamacoes" };
-async function getOccurrenceAccess(ctx: { operatorProfile: { id: number; role: "technician" | "manager" } | null }): Promise<OccurrenceAccess> {
+async function getOccurrenceAccess(ctx: { operatorProfile: { id: number; role: "technician" | "manager" | "viewer" } | null }): Promise<OccurrenceAccess> {
   const db = await requireDb();
   const record = (await db.select().from(occurrenceAccessProfiles).where(eq(occurrenceAccessProfiles.qualityProfileId, ctx.operatorProfile!.id)).limit(1))[0];
   if (record) return { role: record.role, scope: record.scope };
-  return { role: ctx.operatorProfile!.role === "manager" ? "admin" : "user", scope: "all" };
+  return { role: ctx.operatorProfile!.role === "manager" ? "admin" : ctx.operatorProfile!.role === "viewer" ? "gestao" : "user", scope: "all" };
 }
 function ensureOccurrencesScope(access: OccurrenceAccess) {
   if (access.scope === "reclamacoes") throw new TRPCError({ code: "FORBIDDEN", message: "O seu perfil está limitado a reclamações a fornecedores." });

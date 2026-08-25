@@ -169,6 +169,13 @@
       "when": 1787304609756,
       "tag": "0024_fuzzy_kid_colt",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "5",
+      "when": 1787661732353,
+      "tag": "0025_slow_flatman",
+      "breakpoints": true
     }
   ]
 }

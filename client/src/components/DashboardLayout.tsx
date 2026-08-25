@@ -106,11 +106,12 @@ export default function DashboardLayout({
 
   if (access.isLoading || !access.data) return <DashboardLayoutSkeleton />;
   if (!access.data.activeProfile) return <OperatorPinGate access={access.data} />;
-  if (workspace === "selector") return <QualityAccessProvider value={{ activeProfile: access.data.activeProfile, canManage: access.data.canManage }}>{children}</QualityAccessProvider>;
-  if (workspace === "quality" && !canAccessWorkspace(access.data.activeProfile, workspace)) return <QualityAccessProvider value={{ activeProfile: access.data.activeProfile, canManage: access.data.canManage }}><main className="grid min-h-screen place-items-center bg-slate-50 p-6"><section className="max-w-md rounded-3xl border border-slate-200 bg-white p-8 text-center shadow-sm"><p className="text-xs font-semibold uppercase tracking-[0.18em] text-red-700">Acesso restrito</p><h1 className="mt-3 text-2xl font-bold text-slate-950">O QualiControl não está autorizado para o seu perfil.</h1><p className="mt-3 text-sm leading-6 text-slate-600">Contacte a Responsável de Qualidade para rever as permissões do seu perfil PIN.</p><Button className="mt-6" onClick={() => window.location.assign("/")}>Voltar ao início</Button></section></main></QualityAccessProvider>;
+  const accessValue = { activeProfile: access.data.activeProfile, canManage: access.data.canManage, canOperate: access.data.activeProfile?.role !== "viewer" };
+  if (workspace === "selector") return <QualityAccessProvider value={accessValue}>{children}</QualityAccessProvider>;
+  if (workspace === "quality" && !canAccessWorkspace(access.data.activeProfile, workspace)) return <QualityAccessProvider value={accessValue}><main className="grid min-h-screen place-items-center bg-slate-50 p-6"><section className="max-w-md rounded-3xl border border-slate-200 bg-white p-8 text-center shadow-sm"><p className="text-xs font-semibold uppercase tracking-[0.18em] text-red-700">Acesso restrito</p><h1 className="mt-3 text-2xl font-bold text-slate-950">O QualiControl não está autorizado para o seu perfil.</h1><p className="mt-3 text-sm leading-6 text-slate-600">Contacte a Responsável de Qualidade para rever as permissões do seu perfil PIN.</p><Button className="mt-6" onClick={() => window.location.assign("/")}>Voltar ao início</Button></section></main></QualityAccessProvider>;
 
   return (
-    <QualityAccessProvider value={{ activeProfile: access.data.activeProfile, canManage: access.data.canManage }}><SidebarProvider
+    <QualityAccessProvider value={accessValue}><SidebarProvider
       style={
         {
           "--sidebar-width": `${sidebarWidth}px`,
@@ -178,7 +179,7 @@ function DashboardLayoutContent({
   const sidebarRef = useRef<HTMLDivElement>(null);
   const activeMenuItem = [...menuItems, ...controlPanels].find(item => item.path === location);
   const isMobile = useIsMobile();
-  const { activeProfile, canManage } = useQualityAccess();
+  const { activeProfile, canManage, canOperate } = useQualityAccess();
   const utils = trpc.useUtils();
   const deactivate = trpc.quality.deactivatePinProfile.useMutation({ onSuccess: () => utils.quality.accessStatus.invalidate() });
   const visibleMenuItems = menuItems.filter((item) => item.path !== "/configuracao" || canManage);
@@ -321,6 +322,7 @@ function DashboardLayoutContent({
       </div>
 
       <SidebarInset>
+        {!canOperate && <div className="border-b border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-950"><div className="mx-auto flex max-w-7xl items-center gap-2"><ShieldCheck className="h-4 w-4 text-sky-700" /><span><strong>Modo consulta:</strong> pode consultar a informação, mas não pode registar, editar, eliminar ou publicar.</span></div></div>}
         {isMobile && (
           <div className="flex border-b h-14 items-center justify-between bg-background/95 px-2 backdrop-blur supports-[backdrop-filter]:backdrop-blur sticky top-0 z-40">
             <div className="flex items-center gap-2">

@@ -50,6 +50,9 @@ export const qualitySessionProcedure = t.procedure.use(requireQualitySession);
 
 export const qualityOperatorProcedure = qualitySessionProcedure.use(
   t.middleware(async ({ ctx, next }) => {
+    if (ctx.operatorProfile?.role === "viewer") {
+      throw new TRPCError({ code: "FORBIDDEN", message: "O perfil Gestão tem acesso apenas de consulta e não pode alterar registos." });
+    }
     return next({ ctx: { ...ctx, operatorProfile: ctx.operatorProfile } });
   }),
 );

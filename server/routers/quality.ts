@@ -176,7 +176,7 @@ export const qualityRouter = router({
   }),
 
   configureTeamPins: protectedProcedure.input(z.object({
-    pins: z.array(z.object({ code: z.string().min(3).max(48), pin: z.string().regex(/^\d{4,8}$/) })).min(1).max(3),
+    pins: z.array(z.object({ code: z.string().min(3).max(48), pin: z.string().regex(/^\d{4,8}$/) })).min(1).max(4),
   })).mutation(async ({ ctx, input }) => {
     const db = await requireDb();
     const profiles = await db.select().from(qualityPinProfiles);

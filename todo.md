@@ -388,3 +388,4 @@
 - [x] Remover o cartão de Quebráveis pendentes do painel Hoje.
 - [x] Tornar cada controlo agendado no painel Hoje num acesso direto ao respetivo formulário de preenchimento.
 - [x] Destacar no topo do formulário a data prevista de um controlo aberto como pendência de dia anterior.
+- [x] Criar o perfil Gestão com PIN 2403 e acesso exclusivamente de consulta.

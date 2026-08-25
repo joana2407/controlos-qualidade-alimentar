@@ -10,7 +10,7 @@ export type QualityOperator = {
   id: number;
   name: string;
   title: string;
-  role: "technician" | "manager";
+  role: "technician" | "manager" | "viewer";
 };
 
 export type TrpcContext = {

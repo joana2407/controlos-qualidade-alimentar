@@ -7,6 +7,7 @@ export const QUALITY_TEAM_DEFAULTS = [
   { code: "SABRINA_ESTEVES", name: "Sabrina Esteves", title: "Tec. Qualidade", role: "technician" as const },
   { code: "NEUZA_ANTUNES", name: "Neuza Antunes", title: "Tec. Qualidade", role: "technician" as const },
   { code: "JOANA_PINA", name: "Joana Pina", title: "Resp. Qualidade", role: "manager" as const },
+  { code: "GESTAO", name: "Gestão", title: "Consulta", role: "viewer" as const },
 ] as const;
 
 export function validatePin(pin: string) {

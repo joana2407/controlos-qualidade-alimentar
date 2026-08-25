@@ -7,7 +7,7 @@ import { KeyRound, ShieldCheck, UserRoundCheck } from "lucide-react";
 import React, { useState } from "react";
 import { toast } from "sonner";
 
-type Profile = { id: number; code: string; name: string; title: string; role: "technician" | "manager"; isConfigured: boolean; active: boolean };
+type Profile = { id: number; code: string; name: string; title: string; role: "technician" | "manager" | "viewer"; isConfigured: boolean; active: boolean };
 type Access = { profiles: Profile[]; canBootstrap: boolean; needsInitialSetup: boolean };
 
 function pinIsValid(pin: string) {
@@ -28,7 +28,7 @@ export function OperatorPinGate({ access }: { access: Access }) {
     onError: (error) => toast.error(error.message),
   });
 
-  const setupReady = access.profiles.length === 3 && access.profiles.every((profile) => pinIsValid(setupPins[profile.code] ?? ""));
+  const setupReady = access.profiles.length === 4 && access.profiles.every((profile) => pinIsValid(setupPins[profile.code] ?? ""));
   if (access.canBootstrap && access.needsInitialSetup) {
     return <main className="min-h-screen bg-slate-50 p-4 md:p-8"><div className="mx-auto flex min-h-[80vh] max-w-3xl items-center"><Card className="w-full border-0 panel-shadow"><CardHeader className="border-b border-slate-100"><div className="flex items-start gap-3"><div className="rounded-xl bg-teal-50 p-3 text-teal-700"><ShieldCheck className="h-6 w-6" /></div><div><CardTitle>Configuração inicial de acessos</CardTitle><CardDescription className="mt-1">Defina um PIN numérico individual para cada elemento da equipa. Os PINs são guardados de forma protegida e não voltam a ser apresentados.</CardDescription></div></div></CardHeader><CardContent className="grid gap-5 p-6 md:grid-cols-3">{access.profiles.map((profile) => <div key={profile.id} className="space-y-3 rounded-xl border border-slate-100 bg-slate-50 p-4"><div><p className="font-medium">{profile.name}</p><p className="text-sm text-muted-foreground">{profile.title}</p></div><div className="space-y-2"><Label htmlFor={`setup-pin-${profile.id}`}>PIN (4–8 algarismos)</Label><Input id={`setup-pin-${profile.id}`} type="password" inputMode="numeric" autoComplete="new-password" maxLength={8} value={setupPins[profile.code] ?? ""} onChange={(event) => setSetupPins((current) => ({ ...current, [profile.code]: event.target.value.replace(/\D/g, "") }))} /></div></div>)}<div className="md:col-span-3"><Button className="w-full" size="lg" disabled={!setupReady || configure.isPending} onClick={() => configure.mutate({ pins: access.profiles.map((profile) => ({ code: profile.code, pin: setupPins[profile.code] })) })}>{configure.isPending ? "A guardar…" : "Guardar PINs da equipa"}</Button></div></CardContent></Card></div></main>;
   }

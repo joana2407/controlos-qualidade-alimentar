@@ -4,15 +4,16 @@ export type QualityOperatorProfile = {
   id: number;
   name: string;
   title: string;
-  role: "technician" | "manager";
+  role: "technician" | "manager" | "viewer";
 };
 
 type QualityAccessValue = {
   activeProfile: QualityOperatorProfile | null;
   canManage: boolean;
+  canOperate: boolean;
 };
 
-const QualityAccessContext = createContext<QualityAccessValue>({ activeProfile: null, canManage: false });
+const QualityAccessContext = createContext<QualityAccessValue>({ activeProfile: null, canManage: false, canOperate: false });
 
 export function QualityAccessProvider({ value, children }: { value: QualityAccessValue; children: React.ReactNode }) {
   return <QualityAccessContext.Provider value={value}>{children}</QualityAccessContext.Provider>;

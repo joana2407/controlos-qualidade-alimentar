@@ -34,8 +34,8 @@ describe("painel Hoje — Plano do Dia", () => {
   it("permite escolher outra data para consultar o planeamento respetivo", () => {
     render(<QualityDashboard />);
     const dateInput = screen.getByLabelText("Data a consultar no painel Hoje");
-    fireEvent.change(dateInput, { target: { value: "2026-08-25" } });
-    expect(screen.getByText("25/08/2026")).toBeTruthy();
+    fireEvent.change(dateInput, { target: { value: "2026-08-26" } });
+    expect(screen.getByText("26/08/2026")).toBeTruthy();
   });
 
   it("abre o formulário do controlo agendado ainda por realizar", () => {
