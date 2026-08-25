@@ -396,3 +396,4 @@
 - [x] Manter apenas alertas relevantes, direcionados para joana.pina@aesip.pt quando suportado pela integração de notificações. — Adiado por indicação da utilizadora.
 - [x] Fazer o QualiControl abrir sempre no login por PIN, sem perfil previamente selecionado ou sessão operacional persistida.
 - [x] Atualizar o atalho Gestão de Matérias-Primas para a respetiva página inicial.
+- [x] Preservar a sessão PIN durante a navegação interna entre painéis e controlos.

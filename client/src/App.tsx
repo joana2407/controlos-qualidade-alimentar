@@ -18,16 +18,16 @@ function Router() {
   // make sure to consider if you need authentication for certain routes
   return (
     <Switch>
-      <Route path={"/"} component={() => <DashboardLayout workspace="quality"><QualityDashboard /></DashboardLayout>} />
-      <Route path={"/qualicontrol"} component={() => <DashboardLayout workspace="quality"><QualityDashboard /></DashboardLayout>} />
-      <Route path={"/plataforma"} component={() => <DashboardLayout><PlatformOverview /></DashboardLayout>} />
+      <Route path={"/"} component={QualityDashboard} />
+      <Route path={"/qualicontrol"} component={QualityDashboard} />
+      <Route path={"/plataforma"} component={PlatformOverview} />
       <Route path={"/ajuda"} component={() => <Redirect to="/plataforma" />} />
-      <Route path={"/controlos"} component={() => <DashboardLayout><Controls /></DashboardLayout>} />
-      <Route path={"/controlos/:module"} component={() => <DashboardLayout><ModuleControl /></DashboardLayout>} />
-      <Route path={"/incidencias"} component={() => <DashboardLayout><Nonconformities /></DashboardLayout>} />
-      <Route path={"/nao-conformidades"} component={() => <DashboardLayout><Nonconformities /></DashboardLayout>} />
-      <Route path={"/relatorios"} component={() => <DashboardLayout><Reports /></DashboardLayout>} />
-      <Route path={"/configuracao"} component={() => <DashboardLayout><Configuration /></DashboardLayout>} />
+      <Route path={"/controlos"} component={Controls} />
+      <Route path={"/controlos/:module"} component={ModuleControl} />
+      <Route path={"/incidencias"} component={Nonconformities} />
+      <Route path={"/nao-conformidades"} component={Nonconformities} />
+      <Route path={"/relatorios"} component={Reports} />
+      <Route path={"/configuracao"} component={Configuration} />
       <Route path={"/404"} component={NotFound} />
       {/* Final fallback route */}
       <Route component={NotFound} />
@@ -49,7 +49,7 @@ function App() {
       >
         <TooltipProvider>
           <Toaster />
-          <Router />
+          <DashboardLayout workspace="quality"><Router /></DashboardLayout>
         </TooltipProvider>
       </ThemeProvider>
     </ErrorBoundary>
