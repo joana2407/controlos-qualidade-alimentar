@@ -133,6 +133,34 @@ export const controlEntries = mysqlTable("control_entries", {
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 }, (table) => [index("entry_module_idx").on(table.module), index("entry_area_idx").on(table.area), index("entry_completed_idx").on(table.completedAt), index("entry_factory_idx").on(table.factoryId), index("entry_operator_idx").on(table.registeredByProfileId), uniqueIndex("entry_offline_sync_idx").on(table.offlineSyncId)]);
 
+/** Arquivos imutáveis dos relatórios operacionais, organizados por data e revisão. */
+export const dailyReportArchives = mysqlTable("daily_report_archives", {
+  id: int("id").autoincrement().primaryKey(),
+  operationalDate: date("operationalDate").notNull(),
+  revision: int("revision").notNull(),
+  archiveKind: mysqlEnum("daily_report_archive_kind", ["initial", "retroactive_revision"]).notNull(),
+  triggerTaskId: int("triggerTaskId"),
+  triggerEntryId: int("triggerEntryId"),
+  revisionReason: varchar("revisionReason", { length: 500 }),
+  snapshot: json("snapshot").$type<Record<string, unknown>>().notNull(),
+  createdBy: varchar("createdBy", { length: 120 }).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (table) => [
+  uniqueIndex("daily_report_archive_date_revision_idx").on(table.operationalDate, table.revision),
+  index("daily_report_archive_date_idx").on(table.operationalDate),
+  index("daily_report_archive_task_idx").on(table.triggerTaskId),
+]);
+
+/** Configuração persistente do arquivo diário e da respetiva tarefa agendada. */
+export const dailyReportArchiveSettings = mysqlTable("daily_report_archive_settings", {
+  id: int("id").autoincrement().primaryKey(),
+  scheduleCronTaskUid: varchar("scheduleCronTaskUid", { length: 65 }),
+  active: mysqlEnum("daily_report_archive_active", ["true", "false"]).default("true").notNull(),
+  createdBy: varchar("createdBy", { length: 64 }).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, (table) => [index("daily_report_archive_cron_idx").on(table.scheduleCronTaskUid)]);
+
 export const nonconformities = mysqlTable("nonconformities", {
   id: int("id").autoincrement().primaryKey(),
   sourceEntryId: int("sourceEntryId"),

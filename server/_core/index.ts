@@ -9,6 +9,8 @@ import { appRouter } from "../routers";
 import { createContext } from "./context";
 import { serveStatic, setupVite } from "./vite";
 import { offlineIncidenceInputSchema, persistOfflineIncidence } from "../offline-incidences";
+import { runScheduledDailyReportArchive } from "../daily-report-archive";
+import { sdk } from "./sdk";
 
 function isPortAvailable(port: number): Promise<boolean> {
   return new Promise(resolve => {
@@ -52,6 +54,17 @@ async function startServer() {
     } catch (error) {
       const message = error instanceof Error ? error.message : "Não foi possível sincronizar as incidências.";
       return res.status(400).json({ error: message });
+    }
+  });
+  app.post("/api/scheduled/daily-report-archive", async (req, res) => {
+    try {
+      const user = await sdk.authenticateRequest(req);
+      if (!user.isCron || !user.taskUid) return res.status(403).json({ error: "Acesso reservado ao arquivo agendado." });
+      return res.json(await runScheduledDailyReportArchive(user.taskUid));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Falha ao executar o arquivo diário.";
+      console.error("[DailyReportArchive]", error);
+      return res.status(500).json({ error: message, timestamp: new Date().toISOString() });
     }
   });
   // tRPC API

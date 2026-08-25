@@ -176,6 +176,13 @@
       "when": 1787661732353,
       "tag": "0025_slow_flatman",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "5",
+      "when": 1787676686035,
+      "tag": "0026_dark_doctor_spectrum",
+      "breakpoints": true
     }
   ]
 }

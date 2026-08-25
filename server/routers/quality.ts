@@ -11,6 +11,7 @@ import {
   controlEntries,
   controlTasks,
   dailyIncidenceSummaries,
+  dailyReportArchives,
   correctiveActions,
   evidences,
   fragileItems,
@@ -21,6 +22,7 @@ import {
   resultValues,
 } from "../../drizzle/schema";
 import { getDb } from "../db";
+import { createRetroactiveDailyReportRevision } from "../daily-report-archive";
 import { businessDayAfter, calculateConformityRate, calculateDispatchConformity, calculateSensoryScore, fragileInspectionDelayDays, fragileInspectionDueDate, isBusinessDay, isFragileInspectionPending, nextBusinessDay, shouldCreateCriticalMetalAlert } from "../quality.logic";
 import { calculatePlanCompliance, countOpenNonconformities, scopeToFactory } from "../factory.scope.logic";
 import { storageGetSignedUrl, storagePut } from "../storage";
@@ -853,6 +855,13 @@ export const qualityRouter = router({
     }
     if (authorization.task && plannedControlComplete) {
       await db.update(controlTasks).set({ status: "completed", completedAt, completedByProfileId: ctx.operatorProfile!.id, completedByName: ctx.operatorProfile!.name, completedByTitle: ctx.operatorProfile!.title }).where(eq(controlTasks.id, authorization.task.id));
+      if (authorization.isPreviousPending) {
+        try {
+          await createRetroactiveDailyReportRevision({ taskId: authorization.task.id, dueAt: new Date(authorization.task.dueAt), module: input.module, reason: retroactiveReasonLabels[input.retroactiveReason!], createdBy: ctx.operatorProfile!.name });
+        } catch (error) {
+          console.error("[DailyReportArchive] Não foi possível criar a revisão retroativa", error);
+        }
+      }
     }
     const isCriticalMetal = shouldCreateCriticalMetalAlert(input.module, input.result);
     return { success: true, critical: isCriticalMetal, incidence: input.result === "NC" };
@@ -1610,6 +1619,24 @@ export const qualityRouter = router({
     if (!item || item.status !== "active") throw new TRPCError({ code: "NOT_FOUND", message: "Ponto de controlo não encontrado." });
     await db.update(fragileItems).set({ status: "inactive" }).where(eq(fragileItems.id, input.id));
     return { success: true };
+  }),
+
+  dailyReportArchiveHistory: qualitySessionProcedure.input(z.object({ date: dateInput.optional() }).optional()).query(async ({ input }) => {
+    const db = await requireDb();
+    const archives = input?.date
+      ? await db.select().from(dailyReportArchives).where(eq(dailyReportArchives.operationalDate, input.date)).orderBy(desc(dailyReportArchives.revision))
+      : await db.select().from(dailyReportArchives).orderBy(desc(dailyReportArchives.operationalDate), desc(dailyReportArchives.revision));
+    return archives.map((archive) => {
+      const snapshot = archive.snapshot && typeof archive.snapshot === "object" && !Array.isArray(archive.snapshot) ? archive.snapshot as Record<string, unknown> : {};
+      return { id: archive.id, operationalDate: archive.operationalDate, revision: archive.revision, archiveKind: archive.archiveKind, revisionReason: archive.revisionReason, createdBy: archive.createdBy, createdAt: archive.createdAt, controls: Array.isArray(snapshot.controlEntries) ? snapshot.controlEntries.length : 0, plannedTasks: Array.isArray(snapshot.plannedTasks) ? snapshot.plannedTasks.length : 0, incidences: Array.isArray(snapshot.incidences) ? snapshot.incidences.length : 0 };
+    });
+  }),
+
+  dailyReportArchiveDetail: qualitySessionProcedure.input(z.object({ id: z.number().int() })).query(async ({ input }) => {
+    const db = await requireDb();
+    const archive = (await db.select().from(dailyReportArchives).where(eq(dailyReportArchives.id, input.id)).limit(1))[0];
+    if (!archive) throw new TRPCError({ code: "NOT_FOUND", message: "Versão de arquivo não encontrada." });
+    return archive;
   }),
 
   reports: qualitySessionProcedure.input(z.object({
