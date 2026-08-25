@@ -389,3 +389,8 @@
 - [x] Tornar cada controlo agendado no painel Hoje num acesso direto ao respetivo formulário de preenchimento.
 - [x] Destacar no topo do formulário a data prevista de um controlo aberto como pendência de dia anterior.
 - [x] Criar o perfil Gestão com PIN 2403 e acesso exclusivamente de consulta.
+- [x] Corrigir o estado de realização do Controlo à expedição e validar os restantes controlos comuns.
+- [x] Confirmar o atalho Gestão de Ocorrências para a página inicial de login indicada.
+- [x] Atualizar o atalho Gestão de Matérias-Primas para abrir o painel de receções indicado.
+- [x] Desativar os e-mails automáticos associados a planos, tarefas e alertas do QualiControl.
+- [ ] Manter apenas alertas relevantes, direcionados para joana.pina@aesip.pt quando suportado pela integração de notificações.

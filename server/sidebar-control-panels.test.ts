@@ -22,7 +22,7 @@ describe("navegação lateral dos painéis de controlo", () => {
     ].forEach((label) => expect(source).toContain(label));
     [
       "https://analiseocorrencias.manus.space/login",
-      "https://gestaomateriasprimas.manus.space/materias-primas",
+      "https://gestaomateriasprimas.manus.space/rececoes",
       "https://planocalibracao.manus.space/",
       "https://manutencaoprenventiva-as.manus.space/",
       "https://quebrasdash-tyuemnk4.manus.space/",

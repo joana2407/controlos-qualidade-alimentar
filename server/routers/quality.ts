@@ -25,7 +25,6 @@ import { businessDayAfter, calculateConformityRate, calculateDispatchConformity,
 import { calculatePlanCompliance, countOpenNonconformities, scopeToFactory } from "../factory.scope.logic";
 import { storageGetSignedUrl, storagePut } from "../storage";
 import { invokeLLM } from "../_core/llm";
-import { notifyOwner } from "../_core/notification";
 import { createSessionToken, hashPin, hashSessionToken, QUALITY_OPERATOR_COOKIE, QUALITY_SESSION_HOURS, QUALITY_TEAM_DEFAULTS, validatePin, verifyPin } from "../team-access";
 import { getSessionCookieOptions } from "../_core/cookies";
 import { protectedProcedure, publicProcedure, qualityManagerProcedure, qualityOperatorProcedure, qualitySessionProcedure, router } from "../_core/trpc";
@@ -471,9 +470,10 @@ export const qualityRouter = router({
     })]));
     const moduleProgress = Object.fromEntries(qualityModuleValues.map((module) => {
       const factoryProgress = moduleProgressByFactory[module] ?? [];
-      const expected = factoryProgress.reduce((sum, item) => sum + item.expected, 0);
-      const completed = factoryProgress.reduce((sum, item) => sum + item.completed, 0);
       const moduleControls = plannedControls.filter((task) => task.module === module);
+      const isSharedModule = sharedPlanModules.has(module);
+      const expected = isSharedModule ? moduleControls.length : factoryProgress.reduce((sum, item) => sum + item.expected, 0);
+      const completed = isSharedModule ? moduleControls.filter(isPlannedControlCompleted).length : factoryProgress.reduce((sum, item) => sum + item.completed, 0);
       const pendingTaskTitles = moduleControls.filter((task) => !isPlannedControlCompleted(task)).map((task) => task.title);
       const completionTimes = completedToday.filter((entry) => entry.module === module && moduleControls.some((task) => task.factoryId === null || task.factoryId === entry.factoryId)).map((entry) => entry.completedAt);
       const lastCompletedAt = completionTimes.reduce<Date | undefined>((latest, date) => !latest || date > latest ? date : latest, undefined);
@@ -633,7 +633,6 @@ export const qualityRouter = router({
       assigneeProfileIds: input.assigneeProfileIds,
       createdBy: ctx.user!.openId,
     })));
-    if (controls.length) await notifyOwner({ title: "Plano do Dia publicado", content: `Foram publicados ${controls.length} controlo(s) para ${input.date.toLocaleDateString("pt-PT")}. As técnicas responsáveis veem o aviso e as tarefas na agenda operacional.` });
     return { success: true, created: controls.length };
   }),
 

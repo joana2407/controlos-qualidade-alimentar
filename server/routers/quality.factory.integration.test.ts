@@ -4,11 +4,13 @@ import type { TrpcContext } from "../_core/context";
 import { getDb } from "../db";
 import { storageGetSignedUrl, storagePut } from "../storage";
 import { invokeLLM } from "../_core/llm";
+import { notifyOwner } from "../_core/notification";
 import { qualityRouter } from "./quality";
 
 vi.mock("../db", () => ({ getDb: vi.fn() }));
 vi.mock("../storage", () => ({ storagePut: vi.fn(), storageGetSignedUrl: vi.fn() }));
 vi.mock("../_core/llm", () => ({ invokeLLM: vi.fn() }));
+vi.mock("../_core/notification", () => ({ notifyOwner: vi.fn() }));
 
 const now = new Date(2026, 7, 14, 10, 0, 0);
 const tasks = [
@@ -176,6 +178,7 @@ describe("procedimentos de qualidade por fábrica", () => {
       expect.objectContaining({ module: "temperature_controls", factoryId: 1, area: "Plano do Dia", assigneeProfileIds: [1, 2, 3] }),
       expect.objectContaining({ module: "temperature_controls", factoryId: 2, area: "Plano do Dia", assigneeProfileIds: [1, 2, 3] }),
     ]));
+    expect(notifyOwner).not.toHaveBeenCalled();
   });
 
   it("filtra os resultados de Temperaturas por período e equipamento", async () => {
@@ -235,6 +238,17 @@ describe("procedimentos de qualidade por fábrica", () => {
     const dashboard = await caller.dashboard();
     expect(dashboard.moduleProgress.dispatch_control).toMatchObject({ expected: 0, completed: 0, registeredToday: 0, percentage: 0, pending: [] });
     expect(dashboard.moduleProgressByFactory.dispatch_control.every((entry) => entry.expected === 0)).toBe(true);
+  });
+
+  it("apresenta o estado previsto dos controlos comuns quando estão no Plano do Dia", async () => {
+    addPublishedControlTask("dispatch_control", null, [1]);
+    addPublishedControlTask("internal_analysis", null, [1]);
+    const caller = qualityRouter.createCaller(createContext());
+
+    const dashboard = await caller.dashboard();
+
+    expect(dashboard.moduleProgress.dispatch_control).toMatchObject({ expected: 1, completed: 0, registeredToday: 0, percentage: 0, pending: ["Plano do Dia — dispatch_control"] });
+    expect(dashboard.moduleProgress.internal_analysis).toMatchObject({ expected: 1, completed: 0, registeredToday: 0, percentage: 0, pending: ["Plano do Dia — internal_analysis"] });
   });
 
   it("mostra o progresso apenas das fábricas incluídas no Plano do Dia", async () => {
