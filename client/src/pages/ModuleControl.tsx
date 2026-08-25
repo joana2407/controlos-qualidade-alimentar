@@ -105,7 +105,16 @@ export default function ModuleControl() {
   const isSharedControl = module === "dispatch_control" || module === "internal_analysis";
   const plannedTaskId = Number(new URLSearchParams(window.location.search).get("plannedTaskId")) || undefined;
   const authorization = trpc.quality.controlAuthorization?.useQuery?.({ module: (config?.id ?? "bphf") as (typeof MODULES)[number]["id"], factoryId: isSharedControl ? undefined : factoryId ? Number(factoryId) : undefined, plannedTaskId }) ?? { data: undefined, isLoading: false };
-  const dashboard = trpc.quality.dashboard.useQuery();
+  const progressDateInput = useMemo(() => {
+    const dueAt = authorization.data?.isPreviousPending ? authorization.data.dueAt : undefined;
+    if (dueAt) {
+      const plannedDate = new Date(dueAt);
+      return new Date(plannedDate.getFullYear(), plannedDate.getMonth(), plannedDate.getDate(), 12);
+    }
+    const today = new Date();
+    return new Date(today.getFullYear(), today.getMonth(), today.getDate(), 12);
+  }, [authorization.data?.dueAt, authorization.data?.isPreviousPending]);
+  const dashboard = trpc.quality.dashboard.useQuery({ date: progressDateInput });
   const utils = trpc.useUtils();
   const [performedDate, setPerformedDate] = useState("");
   useEffect(() => { if (authorization.data?.isPreviousPending && authorization.data.dueAt) { const date = new Date(authorization.data.dueAt); setPerformedDate(`${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`); } else setPerformedDate(""); }, [authorization.data?.dueAt, authorization.data?.isPreviousPending]);
