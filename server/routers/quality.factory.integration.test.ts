@@ -370,10 +370,11 @@ describe("procedimentos de qualidade por fábrica", () => {
     const sabrina = qualityRouter.createCaller(createContext({ id: 1, name: "Sabrina Esteves", title: "Tec. Qualidade", role: "technician" }));
 
     const authorization = await sabrina.controlAuthorization({ module: "bphf", factoryId: 1 });
-    await expect(sabrina.createEntry({ module: "bphf", title: "Verificação BPHF", area: "Produção", factoryId: 1, result: "C", performedAt: "2026-08-13", payload: { criterion: "Fardamento" } })).resolves.toMatchObject({ success: true });
+    await expect(sabrina.createEntry({ module: "bphf", title: "Verificação BPHF", area: "Produção", factoryId: 1, result: "C", performedAt: "2026-08-13", payload: { criterion: "Fardamento" } })).rejects.toMatchObject({ code: "BAD_REQUEST", message: expect.stringMatching(/justificação/i) });
+    await expect(sabrina.createEntry({ module: "bphf", title: "Verificação BPHF", area: "Produção", factoryId: 1, result: "C", performedAt: "2026-08-13", retroactiveReason: "verified_not_registered", payload: { criterion: "Fardamento" } })).resolves.toMatchObject({ success: true });
 
     expect(authorization).toMatchObject({ allowed: true, taskId: 77, dueAt: previousDueAt, isPreviousPending: true });
-    expect(dbInserts.at(-1)).toMatchObject({ completedAt: new Date("2026-08-13T12:00:00"), payload: { criterion: "Fardamento", plannedTaskId: 77, plannedDate: previousDueAt.toISOString(), registeredAgainstPreviousPlan: true, actualVerificationDate: "2026-08-13" } });
+    expect(dbInserts.at(-1)).toMatchObject({ completedAt: new Date("2026-08-13T12:00:00"), payload: { criterion: "Fardamento", plannedTaskId: 77, plannedDate: previousDueAt.toISOString(), registeredAgainstPreviousPlan: true, actualVerificationDate: "2026-08-13", retroactiveJustification: { code: "verified_not_registered", label: "Controlo verificado no dia agendado, mas não registado", details: null } } });
   });
 
   it("prioriza o Plano do Dia atual e abre uma pendência específica apenas quando é solicitada", async () => {
@@ -393,7 +394,7 @@ describe("procedimentos de qualidade por fábrica", () => {
     tasks.push({ id: 80, factoryId: 1, status: "pending", dueAt: previousDueAt, completedAt: null, module: "sensory", area: "Plano do Dia", title: "Plano do Dia — Sensorial F1", responsible: "Sabrina Esteves", assigneeProfileIds: [1] });
     const caller = qualityRouter.createCaller(createContext({ id: 1, name: "Sabrina Esteves", title: "Tec. Qualidade", role: "technician" }));
 
-    await caller.createEntry({ module: "sensory", title: "Controlo sensorial — Pão de forma", area: "Produção", factoryId: 1, result: "C", plannedTaskId: 80, performedAt: "2026-08-13", payload: { product: "Pão de forma", lot: "L-1" } });
+    await caller.createEntry({ module: "sensory", title: "Controlo sensorial — Pão de forma", area: "Produção", factoryId: 1, result: "C", plannedTaskId: 80, performedAt: "2026-08-13", retroactiveReason: "technical_unavailability", payload: { product: "Pão de forma", lot: "L-1" } });
 
     expect(dbUpdates.at(-1)).toMatchObject({ status: "completed", completedByProfileId: 1, completedByName: "Sabrina Esteves" });
   });

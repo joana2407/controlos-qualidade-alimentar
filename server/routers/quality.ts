@@ -32,6 +32,12 @@ import { getDispatchProfile } from "../../shared/dispatch-control";
 
 const qualityModuleSchema = z.enum(qualityModuleValues);
 const resultSchema = z.enum(resultValues);
+const retroactiveReasonSchema = z.enum(["verified_not_registered", "technical_unavailability", "other"]);
+const retroactiveReasonLabels: Record<z.infer<typeof retroactiveReasonSchema>, string> = {
+  verified_not_registered: "Controlo verificado no dia agendado, mas não registado",
+  technical_unavailability: "Adiado por falta de disponibilidade técnica para verificação no dia em que estava agendado",
+  other: "Outra opção",
+};
 const dateInput = z.coerce.date();
 const BPHF_AREA_NAMES = ["Produção", "Embalagem", "Limpeza"] as const;
 const BPHF_PROGRESS_CRITERIA_COUNT = 4;
@@ -777,6 +783,8 @@ export const qualityRouter = router({
     notes: z.string().max(3000).optional(),
     payload: z.record(z.string(), z.unknown()).default({}),
     performedAt: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+    retroactiveReason: retroactiveReasonSchema.optional(),
+    retroactiveJustification: z.string().trim().max(1500).optional(),
     plannedTaskId: z.number().int().optional(),
     createNonconformity: z.boolean().default(false),
     severity: z.enum(["critical", "high", "medium", "low"]).default("medium"),
@@ -786,6 +794,8 @@ export const qualityRouter = router({
     const plannedDateKey = authorization.task?.dueAt ? localDateKey(new Date(authorization.task.dueAt)) : null;
     const todayKey = localDateKey(new Date());
     if (input.performedAt && (!authorization.isPreviousPending || !plannedDateKey || input.performedAt < plannedDateKey || input.performedAt > todayKey)) throw new TRPCError({ code: "BAD_REQUEST", message: "A data de realização deve situar-se entre a data prevista do controlo e hoje." });
+    if (authorization.isPreviousPending && !input.retroactiveReason) throw new TRPCError({ code: "BAD_REQUEST", message: "Selecione a justificação do preenchimento fora da data prevista." });
+    if (authorization.isPreviousPending && input.retroactiveReason === "other" && !input.retroactiveJustification?.trim()) throw new TRPCError({ code: "BAD_REQUEST", message: "Indique a justificação para a opção selecionada." });
     const completedAt = input.performedAt ? new Date(`${input.performedAt}T12:00:00`) : new Date();
     await db.insert(controlEntries).values({
       module: input.module,
@@ -800,6 +810,7 @@ export const qualityRouter = router({
         plannedDate: authorization.task?.dueAt ? new Date(authorization.task.dueAt).toISOString() : null,
         registeredAgainstPreviousPlan: authorization.isPreviousPending ?? false,
         actualVerificationDate: input.performedAt ?? localDateKey(completedAt),
+        retroactiveJustification: authorization.isPreviousPending && input.retroactiveReason ? { code: input.retroactiveReason, label: retroactiveReasonLabels[input.retroactiveReason], details: input.retroactiveReason === "other" ? input.retroactiveJustification?.trim() ?? null : null } : null,
       },
       completedAt,
       registeredByProfileId: ctx.operatorProfile!.id,

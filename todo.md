@@ -402,3 +402,4 @@
 - [ ] Gerar uma nova revisão quando um controlo retroativo for concluído.
 - [ ] Agendar o arquivo diário inicial e disponibilizar o histórico de versões nos Relatórios.
 - [x] Mostrar o progresso das três fábricas relativo à data prevista ao preencher um controlo pendente.
+- [x] Exigir e guardar uma justificação quando um controlo é preenchido fora da data prevista.
