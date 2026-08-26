@@ -42,6 +42,7 @@ type OccurrenceItem = {
 type SimilarIncidenceFilter = { title: string; module: string; factoryId: number | null; total: number };
 
 const normaliseSimilarTitle = (value: string) => value.trim().toLocaleLowerCase("pt-PT").replace(/\s+/g, " ");
+const treatmentStatusFor = (item: { treatmentStatus?: string; generatedNonconformity?: boolean }): OccurrenceItem["treatmentStatus"] => item.treatmentStatus === "no_nc" ? "no_nc" : item.generatedNonconformity ? "nc_generated" : "pending";
 
 export default function Nonconformities() {
   const utils = trpc.useUtils();
@@ -57,6 +58,7 @@ export default function Nonconformities() {
   const [incidencePhotosDraft, setIncidencePhotosDraft] = useState<OccurrenceItem["evidencePhotos"]>([]);
   const [confirmDeleteIncidence, setConfirmDeleteIncidence] = useState(false);
   const [similarFilter, setSimilarFilter] = useState<SimilarIncidenceFilter | null>(null);
+  const [treatmentFilter, setTreatmentFilter] = useState<"all" | "pending">("all");
   const filters = useMemo(() => ({
     factoryId: factoryId ? Number(factoryId) : undefined,
     startDate: startDate ? new Date(`${startDate}T12:00:00`) : undefined,
@@ -92,7 +94,10 @@ export default function Nonconformities() {
 
   const factoryName = (id: number | null | undefined) => metadata.data?.factories.find((factory) => factory.id === id)?.name ?? "Sem fábrica/linha";
   const occurrences = useMemo<OccurrenceItem[]>(() => [
-    ...(incidences.data ?? []).filter((item) => !similarFilter || (item.result === "NC" && !item.generatedNonconformity && item.module === similarFilter.module && item.factoryId === similarFilter.factoryId && normaliseSimilarTitle(item.title) === normaliseSimilarTitle(similarFilter.title))).map((item) => ({
+    ...(incidences.data ?? []).filter((item) => {
+      const matchesSimilar = !similarFilter || (item.result === "NC" && !item.generatedNonconformity && item.module === similarFilter.module && item.factoryId === similarFilter.factoryId && normaliseSimilarTitle(item.title) === normaliseSimilarTitle(similarFilter.title));
+      return matchesSimilar && (treatmentFilter !== "pending" || treatmentStatusFor(item) === "pending");
+    }).map((item) => ({
       key: `i-${item.id}`,
       type: "incidence" as const,
       id: item.id,
@@ -105,7 +110,7 @@ export default function Nonconformities() {
       severity: null,
       status: item.treatmentStatus === "nc_generated" ? "linked" : item.treatmentStatus,
       generatedNonconformity: item.generatedNonconformity,
-      treatmentStatus: (item.treatmentStatus === "no_nc" ? "no_nc" : item.generatedNonconformity ? "nc_generated" : "pending") as OccurrenceItem["treatmentStatus"],
+      treatmentStatus: treatmentStatusFor(item),
       nonconformityId: item.nonconformityId,
       occurrenceNumber: item.occurrenceNumber,
       registeredByProfileId: item.registeredByProfileId,
@@ -113,7 +118,7 @@ export default function Nonconformities() {
       registeredByTitle: item.registeredByTitle,
       evidencePhotos: Array.isArray((item.payload as any)?.evidencePhotos) ? (item.payload as any).evidencePhotos : Array.isArray((item.payload as any)?.photos) ? (item.payload as any).photos : [],
     })),
-    ...(!similarFilter ? ncs.data ?? [] : []).map((item) => ({
+    ...(!similarFilter && treatmentFilter !== "pending" ? ncs.data ?? [] : []).map((item) => ({
       key: `n-${item.id}`,
       type: "nonconformity" as const,
       id: item.id,
@@ -134,7 +139,7 @@ export default function Nonconformities() {
       registeredByTitle: item.reportedByTitle,
       evidencePhotos: [],
     })),
-  ].sort((left, right) => new Date(right.date).getTime() - new Date(left.date).getTime()), [incidences.data, ncs.data, similarFilter]);
+  ].sort((left, right) => new Date(right.date).getTime() - new Date(left.date).getTime()), [incidences.data, ncs.data, similarFilter, treatmentFilter]);
   const selected = occurrences.find((item) => item.key === selectedKey) ?? null;
   const localOpenNcCount = ncs.data?.filter((item) => item.status !== "closed").length ?? 0;
   const generatedExternalOpenNcCount = (incidences.data ?? []).filter((item) => item.generatedNonconformity && !item.nonconformityId).length;
@@ -149,7 +154,7 @@ export default function Nonconformities() {
     setConfirmDeleteIncidence(false);
   }, [selected?.key, selected?.occurrenceNumber]);
 
-  const clearDates = () => { setStartDate(""); setEndDate(""); setSelectedKey(""); };
+  const clearDates = () => { setStartDate(""); setEndDate(""); setTreatmentFilter("all"); setSelectedKey(""); };
   const openSimilarIncidences = (alert: SimilarIncidenceFilter) => {
     const since = new Date();
     since.setMonth(since.getMonth() - 6);
@@ -174,6 +179,7 @@ export default function Nonconformities() {
 
   return <div className="app-grid min-h-full -m-4 p-4 md:-m-6 md:p-6"><section className="mx-auto max-w-7xl space-y-6">
     <header className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between"><div><p className="font-mono-ui text-xs uppercase tracking-[0.18em] text-red-700">Registo e tratamento transversal</p><h1 className="mt-2 text-3xl font-semibold tracking-tight">Incidências</h1><p className="mt-1 text-sm text-muted-foreground">Acompanhe incidências registadas nos controlos, a decisão sobre a geração de NC e as Não Conformidades formalmente abertas.</p><div className="mt-4 grid gap-2 sm:grid-cols-3"><div className="flex items-center gap-2"><Factory className="h-4 w-4 text-red-700" /><Select value={factoryId || "all"} onValueChange={(value) => { setFactoryId(value === "all" ? "" : value); setSelectedKey(""); }}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">Todas as fábricas e linhas</SelectItem>{(metadata.data?.factories ?? []).map((factory) => <SelectItem key={factory.id} value={String(factory.id)}>{factory.name}</SelectItem>)}</SelectContent></Select></div><div><Label className="mb-1 block text-xs">Data inicial</Label><Input type="date" value={startDate} onChange={(event) => { setStartDate(event.target.value); if (endDate && event.target.value > endDate) setEndDate(event.target.value); setSelectedKey(""); }} /></div><div><Label className="mb-1 block text-xs">Data final</Label><Input type="date" min={startDate} value={endDate} onChange={(event) => { setEndDate(event.target.value); setSelectedKey(""); }} /></div></div><div className="mt-2"><Button variant="ghost" size="sm" onClick={clearDates}>Limpar intervalo de datas</Button></div></div><div className="rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-800"><ShieldAlert className="mr-2 inline h-4 w-4" />{openNcCount} Não Conformidades abertas</div></header>
+    <Card className="border border-amber-200 bg-amber-50/60"><CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between"><div><p className="font-medium text-amber-950">Estado de tratamento</p><p className="mt-1 text-sm text-amber-800">Mostre apenas as incidências que aguardam uma decisão sobre NC.</p></div><Select value={treatmentFilter} onValueChange={(value) => { setTreatmentFilter(value as "all" | "pending"); setSelectedKey(""); }}><SelectTrigger aria-label="Filtrar incidências por estado de tratamento" className="w-full bg-white sm:w-64"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">Todas as incidências</SelectItem><SelectItem value="pending">Tratamento pendente</SelectItem></SelectContent></Select></CardContent></Card>
     <OfflineIncidencePanel />
     {!canManage && canEditSelectedIncidence && selected?.type === "incidence" ? <Card className="border border-teal-200 bg-teal-50/60"><CardContent className="space-y-3 p-4"><div><p className="font-medium text-teal-950">Editar a incidência registada por si</p><p className="mt-1 text-sm text-teal-800">Pode corrigir o título, as observações e juntar fotografias. A decisão sobre abertura de NC permanece a cargo da Responsável de Qualidade.</p></div>{editingIncidence ? <div className="space-y-3"><Input aria-label="Título da incidência" value={incidenceTitleDraft} onChange={(event) => setIncidenceTitleDraft(event.target.value)} /><Textarea aria-label="Observações da incidência" value={incidenceNotesDraft} onChange={(event) => setIncidenceNotesDraft(event.target.value)} rows={4} /><div className="space-y-2"><Label htmlFor="incidence-photo">Fotografias de evidência</Label><Input id="incidence-photo" type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => addIncidencePhoto(event.target.files?.[0])} disabled={uploadIncidencePhoto.isPending} />{incidencePhotosDraft.length ? <div className="flex flex-wrap gap-2">{incidencePhotosDraft.map((photo, index) => <div key={`${photo.url}-${index}`} className="relative"><img src={photo.url} alt={photo.fileName} className="h-16 w-16 rounded-lg border border-teal-200 object-cover" /><Button type="button" size="icon" variant="destructive" className="absolute -right-2 -top-2 h-5 w-5" aria-label={`Remover ${photo.fileName}`} onClick={() => setIncidencePhotosDraft((current) => current.filter((_, photoIndex) => photoIndex !== index))}><Trash2 className="h-3 w-3" /></Button></div>)}</div> : null}</div><div className="flex flex-wrap gap-2"><Button type="button" size="sm" onClick={() => updateIncidence.mutate({ id: selected.id, title: incidenceTitleDraft, notes: incidenceNotesDraft, evidencePhotos: incidencePhotosDraft }, { onSuccess: () => { invalidateIncidencePanels(); setEditingIncidence(false); toast.success("Incidência atualizada."); } })} disabled={updateIncidence.isPending || uploadIncidencePhoto.isPending}><Save className="mr-2 h-4 w-4" />Guardar alterações</Button><Button type="button" size="sm" variant="outline" onClick={() => { setEditingIncidence(false); setIncidencePhotosDraft(selected.evidencePhotos); }}>Cancelar</Button></div></div> : <Button type="button" size="sm" variant="outline" onClick={() => setEditingIncidence(true)}><Pencil className="mr-2 h-4 w-4" />Editar a minha incidência</Button>}</CardContent></Card> : null}
     {canManage && recurrenceAlerts.data?.length ? <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-amber-950"><div className="flex items-start gap-3"><AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-700" /><div><p className="font-semibold">Avaliação de Não Conformidade recomendada</p><p className="mt-1 text-sm text-amber-900">Os colaboradores abaixo acumularam pelo menos 3 incidências ainda sem NC gerada nos últimos 6 meses.</p><div className="mt-3 flex flex-wrap gap-2">{recurrenceAlerts.data.map((alert) => <Badge key={alert.collaboratorId} className="bg-amber-200 text-amber-950 hover:bg-amber-200">{alert.collaboratorName} · {alert.total} incidências</Badge>)}</div></div></div></div> : null}

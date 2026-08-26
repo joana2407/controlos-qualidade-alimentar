@@ -110,12 +110,69 @@ function downloadFullWorkbook(entries: any[], incidences: any[], factoryName: (i
   XLSX.writeFile(workbook, "relatorio-operacional-filtrado.xlsx", { compression: true });
 }
 
+function downloadArchivedWorkbook(archive: any) {
+  const snapshot = asRecord(archive.snapshot);
+  const plannedTasks = Array.isArray(snapshot.plannedTasks) ? snapshot.plannedTasks : [];
+  const controlEntries = Array.isArray(snapshot.controlEntries) ? snapshot.controlEntries : [];
+  const incidences = Array.isArray(snapshot.incidences) ? snapshot.incidences : [];
+  const dailyNotes = Array.isArray(snapshot.dailyNotes) ? snapshot.dailyNotes : [];
+  const workbook = XLSX.utils.book_new();
+  const operationalDate = archive.operationalDate ? new Date(archive.operationalDate) : new Date();
+  const rowForEntry = (entry: any) => ({
+    Data: entry.completedAt ? dateFormat(entry.completedAt) : "",
+    Controlo: moduleLabel(entry.module ?? "not_applicable"),
+    "Fábrica / linha": entry.factoryName ?? entry.factory ?? "",
+    Área: entry.area ?? "",
+    Resultado: entry.result ?? "",
+    Título: entry.title ?? "",
+    "Registado por": entry.registeredByName ?? "",
+    Função: entry.registeredByTitle ?? "",
+    Observações: entry.notes ?? "",
+    ...Object.fromEntries(flattenPayload(asRecord(entry.payload)).map((detail) => [`Detalhe · ${detail.label}`, detail.value])),
+  });
+  XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet([{
+    "Data operacional": dateFormat(operationalDate, false),
+    Versão: `V${archive.revision}`,
+    Tipo: archive.archiveKind === "initial" ? "Arquivo diário inicial" : "Revisão retroativa",
+    "Criado em": archive.createdAt ? dateFormat(archive.createdAt) : "",
+    "Criado por": archive.createdBy ?? "",
+    "Motivo da revisão": archive.revisionReason ?? "",
+    "Tarefas planeadas": plannedTasks.length,
+    Controlos: controlEntries.length,
+    Incidências: incidences.length,
+    Anotações: dailyNotes.length,
+  }]), "Resumo da versão");
+  XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(plannedTasks.map((task: any) => ({
+    Controlo: moduleLabel(task.module ?? "not_applicable"),
+    "Fábrica / linha": task.factoryName ?? task.factory ?? "",
+    Responsável: task.responsible ?? task.assignedToName ?? "",
+    Estado: displayValue(task.status ?? "pending"),
+    Data: task.dueAt ? dateFormat(task.dueAt) : "",
+  }))), "Tarefas planeadas");
+  XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(controlEntries.map(rowForEntry)), "Controlos");
+  XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(incidences.map(rowForEntry)), "Incidências");
+  XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(dailyNotes.map((note: any) => ({
+    Anotação: note.note ?? "",
+    "Atualizada por": note.updatedByName ?? note.createdBy ?? "",
+    Data: note.updatedAt ? dateFormat(note.updatedAt) : "",
+  }))), "Anotações");
+  const dateForFile = operationalDate.toISOString().slice(0, 10);
+  XLSX.writeFile(workbook, `arquivo-diario-${dateForFile}-V${archive.revision}.xlsx`, { compression: true });
+}
+
+function ArchiveExcelExport({ archives, selectedId, onSelected, detail }: { archives: any[]; selectedId: number | null; onSelected: (id: number) => void; detail: any }) {
+  if (!archives.length) return null;
+  return <Card className="border border-teal-200 bg-teal-50/60"><CardContent className="flex flex-col gap-4 p-5 lg:flex-row lg:items-end lg:justify-between"><div><p className="font-medium text-teal-950">Exportar uma versão arquivada</p><p className="mt-1 text-sm text-teal-800">Gere um ficheiro Excel com o snapshot imutável da versão selecionada.</p></div><div className="flex flex-col gap-2 sm:flex-row sm:items-end"><div className="min-w-64 space-y-1"><label className="text-xs font-medium text-teal-950">Versão a exportar</label><Select value={selectedId ? String(selectedId) : ""} onValueChange={(value) => onSelected(Number(value))}><SelectTrigger aria-label="Versão arquivada a exportar para Excel"><SelectValue placeholder="Selecione uma versão" /></SelectTrigger><SelectContent>{archives.map((archive) => <SelectItem key={archive.id} value={String(archive.id)}>{dateFormat(archive.operationalDate, false)} · V{archive.revision}</SelectItem>)}</SelectContent></Select></div><Button type="button" onClick={() => detail.data && downloadArchivedWorkbook(detail.data)} disabled={!detail.data || detail.isLoading}><Download className="mr-2 h-4 w-4" />{detail.isLoading ? "A preparar…" : "Exportar versão Excel"}</Button></div></CardContent></Card>;
+}
+
 export default function Reports() {
   const { activeProfile, canManage } = useQualityAccess();
   const utils = trpc.useUtils();
   const archiveHistory = trpc.quality.dailyReportArchiveHistory?.useQuery?.() ?? { data: [], isLoading: false };
   const [selectedArchiveId, setSelectedArchiveId] = useState<number | null>(() => Number(new URLSearchParams(window.location.search).get("archiveId")) || null);
   const archiveDetail = trpc.quality.dailyReportArchiveDetail?.useQuery?.({ id: selectedArchiveId ?? 0 }, { enabled: Boolean(selectedArchiveId) }) ?? { data: null, isLoading: false };
+  const [archiveExportId, setArchiveExportId] = useState<number | null>(null);
+  const archiveExportDetail = trpc.quality.dailyReportArchiveDetail?.useQuery?.({ id: archiveExportId ?? 0 }, { enabled: Boolean(archiveExportId) }) ?? { data: null, isLoading: false };
   const markArchiveViewed = trpc.quality.markDailyReportArchiveViewed?.useMutation?.({ onSuccess: () => { utils.quality.dailyReportArchiveAttention?.invalidate(); } }) ?? { mutate: () => undefined };
   const today = new Date().toISOString().slice(0, 10);
   const [factoryId, setFactoryId] = useState("");
@@ -156,7 +213,7 @@ export default function Reports() {
   const resetFilters = () => { setFactoryId(""); setStartDate(today); setEndDate(today); setModule(""); setResult(""); setNcStatus(""); setOrderNumber(""); setAnalysisProduct(""); setAnalysisClient(""); setCollaboratorProfileId(""); };
   const filterLabels = { "Data inicial": startDate, "Data final": endDate, "Fábrica / linha": selectedFactory, Colaborador: selectedCollaborator, Controlo: module ? moduleLabel(module) : "Todos os controlos", Resultado: result || "Todos os resultados", "Estado da NC": ncStatus || "Todos os estados", Encomenda: orderNumber, Produto: analysisProduct, Cliente: analysisClient };
 
-  return <div className="reports-redesign app-grid min-h-full -m-4 p-4 md:-m-6 md:p-6"><section className="mx-auto max-w-7xl space-y-8">
+  return <div className="reports-redesign app-grid min-h-full -m-4 p-4 md:-m-6 md:p-6"><section className="mx-auto max-w-7xl space-y-8"><ArchiveExcelExport archives={archiveHistory.data ?? []} selectedId={archiveExportId} onSelected={setArchiveExportId} detail={archiveExportDetail} />
     <header className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between"><div><p className="font-mono-ui text-xs uppercase tracking-[0.18em] text-teal-700">Consulta operacional</p><h1 className="mt-2 text-3xl font-semibold tracking-tight">Relatórios</h1><p className="mt-1 max-w-2xl text-sm text-muted-foreground">Um único conjunto de filtros controla controlos, incidências, indicadores e a exportação Excel.</p></div><Button onClick={() => downloadFullWorkbook(entries, incidences, factoryName, filterLabels)} disabled={!entries.length}><Download className="mr-2 h-4 w-4" />Exportar Excel completo</Button></header>
 
     <Card className="border-0 panel-shadow"><CardHeader className="flex-row items-center justify-between gap-3"><div><CardTitle className="flex items-center gap-2"><Search className="h-4 w-4 text-teal-700" />Filtros do relatório</CardTitle><CardDescription>Aplicados a todos os dados e à exportação.</CardDescription></div><Button size="sm" variant="ghost" onClick={resetFilters}><RotateCcw className="mr-1 h-3.5 w-3.5" />Limpar</Button></CardHeader><CardContent className="space-y-3"><div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7"><div className="space-y-1"><label className="text-xs font-medium">Fábrica / linha</label><Select value={factoryId || "all"} onValueChange={(value) => setFactoryId(value === "all" ? "" : value)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">Todas as fábricas e linhas</SelectItem>{(metadata.data?.factories ?? []).map((factory) => <SelectItem key={factory.id} value={String(factory.id)}>{factory.name}</SelectItem>)}</SelectContent></Select></div><div className="space-y-1"><label className="text-xs font-medium">Data inicial</label><Input aria-label="Data inicial da análise" type="date" value={startDate} onChange={(event) => { setStartDate(event.target.value); if (event.target.value > endDate) setEndDate(event.target.value); }} /></div><div className="space-y-1"><label className="text-xs font-medium">Data final</label><Input aria-label="Data final da análise" type="date" min={startDate} value={endDate} onChange={(event) => setEndDate(event.target.value)} /></div><div className="space-y-1"><label className="text-xs font-medium">Colaborador</label><Select value={collaboratorProfileId || "all"} onValueChange={(value) => setCollaboratorProfileId(value === "all" ? "" : value)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">Todos os colaboradores</SelectItem>{(metadata.data?.collaborators ?? []).map((collaborator) => <SelectItem key={collaborator.id} value={String(collaborator.id)}>{collaborator.name}</SelectItem>)}</SelectContent></Select></div><div className="space-y-1"><label className="text-xs font-medium">Controlo</label><Select value={module || "all"} onValueChange={(value) => { const next = value === "all" ? "" : value; setModule(next); if (next !== "internal_analysis") { setAnalysisProduct(""); setAnalysisClient(""); } }}><SelectTrigger aria-label="Filtrar análise por controlo"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">Todos os controlos</SelectItem>{MODULES.map((item) => <SelectItem key={item.id} value={item.id}>{item.label}</SelectItem>)}</SelectContent></Select></div><div className="space-y-1"><label className="text-xs font-medium">Resultado</label><Select value={result || "all"} onValueChange={(value) => setResult(value === "all" ? "" : value)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">Todos os resultados</SelectItem><SelectItem value="C">Conforme (C)</SelectItem><SelectItem value="NC">Não conforme (NC)</SelectItem><SelectItem value="N/A">Não aplicável (N/A)</SelectItem></SelectContent></Select></div><div className="space-y-1"><label className="text-xs font-medium">Estado da NC</label><Select value={ncStatus || "all"} onValueChange={(value) => setNcStatus(value === "all" ? "" : value)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">Todos os estados</SelectItem><SelectItem value="open">Aberta</SelectItem><SelectItem value="in_progress">Em tratamento</SelectItem><SelectItem value="awaiting_validation">A aguardar validação</SelectItem><SelectItem value="closed">Fechada</SelectItem></SelectContent></Select></div>{module === "dispatch_control" ? <div className="space-y-1"><label className="text-xs font-medium">N.º encomenda</label><Select value={orderNumber || "all"} onValueChange={(value) => setOrderNumber(value === "all" ? "" : value)}><SelectTrigger><SelectValue placeholder="Todas as encomendas" /></SelectTrigger><SelectContent><SelectItem value="all">Todas as encomendas</SelectItem>{(data?.dispatchOrders ?? []).map((order) => <SelectItem key={order.orderNumber} value={order.orderNumber}>{order.orderNumber} · {order.customer ?? "Sem cliente"}</SelectItem>)}</SelectContent></Select></div> : null}</div>{isInternalAnalysis ? <div className="grid gap-3 rounded-lg border border-violet-100 bg-violet-50/50 p-3 md:grid-cols-2"><div className="space-y-1"><label className="text-xs font-medium text-violet-900">Produto</label><Input aria-label="Filtrar análises por produto" value={analysisProduct} onChange={(event) => setAnalysisProduct(event.target.value)} placeholder="Ex.: farinha, pão" /></div><div className="space-y-1"><label className="text-xs font-medium text-violet-900">Cliente</label><Input aria-label="Filtrar análises por cliente" value={analysisClient} onChange={(event) => setAnalysisClient(event.target.value)} placeholder="Nome do cliente" /></div></div> : null}</CardContent></Card>

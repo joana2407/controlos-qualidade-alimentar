@@ -1282,11 +1282,13 @@ export const qualityRouter = router({
         nonconformityStatus: linked?.status ?? null,
       };
     });
+    const pendingTreatment = incidences.filter((item) => item.treatmentStatus === "pending").length;
     return {
       date: start,
       total: incidences.length,
       withNonconformity: incidences.filter((item) => item.generatedNonconformity).length,
-      withoutNonconformity: incidences.filter((item) => !item.generatedNonconformity).length,
+      withoutNonconformity: incidences.filter((item) => item.treatmentStatus === "no_nc").length,
+      pendingTreatment,
       note: savedNotes[0]?.note ?? "",
       noteUpdatedByName: savedNotes[0]?.updatedByName ?? null,
       noteUpdatedAt: savedNotes[0]?.updatedAt ?? null,

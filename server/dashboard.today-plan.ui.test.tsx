@@ -8,7 +8,7 @@ vi.mock("@/lib/trpc", () => ({
     quality: {
       metadata: { useQuery: () => ({ data: { factories: [] } }) },
       dashboard: { useQuery: vi.fn(() => ({ isLoading: false, data: { operationalDate: new Date("2026-08-20T10:00:00Z"), metrics: { pending: 0, overdue: 0, criticalOpen: 0, fragilePending: 0, completedToday: 0, dailyExecutionRate: 0 }, plannedControls: [], tasks: [], taskGroups: { today: [], tomorrow: [], thisWeek: [] }, criticalNcs: [] } })) },
-      dailyIncidenceSummary: { useQuery: () => ({ data: { total: 0, withNonconformity: 0, withoutNonconformity: 0, note: null, incidences: [] } }) },
+      dailyIncidenceSummary: { useQuery: () => ({ data: { total: 0, withNonconformity: 0, withoutNonconformity: 0, pendingTreatment: 0, note: null, incidences: [] } }) },
     },
   },
 }));
@@ -27,6 +27,7 @@ describe("painel Hoje — Plano do Dia", () => {
     expect(screen.getByText("Sem controlos agendados")).toBeTruthy();
     expect(screen.getByText("Sem tarefas agendadas")).toBeTruthy();
     expect(screen.getAllByText("Incidências do dia").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("A aguardar decisão").length).toBeGreaterThan(0);
     expect(screen.queryByText("Tarefas atrasadas")).toBeNull();
     expect(screen.queryByText("Quebráveis pendentes")).toBeNull();
   });

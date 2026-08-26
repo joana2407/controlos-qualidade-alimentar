@@ -43,6 +43,16 @@ describe("detalhe de incidência com evidências", () => {
     expect(screen.queryByText("Não gerou NC")).toBeNull();
   });
 
+  it("permite filtrar a lista por tratamento pendente", () => {
+    render(<Nonconformities />);
+
+    fireEvent.click(screen.getByRole("combobox", { name: "Filtrar incidências por estado de tratamento" }));
+    fireEvent.click(screen.getByRole("option", { name: "Tratamento pendente" }));
+
+    expect(screen.getByRole("combobox", { name: "Filtrar incidências por estado de tratamento" }).textContent).toMatch(/tratamento pendente/i);
+    expect(screen.getByRole("button", { name: /Incidência com foto/i })).toBeTruthy();
+  });
+
   it("abre diretamente a lista filtrada pelo grupo indicado no aviso de NC", () => {
     similarAlerts.push({ title: "Incidência com foto", module: "bphf", factoryId: 1, factoryName: "Fábrica 1 (Fatiado)", total: 3 });
     render(<Nonconformities />);

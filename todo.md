@@ -411,3 +411,6 @@
 - [x] Corrigir a criação duplicada de incidências registadas no telemóvel, garantindo idempotência na sincronização.
 - [x] Atualizar todos os painéis, indicadores e avisos após editar ou eliminar uma incidência.
 - [x] Mostrar «Tratamento pendente» nas novas incidências até ser tomada uma decisão sobre NC.
+- [x] Adicionar um filtro de «Tratamento pendente» no painel de Incidências.
+- [x] Mostrar no painel Hoje o número de incidências a aguardar decisão de tratamento.
+- [x] Permitir exportar para Excel cada versão arquivada de um relatório diário.
