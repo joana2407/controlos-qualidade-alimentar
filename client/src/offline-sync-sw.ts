@@ -7,6 +7,7 @@ declare const self: ServiceWorkerGlobalScope & { __WB_MANIFEST: Array<unknown> }
 const DB_NAME = "qualicontrol-offline";
 const STORE_NAME = "offline-incidences";
 const SYNC_TAG = "qualicontrol-incidence-sync";
+let activeWorkerSync: Promise<void> | null = null;
 
 self.skipWaiting();
 clientsClaim();
@@ -63,11 +64,17 @@ async function syncOfflineIncidencesInWorker() {
   await notifyClients();
 }
 
+function synchroniseOnce() {
+  if (activeWorkerSync) return activeWorkerSync;
+  activeWorkerSync = syncOfflineIncidencesInWorker().finally(() => { activeWorkerSync = null; });
+  return activeWorkerSync;
+}
+
 self.addEventListener("sync", (event) => {
   const syncEvent = event as Event & { tag: string; waitUntil: (promise: Promise<unknown>) => void };
-  if (syncEvent.tag === SYNC_TAG) syncEvent.waitUntil(syncOfflineIncidencesInWorker());
+  if (syncEvent.tag === SYNC_TAG) syncEvent.waitUntil(synchroniseOnce());
 });
 
 self.addEventListener("message", (event) => {
-  if (event.data?.type === "SYNC_OFFLINE_INCIDENCES") event.waitUntil(syncOfflineIncidencesInWorker());
+  if (event.data?.type === "SYNC_OFFLINE_INCIDENCES") event.waitUntil(synchroniseOnce());
 });

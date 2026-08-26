@@ -1072,7 +1072,8 @@ export const qualityRouter = router({
       const payload = entry.payload && typeof entry.payload === "object" && !Array.isArray(entry.payload) ? entry.payload as Record<string, unknown> : {};
       const occurrenceNumber = typeof payload.nonconformityOccurrenceNumber === "string" ? payload.nonconformityOccurrenceNumber : null;
       const generatedNonconformity = Boolean(linked) || payload.generatedNonconformity === true;
-      return { ...entry, factoryName: entry.factoryId ? factoryNames.get(entry.factoryId) ?? "Fábrica não identificada" : "Sem fábrica/linha", generatedNonconformity, nonconformityId: linked?.id ?? null, occurrenceNumber };
+      const treatmentStatus = generatedNonconformity ? "nc_generated" : payload.treatmentDecision === "no_nc" ? "no_nc" : "pending";
+      return { ...entry, factoryName: entry.factoryId ? factoryNames.get(entry.factoryId) ?? "Fábrica não identificada" : "Sem fábrica/linha", generatedNonconformity, treatmentStatus, nonconformityId: linked?.id ?? null, occurrenceNumber };
     });
   }),
 
@@ -1155,7 +1156,10 @@ export const qualityRouter = router({
     if (!isManager && !isAuthor) throw new TRPCError({ code: "FORBIDDEN", message: "Apenas o técnico que registou a incidência ou a Responsável de Qualidade a pode editar." });
     if (!isManager && (input.generatedNonconformity !== undefined || input.occurrenceNumber !== undefined)) throw new TRPCError({ code: "FORBIDDEN", message: "A decisão e o número de NC são geridos pela Responsável de Qualidade." });
     const payload = entry.payload && typeof entry.payload === "object" && !Array.isArray(entry.payload) ? { ...entry.payload } as Record<string, unknown> : {};
-    if (input.generatedNonconformity !== undefined) payload.generatedNonconformity = input.generatedNonconformity;
+    if (input.generatedNonconformity !== undefined) {
+      payload.generatedNonconformity = input.generatedNonconformity;
+      payload.treatmentDecision = input.generatedNonconformity ? "nc_generated" : "no_nc";
+    }
     if (input.occurrenceNumber !== undefined) payload.nonconformityOccurrenceNumber = input.occurrenceNumber.trim() || null;
     if (input.evidencePhotos !== undefined) payload.evidencePhotos = input.evidencePhotos;
     const history = Array.isArray(payload.editHistory) ? payload.editHistory : [];
@@ -1222,7 +1226,10 @@ export const qualityRouter = router({
       .filter((entry) => entry.result === "NC" && entry.completedAt >= start && entry.completedAt < end)
       .map((entry) => {
         const linked = ncRows.find((nc) => nc.sourceEntryId === entry.id);
-        return { ...entry, detectedAt: entry.completedAt, factoryName: entry.factoryId ? factoryNames.get(entry.factoryId) ?? "Fábrica não identificada" : "Sem fábrica/linha", generatedNonconformity: Boolean(linked), nonconformityId: linked?.id ?? null };
+        const payload = entry.payload && typeof entry.payload === "object" && !Array.isArray(entry.payload) ? entry.payload as Record<string, unknown> : {};
+        const generatedNonconformity = Boolean(linked) || payload.generatedNonconformity === true;
+        const treatmentStatus = generatedNonconformity ? "nc_generated" : payload.treatmentDecision === "no_nc" ? "no_nc" : "pending";
+        return { ...entry, detectedAt: entry.completedAt, factoryName: entry.factoryId ? factoryNames.get(entry.factoryId) ?? "Fábrica não identificada" : "Sem fábrica/linha", generatedNonconformity, treatmentStatus, nonconformityId: linked?.id ?? null };
       });
     const grouped = new Map<string, number>();
     incidences.forEach((incidence) => grouped.set(incidence.factoryName, (grouped.get(incidence.factoryName) ?? 0) + 1));
@@ -1254,6 +1261,9 @@ export const qualityRouter = router({
       .filter((nc) => nc.detectedAt >= start && nc.detectedAt < end);
     const incidences = scopedEntries.map((entry) => {
       const linked = scopedNcs.find((nc) => nc.sourceEntryId === entry.id) ?? scopedNcs.find((nc) => !nc.sourceEntryId && nc.module === entry.module && nc.factoryId === entry.factoryId && nc.area === entry.area);
+      const payload = entry.payload && typeof entry.payload === "object" && !Array.isArray(entry.payload) ? entry.payload as Record<string, unknown> : {};
+      const generatedNonconformity = Boolean(linked) || payload.generatedNonconformity === true;
+      const treatmentStatus = generatedNonconformity ? "nc_generated" : payload.treatmentDecision === "no_nc" ? "no_nc" : "pending";
       return {
         id: entry.id,
         title: entry.title,
@@ -1265,7 +1275,8 @@ export const qualityRouter = router({
         notes: entry.notes,
         registeredByName: entry.registeredByName,
         registeredByTitle: entry.registeredByTitle,
-        generatedNonconformity: Boolean(linked),
+        generatedNonconformity,
+        treatmentStatus,
         nonconformityId: linked?.id ?? null,
         nonconformitySeverity: linked?.severity ?? null,
         nonconformityStatus: linked?.status ?? null,

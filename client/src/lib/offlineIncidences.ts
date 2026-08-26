@@ -18,6 +18,7 @@ export type OfflineIncidenceDraft = {
 
 const DB_NAME = "qualicontrol-offline";
 const STORE_NAME = "offline-incidences";
+let activeSync: Promise<{ synced: number; pending: number }> | null = null;
 
 function announceQueueChange() {
   if (typeof window !== "undefined") window.dispatchEvent(new Event(OFFLINE_INCIDENCE_EVENT));
@@ -71,7 +72,7 @@ async function requestBackgroundSync() {
   registration.active?.postMessage({ type: "SYNC_OFFLINE_INCIDENCES" });
 }
 
-export async function syncOfflineIncidences() {
+async function performOfflineIncidenceSync() {
   if (typeof navigator !== "undefined" && !navigator.onLine) return { synced: 0, pending: (await listOfflineIncidences()).length };
   const items = await listOfflineIncidences();
   if (!items.length) return { synced: 0, pending: 0 };
@@ -88,6 +89,12 @@ export async function syncOfflineIncidences() {
   return { synced: result.syncedIds.length, pending: (await listOfflineIncidences()).length };
 }
 
+export function syncOfflineIncidences() {
+  if (activeSync) return activeSync;
+  activeSync = performOfflineIncidenceSync().finally(() => { activeSync = null; });
+  return activeSync;
+}
+
 export async function queueOfflineIncidence(draft: Omit<OfflineIncidenceDraft, "offlineSyncId" | "queuedAt">) {
   const record: OfflineIncidenceDraft = {
     ...draft,
@@ -97,8 +104,8 @@ export async function queueOfflineIncidence(draft: Omit<OfflineIncidenceDraft, "
   await runStore("readwrite", (store) => store.put(record));
   announceQueueChange();
   try {
-    await requestBackgroundSync();
     if (navigator.onLine) return await syncOfflineIncidences();
+    await requestBackgroundSync();
   } catch {
     // A incidência mantém-se na fila local e será reenviada quando a ligação regressar.
   }

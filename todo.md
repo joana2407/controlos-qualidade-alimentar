@@ -407,3 +407,7 @@
 - [x] Exigir a data real de verificação quando o controlo foi adiado por indisponibilidade técnica.
 - [x] Adicionar um indicador visual no painel principal para revisões retroativas ainda não consultadas.
 - [x] Corrigir a completitude por fábrica quando existem pendências retroativas, começando pelo controlo de Temperaturas e validando os restantes controlos.
+- [x] Criar acesso direto no aviso de NC obrigatória para as incidências semelhantes que o originaram.
+- [x] Corrigir a criação duplicada de incidências registadas no telemóvel, garantindo idempotência na sincronização.
+- [x] Atualizar todos os painéis, indicadores e avisos após editar ou eliminar uma incidência.
+- [x] Mostrar «Tratamento pendente» nas novas incidências até ser tomada uma decisão sobre NC.

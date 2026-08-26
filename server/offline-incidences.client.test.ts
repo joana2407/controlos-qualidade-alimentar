@@ -55,4 +55,28 @@ describe("fila offline de incidências", () => {
     await expect(syncOfflineIncidences()).resolves.toEqual({ synced: 1, pending: 0 });
     await expect(listOfflineIncidences()).resolves.toEqual([]);
   });
+
+  it("partilha uma única sincronização quando existem pedidos concorrentes", async () => {
+    await queueOfflineIncidence({
+      title: "Produto mal rotulado",
+      description: "A etiqueta não corresponde ao produto expedido.",
+      factoryId: 1,
+      module: "dispatch_control",
+      photos: [],
+      occurredAt: "2026-08-20T12:00:00.000Z",
+      authorProfileId: 1,
+      authorName: "Sabrina Esteves",
+    });
+    const [queued] = await listOfflineIncidences();
+    setOnline(true);
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ syncedIds: [queued.offlineSyncId] }) });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const [first, second] = await Promise.all([syncOfflineIncidences(), syncOfflineIncidences()]);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(first).toEqual({ synced: 1, pending: 0 });
+    expect(second).toEqual({ synced: 1, pending: 0 });
+    await expect(listOfflineIncidences()).resolves.toEqual([]);
+  });
 });
