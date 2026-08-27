@@ -24,6 +24,7 @@ import {
 } from "../../drizzle/schema";
 import { getDb } from "../db";
 import { createRetroactiveDailyReportRevision } from "../daily-report-archive";
+import { ensureDailyReportArchiveBackup } from "../daily-report-backup";
 import { businessDayAfter, calculateConformityRate, calculateDispatchConformity, calculateSensoryScore, fragileInspectionDelayDays, fragileInspectionDueDate, isBusinessDay, isFragileInspectionPending, nextBusinessDay, shouldCreateCriticalMetalAlert } from "../quality.logic";
 import { calculatePlanCompliance, countOpenNonconformities, scopeToFactory } from "../factory.scope.logic";
 import { storageGetSignedUrl, storagePut } from "../storage";
@@ -1693,8 +1694,15 @@ export const qualityRouter = router({
       : await db.select().from(dailyReportArchives).orderBy(desc(dailyReportArchives.operationalDate), desc(dailyReportArchives.revision));
     return archives.map((archive) => {
       const snapshot = archive.snapshot && typeof archive.snapshot === "object" && !Array.isArray(archive.snapshot) ? archive.snapshot as Record<string, unknown> : {};
-      return { id: archive.id, operationalDate: archive.operationalDate, revision: archive.revision, archiveKind: archive.archiveKind, revisionReason: archive.revisionReason, createdBy: archive.createdBy, createdAt: archive.createdAt, controls: Array.isArray(snapshot.controlEntries) ? snapshot.controlEntries.length : 0, plannedTasks: Array.isArray(snapshot.plannedTasks) ? snapshot.plannedTasks.length : 0, incidences: Array.isArray(snapshot.incidences) ? snapshot.incidences.length : 0 };
+      return { id: archive.id, operationalDate: archive.operationalDate, revision: archive.revision, archiveKind: archive.archiveKind, revisionReason: archive.revisionReason, createdBy: archive.createdBy, createdAt: archive.createdAt, controls: Array.isArray(snapshot.controlEntries) ? snapshot.controlEntries.length : 0, plannedTasks: Array.isArray(snapshot.plannedTasks) ? snapshot.plannedTasks.length : 0, incidences: Array.isArray(snapshot.incidences) ? snapshot.incidences.length : 0, backupFileKey: archive.backupFileKey, backupFileUrl: archive.backupFileUrl, backupGeneratedAt: archive.backupGeneratedAt, backupSizeBytes: archive.backupSizeBytes };
     });
+  }),
+
+  generateDailyReportArchiveBackup: qualityManagerProcedure.input(z.object({ archiveId: z.number().int() })).mutation(async ({ input }) => {
+    const db = await requireDb();
+    const archive = (await db.select().from(dailyReportArchives).where(eq(dailyReportArchives.id, input.archiveId)).limit(1))[0];
+    if (!archive) throw new TRPCError({ code: "NOT_FOUND", message: "Versão de arquivo não encontrada." });
+    return ensureDailyReportArchiveBackup(archive.id);
   }),
 
   dailyReportArchiveDetail: qualitySessionProcedure.input(z.object({ id: z.number().int() })).query(async ({ input }) => {

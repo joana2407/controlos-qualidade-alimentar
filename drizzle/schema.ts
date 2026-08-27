@@ -143,12 +143,17 @@ export const dailyReportArchives = mysqlTable("daily_report_archives", {
   triggerEntryId: int("triggerEntryId"),
   revisionReason: varchar("revisionReason", { length: 500 }),
   snapshot: json("snapshot").$type<Record<string, unknown>>().notNull(),
+  backupFileKey: varchar("backupFileKey", { length: 512 }),
+  backupFileUrl: varchar("backupFileUrl", { length: 1024 }),
+  backupGeneratedAt: timestamp("backupGeneratedAt"),
+  backupSizeBytes: int("backupSizeBytes"),
   createdBy: varchar("createdBy", { length: 120 }).notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 }, (table) => [
   uniqueIndex("daily_report_archive_date_revision_idx").on(table.operationalDate, table.revision),
   index("daily_report_archive_date_idx").on(table.operationalDate),
   index("daily_report_archive_task_idx").on(table.triggerTaskId),
+  index("daily_report_archive_backup_idx").on(table.backupGeneratedAt),
 ]);
 
 /** Consulta individual de uma revisão retroativa; preserva o alerta até cada perfil a abrir. */

@@ -1,8 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 import { controlEntries, controlTasks, dailyIncidenceSummaries, dailyReportArchiveSettings, dailyReportArchives, factories, nonconformities } from "../drizzle/schema";
 
-const archiveMock = vi.hoisted(() => ({ db: null as any }));
+const archiveMock = vi.hoisted(() => ({ db: null as any, backup: vi.fn(async (archiveId: number) => ({ created: true, archiveId })) }));
 vi.mock("./db", () => ({ getDb: async () => archiveMock.db }));
+vi.mock("./daily-report-backup", () => ({ ensureDailyReportArchiveBackup: archiveMock.backup }));
 
 import { buildDailyReportSnapshot, createInitialDailyReportArchive, createRetroactiveDailyReportRevision, isLisbonArchiveTime } from "./daily-report-archive";
 
@@ -87,5 +88,17 @@ describe("arquivo diário de relatórios", () => {
     expect(repeated.created).toBe(false);
     expect(mock.archives).toHaveLength(1);
     expect(mock.archives[0]).toMatchObject({ revision: 1, archiveKind: "initial" });
+  });
+
+  it("gera o ficheiro de backup quando cria cada versão diária", async () => {
+    const mock = createArchiveDb();
+    archiveMock.db = mock.db;
+    archiveMock.backup.mockClear();
+
+    await createInitialDailyReportArchive("2026-08-21");
+    await createRetroactiveDailyReportRevision({ taskId: 4, entryId: 8, dueAt: new Date("2026-08-21T09:00:00"), module: "bphf", reason: "Controlo registado posteriormente", createdBy: "Sabrina Esteves" });
+
+    expect(archiveMock.backup).toHaveBeenCalledWith(1);
+    expect(archiveMock.backup).toHaveBeenCalledWith(2);
   });
 });

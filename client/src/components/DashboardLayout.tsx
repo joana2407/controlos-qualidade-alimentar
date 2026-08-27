@@ -24,7 +24,7 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 import { useIsMobile } from "@/hooks/useMobile";
-import { AlertTriangle, ArrowLeft, BarChart3, BookOpenCheck, Boxes, ChevronDown, ClipboardCheck, ClipboardList, Factory, FilePlus2, FileWarning, FlaskConical, KeyRound, LayoutDashboard, ListChecks, Magnet, MessageSquareMore, MessageSquareWarning, Microscope, PackageSearch, PanelLeft, Ruler, Settings2, ShieldAlert, ShieldCheck, ThermometerSnowflake, TimerReset, TrendingDown, Truck, Wrench } from "lucide-react";
+import { AlertTriangle, Archive, ArrowLeft, BarChart3, BookOpenCheck, Boxes, ChevronDown, ClipboardCheck, ClipboardList, Factory, FilePlus2, FileWarning, FlaskConical, KeyRound, LayoutDashboard, ListChecks, Magnet, MessageSquareMore, MessageSquareWarning, Microscope, PackageSearch, PanelLeft, Ruler, Settings2, ShieldAlert, ShieldCheck, ThermometerSnowflake, TimerReset, TrendingDown, Truck, Wrench } from "lucide-react";
 import React, { CSSProperties, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { useLocation } from "wouter";
@@ -36,6 +36,7 @@ const menuItems = [
   { icon: ClipboardCheck, label: "Controlos", path: "/controlos" },
   { icon: FileWarning, label: "Incidências", path: "/incidencias" },
   { icon: BarChart3, label: "Relatórios", path: "/relatorios" },
+  { icon: Archive, label: "Backups diários", path: "/backups-diarios" },
   { icon: Settings2, label: "Configuração", path: "/configuracao" },
 ];
 

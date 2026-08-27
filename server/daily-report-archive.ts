@@ -1,6 +1,7 @@
 import { desc, eq } from "drizzle-orm";
 import { controlEntries, controlTasks, dailyIncidenceSummaries, dailyReportArchiveSettings, dailyReportArchives, factories, nonconformities } from "../drizzle/schema";
 import { getDb } from "./db";
+import { ensureDailyReportArchiveBackup } from "./daily-report-backup";
 
 export type ArchiveKind = "initial" | "retroactive_revision";
 
@@ -78,11 +79,16 @@ export async function createInitialDailyReportArchive(operationalDate: string, c
   if (!db) throw new Error("Base de dados indisponível para criar o arquivo diário.");
   const dateValue = operationalDateValue(operationalDate);
   const existing = (await db.select().from(dailyReportArchives).where(eq(dailyReportArchives.operationalDate, dateValue))).find((item: any) => item.archiveKind === "initial");
-  if (existing) return { created: false, archive: existing };
+  if (existing) {
+    const backup = await ensureDailyReportArchiveBackup(existing.id);
+    return { created: false, archive: existing, backup };
+  }
   const snapshot = await archiveData(db, operationalDate);
   const revision = await nextRevision(db, operationalDate);
-  await db.insert(dailyReportArchives).values({ operationalDate: dateValue, revision, archiveKind: "initial", triggerTaskId: null, triggerEntryId: null, revisionReason: "Arquivo diário inicial", snapshot, createdBy });
-  return { created: true, revision };
+  const inserted = await db.insert(dailyReportArchives).values({ operationalDate: dateValue, revision, archiveKind: "initial", triggerTaskId: null, triggerEntryId: null, revisionReason: "Arquivo diário inicial", snapshot, createdBy });
+  const archiveId = Number(inserted?.[0]?.insertId);
+  const backup = Number.isInteger(archiveId) && archiveId > 0 ? await ensureDailyReportArchiveBackup(archiveId) : null;
+  return { created: true, revision, archiveId, backup };
 }
 
 export async function createRetroactiveDailyReportRevision(input: { taskId: number; entryId?: number | null; dueAt: Date; module: string; reason: string; createdBy: string }) {
@@ -92,17 +98,24 @@ export async function createRetroactiveDailyReportRevision(input: { taskId: numb
   if (!settings || settings.active !== "true") return { created: false, skipped: "archive_disabled" as const };
   const operationalDate = localDateKey(new Date(input.dueAt));
   const duplicate = (await db.select().from(dailyReportArchives).where(eq(dailyReportArchives.triggerTaskId, input.taskId))).find((archive: any) => archive.archiveKind === "retroactive_revision");
-  if (duplicate) return { created: false, skipped: "already_archived" as const };
+  if (duplicate) {
+    const backup = await ensureDailyReportArchiveBackup(duplicate.id);
+    return { created: false, skipped: "already_archived" as const, backup };
+  }
   const archivesForDate = await db.select().from(dailyReportArchives).where(eq(dailyReportArchives.operationalDate, operationalDateValue(operationalDate))).orderBy(desc(dailyReportArchives.revision));
   const hasInitialArchive = archivesForDate.some((archive: any) => archive.archiveKind === "initial");
   const snapshot = await archiveData(db, operationalDate);
   if (!hasInitialArchive) {
     const recoveryRevision = (archivesForDate[0]?.revision ?? 0) + 1;
-    await db.insert(dailyReportArchives).values({ operationalDate: operationalDateValue(operationalDate), revision: recoveryRevision, archiveKind: "initial", triggerTaskId: null, triggerEntryId: null, revisionReason: "Recuperação do arquivo inicial — o fecho automático das 23:55 não estava disponível.", snapshot, createdBy: "Arquivo automático (recuperação)" });
+    const recovered = await db.insert(dailyReportArchives).values({ operationalDate: operationalDateValue(operationalDate), revision: recoveryRevision, archiveKind: "initial", triggerTaskId: null, triggerEntryId: null, revisionReason: "Recuperação do arquivo inicial — o fecho automático das 23:55 não estava disponível.", snapshot, createdBy: "Arquivo automático (recuperação)" });
+    const recoveredId = Number(recovered?.[0]?.insertId);
+    if (Number.isInteger(recoveredId) && recoveredId > 0) await ensureDailyReportArchiveBackup(recoveredId);
   }
   const revision = await nextRevision(db, operationalDate);
-  await db.insert(dailyReportArchives).values({ operationalDate: operationalDateValue(operationalDate), revision, archiveKind: "retroactive_revision", triggerTaskId: input.taskId, triggerEntryId: input.entryId ?? null, revisionReason: `${input.module}: ${input.reason}`, snapshot, createdBy: input.createdBy });
-  return { created: true, revision, operationalDate };
+  const inserted = await db.insert(dailyReportArchives).values({ operationalDate: operationalDateValue(operationalDate), revision, archiveKind: "retroactive_revision", triggerTaskId: input.taskId, triggerEntryId: input.entryId ?? null, revisionReason: `${input.module}: ${input.reason}`, snapshot, createdBy: input.createdBy });
+  const archiveId = Number(inserted?.[0]?.insertId);
+  const backup = Number.isInteger(archiveId) && archiveId > 0 ? await ensureDailyReportArchiveBackup(archiveId) : null;
+  return { created: true, revision, operationalDate, archiveId, backup };
 }
 
 export async function runScheduledDailyReportArchive(taskUid: string, now = new Date()) {

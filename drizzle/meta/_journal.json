@@ -190,6 +190,13 @@
       "when": 1787690683810,
       "tag": "0027_tan_malcolm_colcord",
       "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "5",
+      "when": 1787800675073,
+      "tag": "0028_shallow_mister_sinister",
+      "breakpoints": true
     }
   ]
 }
