@@ -636,6 +636,21 @@ describe("procedimentos de qualidade por fábrica", () => {
     expect(factoryOne[0]?.lastInspectionAt).toBeNull();
   });
 
+  it("devolve apenas os resultados do controlo, fábrica e data operacional consultados", async () => {
+    const caller = qualityRouter.createCaller(createContext());
+    const results = await caller.dailyControlResults({ module: "bphf", factoryId: 1, operationalDate: now });
+
+    expect(results.entries).toEqual([expect.objectContaining({ id: 1, title: undefined, area: "Produção T", result: "C", registeredByName: "Joana Pina" })]);
+  });
+
+  it("lista apenas as pendências anteriores do controlo acessíveis ao utilizador", async () => {
+    tasks.push({ id: 99, factoryId: 1, status: "pending", dueAt: new Date(2026, 7, 13, 10, 0, 0), completedAt: null, module: "metal_detectors", area: "Plano do Dia", title: "Plano do Dia — Metal F1", responsible: "Ana", assigneeProfileIds: [3] });
+    const caller = qualityRouter.createCaller(createContext());
+    const pendingTasks = await caller.pendingControlTasks({ module: "metal_detectors", factoryId: 1 });
+
+    expect(pendingTasks).toEqual([expect.objectContaining({ id: 99, factoryId: 1 })]);
+  });
+
   it("inclui verificações semanais e mensais quando o Plano do Dia é uma sexta-feira", async () => {
     const caller = qualityRouter.createCaller(createContext());
     const friday = new Date(2026, 7, 14, 12, 0, 0);

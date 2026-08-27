@@ -424,3 +424,5 @@
 - [x] Permitir mais de um registo diário de Temperaturas por equipamento, mantendo pelo menos uma verificação por equipamento agendado.
 - [x] Abrir o painel de Controlos com a data atual por defeito na análise de completude.
 - [x] Permitir criar e eliminar áreas de Quebráveis, além de editar a respetiva designação.
+- [x] Mostrar, abaixo de cada formulário de controlo, os resultados das verificações registadas na data consultada.
+- [x] Indicar claramente a data a que corresponde o preenchimento em cada painel de controlo e listar pendências anteriores com acesso direto.

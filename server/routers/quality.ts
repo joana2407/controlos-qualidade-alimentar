@@ -365,6 +365,36 @@ export const qualityRouter = router({
     };
   }),
 
+  pendingControlTasks: qualitySessionProcedure.input(z.object({
+    module: qualityModuleSchema,
+    factoryId: z.number().int().nullable().optional(),
+  })).query(async ({ ctx, input }) => {
+    const db = await requireDb();
+    const isShared = sharedPlanModules.has(input.module);
+    if (!isShared && input.factoryId === undefined) return [];
+    const today = localDateKey(new Date());
+    const [tasks, entries, areaCatalog, monthlyItems, monthlyAssignments] = await Promise.all([
+      db.select().from(controlTasks).orderBy(controlTasks.dueAt),
+      db.select().from(controlEntries).orderBy(desc(controlEntries.completedAt)),
+      db.select().from(areas).orderBy(areas.name),
+      db.select().from(checklistItems).orderBy(checklistItems.sortOrder),
+      db.select().from(checklistItemFactories).orderBy(checklistItemFactories.factoryId),
+    ]);
+    return tasks.filter((task) => {
+      const assignedProfiles = Array.isArray(task.assigneeProfileIds) ? task.assigneeProfileIds : [];
+      const taskDate = localDateKey(new Date(task.dueAt));
+      const inScope = isShared ? task.factoryId === null : task.factoryId === input.factoryId;
+      return task.area === "Plano do Dia"
+        && task.module === input.module
+        && inScope
+        && taskDate < today
+        && isBusinessDay(new Date(task.dueAt))
+        && task.status === "pending"
+        && !isHistoricalPlanTaskSatisfied(task, entries, areaCatalog, monthlyItems, monthlyAssignments)
+        && (ctx.operatorProfile!.role === "manager" || assignedProfiles.includes(ctx.operatorProfile!.id));
+    }).map((task) => ({ id: task.id, dueAt: task.dueAt, responsible: task.responsible, factoryId: task.factoryId })).sort((left, right) => new Date(left.dueAt).getTime() - new Date(right.dueAt).getTime());
+  }),
+
   listFactories: qualitySessionProcedure.query(async () => {
     const db = await requireDb();
     return db.select().from(factories).orderBy(factories.name);
@@ -585,6 +615,40 @@ export const qualityRouter = router({
     return {
       operationalDate,
       entries: entries.filter((entry) => entry.module === input.module && entry.factoryId === input.factoryId && entry.completedAt >= start && entry.completedAt < end).map((entry) => ({ id: entry.id, title: entry.title, area: entry.area, result: entry.result, notes: entry.notes, payload: entry.payload, completedAt: entry.completedAt, registeredByName: entry.registeredByName, registeredByTitle: entry.registeredByTitle })),
+    };
+  }),
+
+  dailyControlResults: qualitySessionProcedure.input(z.object({
+    module: qualityModuleSchema,
+    operationalDate: z.coerce.date(),
+    factoryId: z.number().int().nullable().optional(),
+  })).query(async ({ input }) => {
+    const db = await requireDb();
+    const { start, end } = asDateRange(input.operationalDate);
+    const entries = await db.select().from(controlEntries).orderBy(desc(controlEntries.completedAt));
+    const asPayload = (entry: typeof entries[number]) => entry.payload && typeof entry.payload === "object" && !Array.isArray(entry.payload) ? entry.payload as Record<string, unknown> : {};
+    return {
+      operationalDate: input.operationalDate,
+      entries: entries.filter((entry) => {
+        const payload = asPayload(entry);
+        const lifecycle = payload.recordLifecycle && typeof payload.recordLifecycle === "object" && !Array.isArray(payload.recordLifecycle) ? payload.recordLifecycle as Record<string, unknown> : {};
+        const plannedDate = typeof payload.plannedDate === "string" ? new Date(payload.plannedDate) : entry.completedAt;
+        return entry.module === input.module
+          && (input.factoryId === undefined || entry.factoryId === input.factoryId)
+          && lifecycle.status !== "deleted"
+          && plannedDate >= start
+          && plannedDate < end;
+      }).map((entry) => ({
+        id: entry.id,
+        title: entry.title,
+        area: entry.area,
+        result: entry.result,
+        notes: entry.notes,
+        payload: asPayload(entry),
+        completedAt: entry.completedAt,
+        registeredByName: entry.registeredByName,
+        registeredByTitle: entry.registeredByTitle,
+      })),
     };
   }),
 
