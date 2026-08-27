@@ -594,6 +594,17 @@ describe("procedimentos de qualidade por fábrica", () => {
     expect(factoryOne[0]?.lastInspectionAt).toBeNull();
   });
 
+  it("inclui verificações semanais e mensais quando o Plano do Dia é uma sexta-feira", async () => {
+    const caller = qualityRouter.createCaller(createContext());
+    const friday = new Date(2026, 7, 14, 12, 0, 0);
+
+    const pending = await caller.fragilePending({ referenceDate: friday });
+
+    expect(pending.map((item) => item.periodicity)).toEqual(expect.arrayContaining(["S", "M"]));
+    expect(pending.filter((item) => item.periodicity === "S")[0]?.dueAt.toISOString().slice(0, 10)).toBe("2026-08-14");
+    expect(pending.filter((item) => item.periodicity === "M")[0]?.dueAt.toISOString().slice(0, 10)).toBe("2026-08-14");
+  });
+
   it("atualiza o ponto de quebráveis e guarda a imagem de referência associada", async () => {
     vi.mocked(storagePut).mockResolvedValue({ key: "fragile-reference/1.png", url: "/manus-storage/fragile-reference/1.png" });
     const caller = qualityRouter.createCaller(createContext());

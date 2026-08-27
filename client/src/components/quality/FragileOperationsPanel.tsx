@@ -69,7 +69,7 @@ function delayLabel(point: FragilePoint) {
   return `Atraso: ${point.delayDays} ${point.delayDays === 1 ? "dia" : "dias"}`;
 }
 
-export function FragileOperationsPanel({ createEntry, factoryId, showHeader = true }: { createEntry: any; factoryId: string; showHeader?: boolean }) {
+export function FragileOperationsPanel({ createEntry, factoryId, referenceDate, showHeader = true }: { createEntry: any; factoryId: string; referenceDate?: Date | string | null; showHeader?: boolean }) {
   const utils = trpc.useUtils();
   const metadata = trpc.quality.metadata.useQuery();
   const [periodicity, setPeriodicity] = useState<"all" | Periodicity>("all");
@@ -103,7 +103,7 @@ export function FragileOperationsPanel({ createEntry, factoryId, showHeader = tr
   const [sourceArea, setSourceArea] = useState("");
   const [targetArea, setTargetArea] = useState("");
 
-  const pendingInput = useMemo(() => factoryId ? { factoryId: Number(factoryId) } : undefined, [factoryId]);
+  const pendingInput = useMemo(() => factoryId ? { factoryId: Number(factoryId), referenceDate: referenceDate ? new Date(referenceDate) : undefined } : undefined, [factoryId, referenceDate]);
   const items = trpc.quality.listFragileItems.useQuery();
   const pending = trpc.quality.fragilePending.useQuery(pendingInput, { enabled: Boolean(factoryId) });
   const factories = metadata.data?.factories ?? [];

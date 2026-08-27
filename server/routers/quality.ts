@@ -1469,7 +1469,7 @@ export const qualityRouter = router({
     return items.filter((item) => item.status === "active" && (!input?.factoryId || item.factoryId === input.factoryId) && (!input?.periodicity || item.periodicity === input.periodicity));
   }),
 
-  fragilePending: qualitySessionProcedure.input(z.object({ factoryId: z.number().int().optional(), periodicity: z.enum(["D", "S", "Q", "M"]).optional() }).optional()).query(async ({ input }) => {
+  fragilePending: qualitySessionProcedure.input(z.object({ factoryId: z.number().int().optional(), periodicity: z.enum(["D", "S", "Q", "M"]).optional(), referenceDate: z.coerce.date().optional() }).optional()).query(async ({ input }) => {
     const db = await requireDb();
     const [items, entries] = await Promise.all([
       db.select().from(fragileItems).orderBy(fragileItems.location, fragileItems.sortOrder, fragileItems.name),
@@ -1481,14 +1481,14 @@ export const qualityRouter = router({
       const fragileItemId = payload && typeof payload === "object" && !Array.isArray(payload) ? (payload as { fragileItemId?: unknown }).fragileItemId : null;
       if (typeof fragileItemId === "number" && !lastInspections.has(fragileItemId)) lastInspections.set(fragileItemId, entry.completedAt);
     });
-    const now = new Date();
+    const referenceDate = input?.referenceDate ?? new Date();
     return items
       .filter((item) => item.status === "active" && (!input?.factoryId || item.factoryId === input.factoryId) && (!input?.periodicity || item.periodicity === input.periodicity))
       .map((item) => {
         const lastInspectionAt = lastInspections.get(item.id) ?? null;
-        return { ...item, lastInspectionAt, dueAt: fragileInspectionDueDate(item.periodicity, lastInspectionAt, now), delayDays: fragileInspectionDelayDays(item.periodicity, lastInspectionAt, now) };
+        return { ...item, lastInspectionAt, dueAt: fragileInspectionDueDate(item.periodicity, lastInspectionAt, referenceDate), delayDays: fragileInspectionDelayDays(item.periodicity, lastInspectionAt, referenceDate) };
       })
-      .filter((item) => isFragileInspectionPending(item.periodicity, item.lastInspectionAt, now))
+      .filter((item) => isFragileInspectionPending(item.periodicity, item.lastInspectionAt, referenceDate))
       .sort((left, right) => (left.lastInspectionAt?.getTime() ?? 0) - (right.lastInspectionAt?.getTime() ?? 0));
   }),
 
