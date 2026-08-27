@@ -64,6 +64,17 @@ describe("autoria operacional nas páginas", () => {
     expect(screen.getByText("Observação parcial registada.")).toBeTruthy();
   });
 
+  it("abre a análise de completude com a data atual", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-13T10:00:00Z"));
+    try {
+      render(<Controls />);
+      expect((screen.getByLabelText("Data de análise de completude") as HTMLInputElement).value).toBe("2026-08-13");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("mostra quem registou os controlos nos relatórios", () => {
     render(<Reports />);
     expect(screen.getByText("Registado por: Sabrina Esteves · Tec. Qualidade")).toBeTruthy();

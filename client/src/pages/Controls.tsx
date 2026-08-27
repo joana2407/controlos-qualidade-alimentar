@@ -32,6 +32,7 @@ type EditableTask = { id: number; title: string; description: string | null; fac
 
 const dayStart = (value: Date) => { const result = new Date(value); result.setHours(0, 0, 0, 0); return result; };
 const nextWorkDate = () => nextOperationalBusinessDay(new Date()).toISOString().slice(0, 10);
+const currentCalendarDate = () => { const date = new Date(); return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`; };
 const nextBusinessDate = (value: Date) => operationalBusinessDayAfter(value);
 
 function ModuleCompletionTimeline({ label, progress, analysisDate, completionUnit = "verificações", pendingUnit = "verificação" }: { label: string; progress?: ModuleProgress; analysisDate: Date; completionUnit?: string; pendingUnit?: string }) {
@@ -87,7 +88,7 @@ export default function Controls() {
   const [planFactoryIds, setPlanFactoryIds] = useState<number[]>([]);
   const [planAssigneeIds, setPlanAssigneeIds] = useState<number[]>([]);
   const [planModules, setPlanModules] = useState<string[]>([]);
-  const [progressDate, setProgressDate] = useState(nextWorkDate);
+  const [progressDate, setProgressDate] = useState(currentCalendarDate);
 
   const taskFilterInput = useMemo(() => taskFactoryFilter ? { factoryId: Number(taskFactoryFilter) } : undefined, [taskFactoryFilter]);
   const progressDateInput = useMemo(() => new Date(`${progressDate}T12:00:00`), [progressDate]);
