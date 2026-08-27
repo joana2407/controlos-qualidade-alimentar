@@ -18,6 +18,12 @@ import { toast } from "sonner";
 import "./reports-redesign.css";
 
 type DetailRow = { label: string; value: string };
+const INTERNAL_DETAIL_FIELDS = new Set([
+  "key", "url", "mimeType", "collaboratorId", "analystProfileId", "fileName", "checklistItemId",
+  "actualVerificationDate", "plannedDate", "plannedTaskId", "registeredAgainstPreviousPlan", "plannedAt", "taskId",
+  "retroactiveJustification", "editHistory", "offlineManualIncidence", "offlineQueuedAt", "offlineSyncId",
+  "offlineSyncStatus", "syncStatus", "syncAttempt", "clientRequestId",
+]);
 
 function asRecord(value: unknown): Record<string, unknown> {
   if (typeof value === "string") { try { return JSON.parse(value) as Record<string, unknown>; } catch { return {}; } }
@@ -40,7 +46,7 @@ function flattenPayload(value: unknown, prefix = ""): DetailRow[] {
   if (value === null || value === undefined || value === "") return [];
   if (Array.isArray(value)) return value.flatMap((item, index) => flattenPayload(item, `${prefix}${prefix ? " · " : ""}${index + 1}`));
   if (typeof value === "object") return Object.entries(value as Record<string, unknown>).flatMap(([key, item]) => {
-    if (["key", "url", "mimeType", "collaboratorId", "analystProfileId", "fileName", "checklistItemId", "actualVerificationDate", "plannedDate", "plannedTaskId", "registeredAgainstPreviousPlan", "plannedAt", "taskId", "retroactiveJustification"].includes(key)) return [];
+    if (INTERNAL_DETAIL_FIELDS.has(key)) return [];
     if (["photos", "evidencePhotos"].includes(key) && Array.isArray(item)) return item.length ? [{ label: humanLabel(key), value: `${item.length} fotografia${item.length === 1 ? "" : "s"} anexada${item.length === 1 ? "" : "s"}` }] : [];
     return flattenPayload(item, `${prefix}${prefix ? " · " : ""}${humanLabel(key)}`);
   });

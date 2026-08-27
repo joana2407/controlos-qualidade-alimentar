@@ -414,3 +414,4 @@
 - [x] Adicionar um filtro de «Tratamento pendente» no painel de Incidências.
 - [x] Mostrar no painel Hoje o número de incidências a aguardar decisão de tratamento.
 - [x] Permitir exportar para Excel cada versão arquivada de um relatório diário.
+- [x] Ocultar no detalhe de incidências os metadados internos de edição e sincronização móvel.
