@@ -419,3 +419,4 @@
 - [x] Criar no site uma pasta de backups diários com acesso, pesquisa e descarga dos ficheiros arquivados.
 - [x] Permitir antecipar um controlo planeado, guardando a data prevista e a data efetiva de realização.
 - [x] Corrigir a apresentação de verificações semanais, quinzenais e mensais de Quebráveis, incluindo no plano de sexta-feira.
+- [x] Mostrar em cada ponto de Quebráveis a próxima data prevista de inspeção.

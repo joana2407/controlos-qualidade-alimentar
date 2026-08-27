@@ -585,6 +585,16 @@ describe("procedimentos de qualidade por fábrica", () => {
     expect(factoryTwo.map((item) => item.id)).toEqual([3]);
   });
 
+  it("indica a próxima data prevista em cada ponto de Quebráveis", async () => {
+    const caller = qualityRouter.createCaller(createContext());
+    const points = await caller.listFragileItems();
+    const dailyPoint = points.find((item) => item.id === 1);
+    const weeklyPoint = points.find((item) => item.id === 2);
+
+    expect(dailyPoint?.nextInspectionAt.toISOString().slice(0, 10)).toBe("2026-08-17");
+    expect(weeklyPoint?.nextInspectionAt.toISOString().slice(0, 10)).toBe("2026-08-14");
+  });
+
   it("calcula as pendências de quebráveis a partir da última inspeção de cada ponto", async () => {
     const caller = qualityRouter.createCaller(createContext());
     const factoryOne = await caller.fragilePending({ factoryId: 1 });

@@ -1465,8 +1465,22 @@ export const qualityRouter = router({
 
   listFragileItems: qualitySessionProcedure.input(z.object({ factoryId: z.number().int().optional(), periodicity: z.enum(["D", "S", "Q", "M"]).optional() }).optional()).query(async ({ input }) => {
     const db = await requireDb();
-    const items = await db.select().from(fragileItems).orderBy(fragileItems.location, fragileItems.sortOrder, fragileItems.name);
-    return items.filter((item) => item.status === "active" && (!input?.factoryId || item.factoryId === input.factoryId) && (!input?.periodicity || item.periodicity === input.periodicity));
+    const [items, entries] = await Promise.all([
+      db.select().from(fragileItems).orderBy(fragileItems.location, fragileItems.sortOrder, fragileItems.name),
+      db.select().from(controlEntries).where(eq(controlEntries.module, "fragile_items")).orderBy(desc(controlEntries.completedAt)),
+    ]);
+    const lastInspections = new Map<number, Date>();
+    entries.forEach((entry) => {
+      const payload = entry.payload;
+      const itemId = payload && typeof payload === "object" && !Array.isArray(payload) ? (payload as { fragileItemId?: unknown }).fragileItemId : null;
+      if (typeof itemId === "number" && !lastInspections.has(itemId)) lastInspections.set(itemId, entry.completedAt);
+    });
+    const now = new Date();
+    return items.filter((item) => item.status === "active" && (!input?.factoryId || item.factoryId === input.factoryId) && (!input?.periodicity || item.periodicity === input.periodicity)).map((item) => {
+      const lastInspectionAt = lastInspections.get(item.id) ?? null;
+      const nextReferenceDate = lastInspectionAt ? businessDayAfter(lastInspectionAt) : now;
+      return { ...item, lastInspectionAt, nextInspectionAt: fragileInspectionDueDate(item.periodicity, lastInspectionAt, nextReferenceDate) };
+    });
   }),
 
   fragilePending: qualitySessionProcedure.input(z.object({ factoryId: z.number().int().optional(), periodicity: z.enum(["D", "S", "Q", "M"]).optional(), referenceDate: z.coerce.date().optional() }).optional()).query(async ({ input }) => {
