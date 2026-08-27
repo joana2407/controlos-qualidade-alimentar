@@ -426,3 +426,6 @@
 - [x] Permitir criar e eliminar áreas de Quebráveis, além de editar a respetiva designação.
 - [x] Mostrar, abaixo de cada formulário de controlo, os resultados das verificações registadas na data consultada.
 - [x] Indicar claramente a data a que corresponde o preenchimento em cada painel de controlo e listar pendências anteriores com acesso direto.
+- [x] Agrupar o aviso BPHF de abertura obrigatória de NC pelo colaborador inspecionado.
+- [x] Corrigir a completitude e as pendências BPHF quando todas as verificações de uma fábrica e data já estão registadas, prevenindo situações semelhantes.
+- [x] Garantir que Detetores de Metais só atinge 100% quando todas as linhas agendadas estão verificadas e mostrar a conclusão por linha.

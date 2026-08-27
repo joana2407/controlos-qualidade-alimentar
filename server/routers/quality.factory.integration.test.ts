@@ -254,7 +254,7 @@ describe("procedimentos de qualidade por fábrica", () => {
       const listedTasks = await caller.listTasks();
       const access = await caller.controlAuthorization({ module: "metal_detectors", factoryId: 1, plannedTaskId: 511 });
 
-      expect(dashboard.moduleProgressByFactory.metal_detectors[0]).toMatchObject({ factoryId: 1, expected: 1, completed: 1, percentage: 100 });
+      expect(dashboard.moduleProgressByFactory.metal_detectors[0]).toMatchObject({ factoryId: 1, expected: 3, completed: 3, percentage: 100 });
       expect(dashboard.moduleProgressByFactory.metal_detectors[0]).not.toHaveProperty("pendingTaskId");
       expect(dashboard.moduleProgress.metal_detectors.pending).toEqual([]);
       expect(listedTasks.map((task) => task.id)).not.toContain(511);
@@ -378,10 +378,10 @@ describe("procedimentos de qualidade por fábrica", () => {
     const dashboard = await caller.dashboard();
 
     expect(dashboard.plannedControls.map((control) => control.factoryId)).toEqual([1, 2]);
-    expect(dashboard.moduleProgress.bphf).toMatchObject({ expected: 24, completed: 2, registeredToday: 2, percentage: 8.3 });
+    expect(dashboard.moduleProgress.bphf).toMatchObject({ expected: 6, completed: 0, registeredToday: 0, percentage: 0 });
     expect(dashboard.moduleProgressByFactory.bphf).toEqual([
-      { factoryId: 1, expected: 12, completed: 1, registeredToday: 1, percentage: 8.3, pendingTaskId: 4 },
-      { factoryId: 2, expected: 12, completed: 1, registeredToday: 1, percentage: 8.3, pendingTaskId: 5 },
+      { factoryId: 1, expected: 3, completed: 0, registeredToday: 0, percentage: 0, pendingTaskId: 4 },
+      { factoryId: 2, expected: 3, completed: 0, registeredToday: 0, percentage: 0, pendingTaskId: 5 },
       { factoryId: 3, expected: 0, completed: 0, registeredToday: 0, percentage: 0 },
     ]);
   });
@@ -649,6 +649,66 @@ describe("procedimentos de qualidade por fábrica", () => {
     const pendingTasks = await caller.pendingControlTasks({ module: "metal_detectors", factoryId: 1 });
 
     expect(pendingTasks).toEqual([expect.objectContaining({ id: 99, factoryId: 1 })]);
+  });
+
+  it("considera o BPHF concluído com uma verificação por cada área prevista, sem exigir todos os critérios em todas as áreas", async () => {
+    const bphfPlan = { id: 122, factoryId: 1, status: "pending", dueAt: now, completedAt: null, module: "bphf", area: "Plano do Dia", title: "Plano do Dia — BPHF F1", responsible: "Ana", assigneeProfileIds: [3] };
+    const bphfAreas = ["Produção", "Embalagem", "Limpeza"].map((name, index) => ({ id: 810 + index, name, group: "bphf", factoryId: 1, active: "true" }));
+    const bphfEntries = bphfAreas.map((area, index) => ({ id: 820 + index, factoryId: 1, module: "bphf", area: area.name, title: "Higienização das mãos dos manipuladores", result: "C", completedAt: now, payload: { criterion: "Higienização das mãos dos manipuladores", plannedTaskId: 122, plannedDate: now.toISOString() } }));
+    const originalAreas = [...areaRows];
+    tasks.push(bphfPlan);
+    areaRows.splice(0, areaRows.length, ...bphfAreas);
+    entries.push(...bphfEntries);
+    try {
+      const caller = qualityRouter.createCaller(createContext());
+      const dashboard = await caller.dashboard({ date: now });
+      const progress = dashboard.moduleProgressByFactory.bphf.find((item) => item.factoryId === 1);
+
+      expect(progress).toMatchObject({ expected: 3, completed: 3, percentage: 100 });
+      expect(dashboard.moduleProgress.bphf.pending).not.toContain("Plano do Dia — BPHF F1");
+    } finally {
+      tasks.splice(tasks.indexOf(bphfPlan), 1);
+      entries.splice(entries.length - bphfEntries.length, bphfEntries.length);
+      areaRows.splice(0, areaRows.length, ...originalAreas);
+    }
+  });
+
+  it("mantém os Detetores de Metais abaixo de 100% até todas as linhas previstas terem uma verificação", async () => {
+    const metalPlan = { id: 123, factoryId: 1, status: "pending", dueAt: now, completedAt: null, module: "metal_detectors", area: "Plano do Dia", title: "Plano do Dia — Metais F1", responsible: "Ana", assigneeProfileIds: [3] };
+    const metalAreas = [{ id: 830, name: "Linha 1", group: "metal", factoryId: 1, active: "true" }, { id: 831, name: "Linha 2", group: "metal", factoryId: 1, active: "true" }];
+    const metalEntry = { id: 832, factoryId: 1, module: "metal_detectors", area: "Linha 1", title: "Detetor de metais — Linha 1", result: "C", completedAt: now, payload: { plannedTaskId: 123, plannedDate: now.toISOString() } };
+    const originalAreas = [...areaRows];
+    tasks.push(metalPlan);
+    areaRows.splice(0, areaRows.length, ...metalAreas);
+    entries.push(metalEntry);
+    try {
+      const caller = qualityRouter.createCaller(createContext());
+      const dashboard = await caller.dashboard({ date: now });
+      const progress = dashboard.moduleProgressByFactory.metal_detectors.find((item) => item.factoryId === 1);
+
+      expect(progress).toMatchObject({ expected: 2, completed: 1, percentage: 50, pendingTaskId: 123 });
+    } finally {
+      tasks.splice(tasks.indexOf(metalPlan), 1);
+      entries.splice(entries.length - 1, 1);
+      areaRows.splice(0, areaRows.length, ...originalAreas);
+    }
+  });
+
+  it("agrupa alertas BPHF obrigatórios pelo colaborador inspecionado, mesmo entre pontos distintos", async () => {
+    const bphfEntries = [
+      { id: 901, factoryId: 1, module: "bphf", area: "Produção", title: "Higienização das mãos", result: "NC", completedAt: new Date(2026, 7, 10, 10, 0, 0), payload: { collaboratorId: 71, collaboratorName: "Maria Silva" } },
+      { id: 902, factoryId: 1, module: "bphf", area: "Embalagem", title: "Uso de touca", result: "NC", completedAt: new Date(2026, 7, 11, 10, 0, 0), payload: { collaboratorId: 71, collaboratorName: "Maria Silva" } },
+      { id: 903, factoryId: 1, module: "bphf", area: "Limpeza", title: "Estado do fardamento", result: "NC", completedAt: new Date(2026, 7, 12, 10, 0, 0), payload: { collaboratorId: 71, collaboratorName: "Maria Silva" } },
+    ];
+    entries.push(...bphfEntries);
+    try {
+      const caller = qualityRouter.createCaller(createContext());
+      const alerts = await caller.similarIncidenceAlerts();
+
+      expect(alerts).toEqual(expect.arrayContaining([expect.objectContaining({ module: "bphf", factoryId: 1, title: "Colaborador: Maria Silva", collaboratorId: 71, collaboratorName: "Maria Silva", total: 3 })]));
+    } finally {
+      entries.splice(entries.length - bphfEntries.length, bphfEntries.length);
+    }
   });
 
   it("inclui verificações semanais e mensais quando o Plano do Dia é uma sexta-feira", async () => {

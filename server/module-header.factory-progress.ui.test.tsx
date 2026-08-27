@@ -5,14 +5,15 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 const dashboardInputs = vi.hoisted(() => [] as unknown[]);
 const dailyResultsInputs = vi.hoisted(() => [] as unknown[]);
+const routeModule = vi.hoisted(() => ({ value: "bphf" }));
 
 vi.mock("@/lib/trpc", () => ({
   trpc: {
     useUtils: () => ({ quality: { dashboard: { invalidate: vi.fn() }, reports: { invalidate: vi.fn() }, listNcs: { invalidate: vi.fn() }, fragilePending: { invalidate: vi.fn() }, dailyControlResults: { invalidate: vi.fn() }, listBphfInspectionEmployees: { invalidate: vi.fn() }, listBphfCollaboratorInspections: { invalidate: vi.fn() } } }),
     quality: {
-      metadata: { useQuery: () => ({ data: { factories: [{ id: 1, name: "Fábrica 1 (Fatiado)" }, { id: 2, name: "Fábrica 2 (granel)" }, { id: 3, name: "Fábrica 3 (Sem Gluten)" }], areas: [{ id: 1, name: "Produção", group: "bphf", factoryId: 1 }, { id: 2, name: "Produção", group: "bphf", factoryId: 2 }, { id: 3, name: "Produção", group: "bphf", factoryId: 3 }] } }) },
-      dashboard: { useQuery: (input: unknown) => { dashboardInputs.push(input); return { isLoading: false, data: { moduleProgress: { bphf: { expected: 3, completed: 1, registeredToday: 1, pending: ["Plano do Dia — bphf"], percentage: 33.3 } }, moduleProgressByFactory: { bphf: [{ factoryId: 1, expected: 1, completed: 0, registeredToday: 0, percentage: 0 }, { factoryId: 2, expected: 1, completed: 1, registeredToday: 1, percentage: 100 }, { factoryId: 3, expected: 1, completed: 0, registeredToday: 0, percentage: 0 }] } } }; } },
-      dailyControlResults: { useQuery: (input: unknown) => { dailyResultsInputs.push(input); return { isLoading: false, data: { entries: [{ id: 90, title: "Higienização das mãos dos manipuladores", area: "Produção", result: "C", notes: "Sem desvios observados.", payload: { collaboratorName: "Colaborador de teste" }, completedAt: new Date("2026-08-20T11:30:00"), registeredByName: "Sabrina Esteves", registeredByTitle: "Tec. Qualidade" }] } }; } },
+      metadata: { useQuery: () => ({ data: { factories: [{ id: 1, name: "Fábrica 1 (Fatiado)" }, { id: 2, name: "Fábrica 2 (granel)" }, { id: 3, name: "Fábrica 3 (Sem Gluten)" }], areas: [{ id: 1, name: "Produção", group: "bphf", factoryId: 1 }, { id: 2, name: "Produção", group: "bphf", factoryId: 2 }, { id: 3, name: "Produção", group: "bphf", factoryId: 3 }, { id: 11, name: "Linha 1", group: "metal", factoryId: 1 }, { id: 12, name: "Linha 2", group: "metal", factoryId: 1 }] } }) },
+      dashboard: { useQuery: (input: unknown) => { dashboardInputs.push(input); return { isLoading: false, data: { moduleProgress: { bphf: { expected: 3, completed: 1, registeredToday: 1, pending: ["Plano do Dia — bphf"], percentage: 33.3 }, metal_detectors: { expected: 2, completed: 1, registeredToday: 1, pending: ["Plano do Dia — metal_detectors"], percentage: 50 } }, moduleProgressByFactory: { bphf: [{ factoryId: 1, expected: 1, completed: 0, registeredToday: 0, percentage: 0 }, { factoryId: 2, expected: 1, completed: 1, registeredToday: 1, percentage: 100 }, { factoryId: 3, expected: 1, completed: 0, registeredToday: 0, percentage: 0 }], metal_detectors: [{ factoryId: 1, expected: 2, completed: 1, registeredToday: 1, percentage: 50 }] } } }; } },
+      dailyControlResults: { useQuery: (input: unknown) => { dailyResultsInputs.push(input); const module = (input as { module?: string }).module; return { isLoading: false, data: { entries: module === "metal_detectors" ? [{ id: 91, title: "Detetor de metais — Linha 1 · Produto de teste", area: "Linha 1", result: "C", notes: null, payload: {}, completedAt: new Date("2026-08-20T11:30:00"), registeredByName: "Sabrina Esteves", registeredByTitle: "Tec. Qualidade" }] : [{ id: 90, title: "Higienização das mãos dos manipuladores", area: "Produção", result: "C", notes: "Sem desvios observados.", payload: { collaboratorName: "Colaborador de teste" }, completedAt: new Date("2026-08-20T11:30:00"), registeredByName: "Sabrina Esteves", registeredByTitle: "Tec. Qualidade" }] } }; } },
       pendingControlTasks: { useQuery: () => ({ isLoading: false, data: [{ id: 72, dueAt: new Date("2026-08-18T12:00:00"), responsible: "Ana", factoryId: 1 }] }) },
       controlAuthorization: { useQuery: () => ({ isLoading: false, data: { allowed: true, taskId: 51, dueAt: new Date("2026-08-20T12:00:00"), isPreviousPending: true } }) },
       listBphfInspectionEmployees: { useQuery: () => ({ data: [{ id: 1, name: "Colaborador de teste" }] }) },
@@ -25,13 +26,13 @@ vi.mock("@/lib/trpc", () => ({
 
 vi.mock("wouter", () => ({
   Link: ({ children, href, ...props }: { children: React.ReactNode; href: string }) => <a href={href} {...props}>{children}</a>,
-  useRoute: () => [true, { module: "bphf" }],
+  useRoute: () => [true, { module: routeModule.value }],
 }));
 
 import ModuleControl from "../client/src/pages/ModuleControl";
 
 describe("cabeçalho de controlo — progresso por fábrica", () => {
-  afterEach(() => { cleanup(); dashboardInputs.length = 0; dailyResultsInputs.length = 0; });
+  afterEach(() => { cleanup(); dashboardInputs.length = 0; dailyResultsInputs.length = 0; routeModule.value = "bphf"; window.history.pushState({}, "", "/"); });
 
   it("substitui o resumo geral pelos cartões das fábricas incluídas no Plano do Dia", () => {
     render(<ModuleControl />);
@@ -67,5 +68,16 @@ describe("cabeçalho de controlo — progresso por fábrica", () => {
     const input = dailyResultsInputs[0] as { module: string; factoryId: number; operationalDate: Date };
     expect(input).toMatchObject({ module: "bphf", factoryId: 1 });
     expect(input.operationalDate.toISOString()).toContain("2026-08-20T12:00:00.000Z");
+  });
+
+  it("mostra a conclusão por linha nos Detetores de Metais e distingue linhas pendentes", () => {
+    routeModule.value = "metal_detectors";
+    window.history.pushState({}, "", "/controlos/metal_detectors?factoryId=1");
+    render(<ModuleControl />);
+
+    expect(screen.getByText("Conclusão por linha")).toBeTruthy();
+    expect(screen.getAllByText(/Linha 1 — verificada/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/Linha 2 — pendente/).length).toBeGreaterThan(0);
+    expect(screen.getByText("50%")).toBeTruthy();
   });
 });

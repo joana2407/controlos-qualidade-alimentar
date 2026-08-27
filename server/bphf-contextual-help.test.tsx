@@ -37,7 +37,7 @@ describe("ajuda contextual de BPHF", () => {
     expect(screen.getByText(/cacifos pessoais e de trabalho estão limpos/)).toBeTruthy();
   });
 
-  it("mostra áreas pendentes sem pré-preenchimento e só conclui o ponto quando todas estão registadas", () => {
+  it("mostra a cobertura mínima por área sem pré-preenchimento", () => {
     const criterion = "Estado de limpeza e conservação do fardamento";
     const completedAt = new Date();
     inspectionData.push(
@@ -47,8 +47,8 @@ describe("ajuda contextual de BPHF", () => {
     render(<ControlFactoryContext.Provider value={{ factories: [{ id: 1, name: "Fábrica 1 (Fatiado)" }], factoryId: "1", setFactoryId: vi.fn() }}><Bphf createEntry={{ isPending: false, mutate: vi.fn(), mutateAsync: vi.fn() }} areas={["Produção", "Embalagem", "Logística"]} /></ControlFactoryContext.Provider>);
 
     expect(screen.getAllByText("Em preenchimento")).toHaveLength(4);
-    expect(screen.getByText("✓ Produção")).toBeTruthy();
-    expect(screen.getByText("✓ Embalagem")).toBeTruthy();
+    expect(screen.getAllByText("✓ Produção")).toHaveLength(4);
+    expect(screen.getAllByText("✓ Embalagem")).toHaveLength(4);
     expect(screen.getAllByText("• Logística")).toHaveLength(4);
     expect(screen.getAllByRole("button", { name: "Registar área verificada" }).every((button) => (button as HTMLButtonElement).disabled)).toBe(true);
   });
@@ -62,7 +62,7 @@ describe("ajuda contextual de BPHF", () => {
     );
     render(<ControlFactoryContext.Provider value={{ factories: [{ id: 1, name: "Fábrica 1 (Fatiado)" }], factoryId: "1", setFactoryId: vi.fn() }}><Bphf createEntry={{ isPending: false, mutate: vi.fn(), mutateAsync: vi.fn() }} areas={["Produção", "Embalagem"]} /></ControlFactoryContext.Provider>);
 
-    expect(screen.getByText("Mínimo concluído")).toBeTruthy();
+    expect(screen.getAllByText("Mínimo concluído")).toHaveLength(4);
     expect(screen.getAllByText(/Pode adicionar mais verificações/).length).toBeGreaterThan(0);
     expect(screen.queryAllByRole("button", { name: "Registar verificação adicional" })).toHaveLength(0);
   });
