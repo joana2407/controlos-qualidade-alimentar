@@ -189,6 +189,19 @@ describe("procedimentos de qualidade por fábrica", () => {
     expect(notifyOwner).not.toHaveBeenCalled();
   });
 
+  it("mantém o BPHF do dia acessível para verificações adicionais depois de cumprir o mínimo", async () => {
+    tasks.push({ id: 513, factoryId: 1, status: "completed", dueAt: now, completedAt: now, module: "bphf", area: "Plano do Dia", title: "Plano do Dia — BPHF F1", responsible: "Sabrina Esteves", assigneeProfileIds: [1] });
+    try {
+      const caller = qualityRouter.createCaller(createContext({ id: 1, name: "Sabrina Esteves", title: "Tec. Qualidade", role: "technician" }));
+
+      const authorization = await caller.controlAuthorization({ module: "bphf", factoryId: 1, plannedTaskId: 513 });
+
+      expect(authorization).toMatchObject({ allowed: true, taskId: 513 });
+    } finally {
+      tasks.pop();
+    }
+  });
+
   it("não mantém Temperaturas como pendência retroativa quando a data operacional já está completa", async () => {
     const previousDate = new Date(2026, 7, 13, 10, 0, 0);
     tasks.push({ id: 510, factoryId: 1, status: "pending", dueAt: previousDate, completedAt: null, module: "temperature_controls", area: "Plano do Dia", title: "Plano do Dia — Temperaturas F1", responsible: "Sabrina Esteves", assigneeProfileIds: [1] });
@@ -207,6 +220,19 @@ describe("procedimentos de qualidade por fábrica", () => {
       expect(access).toMatchObject({ allowed: false, isPreviousPending: false });
     } finally {
       entries.pop();
+    }
+  });
+
+  it("mantém Temperaturas do dia acessíveis para registos adicionais depois da verificação mínima", async () => {
+    tasks.push({ id: 512, factoryId: 1, status: "completed", dueAt: now, completedAt: now, module: "temperature_controls", area: "Plano do Dia", title: "Plano do Dia — Temperaturas F1", responsible: "Sabrina Esteves", assigneeProfileIds: [1] });
+    try {
+      const caller = qualityRouter.createCaller(createContext({ id: 1, name: "Sabrina Esteves", title: "Tec. Qualidade", role: "technician" }));
+
+      const authorization = await caller.controlAuthorization({ module: "temperature_controls", factoryId: 1, plannedTaskId: 512 });
+
+      expect(authorization).toMatchObject({ allowed: true, taskId: 512 });
+    } finally {
+      tasks.pop();
     }
   });
 

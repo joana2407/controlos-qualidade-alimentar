@@ -52,4 +52,18 @@ describe("ajuda contextual de BPHF", () => {
     expect(screen.getAllByText("• Logística")).toHaveLength(4);
     expect(screen.getAllByRole("button", { name: "Registar área verificada" }).every((button) => (button as HTMLButtonElement).disabled)).toBe(true);
   });
+
+  it("mantém disponível o registo adicional quando uma área já cumpriu o mínimo", () => {
+    const criterion = "Estado de limpeza e conservação do fardamento";
+    const completedAt = new Date();
+    inspectionData.push(
+      { id: 1, collaboratorName: "Colaborador de teste", collaboratorId: 1, criterion, area: "Produção", result: "C", completedAt },
+      { id: 2, collaboratorName: "Colaborador de teste", collaboratorId: 1, criterion, area: "Embalagem", result: "C", completedAt },
+    );
+    render(<ControlFactoryContext.Provider value={{ factories: [{ id: 1, name: "Fábrica 1 (Fatiado)" }], factoryId: "1", setFactoryId: vi.fn() }}><Bphf createEntry={{ isPending: false, mutate: vi.fn(), mutateAsync: vi.fn() }} areas={["Produção", "Embalagem"]} /></ControlFactoryContext.Provider>);
+
+    expect(screen.getByText("Mínimo concluído")).toBeTruthy();
+    expect(screen.getAllByText(/Pode adicionar mais verificações/).length).toBeGreaterThan(0);
+    expect(screen.queryAllByRole("button", { name: "Registar verificação adicional" })).toHaveLength(0);
+  });
 });

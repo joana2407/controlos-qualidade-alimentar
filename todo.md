@@ -420,3 +420,5 @@
 - [x] Permitir antecipar um controlo planeado, guardando a data prevista e a data efetiva de realização.
 - [x] Corrigir a apresentação de verificações semanais, quinzenais e mensais de Quebráveis, incluindo no plano de sexta-feira.
 - [x] Mostrar em cada ponto de Quebráveis a próxima data prevista de inspeção.
+- [x] Permitir mais de uma verificação BPHF por área, mantendo pelo menos uma verificação por área agendada.
+- [x] Permitir mais de um registo diário de Temperaturas por equipamento, mantendo pelo menos uma verificação por equipamento agendado.
