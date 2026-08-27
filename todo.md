@@ -417,3 +417,4 @@
 - [x] Ocultar no detalhe de incidências os metadados internos de edição e sincronização móvel.
 - [x] Guardar automaticamente um ficheiro Excel por versão do arquivo diário em armazenamento persistente.
 - [x] Criar no site uma pasta de backups diários com acesso, pesquisa e descarga dos ficheiros arquivados.
+- [x] Permitir antecipar um controlo planeado, guardando a data prevista e a data efetiva de realização.

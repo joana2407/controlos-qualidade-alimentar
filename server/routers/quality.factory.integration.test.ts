@@ -486,6 +486,19 @@ describe("procedimentos de qualidade por fábrica", () => {
     expect(dbUpdates.at(-1)).toMatchObject({ status: "completed", completedByProfileId: 1, completedByName: "Sabrina Esteves" });
   });
 
+  it("permite antecipar um controlo futuro atribuído e regista a data prevista", async () => {
+    const futureDueAt = new Date(2026, 7, 18, 10, 0, 0);
+    tasks.push({ id: 89, factoryId: 1, status: "pending", dueAt: futureDueAt, completedAt: null, module: "temperature_controls", area: "Plano do Dia", title: "Plano do Dia — Temperaturas antecipado", responsible: "Sabrina Esteves", assigneeProfileIds: [1] });
+    const caller = qualityRouter.createCaller(createContext({ id: 1, name: "Sabrina Esteves", title: "Tec. Qualidade", role: "technician" }));
+
+    const authorization = await caller.controlAuthorization({ module: "temperature_controls", factoryId: 1, plannedTaskId: 89 });
+    await caller.createEntry({ module: "temperature_controls", title: "Temperaturas antecipadas", area: "Área da Qualidade", factoryId: 1, result: "C", plannedTaskId: 89, payload: { equipment: [{ id: "f1-freezer-1" }, { id: "f1-freezer-2" }] } });
+
+    expect(authorization).toMatchObject({ allowed: true, taskId: 89, dueAt: futureDueAt, isPreviousPending: false, isFuturePlanned: true });
+    expect(dbInserts.at(-1)).toMatchObject({ payload: { equipment: [{ id: "f1-freezer-1" }, { id: "f1-freezer-2" }], plannedTaskId: 89, plannedDate: futureDueAt.toISOString(), registeredAgainstPreviousPlan: false, registeredAheadOfPlannedDate: true, actualVerificationDate: "2026-08-14" } });
+    expect(dbUpdates.at(-1)).toMatchObject({ status: "completed", completedByProfileId: 1, completedByName: "Sabrina Esteves" });
+  });
+
   it("cria uma tarefa pontual com descrição e responsáveis atribuídos", async () => {
     const caller = qualityRouter.createCaller(createContext());
     await caller.createTask({ title: "Verificação geral", description: "Confirmar a condição da área.", factoryId: 1, dueAt: now, assigneeProfileIds: [1, 2] });

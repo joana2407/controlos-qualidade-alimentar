@@ -180,22 +180,26 @@ function isHistoricalPlanTaskSatisfied(task: { id: number; module: typeof qualit
 async function assessControlAuthorization(db: any, input: { module: typeof qualityModuleValues[number]; factoryId?: number | null; plannedTaskId?: number; profile: OperationalProfile }) {
   const isShared = sharedPlanModules.has(input.module);
   const spansAllFoodDefenseFactories = input.module === "food_defense";
-  if (!isShared && !input.factoryId) return { allowed: false, reason: "Selecione a fábrica ou linha antes de consultar ou preencher este controlo.", task: null, isPreviousPending: false };
+  if (!isShared && !input.factoryId) return { allowed: false, reason: "Selecione a fábrica ou linha antes de consultar ou preencher este controlo.", task: null, isPreviousPending: false, isFuturePlanned: false };
   const today = localDateKey(new Date());
   const [tasks, entries, areaCatalog, monthlyItems, monthlyAssignments] = await Promise.all([db.select().from(controlTasks).orderBy(controlTasks.dueAt), db.select().from(controlEntries).orderBy(desc(controlEntries.completedAt)), db.select().from(areas).orderBy(areas.name), db.select().from(checklistItems).orderBy(checklistItems.sortOrder), db.select().from(checklistItemFactories).orderBy(checklistItemFactories.factoryId)]);
-  const matchingTasks = tasks.filter((item: any) => item.status === "pending" && item.area === "Plano do Dia" && item.module === input.module && isBusinessDay(new Date(item.dueAt)) && localDateKey(new Date(item.dueAt)) <= today && (isShared ? item.factoryId === null : spansAllFoodDefenseFactories ? item.factoryId !== null : item.factoryId === input.factoryId) && !isHistoricalPlanTaskSatisfied(item, entries, areaCatalog, monthlyItems, monthlyAssignments));
+  const eligibleTasks = tasks.filter((item: any) => item.status === "pending" && item.area === "Plano do Dia" && item.module === input.module && isBusinessDay(new Date(item.dueAt)) && (isShared ? item.factoryId === null : spansAllFoodDefenseFactories ? item.factoryId !== null : item.factoryId === input.factoryId) && !isHistoricalPlanTaskSatisfied(item, entries, areaCatalog, monthlyItems, monthlyAssignments));
+  const matchingTasks = input.plannedTaskId ? eligibleTasks : eligibleTasks.filter((item: any) => localDateKey(new Date(item.dueAt)) <= today);
   const task = input.plannedTaskId
     ? matchingTasks.find((item: any) => item.id === input.plannedTaskId)
     : [...matchingTasks].sort((left: any, right: any) => Number(localDateKey(new Date(right.dueAt)) === today) - Number(localDateKey(new Date(left.dueAt)) === today) || new Date(right.dueAt).getTime() - new Date(left.dueAt).getTime())[0];
-  if (!task) return { allowed: false, reason: "Este controlo não está incluído num Plano do Dia publicado para hoje nem existem pendências anteriores atribuídas.", task: null, isPreviousPending: false };
+  if (!task) return { allowed: false, reason: "Este controlo não está incluído num Plano do Dia publicado para hoje nem existem pendências anteriores atribuídas.", task: null, isPreviousPending: false, isFuturePlanned: false };
   const assignees = Array.isArray(task.assigneeProfileIds) ? task.assigneeProfileIds : [];
-  if (input.profile.role !== "manager" && !assignees.includes(input.profile.id)) return { allowed: false, reason: "Este controlo foi agendado para outro colaborador. Apenas os responsáveis designados ou a Responsável de Qualidade podem preenchê-lo.", task, isPreviousPending: false };
+  if (input.profile.role !== "manager" && !assignees.includes(input.profile.id)) return { allowed: false, reason: "Este controlo foi agendado para outro colaborador. Apenas os responsáveis designados ou a Responsável de Qualidade podem preenchê-lo.", task, isPreviousPending: false, isFuturePlanned: false };
   const isPreviousPending = localDateKey(new Date(task.dueAt)) < today;
+  const isFuturePlanned = localDateKey(new Date(task.dueAt)) > today;
   const plannedDate = new Date(task.dueAt).toLocaleDateString("pt-PT");
   const reason = isPreviousPending
     ? `Preenchimento autorizado para a pendência do Plano do Dia de ${plannedDate}. A data prevista será mantida no registo.`
+    : isFuturePlanned
+      ? `Antecipação autorizada para o controlo previsto no Plano do Dia de ${plannedDate}. A data prevista e a data efetiva ficarão ambas registadas.`
     : input.profile.role === "manager" ? "Preenchimento autorizado como Responsável de Qualidade." : "Preenchimento autorizado pelo Plano do Dia.";
-  return { allowed: true, reason, task, isPreviousPending };
+  return { allowed: true, reason, task, isPreviousPending, isFuturePlanned };
 }
 
 async function requireControlAuthorization(db: any, input: { module: typeof qualityModuleValues[number]; factoryId?: number | null; plannedTaskId?: number; profile: OperationalProfile }) {
@@ -350,6 +354,7 @@ export const qualityRouter = router({
       assignedTo: access.task?.responsible ?? null,
       dueAt: access.task?.dueAt ?? null,
       isPreviousPending: access.isPreviousPending ?? false,
+      isFuturePlanned: access.isFuturePlanned ?? false,
     };
   }),
 
@@ -841,7 +846,7 @@ export const qualityRouter = router({
     const authorization = await requireControlAuthorization(db, { module: input.module, factoryId: input.factoryId ?? null, plannedTaskId: input.plannedTaskId, profile: ctx.operatorProfile! });
     const plannedDateKey = authorization.task?.dueAt ? localDateKey(new Date(authorization.task.dueAt)) : null;
     const todayKey = localDateKey(new Date());
-    if (input.performedAt && (!authorization.isPreviousPending || !plannedDateKey || input.performedAt < plannedDateKey || input.performedAt > todayKey)) throw new TRPCError({ code: "BAD_REQUEST", message: "A data de realização deve situar-se entre a data prevista do controlo e hoje." });
+    if (input.performedAt && (!plannedDateKey || input.performedAt > todayKey || (authorization.isPreviousPending && input.performedAt < plannedDateKey))) throw new TRPCError({ code: "BAD_REQUEST", message: "A data de realização deve situar-se entre a data prevista do controlo e hoje." });
     if (authorization.isPreviousPending && !input.retroactiveReason) throw new TRPCError({ code: "BAD_REQUEST", message: "Selecione a justificação do preenchimento fora da data prevista." });
     if (authorization.isPreviousPending && input.retroactiveReason === "technical_unavailability" && !input.performedAt) throw new TRPCError({ code: "BAD_REQUEST", message: "Indique a data real da verificação efetuada após a indisponibilidade técnica." });
     if (authorization.isPreviousPending && input.retroactiveReason === "other" && !input.retroactiveJustification?.trim()) throw new TRPCError({ code: "BAD_REQUEST", message: "Indique a justificação para a opção selecionada." });
@@ -858,6 +863,7 @@ export const qualityRouter = router({
         plannedTaskId: authorization.task?.id ?? null,
         plannedDate: authorization.task?.dueAt ? new Date(authorization.task.dueAt).toISOString() : null,
         registeredAgainstPreviousPlan: authorization.isPreviousPending ?? false,
+        registeredAheadOfPlannedDate: authorization.isFuturePlanned ?? false,
         actualVerificationDate: input.performedAt ?? localDateKey(completedAt),
         retroactiveJustification: authorization.isPreviousPending && input.retroactiveReason ? { code: input.retroactiveReason, label: retroactiveReasonLabels[input.retroactiveReason], details: input.retroactiveReason === "other" ? input.retroactiveJustification?.trim() ?? null : null } : null,
       },
