@@ -15,6 +15,7 @@ import {
   dailyReportArchiveViews,
   correctiveActions,
   evidences,
+  fragileAreas,
   fragileItems,
   nonconformities,
   qualityPinProfiles,
@@ -1469,6 +1470,12 @@ export const qualityRouter = router({
     });
   }),
 
+  listFragileAreas: qualitySessionProcedure.input(z.object({ factoryId: z.number().int().optional() }).optional()).query(async ({ input }) => {
+    const db = await requireDb();
+    const catalog = await db.select().from(fragileAreas).orderBy(fragileAreas.name);
+    return catalog.filter((area) => area.active === "true" && (!input?.factoryId || area.factoryId === input.factoryId));
+  }),
+
   listFragileItems: qualitySessionProcedure.input(z.object({ factoryId: z.number().int().optional(), periodicity: z.enum(["D", "S", "Q", "M"]).optional() }).optional()).query(async ({ input }) => {
     const db = await requireDb();
     const [items, entries] = await Promise.all([
@@ -1520,6 +1527,9 @@ export const qualityRouter = router({
     itemType: z.enum(["Vidro", "Plástico rígido", "Outro"]),
   })).mutation(async ({ ctx, input }) => {
     const db = await requireDb();
+    if (!input.factoryId) throw new TRPCError({ code: "BAD_REQUEST", message: "Selecione uma fábrica e uma área antes de criar o ponto de controlo." });
+    const area = (await db.select().from(fragileAreas).where(and(eq(fragileAreas.factoryId, input.factoryId), eq(fragileAreas.name, input.location), eq(fragileAreas.active, "true"))).limit(1))[0];
+    if (!area) throw new TRPCError({ code: "BAD_REQUEST", message: "Selecione uma área ativa da fábrica para criar o ponto de controlo." });
     await db.insert(fragileItems).values({
       ...input,
       factoryId: input.factoryId ?? null,
@@ -1545,6 +1555,9 @@ export const qualityRouter = router({
     const db = await requireDb();
     const item = (await db.select().from(fragileItems).where(eq(fragileItems.id, input.id)).limit(1))[0];
     if (!item) throw new TRPCError({ code: "NOT_FOUND", message: "Ponto de controlo não encontrado." });
+    if (!input.factoryId) throw new TRPCError({ code: "BAD_REQUEST", message: "Selecione a fábrica e uma área ativa para o ponto de controlo." });
+    const area = (await db.select().from(fragileAreas).where(and(eq(fragileAreas.factoryId, input.factoryId), eq(fragileAreas.name, input.location), eq(fragileAreas.active, "true"))).limit(1))[0];
+    if (!area) throw new TRPCError({ code: "BAD_REQUEST", message: "Selecione uma área ativa da fábrica para o ponto de controlo." });
     await db.update(fragileItems).set({
       name: input.name,
       location: input.location,
@@ -1565,12 +1578,18 @@ export const qualityRouter = router({
   })).mutation(async ({ ctx, input }) => {
     const db = await requireDb();
     if (input.currentName === input.nextName) return { success: true, updated: 0 };
+    const [sourceArea, targetArea] = await Promise.all([
+      db.select().from(fragileAreas).where(and(eq(fragileAreas.factoryId, input.factoryId), eq(fragileAreas.name, input.currentName), eq(fragileAreas.active, "true"))).limit(1),
+      db.select().from(fragileAreas).where(and(eq(fragileAreas.factoryId, input.factoryId), eq(fragileAreas.name, input.nextName), eq(fragileAreas.active, "true"))).limit(1),
+    ]);
+    if (!sourceArea[0]) throw new TRPCError({ code: "NOT_FOUND", message: "Área de Quebráveis não encontrada na fábrica selecionada." });
+    if (targetArea[0]) throw new TRPCError({ code: "CONFLICT", message: "Já existe uma área com esta designação. Utilize Fundir áreas se pretender juntar os pontos." });
     const matchingItems = await db.select().from(fragileItems).where(and(
       eq(fragileItems.factoryId, input.factoryId),
       eq(fragileItems.location, input.currentName),
       eq(fragileItems.status, "active"),
     ));
-    if (!matchingItems.length) throw new TRPCError({ code: "NOT_FOUND", message: "Não foram encontrados pontos ativos nesta área." });
+    await db.update(fragileAreas).set({ name: input.nextName, updatedBy: ctx.user!.openId, updatedByProfileId: ctx.operatorProfile!.id, updatedByName: ctx.operatorProfile!.name }).where(eq(fragileAreas.id, sourceArea[0].id));
     await db.update(fragileItems).set({
       location: input.nextName,
       updatedBy: ctx.user!.openId,
@@ -1584,6 +1603,35 @@ export const qualityRouter = router({
     return { success: true, updated: matchingItems.length };
   }),
 
+  createFragileArea: qualityOperatorProcedure.input(z.object({
+    factoryId: z.number().int(),
+    name: z.string().trim().min(2).max(120),
+  })).mutation(async ({ ctx, input }) => {
+    const db = await requireDb();
+    const existing = (await db.select().from(fragileAreas).where(and(eq(fragileAreas.factoryId, input.factoryId), eq(fragileAreas.name, input.name))).limit(1))[0];
+    if (existing?.active === "true") throw new TRPCError({ code: "CONFLICT", message: "Já existe uma área com esta designação na fábrica selecionada." });
+    const audit = { updatedBy: ctx.user!.openId, updatedByProfileId: ctx.operatorProfile!.id, updatedByName: ctx.operatorProfile!.name };
+    if (existing) {
+      await db.update(fragileAreas).set({ active: "true", ...audit }).where(eq(fragileAreas.id, existing.id));
+      return { success: true, reactivated: true };
+    }
+    await db.insert(fragileAreas).values({ factoryId: input.factoryId, name: input.name, active: "true", createdBy: ctx.user!.openId, createdByProfileId: ctx.operatorProfile!.id, createdByName: ctx.operatorProfile!.name, ...audit });
+    return { success: true, reactivated: false };
+  }),
+
+  deleteFragileArea: qualityOperatorProcedure.input(z.object({
+    factoryId: z.number().int(),
+    name: z.string().trim().min(2).max(120),
+  })).mutation(async ({ ctx, input }) => {
+    const db = await requireDb();
+    const area = (await db.select().from(fragileAreas).where(and(eq(fragileAreas.factoryId, input.factoryId), eq(fragileAreas.name, input.name), eq(fragileAreas.active, "true"))).limit(1))[0];
+    if (!area) throw new TRPCError({ code: "NOT_FOUND", message: "Área de Quebráveis não encontrada na fábrica selecionada." });
+    const activeItems = await db.select().from(fragileItems).where(and(eq(fragileItems.factoryId, input.factoryId), eq(fragileItems.location, input.name), eq(fragileItems.status, "active")));
+    if (activeItems.length) throw new TRPCError({ code: "BAD_REQUEST", message: `Não é possível eliminar esta área porque contém ${activeItems.length} ${activeItems.length === 1 ? "ponto ativo" : "pontos ativos"}. Transfira-os com Fundir áreas ou elimine os pontos primeiro.` });
+    await db.update(fragileAreas).set({ active: "false", updatedBy: ctx.user!.openId, updatedByProfileId: ctx.operatorProfile!.id, updatedByName: ctx.operatorProfile!.name }).where(eq(fragileAreas.id, area.id));
+    return { success: true };
+  }),
+
   mergeFragileAreas: qualityOperatorProcedure.input(z.object({
     factoryId: z.number().int(),
     sourceArea: z.string().trim().min(2).max(120),
@@ -1591,18 +1639,21 @@ export const qualityRouter = router({
   })).mutation(async ({ ctx, input }) => {
     if (input.sourceArea === input.targetArea) throw new TRPCError({ code: "BAD_REQUEST", message: "Selecione duas áreas diferentes para fundir." });
     const db = await requireDb();
-    const [sourceItems, targetItems] = await Promise.all([
+    const [sourceItems, targetItems, sourceArea, targetArea] = await Promise.all([
       db.select().from(fragileItems).where(and(eq(fragileItems.factoryId, input.factoryId), eq(fragileItems.location, input.sourceArea), eq(fragileItems.status, "active"))),
       db.select().from(fragileItems).where(and(eq(fragileItems.factoryId, input.factoryId), eq(fragileItems.location, input.targetArea), eq(fragileItems.status, "active"))),
+      db.select().from(fragileAreas).where(and(eq(fragileAreas.factoryId, input.factoryId), eq(fragileAreas.name, input.sourceArea), eq(fragileAreas.active, "true"))).limit(1),
+      db.select().from(fragileAreas).where(and(eq(fragileAreas.factoryId, input.factoryId), eq(fragileAreas.name, input.targetArea), eq(fragileAreas.active, "true"))).limit(1),
     ]);
-    if (!sourceItems.length) throw new TRPCError({ code: "NOT_FOUND", message: "Não foram encontrados pontos ativos na área de origem." });
-    if (!targetItems.length) throw new TRPCError({ code: "NOT_FOUND", message: "A área de destino tem de existir na fábrica selecionada." });
+    if (!sourceArea[0]) throw new TRPCError({ code: "NOT_FOUND", message: "A área de origem não existe na fábrica selecionada." });
+    if (!targetArea[0]) throw new TRPCError({ code: "NOT_FOUND", message: "A área de destino tem de existir na fábrica selecionada." });
     await db.update(fragileItems).set({
       location: input.targetArea,
       updatedBy: ctx.user!.openId,
       updatedByProfileId: ctx.operatorProfile!.id,
       updatedByName: ctx.operatorProfile!.name,
     }).where(and(eq(fragileItems.factoryId, input.factoryId), eq(fragileItems.location, input.sourceArea), eq(fragileItems.status, "active")));
+    await db.update(fragileAreas).set({ active: "false", updatedBy: ctx.user!.openId, updatedByProfileId: ctx.operatorProfile!.id, updatedByName: ctx.operatorProfile!.name }).where(eq(fragileAreas.id, sourceArea[0].id));
     return { success: true, updated: sourceItems.length };
   }),
 

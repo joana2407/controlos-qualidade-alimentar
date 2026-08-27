@@ -409,3 +409,18 @@ export const fragileItems = mysqlTable("fragile_items", {
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 }, (table) => [index("fragile_location_idx").on(table.location), index("fragile_factory_idx").on(table.factoryId), index("fragile_periodicity_idx").on(table.periodicity)]);
+
+export const fragileAreas = mysqlTable("fragile_areas", {
+  id: int("id").autoincrement().primaryKey(),
+  factoryId: int("factoryId").notNull(),
+  name: varchar("name", { length: 120 }).notNull(),
+  active: mysqlEnum("fragile_area_active", ["true", "false"]).default("true").notNull(),
+  createdBy: varchar("createdBy", { length: 64 }).notNull(),
+  createdByProfileId: int("createdByProfileId"),
+  createdByName: varchar("createdByName", { length: 160 }),
+  updatedBy: varchar("updatedBy", { length: 64 }),
+  updatedByProfileId: int("updatedByProfileId"),
+  updatedByName: varchar("updatedByName", { length: 160 }),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, (table) => [uniqueIndex("fragile_area_factory_name_unique").on(table.factoryId, table.name), index("fragile_area_factory_idx").on(table.factoryId), index("fragile_area_active_idx").on(table.active)]);

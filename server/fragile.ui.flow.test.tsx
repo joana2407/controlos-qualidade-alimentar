@@ -9,22 +9,27 @@ const updateMutate = vi.fn();
 const deleteMutate = vi.fn();
 const renameAreaMutate = vi.fn();
 const mergeAreasMutate = vi.fn();
+const createAreaMutate = vi.fn();
+const deleteAreaMutate = vi.fn();
 const uploadMutate = vi.fn();
 const uploadDamageMutate = vi.fn();
 const invalidate = vi.fn();
 
 vi.mock("@/lib/trpc", () => ({
   trpc: {
-    useUtils: () => ({ quality: { listFragileItems: { invalidate }, fragilePending: { invalidate } } }),
+    useUtils: () => ({ quality: { listFragileItems: { invalidate }, listFragileAreas: { invalidate }, fragilePending: { invalidate } } }),
     quality: {
       metadata: { useQuery: () => ({ data: { factories: [{ id: 1, name: "Fábrica 1 (Fatiado)" }, { id: 2, name: "Fábrica 2 (granel)" }] } }) },
       listFragileItems: { useQuery: () => ({ data: [{ id: 9, name: "Proteção acrílica", location: "Embalamento", factoryId: 1, periodicity: "S", itemType: "Plástico rígido", referenceImageUrl: null }, { id: 11, name: "Janela de produção", location: "Produção", factoryId: 1, periodicity: "D", itemType: "Vidro", referenceImageUrl: null }, { id: 10, name: "Janelas exterior", location: "Expedição", factoryId: 2, periodicity: "M", itemType: "Vidro", referenceImageUrl: null }] }) },
+      listFragileAreas: { useQuery: () => ({ data: [{ id: 1, factoryId: 1, name: "Embalamento", active: "true" }, { id: 2, factoryId: 1, name: "Produção", active: "true" }, { id: 3, factoryId: 2, name: "Expedição", active: "true" }] }) },
       fragilePending: { useQuery: () => ({ isLoading: false, data: [{ id: 9, name: "Proteção acrílica", location: "Embalamento", factoryId: 1, periodicity: "S", itemType: "Plástico rígido", referenceImageUrl: null, lastInspectionAt: null }] }) },
       addFragileItem: { useMutation: (options?: { onSuccess?: () => void }) => ({ isPending: false, mutate: (input: unknown) => { addMutate(input); options?.onSuccess?.(); } }) },
       updateFragileItem: { useMutation: () => ({ isPending: false, mutate: (input: unknown, options?: { onSuccess?: () => void }) => { updateMutate(input); options?.onSuccess?.(); } }) },
       deleteFragileItem: { useMutation: (options?: { onSuccess?: () => void }) => ({ isPending: false, mutate: (input: unknown) => { deleteMutate(input); options?.onSuccess?.(); } }) },
       renameFragileArea: { useMutation: (options?: { onSuccess?: (result: { updated: number }, variables: { currentName: string; nextName: string }) => void }) => ({ isPending: false, mutate: (input: { factoryId: number; currentName: string; nextName: string }) => { renameAreaMutate(input); options?.onSuccess?.({ updated: 1 }, input); } }) },
       mergeFragileAreas: { useMutation: (options?: { onSuccess?: (result: { updated: number }, variables: { sourceArea: string; targetArea: string }) => void }) => ({ isPending: false, mutate: (input: { factoryId: number; sourceArea: string; targetArea: string }) => { mergeAreasMutate(input); options?.onSuccess?.({ updated: 1 }, input); } }) },
+      createFragileArea: { useMutation: (options?: { onSuccess?: (result: { reactivated: boolean }, variables: { factoryId: number; name: string }) => void }) => ({ isPending: false, mutate: (input: { factoryId: number; name: string }) => { createAreaMutate(input); options?.onSuccess?.({ reactivated: false }, input); } }) },
+      deleteFragileArea: { useMutation: (options?: { onSuccess?: () => void }) => ({ isPending: false, mutate: (input: { factoryId: number; name: string }) => { deleteAreaMutate(input); options?.onSuccess?.(); } }) },
       uploadFragileReferenceImage: { useMutation: () => ({ isPending: false, mutate: (input: unknown, options?: { onSuccess?: (result: { url: string }) => void }) => { uploadMutate(input); options?.onSuccess?.({ url: "/manus-storage/referencia.png" }); } }) },
       uploadFragileInspectionEvidence: { useMutation: () => ({ isPending: false, mutate: (input: unknown, options?: { onSuccess?: (result: { key: string; url: string; fileName: string; mimeType: "image/png" }) => void }) => { uploadDamageMutate(input); options?.onSuccess?.({ key: "fragile-evidence/9/1/dano.png", url: "/manus-storage/dano.png", fileName: "dano.png", mimeType: "image/png" }); } }) },
     },
@@ -39,7 +44,7 @@ import { FragileOperationsPanel } from "../client/src/components/quality/Fragile
 describe("fluxo de interface de pontos de controlo de quebráveis", () => {
   beforeEach(() => {
     cleanup();
-    addMutate.mockClear(); updateMutate.mockClear(); deleteMutate.mockClear(); renameAreaMutate.mockClear(); mergeAreasMutate.mockClear(); uploadMutate.mockClear(); uploadDamageMutate.mockClear(); invalidate.mockClear();
+    addMutate.mockClear(); updateMutate.mockClear(); deleteMutate.mockClear(); renameAreaMutate.mockClear(); mergeAreasMutate.mockClear(); createAreaMutate.mockClear(); deleteAreaMutate.mockClear(); uploadMutate.mockClear(); uploadDamageMutate.mockClear(); invalidate.mockClear();
     Object.defineProperty(HTMLElement.prototype, "hasPointerCapture", { configurable: true, value: () => false });
     Object.defineProperty(HTMLElement.prototype, "setPointerCapture", { configurable: true, value: () => undefined });
     Object.defineProperty(HTMLElement.prototype, "releasePointerCapture", { configurable: true, value: () => undefined });
@@ -174,6 +179,21 @@ describe("fluxo de interface de pontos de controlo de quebráveis", () => {
     const mergeDialog = screen.getAllByRole("dialog").at(-1)!;
     await user.click(within(mergeDialog).getByRole("button", { name: "Fundir áreas" }));
     expect(mergeAreasMutate).toHaveBeenCalledWith({ factoryId: 1, sourceArea: "Embalamento", targetArea: "Produção" });
+  });
+
+  it("permite criar e pedir a eliminação de uma área no gestor", async () => {
+    const user = userEvent.setup();
+    render(<FragileOperationsPanel createEntry={{ mutate: vi.fn(), isPending: false }} factoryId="1" />);
+    await user.click(screen.getByRole("button", { name: /gerir pontos/i }));
+    await user.click(screen.getByRole("button", { name: "Criar área" }));
+    await user.type(screen.getByLabelText("Designação da nova área"), "Pesagem");
+    await user.click(screen.getByRole("button", { name: "Criar área" }));
+    expect(createAreaMutate).toHaveBeenCalledWith({ factoryId: 1, name: "Pesagem" });
+
+    await user.click(screen.getByRole("button", { name: "Eliminar área" }));
+    const deleteDialog = screen.getAllByRole("dialog").at(-1)!;
+    await user.click(within(deleteDialog).getByRole("button", { name: "Eliminar área" }));
+    expect(deleteAreaMutate).toHaveBeenCalledWith({ factoryId: 1, name: "Embalamento" });
   });
 
   it("filtra o catálogo por fábrica ou linha no gestor de pontos", async () => {

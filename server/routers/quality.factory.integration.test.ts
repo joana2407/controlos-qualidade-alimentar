@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { areas, checklistItemFactories, checklistItems, controlPlans, correctiveActions, controlEntries, controlTasks, dailyReportArchives, dailyReportArchiveViews, factories, fragileItems, nonconformities, qualityPinProfiles } from "../../drizzle/schema";
+import { areas, checklistItemFactories, checklistItems, controlPlans, correctiveActions, controlEntries, controlTasks, dailyReportArchives, dailyReportArchiveViews, factories, fragileAreas, fragileItems, nonconformities, qualityPinProfiles } from "../../drizzle/schema";
 import type { TrpcContext } from "../_core/context";
 import { getDb } from "../db";
 import { storageGetSignedUrl, storagePut } from "../storage";
@@ -54,6 +54,11 @@ const fragile = [
   { id: 2, factoryId: 1, periodicity: "S", location: "Zona Tratamento Térmico", name: "Iluminação Calhas", status: "active" },
   { id: 3, factoryId: 2, periodicity: "M", location: "Z. PRODUÇÃO", name: "Janelas-Exterior", status: "active" },
 ];
+const fragileAreaRows = [
+  { id: 1, factoryId: 1, name: "Zona Tratamento Térmico", active: "true" },
+  { id: 2, factoryId: 2, name: "Produção", active: "true" },
+  { id: 3, factoryId: 3, name: "Embalamento primário", active: "true" },
+];
 const dbUpdates: Record<string, unknown>[] = [];
 const dbInserts: Record<string, unknown>[] = [];
 
@@ -81,6 +86,7 @@ function mockDatabase() {
     if (table === qualityPinProfiles) return profileRows;
     if (table === controlPlans) return plans;
     if (table === fragileItems) return fragile;
+    if (table === fragileAreas) return fragileAreaRows;
     return [];
   };
   return {

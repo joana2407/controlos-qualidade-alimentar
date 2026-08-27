@@ -11,9 +11,10 @@ vi.mock("wouter", () => ({
 const noopMutation = { mutate: vi.fn(), mutateAsync: vi.fn(), isPending: false };
 vi.mock("@/lib/trpc", () => ({
   trpc: {
-    useUtils: () => ({ quality: { dashboard: { invalidate: vi.fn() }, reports: { invalidate: vi.fn() }, listNcs: { invalidate: vi.fn() }, fragilePending: { invalidate: vi.fn() }, listFragileItems: { invalidate: vi.fn() } } }),
+    useUtils: () => ({ quality: { dashboard: { invalidate: vi.fn() }, reports: { invalidate: vi.fn() }, listNcs: { invalidate: vi.fn() }, fragilePending: { invalidate: vi.fn() }, listFragileItems: { invalidate: vi.fn() }, listFragileAreas: { invalidate: vi.fn() } } }),
     quality: {
       metadata: { useQuery: () => ({ data: { factories: [{ id: 1, name: "Fábrica 1 (Fatiado)" }], areas: [] } }) },
+      listFragileAreas: { useQuery: () => ({ data: [{ id: 1, factoryId: 1, name: "Produção", active: "true" }] }) },
       dashboard: { useQuery: () => ({ data: { moduleProgress: { fragile_items: { expected: 0, completed: 0, registeredToday: 0, pending: [], percentage: 0 } } }, isLoading: false }) },
       createEntry: { useMutation: () => noopMutation },
       listFragileItems: { useQuery: (input?: { factoryId?: number }) => ({ data: input?.factoryId === 1 ? [{ id: 101, name: "Ponto F1", location: "Produção", periodicity: "D", itemType: "Vidro" }] : [] }) },
@@ -23,6 +24,8 @@ vi.mock("@/lib/trpc", () => ({
       deleteFragileItem: { useMutation: () => noopMutation },
       renameFragileArea: { useMutation: () => noopMutation },
       mergeFragileAreas: { useMutation: () => noopMutation },
+      createFragileArea: { useMutation: () => noopMutation },
+      deleteFragileArea: { useMutation: () => noopMutation },
       uploadFragileReferenceImage: { useMutation: () => noopMutation },
       uploadFragileInspectionEvidence: { useMutation: () => noopMutation },
     },

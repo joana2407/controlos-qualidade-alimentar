@@ -423,3 +423,4 @@
 - [x] Permitir mais de uma verificação BPHF por área, mantendo pelo menos uma verificação por área agendada.
 - [x] Permitir mais de um registo diário de Temperaturas por equipamento, mantendo pelo menos uma verificação por equipamento agendado.
 - [x] Abrir o painel de Controlos com a data atual por defeito na análise de completude.
+- [x] Permitir criar e eliminar áreas de Quebráveis, além de editar a respetiva designação.
