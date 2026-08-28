@@ -242,6 +242,34 @@ describe("procedimentos de qualidade por fábrica", () => {
     }
   });
 
+  it("mantém o Controlo sensorial do dia acessível para validar produtos adicionais", async () => {
+    tasks.push({ id: 514, factoryId: 1, status: "completed", dueAt: now, completedAt: now, module: "sensory", area: "Plano do Dia", title: "Plano do Dia — Controlo sensorial F1", responsible: "Sabrina Esteves", assigneeProfileIds: [1] });
+    try {
+      const caller = qualityRouter.createCaller(createContext({ id: 1, name: "Sabrina Esteves", title: "Tec. Qualidade", role: "technician" }));
+
+      const authorization = await caller.controlAuthorization({ module: "sensory", factoryId: 1, plannedTaskId: 514 });
+
+      expect(authorization).toMatchObject({ allowed: true, taskId: 514, isPreviousPending: false });
+    } finally {
+      tasks.pop();
+    }
+  });
+
+  it("aceita submeter outro produto sensorial depois de o primeiro ter concluído a tarefa", async () => {
+    tasks.push({ id: 515, factoryId: 1, status: "completed", dueAt: now, completedAt: now, module: "sensory", area: "Plano do Dia", title: "Plano do Dia — Controlo sensorial F1", responsible: "Sabrina Esteves", assigneeProfileIds: [1] });
+    try {
+      const caller = qualityRouter.createCaller(createContext({ id: 1, name: "Sabrina Esteves", title: "Tec. Qualidade", role: "technician" }));
+
+      const result = await caller.createEntry({ module: "sensory", title: "Controlo sensorial — Produto 2", area: "Controlo sensorial", factoryId: 1, result: "C", payload: { product: "Produto 2", lot: "L2", validity: "2026-09-01" }, createNonconformity: false, severity: "medium" });
+
+      expect(result).toMatchObject({ success: true });
+      expect(dbInserts).toEqual(expect.arrayContaining([expect.objectContaining({ module: "sensory", title: "Controlo sensorial — Produto 2", factoryId: 1 })]));
+      expect(dbUpdates).toEqual(expect.arrayContaining([expect.objectContaining({ status: "completed", completedByProfileId: 1 })]));
+    } finally {
+      tasks.pop();
+    }
+  });
+
   it("não mantém Detetores de Metais como pendência quando todas as linhas planeadas foram verificadas", async () => {
     const previousDate = new Date(2026, 7, 13, 10, 0, 0);
     tasks.push({ id: 511, factoryId: 1, status: "pending", dueAt: previousDate, completedAt: null, module: "metal_detectors", area: "Plano do Dia", title: "Plano do Dia — Detetores F1", responsible: "Sabrina Esteves", assigneeProfileIds: [1] });

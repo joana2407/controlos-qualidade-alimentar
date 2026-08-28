@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import React from "react";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -8,6 +8,7 @@ const dashboardInputs = vi.hoisted(() => [] as unknown[]);
 const dailyResultsInputs = vi.hoisted(() => [] as unknown[]);
 const routeModule = vi.hoisted(() => ({ value: "bphf" }));
 const authorizationState = vi.hoisted(() => ({ allowed: true, taskId: 51 as number | null, dueAt: new Date("2026-08-20T12:00:00"), isPreviousPending: true, isFuturePlanned: false, reason: "Autorizado" }));
+const uploadEvidenceMutate = vi.hoisted(() => vi.fn());
 
 vi.mock("@/lib/trpc", () => ({
   trpc: {
@@ -22,6 +23,7 @@ vi.mock("@/lib/trpc", () => ({
       listBphfCollaboratorInspections: { useQuery: () => ({ isLoading: false, data: [] }) },
       addBphfInspectionEmployee: { useMutation: () => ({ isPending: false, mutate: vi.fn() }) },
       createEntry: { useMutation: () => ({ isPending: false, mutate: vi.fn(), mutateAsync: vi.fn() }) },
+      uploadVerificationEvidence: { useMutation: () => ({ isPending: false, mutate: uploadEvidenceMutate }) },
     },
   },
 }));
@@ -34,7 +36,7 @@ vi.mock("wouter", () => ({
 import ModuleControl from "../client/src/pages/ModuleControl";
 
 describe("cabeçalho de controlo — progresso por fábrica", () => {
-  afterEach(() => { cleanup(); dashboardInputs.length = 0; dailyResultsInputs.length = 0; routeModule.value = "bphf"; Object.assign(authorizationState, { allowed: true, taskId: 51, dueAt: new Date("2026-08-20T12:00:00"), isPreviousPending: true, isFuturePlanned: false, reason: "Autorizado" }); window.history.pushState({}, "", "/"); });
+  afterEach(() => { cleanup(); dashboardInputs.length = 0; dailyResultsInputs.length = 0; uploadEvidenceMutate.mockReset(); routeModule.value = "bphf"; Object.assign(authorizationState, { allowed: true, taskId: 51, dueAt: new Date("2026-08-20T12:00:00"), isPreviousPending: true, isFuturePlanned: false, reason: "Autorizado" }); window.history.pushState({}, "", "/"); });
 
   it("substitui o resumo geral pelos cartões das fábricas incluídas no Plano do Dia", () => {
     render(<ModuleControl />);
@@ -104,10 +106,26 @@ describe("cabeçalho de controlo — progresso por fábrica", () => {
 
     expect(screen.getByText("Produtos a verificar")).toBeTruthy();
     expect(screen.getAllByPlaceholderText("Produto acabado")).toHaveLength(1);
+    expect(screen.getAllByLabelText("Fotografia do produto")).toHaveLength(1);
     expect(screen.getByRole("button", { name: "Remover produto 1" })).toHaveProperty("disabled", true);
     await user.click(screen.getByRole("button", { name: "Adicionar produto" }));
     expect(screen.getAllByPlaceholderText("Produto acabado")).toHaveLength(2);
+    expect(screen.getAllByLabelText("Fotografia do produto")).toHaveLength(2);
     expect(screen.getByText(/2 produtos preparados/)).toBeTruthy();
     expect(screen.getByRole("button", { name: "Remover produto 2" })).toHaveProperty("disabled", false);
+  });
+
+  it("carrega e pré-visualiza a fotografia do produto sensorial na respetiva ficha", async () => {
+    const productPhoto = { url: "/manus-storage/produto.png", fileName: "produto.png", mimeType: "image/png" as const };
+    uploadEvidenceMutate.mockImplementation((_input: unknown, options: { onSuccess?: (photo: typeof productPhoto) => void }) => options.onSuccess?.(productPhoto));
+    routeModule.value = "sensory";
+    Object.assign(authorizationState, { allowed: true, taskId: null, dueAt: null, isPreviousPending: false, reason: "Autorizado" });
+    window.history.pushState({}, "", "/controlos/sensory");
+    render(<ModuleControl />);
+
+    const file = new File(["fotografia"], "produto.png", { type: "image/png" });
+    fireEvent.change(screen.getByLabelText("Fotografia do produto"), { target: { files: [file] } });
+    await waitFor(() => expect(uploadEvidenceMutate).toHaveBeenCalledWith(expect.objectContaining({ module: "sensory", fileName: "produto.png", mimeType: "image/png" }), expect.any(Object)));
+    expect(await screen.findByRole("img", { name: "Fotografia do produto: produto.png" })).toHaveProperty("src", expect.stringContaining("/manus-storage/produto.png"));
   });
 });

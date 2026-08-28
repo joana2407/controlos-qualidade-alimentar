@@ -197,7 +197,7 @@ async function assessControlAuthorization(db: any, input: { module: typeof quali
   if (!isShared && !input.factoryId) return { allowed: false, reason: "Selecione a fábrica ou linha antes de consultar ou preencher este controlo.", task: null, isPreviousPending: false, isFuturePlanned: false };
   const today = localDateKey(new Date());
   const [tasks, entries, areaCatalog, monthlyItems, monthlyAssignments] = await Promise.all([db.select().from(controlTasks).orderBy(controlTasks.dueAt), db.select().from(controlEntries).orderBy(desc(controlEntries.completedAt)), db.select().from(areas).orderBy(areas.name), db.select().from(checklistItems).orderBy(checklistItems.sortOrder), db.select().from(checklistItemFactories).orderBy(checklistItemFactories.factoryId)]);
-  const allowsSupplementaryDailyEntries = input.module === "bphf" || input.module === "temperature_controls";
+  const allowsSupplementaryDailyEntries = input.module === "bphf" || input.module === "temperature_controls" || input.module === "sensory";
   const eligibleTasks = tasks.filter((item: any) => {
     const isCurrentDay = localDateKey(new Date(item.dueAt)) === today;
     const isPendingPlan = item.status === "pending" && !isHistoricalPlanTaskSatisfied(item, entries, areaCatalog, monthlyItems, monthlyAssignments);

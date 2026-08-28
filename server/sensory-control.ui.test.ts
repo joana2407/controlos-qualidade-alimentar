@@ -13,6 +13,9 @@ describe("controlo sensorial", () => {
     expect(sensory).toContain("Adicionar produto");
     expect(sensory).toContain("Registe pelo menos um produto");
     expect(sensory).toContain("if (!products.length) return toast.error");
+    expect(sensory).toContain('title="Fotografia do produto"');
+    expect(sensory).toContain('maxPhotos={1}');
+    expect(sensory).toContain("Documente o estado visual do produto avaliado");
     expect(sensory).not.toContain("<Label>Área</Label>");
   });
 });

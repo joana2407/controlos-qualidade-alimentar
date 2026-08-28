@@ -433,3 +433,6 @@
 - [x] Permitir abrir em tamanho ampliado a imagem de referência de cada ponto de Quebráveis a partir da lista de verificações.
 - [x] Permitir adicionar vários produtos no controlo sensorial, mantendo pelo menos um produto verificado obrigatório e validação individual.
 - [x] Garantir que todos os painéis de controlos mostram, após o fecho, as verificações efetuadas e os resultados da data selecionada, incluindo observações e autoria.
+- [x] Permitir carregar uma fotografia opcional para cada produto avaliado no controlo sensorial, com associação individual e pré-visualização.
+- [x] Permitir validar produtos do controlo sensorial individualmente e em momentos diferentes, distinguindo estado, resultado, fotografia, observações e data/hora de cada produto.
+- [x] Manter o controlo sensorial disponível para novas validações após o primeiro produto, permitindo registos individuais em momentos diferentes sem bloquear pelo estado concluído.
