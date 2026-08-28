@@ -456,3 +456,6 @@
 - [x] Investigar porque os backups diários dos relatórios Excel não estão a ser executados, incluindo agendamento, endpoint, logs e armazenamento.
 - [x] Corrigir a execução dos backups diários e validar a criação de um arquivo Excel sem alterar snapshots existentes.
 - [x] Atualizar testes e documentação operacional dos backups após a correção.
+
+- [x] Adicionar geração manual de backups Excel dos relatórios diários para a Responsável de Qualidade, com estado visível, descarga do ficheiro e proteção contra duplicados.
+- [x] Testar a autorização, os estados de carregamento/erro e a repetição segura da geração manual de backups.

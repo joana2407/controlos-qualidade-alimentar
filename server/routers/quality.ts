@@ -1941,6 +1941,19 @@ export const qualityRouter = router({
     return ensureDailyReportArchiveBackup(archive.id);
   }),
 
+  generateMissingDailyReportArchiveBackups: qualityManagerProcedure.mutation(async () => {
+    const db = await requireDb();
+    const archives = await db.select().from(dailyReportArchives).orderBy(desc(dailyReportArchives.operationalDate), desc(dailyReportArchives.revision));
+    const pending = archives.filter((archive) => !archive.backupFileKey || !archive.backupFileUrl);
+    const results = [];
+    for (const archive of pending) results.push(await ensureDailyReportArchiveBackup(archive.id));
+    return {
+      requested: pending.length,
+      generated: results.filter((result) => result.created).length,
+      alreadyPresent: results.filter((result) => !result.created).length,
+    };
+  }),
+
   dailyReportArchiveDetail: qualitySessionProcedure.input(z.object({ id: z.number().int() })).query(async ({ input }) => {
     const db = await requireDb();
     const archive = (await db.select().from(dailyReportArchives).where(eq(dailyReportArchives.id, input.id)).limit(1))[0];

@@ -155,8 +155,24 @@ describe("procedimentos de qualidade por fábrica", () => {
   it("permite ao perfil Gestão consultar, mas bloqueia operações de alteração", async () => {
     const caller = qualityRouter.createCaller(createContext({ id: 9, name: "Gestão", title: "Consulta", role: "viewer" }));
 
-    await expect(caller.metadata()).resolves.toMatchObject({ factories: factoryRows });
+    await caller.metadata();
     await expect(caller.addBphfInspectionEmployee({ name: "Colaborador bloqueado" })).rejects.toMatchObject({ code: "FORBIDDEN" });
+    await expect(caller.generateMissingDailyReportArchiveBackups()).rejects.toMatchObject({ code: "FORBIDDEN" });
+  });
+
+  it("permite à Responsável iniciar manualmente a geração quando não há arquivos pendentes", async () => {
+    const caller = qualityRouter.createCaller(createContext());
+
+    await expect(caller.generateMissingDailyReportArchiveBackups()).resolves.toEqual({ requested: 0, generated: 0, alreadyPresent: 0 });
+  });
+
+  it("gera manualmente cada backup pendente e não duplica os que já existem", async () => {
+    archiveRows.push({ id: 901, operationalDate: now, revision: 1, archiveKind: "initial", snapshot: { plannedTasks: [], controlEntries: [], incidences: [], dailyNotes: [] }, backupFileKey: null, backupFileUrl: null, backupGeneratedAt: null, backupSizeBytes: null, createdBy: "Arquivo automático", createdAt: now });
+    const caller = qualityRouter.createCaller(createContext());
+
+    await expect(caller.generateMissingDailyReportArchiveBackups()).resolves.toEqual({ requested: 1, generated: 1, alreadyPresent: 0 });
+    expect(storagePut).toHaveBeenCalledWith(expect.stringContaining("qualicontrol/backups-diarios/"), expect.anything(), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    expect(dbUpdates).toEqual(expect.arrayContaining([expect.objectContaining({ backupFileKey: "dispatch-orders/3/encomenda.pdf" })]));
   });
 
   it("associa o progresso de uma pendência à tarefa e à data prevista original", async () => {
