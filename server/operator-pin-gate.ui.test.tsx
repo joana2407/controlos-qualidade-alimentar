@@ -3,16 +3,21 @@ import React from "react";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+const sessionMocks = vi.hoisted(() => ({ deactivate: vi.fn() }));
+
 vi.mock("@/lib/trpc", () => ({
   trpc: {
     useUtils: () => ({ quality: { accessStatus: { invalidate: vi.fn() } } }),
     quality: {
+      accessStatus: { useQuery: () => ({ data: { activeProfile: { id: 1, name: "Sabrina Esteves", title: "Tec. Qualidade", role: "technician" }, canManage: false }, isLoading: false }) },
       activatePinProfile: { useMutation: () => ({ isPending: false, mutate: vi.fn() }) },
       configureTeamPins: { useMutation: () => ({ isPending: false, mutate: vi.fn() }) },
+      deactivatePinProfile: { useMutation: () => ({ isPending: false, mutate: sessionMocks.deactivate }) },
     },
   },
 }));
 
+import DashboardLayout from "../client/src/components/DashboardLayout";
 import { OperatorPinGate } from "../client/src/components/OperatorPinGate";
 
 const access = {
@@ -36,5 +41,12 @@ describe("login operacional por PIN", () => {
     expect(screen.getByText("Selecione o seu perfil para introduzir o PIN.")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: /Sabrina Esteves/i }));
     expect(screen.getByLabelText("PIN de Sabrina Esteves")).toBeTruthy();
+  });
+
+  it("mantém uma sessão PIN ativa ao abrir o layout operacional", () => {
+    render(<DashboardLayout workspace="selector"><p>Tarefas disponíveis</p></DashboardLayout>);
+
+    expect(screen.getByText("Tarefas disponíveis")).toBeTruthy();
+    expect(sessionMocks.deactivate).not.toHaveBeenCalled();
   });
 });

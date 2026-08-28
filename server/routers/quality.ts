@@ -5,6 +5,7 @@ import {
   areas,
   bphfInspectionEmployees,
   factories,
+  checklistAreas,
   checklistItems,
   checklistItemFactories,
   controlPlans,
@@ -256,6 +257,21 @@ async function requireDb() {
   const db = await getDb();
   if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "A base de dados não está disponível." });
   return db;
+}
+
+function normalizeChecklistAreaName(name: string) {
+  return name.replace(/\s+/g, " ").trim();
+}
+
+async function ensureChecklistArea(db: any, name: string, createdBy: string) {
+  const normalizedName = normalizeChecklistAreaName(name);
+  const existing = await db.select().from(checklistAreas).where(eq(checklistAreas.name, normalizedName)).limit(1);
+  if (existing[0]) {
+    if (existing[0].active !== "true") await db.update(checklistAreas).set({ active: "true" }).where(eq(checklistAreas.id, existing[0].id));
+    return existing[0].id;
+  }
+  const inserted = await db.insert(checklistAreas).values({ name: normalizedName, active: "true", createdBy }).$returningId();
+  return Number(inserted[0]!.id);
 }
 
 export const qualityRouter = router({
@@ -1562,6 +1578,43 @@ export const qualityRouter = router({
     return [...direct, ...actionEvidence].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
   }),
 
+  listChecklistAreas: qualitySessionProcedure.query(async () => {
+    const db = await requireDb();
+    const [areaRows, itemRows] = await Promise.all([db.select().from(checklistAreas).orderBy(checklistAreas.name), db.select().from(checklistItems)]);
+    const itemCountByArea = new Map<string, number>();
+    itemRows.filter((item) => item.active === "true").forEach((item) => itemCountByArea.set(item.area, (itemCountByArea.get(item.area) ?? 0) + 1));
+    return areaRows.filter((area) => area.active === "true").map((area) => ({ id: area.id, name: area.name, itemCount: itemCountByArea.get(area.name) ?? 0 }));
+  }),
+
+  addChecklistArea: qualityManagerProcedure.input(z.object({ name: z.string().min(2).max(120) })).mutation(async ({ ctx, input }) => {
+    const db = await requireDb();
+    const name = normalizeChecklistAreaName(input.name);
+    await ensureChecklistArea(db, name, ctx.user!.openId);
+    return { success: true, name };
+  }),
+
+  updateChecklistArea: qualityManagerProcedure.input(z.object({ id: z.number().int(), name: z.string().min(2).max(120) })).mutation(async ({ input }) => {
+    const db = await requireDb();
+    const current = await db.select().from(checklistAreas).where(eq(checklistAreas.id, input.id)).limit(1);
+    if (!current[0]) throw new TRPCError({ code: "NOT_FOUND", message: "A Área/Zona selecionada não existe." });
+    const name = normalizeChecklistAreaName(input.name);
+    const duplicate = await db.select().from(checklistAreas).where(eq(checklistAreas.name, name)).limit(1);
+    if (duplicate[0] && duplicate[0].id !== input.id) throw new TRPCError({ code: "CONFLICT", message: "Já existe uma Área/Zona com esse nome." });
+    await db.update(checklistAreas).set({ name }).where(eq(checklistAreas.id, input.id));
+    await db.update(checklistItems).set({ area: name }).where(eq(checklistItems.area, current[0].name));
+    return { success: true, name };
+  }),
+
+  removeChecklistArea: qualityManagerProcedure.input(z.object({ id: z.number().int() })).mutation(async ({ input }) => {
+    const db = await requireDb();
+    const current = await db.select().from(checklistAreas).where(eq(checklistAreas.id, input.id)).limit(1);
+    if (!current[0]) throw new TRPCError({ code: "NOT_FOUND", message: "A Área/Zona selecionada não existe." });
+    const linkedItems = await db.select().from(checklistItems).where(eq(checklistItems.area, current[0].name));
+    if (linkedItems.some((item) => item.active === "true")) throw new TRPCError({ code: "BAD_REQUEST", message: "Não é possível eliminar uma Área/Zona com pontos associados. Edite ou elimine primeiro os pontos dessa área." });
+    await db.update(checklistAreas).set({ active: "false" }).where(eq(checklistAreas.id, input.id));
+    return { success: true };
+  }),
+
   listChecklistItems: qualitySessionProcedure.input(z.object({ factoryId: z.number().int().min(1).max(3) }).optional()).query(async ({ input }) => {
     const db = await requireDb();
     const [items, assignments] = await Promise.all([db.select().from(checklistItems).orderBy(checklistItems.area, checklistItems.sortOrder), db.select().from(checklistItemFactories)]);
@@ -1575,15 +1628,19 @@ export const qualityRouter = router({
   })).mutation(async ({ ctx, input }) => {
     const db = await requireDb();
     const factoryIds = Array.from(new Set(input.factoryIds));
-    const inserted = await db.insert(checklistItems).values({ factoryId: factoryIds[0], area: input.area, label: input.label, createdBy: ctx.user!.openId, sortOrder: 100, active: "true" }).$returningId();
+    const area = normalizeChecklistAreaName(input.area);
+    await ensureChecklistArea(db, area, ctx.user!.openId);
+    const inserted = await db.insert(checklistItems).values({ factoryId: factoryIds[0], area, label: input.label.trim(), createdBy: ctx.user!.openId, sortOrder: 100, active: "true" }).$returningId();
     await db.insert(checklistItemFactories).values(factoryIds.map((factoryId) => ({ checklistItemId: inserted[0]!.id, factoryId })));
     return { success: true };
   }),
 
-  updateChecklistItem: qualityManagerProcedure.input(z.object({ id: z.number().int(), factoryIds: z.array(z.number().int().min(1).max(3)).min(1), area: z.string().min(2).max(120), label: z.string().min(3).max(500) })).mutation(async ({ input }) => {
+  updateChecklistItem: qualityManagerProcedure.input(z.object({ id: z.number().int(), factoryIds: z.array(z.number().int().min(1).max(3)).min(1), area: z.string().min(2).max(120), label: z.string().min(3).max(500) })).mutation(async ({ ctx, input }) => {
     const db = await requireDb();
     const factoryIds = Array.from(new Set(input.factoryIds));
-    await db.update(checklistItems).set({ factoryId: factoryIds[0], area: input.area, label: input.label }).where(eq(checklistItems.id, input.id));
+    const area = normalizeChecklistAreaName(input.area);
+    await ensureChecklistArea(db, area, ctx.user!.openId);
+    await db.update(checklistItems).set({ factoryId: factoryIds[0], area, label: input.label.trim() }).where(eq(checklistItems.id, input.id));
     await db.delete(checklistItemFactories).where(eq(checklistItemFactories.checklistItemId, input.id));
     await db.insert(checklistItemFactories).values(factoryIds.map((factoryId) => ({ checklistItemId: input.id, factoryId })));
     return { success: true };
@@ -2145,6 +2202,7 @@ export const qualityRouter = router({
 
   initializeChecklist: qualityManagerProcedure.mutation(async ({ ctx }) => {
     const db = await requireDb();
+    await ensureChecklistArea(db, "Geral", ctx.user!.openId);
     const existing = await db.select().from(checklistItems).limit(1);
     if (existing.length) return { success: true, created: 0 };
     await db.insert(checklistItems).values(MONTHLY_CHECKLIST_TEMPLATE.map((label, index) => ({

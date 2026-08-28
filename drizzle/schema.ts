@@ -369,6 +369,14 @@ export const evidences = mysqlTable("evidences", {
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 }, (table) => [index("evidence_nc_idx").on(table.nonconformityId), index("evidence_action_idx").on(table.correctiveActionId)]);
 
+export const checklistAreas = mysqlTable("checklist_areas", {
+  id: int("id").autoincrement().primaryKey(),
+  name: varchar("name", { length: 120 }).notNull().unique(),
+  active: mysqlEnum("checklist_area_active", ["true", "false"]).default("true").notNull(),
+  createdBy: varchar("createdBy", { length: 64 }).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (table) => [index("checklist_area_active_idx").on(table.active), index("checklist_area_name_idx").on(table.name)]);
+
 export const checklistItems = mysqlTable("checklist_items", {
   id: int("id").autoincrement().primaryKey(),
   factoryId: int("factoryId"),

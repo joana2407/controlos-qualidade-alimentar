@@ -463,3 +463,12 @@
 - [x] Investigar porque controlos concluídos continuam na lista «Em Atraso», comparando tarefas, entradas, datas operacionais e regras de completude.
 - [x] Corrigir a reconciliação da lista «Em Atraso» para remover controlos totalmente concluídos e preservar apenas pendências reais.
 - [x] Adicionar testes de regressão para todos os módulos relevantes e validar a correção na aplicação publicada.
+
+- [x] Investigar o bloqueio que impede visualizar ou preencher tarefas, incluindo sessão por PIN, atribuições, lista e abertura do formulário.
+- [x] Corrigir o fluxo de visualização e preenchimento das tarefas autorizadas sem remover as regras de acesso.
+- [x] Adicionar regressões de acesso por perfil e validar o preenchimento de tarefas publicadas.
+
+- [x] Corrigir o erro de compilação pendente no teste do layout de sessão PIN, sem perder a correção do acesso às tarefas.
+- [x] Adicionar gestão de áreas à Checklist Mensal, com criação, edição e eliminação protegidas para a Responsável de Qualidade.
+- [x] Preservar os pontos associados, fábricas atribuídas e filtros após alterações às áreas da Checklist Mensal.
+- [x] Adicionar regressões e validar a gestão de áreas da Checklist Mensal antes da publicação.
