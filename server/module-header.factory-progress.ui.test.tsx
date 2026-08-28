@@ -10,6 +10,7 @@ if (!HTMLElement.prototype.releasePointerCapture) HTMLElement.prototype.releaseP
 if (!HTMLElement.prototype.scrollIntoView) HTMLElement.prototype.scrollIntoView = () => undefined;
 
 const dashboardInputs = vi.hoisted(() => [] as unknown[]);
+const authorizationInputs = vi.hoisted(() => [] as unknown[]);
 const dailyResultsInputs = vi.hoisted(() => [] as unknown[]);
 const routeModule = vi.hoisted(() => ({ value: "bphf" }));
 const authorizationState = vi.hoisted(() => ({ allowed: true, taskId: 51 as number | null, dueAt: new Date("2026-08-20T12:00:00"), isPreviousPending: true, isFuturePlanned: false, reason: "Autorizado" }));
@@ -25,7 +26,7 @@ vi.mock("@/lib/trpc", () => ({
       dailyControlResults: { useQuery: (input: unknown) => { dailyResultsInputs.push(input); const module = (input as { module?: string }).module; const entries = module === "metal_detectors" ? [{ id: 91, title: "Detetor de metais — Linha 1 · Produto de teste", area: "Linha 1", result: "C", notes: null, payload: {}, completedAt: new Date("2026-08-20T11:30:00"), registeredByName: "Sabrina Esteves", registeredByTitle: "Tec. Qualidade" }] : module === "sensory" ? [{ id: 90, title: "Controlo sensorial — Broa da serra", area: "Controlo sensorial", result: "C", notes: null, payload: { product: "Broa da serra", lot: "L1", validity: "2026-08-28" }, completedAt: new Date("2026-08-20T11:30:00"), registeredByName: "Sabrina Esteves", registeredByTitle: "Tec. Qualidade" }, { id: 92, title: "Controlo sensorial — Pão integral", area: "Controlo sensorial", result: "NC", notes: "Aspeto a rever.", payload: { product: "Pão integral", lot: "L2", validity: "2026-08-28" }, completedAt: new Date("2026-08-20T12:15:00"), registeredByName: "Sabrina Esteves", registeredByTitle: "Tec. Qualidade" }] : module === "suggestion_boxes" ? [{ id: 93, title: "Caixa de sugestões — Caixa escritório", area: "Caixa escritório", result: "C", notes: "Sem sugestões pendentes.", payload: { count: 0, triage: "Triada" }, completedAt: new Date("2026-08-20T11:30:00"), registeredByName: "Sabrina Esteves", registeredByTitle: "Tec. Qualidade" }] : [{ id: 90, title: "Higienização das mãos dos manipuladores", area: "Produção", result: "C", notes: "Sem desvios observados.", payload: { collaboratorName: "Colaborador de teste" }, completedAt: new Date("2026-08-20T11:30:00"), registeredByName: "Sabrina Esteves", registeredByTitle: "Tec. Qualidade" }]; return { isLoading: false, data: { entries } }; } },
       temperatureHistory: { useQuery: () => ({ isLoading: false, data: [{ entryId: 201, equipmentId: "f1-freezer-1", name: "Equipamento de congelação 1", area: "Área da Qualidade", temperature: -19, result: "C", notes: "Leitura estável.", completedAt: new Date("2026-08-20T14:35:00"), registeredByName: "Sabrina Esteves", registeredByTitle: "Tec. Qualidade" }] }) },
       pendingControlTasks: { useQuery: () => ({ isLoading: false, data: [{ id: 72, dueAt: new Date("2026-08-18T12:00:00"), responsible: "Ana", factoryId: 1 }] }) },
-      controlAuthorization: { useQuery: () => ({ isLoading: false, data: authorizationState }) },
+      controlAuthorization: { useQuery: (input: unknown) => { authorizationInputs.push(input); return { isLoading: false, data: authorizationState }; } },
       listBphfInspectionEmployees: { useQuery: () => ({ data: [{ id: 1, name: "Colaborador de teste" }] }) },
       listBphfCollaboratorInspections: { useQuery: () => ({ isLoading: false, data: bphfInspections }) },
       addBphfInspectionEmployee: { useMutation: () => ({ isPending: false, mutate: vi.fn() }) },
@@ -40,12 +41,13 @@ vi.mock("@/lib/trpc", () => ({
 vi.mock("wouter", () => ({
   Link: ({ children, href, ...props }: { children: React.ReactNode; href: string }) => <a href={href} {...props}>{children}</a>,
   useRoute: () => [true, { module: routeModule.value }],
+  useLocation: () => [window.location.pathname + window.location.search, vi.fn()],
 }));
 
 import ModuleControl from "../client/src/pages/ModuleControl";
 
 describe("cabeçalho de controlo — progresso por fábrica", () => {
-  afterEach(() => { cleanup(); dashboardInputs.length = 0; dailyResultsInputs.length = 0; bphfInspections.length = 0; uploadEvidenceMutate.mockReset(); routeModule.value = "bphf"; Object.assign(authorizationState, { allowed: true, taskId: 51, dueAt: new Date("2026-08-20T12:00:00"), isPreviousPending: true, isFuturePlanned: false, reason: "Autorizado" }); window.history.pushState({}, "", "/"); });
+  afterEach(() => { cleanup(); dashboardInputs.length = 0; authorizationInputs.length = 0; dailyResultsInputs.length = 0; bphfInspections.length = 0; uploadEvidenceMutate.mockReset(); routeModule.value = "bphf"; Object.assign(authorizationState, { allowed: true, taskId: 51, dueAt: new Date("2026-08-20T12:00:00"), isPreviousPending: true, isFuturePlanned: false, reason: "Autorizado" }); window.history.pushState({}, "", "/"); });
 
   it("substitui o resumo geral pelos cartões das fábricas incluídas no Plano do Dia", () => {
     render(<ModuleControl />);
@@ -66,6 +68,15 @@ describe("cabeçalho de controlo — progresso por fábrica", () => {
     expect(screen.getByText(/e não para o dia atual/)).toBeTruthy();
     const input = dashboardInputs[0] as { date: Date };
     expect(input.date.toISOString()).toContain("2026-08-20T12:00:00.000Z");
+  });
+
+  it("usa o plannedTaskId da pendência quando o formulário é aberto na URL correspondente", () => {
+    window.history.pushState({}, "", "/controlos/bphf?factoryId=1&plannedTaskId=72");
+    render(<ModuleControl />);
+
+    expect(authorizationInputs[0]).toMatchObject({ module: "bphf", factoryId: 1, plannedTaskId: 72 });
+    expect(screen.getByText("Controlo retroativo")).toBeTruthy();
+    expect(screen.getAllByText(/20\/08\/2026/).length).toBeGreaterThan(0);
   });
 
   it("apresenta abaixo do formulário os resultados registados para a data consultada", () => {

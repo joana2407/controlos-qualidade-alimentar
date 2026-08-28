@@ -18,7 +18,7 @@ import { FragileOperationsPanel } from "@/components/quality/FragileOperationsPa
 import { DISPATCH_CONTROL_CATALOG } from "@shared/dispatch-control";
 import { AlertTriangle, ArrowLeft, Boxes, CalendarClock, CheckCircle2, ChevronDown, ChevronUp, CircleAlert, CircleHelp, ClipboardCheck, Eye, Factory, FilePlus2, FlaskConical, Gauge, History, ImagePlus, Lightbulb, MapPin, Microscope, PackageSearch, Pencil, Plus, ShieldCheck, SlidersHorizontal, ThermometerSnowflake, Trash2, Truck, WandSparkles } from "lucide-react";
 import React, { FormEvent, useEffect, useMemo, useState } from "react";
-import { Link, useRoute } from "wouter";
+import { Link, useLocation, useRoute } from "wouter";
 import { toast } from "sonner";
 
 type Result = "C" | "NC" | "N/A";
@@ -187,16 +187,18 @@ function AnticipatedPlanNotice({ dueAt }: { dueAt: Date | string | null | undefi
 export default function ModuleControl() {
   const [, params] = useRoute("/controlos/:module");
   const module = params?.module ?? "bphf";
+  const [location] = useLocation();
+  const queryParams = useMemo(() => new URLSearchParams(location.split("?")[1]?.split("#")[0] ?? ""), [location]);
   const config = MODULES.find((item) => item.id === module);
   const metadata = trpc.quality.metadata.useQuery();
   const bphfAreas = Array.from(new Set(metadata.data?.areas.filter((area) => area.group === "bphf").map((area) => area.name) ?? []));
   const factories = metadata.data?.factories ?? [];
-  const [factoryId, setFactoryId] = useState(() => new URLSearchParams(window.location.search).get("factoryId") ?? readControlFactoryScope());
+  const [factoryId, setFactoryId] = useState(() => queryParams.get("factoryId") ?? readControlFactoryScope());
   const metalAreasForFactory = factoryId ? metadata.data?.areas.filter((area) => area.group === "metal" && area.factoryId === Number(factoryId)).map((area) => area.name) ?? [] : [];
   useEffect(() => { writeControlFactoryScope(factoryId); }, [factoryId]);
   const bphfAreasForFactory = factoryId ? metadata.data?.areas.filter((area) => area.group === "bphf" && area.factoryId === Number(factoryId) && ["Embalagem", "Limpeza", "Produção"].includes(area.name)).map((area) => area.name) ?? [] : [];
   const isSharedControl = module === "dispatch_control" || module === "internal_analysis";
-  const plannedTaskId = Number(new URLSearchParams(window.location.search).get("plannedTaskId")) || undefined;
+  const plannedTaskId = Number(queryParams.get("plannedTaskId")) || undefined;
   const authorization = trpc.quality.controlAuthorization?.useQuery?.({ module: (config?.id ?? "bphf") as (typeof MODULES)[number]["id"], factoryId: isSharedControl ? undefined : factoryId ? Number(factoryId) : undefined, plannedTaskId }) ?? { data: undefined, isLoading: false };
   const progressDateInput = useMemo(() => {
     const dueAt = authorization.data?.isPreviousPending || authorization.data?.isFuturePlanned ? authorization.data.dueAt : undefined;

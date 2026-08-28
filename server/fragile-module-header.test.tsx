@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 vi.mock("wouter", () => ({
   Link: ({ children, href }: { children: React.ReactNode; href: string }) => <a href={href}>{children}</a>,
   useRoute: () => [true, { module: "fragile_items" }],
+  useLocation: () => [window.location.pathname + window.location.search, vi.fn()],
 }));
 
 const noopMutation = { mutate: vi.fn(), mutateAsync: vi.fn(), isPending: false };
