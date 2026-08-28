@@ -5,7 +5,7 @@ const archiveMock = vi.hoisted(() => ({ db: null as any, backup: vi.fn(async (ar
 vi.mock("./db", () => ({ getDb: async () => archiveMock.db }));
 vi.mock("./daily-report-backup", () => ({ ensureDailyReportArchiveBackup: archiveMock.backup }));
 
-import { buildDailyReportSnapshot, createInitialDailyReportArchive, createRetroactiveDailyReportRevision, isLisbonArchiveTime } from "./daily-report-archive";
+import { buildDailyReportSnapshot, createInitialDailyReportArchive, createManualDailyReportArchive, createRetroactiveDailyReportRevision, isLisbonArchiveTime } from "./daily-report-archive";
 
 function createArchiveDb() {
   const archives: any[] = [];
@@ -94,6 +94,21 @@ describe("arquivo diário de relatórios", () => {
     expect(repeated.created).toBe(false);
     expect(mock.archives).toHaveLength(1);
     expect(mock.archives[0]).toMatchObject({ revision: 1, archiveKind: "initial" });
+  });
+
+  it("guarda manualmente o backup diário da data selecionada sem duplicar o arquivo", async () => {
+    const mock = createArchiveDb();
+    archiveMock.db = mock.db;
+    archiveMock.backup.mockClear();
+
+    const first = await createManualDailyReportArchive("2026-08-21", "Arquivo manual por Joana Pina");
+    const repeated = await createManualDailyReportArchive("2026-08-21", "Arquivo manual por Joana Pina");
+
+    expect(first).toMatchObject({ created: true, revision: 1 });
+    expect(repeated.created).toBe(false);
+    expect(mock.archives).toHaveLength(1);
+    expect(mock.archives[0]).toMatchObject({ archiveKind: "initial", createdBy: "Arquivo manual por Joana Pina" });
+    expect(archiveMock.backup).toHaveBeenCalledWith(1);
   });
 
   it("gera o ficheiro de backup quando cria cada versão diária", async () => {

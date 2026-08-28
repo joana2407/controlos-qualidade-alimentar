@@ -34,4 +34,12 @@ describe("Checklist mensal", () => {
     expect(moduleControl).toContain("Áreas/Zonas atribuídas");
     expect(moduleControl).toContain("(item.areaNames ?? [item.area]).includes(area)");
   });
+
+  it("mostra a conclusão mínima por Área/Zona com cores de concluída e pendente", () => {
+    expect(moduleControl).toContain("Conclusão por Área/Zona");
+    expect(moduleControl).toContain("Área/Zona concluída");
+    expect(moduleControl).toContain("Área/Zona pendente");
+    expect(moduleControl).toContain("selectedFactoryProgress?.areas?.map");
+    expect(moduleControl).toContain('areaProgress.minimumMet ? "Concluída" : "Pendente"');
+  });
 });

@@ -93,6 +93,11 @@ export async function createInitialDailyReportArchive(operationalDate: string, c
   return { created: true, revision, archiveId, backup };
 }
 
+/** Cria, ou recupera sem duplicar, o arquivo oficial do dia solicitado manualmente. */
+export async function createManualDailyReportArchive(operationalDate: string, createdBy: string) {
+  return createInitialDailyReportArchive(operationalDate, createdBy);
+}
+
 export async function createRetroactiveDailyReportRevision(input: { taskId: number; entryId?: number | null; dueAt: Date; module: string; reason: string; createdBy: string }) {
   const db = await getDb();
   if (!db) throw new Error("Base de dados indisponível para criar a revisão retroativa.");

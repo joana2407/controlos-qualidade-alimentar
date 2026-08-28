@@ -498,3 +498,12 @@
 - [x] Adicionar a opção «Todas as Áreas/Zonas» no editor de pontos da Checklist Mensal.
 - [x] Migrar as atribuições existentes sem perder pontos, fábricas, históricos ou indicadores mensais.
 - [x] Adicionar regressões de servidor e interface para atribuição múltipla de Áreas/Zonas.
+
+- [x] Adicionar no cabeçalho dos Relatórios uma ação de backup manual para guardar o relatório filtrado em Excel.
+- [x] Guardar o backup manual no painel Backups diários com filtro, data e responsável rastreáveis.
+- [x] Proteger a ação para a Responsável de Qualidade e impedir duplicação involuntária de arquivos idênticos.
+- [x] Cobrir a ação manual dos Relatórios com regressões de interface, servidor e permissões.
+
+- [x] Exigir na Checklist Mensal pelo menos uma verificação em cada Área/Zona aplicável antes de indicar 100% por fábrica.
+- [x] Mostrar na Checklist Mensal o estado de cada Área/Zona com cores de concluída e pendente, alinhado com BPHF.
+- [x] Adicionar regressões para a completitude mensal por Área/Zona e para os respetivos indicadores visuais.

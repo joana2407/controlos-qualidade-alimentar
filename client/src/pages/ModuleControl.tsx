@@ -5056,6 +5056,9 @@ function MonthlyChecklistV2({ createEntry }: any) {
   );
   const checklistAreas = trpc.quality.listChecklistAreas.useQuery();
   const monthlyProgress = trpc.quality.monthlyChecklistProgress.useQuery();
+  const selectedFactoryProgress = monthlyProgress.data?.find(
+    item => item.factoryId === Number(factoryId)
+  );
   const utils = trpc.useUtils();
   const [area, setArea] = useState("");
   const [results, setResults] = useState<Record<number, Result | "">>({});
@@ -5323,12 +5326,49 @@ function MonthlyChecklistV2({ createEntry }: any) {
                     className="mt-3 h-2"
                   />
                   <p className="mt-2 text-xs text-slate-300">
-                    {progress?.completed ?? 0} de {progress?.total ?? 0} pontos
-                    concluídos
+                    {progress?.completed ?? 0} de {progress?.total ?? 0} Áreas/Zonas
+                    concluídas
                   </p>
                 </div>
               );
             })}
+          </div>
+        </div>
+        <div className="mt-5 rounded-xl border border-teal-100 bg-teal-50/70 p-4">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+            <div>
+              <p className="text-sm font-semibold text-teal-950">Conclusão por Área/Zona</p>
+              <p className="mt-1 max-w-2xl text-sm text-teal-900">
+                O preenchimento da fábrica selecionada só atinge 100% quando todas as Áreas/Zonas aplicáveis têm pelo menos uma verificação mensal registada.
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2 text-sm">
+              <span className="rounded-full bg-emerald-100 px-3 py-1.5 font-medium text-emerald-800">Área/Zona concluída</span>
+              <span className="rounded-full bg-amber-100 px-3 py-1.5 font-medium text-amber-900">Área/Zona pendente</span>
+            </div>
+          </div>
+          <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {selectedFactoryProgress?.areas?.map(areaProgress => (
+              <div
+                key={areaProgress.areaName}
+                className={`rounded-xl border p-3 ${areaProgress.minimumMet ? "border-emerald-200 bg-emerald-50" : "border-amber-200 bg-amber-50"}`}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <p className="font-medium text-slate-950">{areaProgress.areaName}</p>
+                  <span className={`rounded-full px-2 py-1 text-xs font-medium ${areaProgress.minimumMet ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-900"}`}>
+                    {areaProgress.minimumMet ? "Concluída" : "Pendente"}
+                  </span>
+                </div>
+                <p className="mt-2 text-xs text-slate-700">
+                  {areaProgress.completed} de {areaProgress.total} pontos registados nesta Área/Zona.
+                </p>
+              </div>
+            ))}
+            {!selectedFactoryProgress?.areas?.length && (
+              <p className="rounded-xl border border-dashed border-teal-200 bg-white p-3 text-sm text-teal-900">
+                Não existem Áreas/Zonas com pontos ativos para esta fábrica.
+              </p>
+            )}
           </div>
         </div>
       </ModuleHeader>

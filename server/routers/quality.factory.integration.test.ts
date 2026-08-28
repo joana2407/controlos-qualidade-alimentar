@@ -162,6 +162,18 @@ describe("procedimentos de qualidade por fábrica", () => {
     await caller.metadata();
     await expect(caller.addBphfInspectionEmployee({ name: "Colaborador bloqueado" })).rejects.toMatchObject({ code: "FORBIDDEN" });
     await expect(caller.generateMissingDailyReportArchiveBackups()).rejects.toMatchObject({ code: "FORBIDDEN" });
+    await expect(caller.createManualDailyReportArchive({ operationalDate: "2026-08-14" })).rejects.toMatchObject({ code: "FORBIDDEN" });
+  });
+
+  it("permite à Responsável guardar manualmente o arquivo diário solicitado nos Relatórios", async () => {
+    const caller = qualityRouter.createCaller(createContext());
+
+    const result = await caller.createManualDailyReportArchive({ operationalDate: "2026-08-14" });
+
+    expect(result).toMatchObject({ created: true, revision: 1 });
+    expect(dbInserts).toEqual(expect.arrayContaining([
+      expect.objectContaining({ archiveKind: "initial", createdBy: "Arquivo manual por Joana Pina" }),
+    ]));
   });
 
   it("permite à Responsável iniciar manualmente a geração quando não há arquivos pendentes", async () => {
@@ -736,7 +748,15 @@ describe("procedimentos de qualidade por fábrica", () => {
       const listed = await caller.listChecklistItems({ factoryId: 1 });
       expect(listed.find(item => item.id === 301)?.areaNames).toEqual(["Geral", "Produção"]);
       const progress = await caller.monthlyChecklistProgress();
-      expect(progress.find(item => item.factoryId === 1)).toMatchObject({ total: 3, completed: 1, percentage: 33 });
+      expect(progress.find(item => item.factoryId === 1)).toMatchObject({
+        total: 2,
+        completed: 1,
+        percentage: 50,
+        areas: [
+          expect.objectContaining({ areaName: "Geral", minimumMet: true }),
+          expect.objectContaining({ areaName: "Produção", minimumMet: false }),
+        ],
+      });
     } finally {
       entries.splice(entries.findIndex(entry => entry.id === 990), 1);
     }

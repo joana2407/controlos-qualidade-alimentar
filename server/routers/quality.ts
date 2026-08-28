@@ -26,7 +26,7 @@ import {
   resultValues,
 } from "../../drizzle/schema";
 import { getDb } from "../db";
-import { createRetroactiveDailyReportRevision } from "../daily-report-archive";
+import { createManualDailyReportArchive, createRetroactiveDailyReportRevision } from "../daily-report-archive";
 import { ensureDailyReportArchiveBackup } from "../daily-report-backup";
 import { businessDayAfter, calculateConformityRate, calculateDispatchConformity, calculateSensoryScore, fragileInspectionDelayDays, fragileInspectionDueDate, isBusinessDay, isFragileInspectionPending, nextBusinessDay, shouldCreateCriticalMetalAlert } from "../quality.logic";
 import { calculatePlanCompliance, countOpenNonconformities, scopeToFactory } from "../factory.scope.logic";
@@ -1738,13 +1738,13 @@ export const qualityRouter = router({
     const areaNameById = new Map(areaRows.map(area => [area.id, area.name]));
     return monthlyFactories.filter((factory) => [1, 2, 3].includes(factory.id)).map((factory) => {
       const factoryItems = items.filter((item) => factoryAssignments.some((assignment) => assignment.checklistItemId === item.id && assignment.factoryId === factory.id) && item.active === "true");
-      const plannedChecks = factoryItems.flatMap(item => {
+      const plannedChecks = Array.from(new Set(factoryItems.flatMap(item => {
         const itemAreaNames = areaAssignments
           .filter(assignment => assignment.checklistItemId === item.id)
           .map(assignment => areaNameById.get(assignment.checklistAreaId))
           .filter((name): name is string => Boolean(name));
         return (itemAreaNames.length ? itemAreaNames : [item.area]).map(areaName => `${item.id}:${areaName}`);
-      });
+      })));
       const completedChecks = new Set(monthEntries
         .filter(entry => entry.factoryId === factory.id)
         .map(entry => {
@@ -1752,8 +1752,26 @@ export const qualityRouter = router({
           return itemId && entry.area ? `${itemId}:${entry.area}` : null;
         })
         .filter((key): key is string => Boolean(key)));
-      const completed = plannedChecks.filter(key => completedChecks.has(key)).length;
-      return { factoryId: factory.id, factoryName: factory.name, total: plannedChecks.length, completed, percentage: plannedChecks.length ? Math.round((completed / plannedChecks.length) * 100) : 0 };
+      const checksByArea = new Map<string, string[]>();
+      plannedChecks.forEach(check => {
+        const areaName = check.slice(check.indexOf(":") + 1);
+        checksByArea.set(areaName, [...(checksByArea.get(areaName) ?? []), check]);
+      });
+      const areaProgress = Array.from(checksByArea.entries())
+        .map(([areaName, checks]) => {
+          const completed = checks.filter(check => completedChecks.has(check)).length;
+          return { areaName, total: checks.length, completed, minimumMet: completed > 0 };
+        })
+        .sort((left, right) => left.areaName.localeCompare(right.areaName, "pt-PT"));
+      const completed = areaProgress.filter(area => area.minimumMet).length;
+      return {
+        factoryId: factory.id,
+        factoryName: factory.name,
+        total: areaProgress.length,
+        completed,
+        percentage: areaProgress.length ? Math.round((completed / areaProgress.length) * 100) : 0,
+        areas: areaProgress,
+      };
     });
   }),
 
@@ -2080,6 +2098,10 @@ export const qualityRouter = router({
     const archive = (await db.select().from(dailyReportArchives).where(eq(dailyReportArchives.id, input.archiveId)).limit(1))[0];
     if (!archive) throw new TRPCError({ code: "NOT_FOUND", message: "Versão de arquivo não encontrada." });
     return ensureDailyReportArchiveBackup(archive.id);
+  }),
+
+  createManualDailyReportArchive: qualityManagerProcedure.input(z.object({ operationalDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Indique uma data operacional válida.") })).mutation(async ({ ctx, input }) => {
+    return createManualDailyReportArchive(input.operationalDate, `Arquivo manual por ${ctx.operatorProfile!.name}`);
   }),
 
   generateMissingDailyReportArchiveBackups: qualityManagerProcedure.mutation(async () => {

@@ -3,7 +3,7 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-const { writeFile } = vi.hoisted(() => ({ writeFile: vi.fn() }));
+const { writeFile, createManualArchive } = vi.hoisted(() => ({ writeFile: vi.fn(), createManualArchive: vi.fn() }));
 
 vi.mock("xlsx", async (importOriginal) => {
   const actual = await importOriginal<typeof import("xlsx")>();
@@ -23,20 +23,21 @@ const archive = {
 
 vi.mock("@/lib/trpc", () => ({
   trpc: {
-    useUtils: () => ({ quality: { reports: { invalidate: vi.fn() }, dailyReportArchiveAttention: { invalidate: vi.fn() } } }),
+    useUtils: () => ({ quality: { reports: { invalidate: vi.fn() }, dailyReportArchiveAttention: { invalidate: vi.fn() }, dailyReportArchiveHistory: { invalidate: vi.fn() } } }),
     quality: {
       metadata: { useQuery: () => ({ data: { factories: [], collaborators: [] } }) },
       reports: { useQuery: () => ({ data: { modules: [], areas: [], trends: [], filteredEntries: [], filteredSummary: { total: 0, conformity: 0 } }, isLoading: false }) },
       dailyReportArchiveHistory: { useQuery: () => ({ data: [{ ...archive, controls: 1, incidences: 0 }], isLoading: false }) },
       dailyReportArchiveDetail: { useQuery: (input: { id: number }) => ({ data: input.id ? archive : null, isLoading: false }) },
       markDailyReportArchiveViewed: { useMutation: () => ({ mutate: vi.fn() }) },
+      createManualDailyReportArchive: { useMutation: () => ({ isPending: false, mutate: createManualArchive }) },
       updateControlEntry: { useMutation: () => ({ isPending: false, mutate: vi.fn() }) },
       deleteControlEntry: { useMutation: () => ({ isPending: false, mutate: vi.fn() }) },
     },
   },
 }));
 
-vi.mock("@/contexts/QualityAccessContext", () => ({ useQualityAccess: () => ({ activeProfile: null, canManage: false }) }));
+vi.mock("@/contexts/QualityAccessContext", () => ({ useQualityAccess: () => ({ activeProfile: { id: 3, name: "Joana Pina" }, canManage: true }) }));
 
 import Reports from "../client/src/pages/Reports";
 
@@ -52,5 +53,15 @@ describe("exportação Excel do arquivo diário", () => {
     fireEvent.click(screen.getByRole("button", { name: /exportar versão excel/i }));
 
     expect(writeFile).toHaveBeenCalledWith(expect.anything(), "arquivo-diario-2026-08-21-V2.xlsx", { compression: true });
+  });
+
+  it("permite à Responsável guardar o relatório do dia selecionado nos Backups diários", () => {
+    const { container } = render(<Reports />);
+    const [startDate, endDate] = Array.from(container.querySelectorAll<HTMLInputElement>('input[type="date"]'));
+    fireEvent.change(startDate!, { target: { value: "2026-08-21" } });
+    fireEvent.change(endDate!, { target: { value: "2026-08-21" } });
+    fireEvent.click(screen.getByRole("button", { name: /guardar backup diário/i }));
+
+    expect(createManualArchive).toHaveBeenCalledWith({ operationalDate: "2026-08-21" });
   });
 });
