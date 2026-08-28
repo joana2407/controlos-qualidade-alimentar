@@ -436,3 +436,4 @@
 - [x] Permitir carregar uma fotografia opcional para cada produto avaliado no controlo sensorial, com associação individual e pré-visualização.
 - [x] Permitir validar produtos do controlo sensorial individualmente e em momentos diferentes, distinguindo estado, resultado, fotografia, observações e data/hora de cada produto.
 - [x] Manter o controlo sensorial disponível para novas validações após o primeiro produto, permitindo registos individuais em momentos diferentes sem bloquear pelo estado concluído.
+- [x] Adicionar filtro por produto ao histórico do controlo sensorial, mantendo o filtro limitado à data selecionada e permitindo limpar a pesquisa.

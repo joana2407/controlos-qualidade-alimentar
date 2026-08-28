@@ -16,7 +16,7 @@ vi.mock("@/lib/trpc", () => ({
     quality: {
       metadata: { useQuery: () => ({ data: { factories: [{ id: 1, name: "Fábrica 1 (Fatiado)" }, { id: 2, name: "Fábrica 2 (granel)" }, { id: 3, name: "Fábrica 3 (Sem Gluten)" }], areas: [{ id: 1, name: "Produção", group: "bphf", factoryId: 1 }, { id: 2, name: "Produção", group: "bphf", factoryId: 2 }, { id: 3, name: "Produção", group: "bphf", factoryId: 3 }, { id: 11, name: "Linha 1", group: "metal", factoryId: 1 }, { id: 12, name: "Linha 2", group: "metal", factoryId: 1 }] } }) },
       dashboard: { useQuery: (input: unknown) => { dashboardInputs.push(input); return { isLoading: false, data: { moduleProgress: { bphf: { expected: 3, completed: 1, registeredToday: 1, pending: ["Plano do Dia — bphf"], percentage: 33.3 }, metal_detectors: { expected: 2, completed: 1, registeredToday: 1, pending: ["Plano do Dia — metal_detectors"], percentage: 50 } }, moduleProgressByFactory: { bphf: [{ factoryId: 1, expected: 1, completed: 0, registeredToday: 0, percentage: 0 }, { factoryId: 2, expected: 1, completed: 1, registeredToday: 1, percentage: 100 }, { factoryId: 3, expected: 1, completed: 0, registeredToday: 0, percentage: 0 }], metal_detectors: [{ factoryId: 1, expected: 2, completed: 1, registeredToday: 1, percentage: 50 }] } } }; } },
-      dailyControlResults: { useQuery: (input: unknown) => { dailyResultsInputs.push(input); const module = (input as { module?: string }).module; return { isLoading: false, data: { entries: module === "metal_detectors" ? [{ id: 91, title: "Detetor de metais — Linha 1 · Produto de teste", area: "Linha 1", result: "C", notes: null, payload: {}, completedAt: new Date("2026-08-20T11:30:00"), registeredByName: "Sabrina Esteves", registeredByTitle: "Tec. Qualidade" }] : [{ id: 90, title: "Higienização das mãos dos manipuladores", area: "Produção", result: "C", notes: "Sem desvios observados.", payload: { collaboratorName: "Colaborador de teste" }, completedAt: new Date("2026-08-20T11:30:00"), registeredByName: "Sabrina Esteves", registeredByTitle: "Tec. Qualidade" }] } }; } },
+      dailyControlResults: { useQuery: (input: unknown) => { dailyResultsInputs.push(input); const module = (input as { module?: string }).module; const entries = module === "metal_detectors" ? [{ id: 91, title: "Detetor de metais — Linha 1 · Produto de teste", area: "Linha 1", result: "C", notes: null, payload: {}, completedAt: new Date("2026-08-20T11:30:00"), registeredByName: "Sabrina Esteves", registeredByTitle: "Tec. Qualidade" }] : module === "sensory" ? [{ id: 90, title: "Controlo sensorial — Broa da serra", area: "Controlo sensorial", result: "C", notes: null, payload: { product: "Broa da serra", lot: "L1", validity: "2026-08-28" }, completedAt: new Date("2026-08-20T11:30:00"), registeredByName: "Sabrina Esteves", registeredByTitle: "Tec. Qualidade" }, { id: 92, title: "Controlo sensorial — Pão integral", area: "Controlo sensorial", result: "NC", notes: "Aspeto a rever.", payload: { product: "Pão integral", lot: "L2", validity: "2026-08-28" }, completedAt: new Date("2026-08-20T12:15:00"), registeredByName: "Sabrina Esteves", registeredByTitle: "Tec. Qualidade" }] : [{ id: 90, title: "Higienização das mãos dos manipuladores", area: "Produção", result: "C", notes: "Sem desvios observados.", payload: { collaboratorName: "Colaborador de teste" }, completedAt: new Date("2026-08-20T11:30:00"), registeredByName: "Sabrina Esteves", registeredByTitle: "Tec. Qualidade" }]; return { isLoading: false, data: { entries } }; } },
       pendingControlTasks: { useQuery: () => ({ isLoading: false, data: [{ id: 72, dueAt: new Date("2026-08-18T12:00:00"), responsible: "Ana", factoryId: 1 }] }) },
       controlAuthorization: { useQuery: () => ({ isLoading: false, data: authorizationState }) },
       listBphfInspectionEmployees: { useQuery: () => ({ data: [{ id: 1, name: "Colaborador de teste" }] }) },
@@ -95,6 +95,25 @@ describe("cabeçalho de controlo — progresso por fábrica", () => {
     expect(screen.getByText("Resultados registados")).toBeTruthy();
     expect(screen.getAllByText("Higienização das mãos dos manipuladores").length).toBeGreaterThan(0);
     expect(screen.getByText("Sem desvios observados.")).toBeTruthy();
+  });
+
+  it("filtra o histórico sensorial pelo nome do produto e permite limpar a pesquisa", async () => {
+    const user = userEvent.setup();
+    routeModule.value = "sensory";
+    Object.assign(authorizationState, { allowed: true, taskId: null, dueAt: null, isPreviousPending: false, reason: "Autorizado" });
+    window.history.pushState({}, "", "/controlos/sensory?factoryId=1");
+    render(<ModuleControl />);
+
+    expect(screen.getByText("Controlo sensorial — Broa da serra")).toBeTruthy();
+    expect(screen.getByText("Controlo sensorial — Pão integral")).toBeTruthy();
+    const filter = screen.getByLabelText("Filtrar por produto");
+    await user.type(filter, "Pão integral");
+    expect(screen.queryByText("Controlo sensorial — Broa da serra")).toBeNull();
+    expect(screen.getByText("Controlo sensorial — Pão integral")).toBeTruthy();
+    expect(screen.getByText("1 registo")).toBeTruthy();
+    await user.clear(filter);
+    expect(screen.getByText("Controlo sensorial — Broa da serra")).toBeTruthy();
+    expect(screen.getByText("2 registos")).toBeTruthy();
   });
 
   it("permite preparar vários produtos no controlo sensorial sem remover o último cartão", async () => {
