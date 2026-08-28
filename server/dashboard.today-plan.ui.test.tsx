@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import React from "react";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/lib/trpc", () => ({
@@ -18,6 +19,11 @@ vi.mock("wouter", () => ({ Link: ({ children, href, ...props }: { children: Reac
 
 import QualityDashboard from "../client/src/pages/QualityDashboard";
 import { trpc } from "../client/src/lib/trpc";
+
+if (!HTMLElement.prototype.hasPointerCapture) HTMLElement.prototype.hasPointerCapture = () => false;
+if (!HTMLElement.prototype.setPointerCapture) HTMLElement.prototype.setPointerCapture = () => undefined;
+if (!HTMLElement.prototype.releasePointerCapture) HTMLElement.prototype.releasePointerCapture = () => undefined;
+if (!HTMLElement.prototype.scrollIntoView) HTMLElement.prototype.scrollIntoView = () => undefined;
 
 describe("painel Hoje — Plano do Dia", () => {
   afterEach(cleanup);
@@ -38,6 +44,36 @@ describe("painel Hoje — Plano do Dia", () => {
     fireEvent.change(dateInput, { target: { value: "2026-08-25" } });
     expect((dateInput as HTMLInputElement).value).toBe("2026-08-25");
     expect(screen.getByRole("heading", { level: 1 }).textContent).not.toBe("Hoje");
+  });
+
+  it("filtra a lista de controlos agendados entre concluídos e por realizar", async () => {
+    vi.mocked(trpc.quality.dashboard.useQuery).mockReturnValue({ isLoading: false, data: { operationalDate: new Date("2026-08-20T10:00:00Z"), metrics: { pending: 0, overdue: 0, criticalOpen: 0, fragilePending: 0, completedToday: 1, dailyExecutionRate: 50 }, plannedControls: [{ id: 41, module: "bphf", factoryId: 1, responsible: "Sabrina Esteves", completed: true }, { id: 42, module: "sensory", factoryId: 1, responsible: "Neuza Antunes", completed: false }], tasks: [], taskGroups: { today: [], tomorrow: [], thisWeek: [] }, criticalNcs: [] } } as any);
+    const user = userEvent.setup();
+    render(<QualityDashboard />);
+    const filter = screen.getByRole("combobox", { name: "Filtrar controlos agendados por estado" });
+
+    expect(screen.getByText("Verificação de BPHF")).toBeTruthy();
+    expect(screen.getByText("Controlo sensorial de produto acabado")).toBeTruthy();
+
+    await user.click(filter);
+    await user.click(screen.getByRole("option", { name: "Concluídos" }));
+    expect(screen.getByText("Verificação de BPHF")).toBeTruthy();
+    expect(screen.queryByText("Controlo sensorial de produto acabado")).toBeNull();
+
+    await user.click(filter);
+    await user.click(screen.getByRole("option", { name: "Por realizar" }));
+    expect(screen.queryByText("Verificação de BPHF")).toBeNull();
+    expect(screen.getByText("Controlo sensorial de produto acabado")).toBeTruthy();
+  });
+
+  it("mostra uma mensagem específica quando o filtro não encontra controlos", async () => {
+    vi.mocked(trpc.quality.dashboard.useQuery).mockReturnValue({ isLoading: false, data: { operationalDate: new Date("2026-08-20T10:00:00Z"), metrics: { pending: 0, overdue: 0, criticalOpen: 0, fragilePending: 0, completedToday: 1, dailyExecutionRate: 100 }, plannedControls: [{ id: 41, module: "bphf", factoryId: 1, responsible: "Sabrina Esteves", completed: true }], tasks: [], taskGroups: { today: [], tomorrow: [], thisWeek: [] }, criticalNcs: [] } } as any);
+    const user = userEvent.setup();
+    render(<QualityDashboard />);
+    const filter = screen.getByRole("combobox", { name: "Filtrar controlos agendados por estado" });
+    await user.click(filter);
+    await user.click(screen.getByRole("option", { name: "Por realizar" }));
+    await waitFor(() => expect(screen.getByText("Não existem controlos por realizar para esta data.")).toBeTruthy());
   });
 
   it("abre o formulário do controlo agendado ainda por realizar", () => {

@@ -472,3 +472,11 @@
 - [x] Adicionar gestão de áreas à Checklist Mensal, com criação, edição e eliminação protegidas para a Responsável de Qualidade.
 - [x] Preservar os pontos associados, fábricas atribuídas e filtros após alterações às áreas da Checklist Mensal.
 - [x] Adicionar regressões e validar a gestão de áreas da Checklist Mensal antes da publicação.
+
+- [ ] Investigar porque «Abrir pendência» não encaminha para o preenchimento da data operacional original.
+- [ ] Corrigir a navegação da pendência e manter a data original selecionada e visível no formulário.
+- [ ] Adicionar regressões de interface para abertura por controlo e tarefa pendente.
+
+- [x] Adicionar filtro à lista «Controlos agendados» do painel «Hoje» para mostrar Todos, Concluídos ou Por realizar.
+- [x] Preservar os links de abertura do preenchimento e a informação de fábrica/responsáveis em cada estado.
+- [x] Adicionar regressões de interface para os três estados e validar a compilação PWA.
