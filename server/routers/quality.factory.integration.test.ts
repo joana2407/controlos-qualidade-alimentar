@@ -926,4 +926,19 @@ describe("procedimentos de qualidade por fábrica", () => {
     expect(dbInserts[0]).toMatchObject({ module: "dispatch_control", result: "NC", factoryId: null, area: "Expedição ambiente" });
     expect(dbInserts).toHaveLength(1);
   });
+
+  it("fecha a expedição com referências não verificadas sem as tratar como conformes", async () => {
+    addPublishedControlTask("dispatch_control", null, [3]);
+    const caller = qualityRouter.createCaller(createContext());
+    const result = await caller.registerDispatchControl({
+      factoryId: 1, profile: "ambiente", orderNumber: "ENC-102", customer: "Cliente Sul", product: "Pão de forma", lot: "L-102", orderedBoxes: 12, dispatchedBoxes: 12, productLabelResult: "C", boxLabelResult: "C", productTemperature: 20, vehicleTemperature: 20,
+      productChecks: [
+        { verificationStatus: "verified", name: "Pão de forma", orderedQuantity: 12, lots: [{ lot: "L-102", dispatchedQuantity: 12 }], productLabelResult: "C", boxLabelResult: "C", productTemperature: 20 },
+        { verificationStatus: "not_verified", name: "Pão rústico", orderedQuantity: 8, notVerifiedReason: "Referência indisponível no cais de expedição." },
+      ],
+    });
+
+    expect(result).toMatchObject({ incidence: false, conformity: { result: "N/A", verificationSummary: { verified: 1, notVerified: 1 }, productValidations: [expect.objectContaining({ verificationStatus: "verified", conformity: expect.objectContaining({ result: "C" }) }), expect.objectContaining({ verificationStatus: "not_verified", notVerifiedReason: "Referência indisponível no cais de expedição.", conformity: expect.objectContaining({ result: "N/A" }) })] } });
+    expect(dbInserts[0]).toMatchObject({ module: "dispatch_control", result: "N/A", payload: expect.objectContaining({ verificationSummary: { verified: 1, notVerified: 1 } }) });
+  });
 });

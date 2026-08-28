@@ -15,7 +15,7 @@ describe("checklist anual Food Defense", () => {
     expect(page).toContain("Vulnerabilidade (V)");
     expect(page).toContain("Ação indicada:");
     expect(page).not.toContain("Referência 2025:");
-    expect(page).toContain("<Notes value={value.notes} onChange={(notes) => update(item.id, { notes })} />");
+    expect(page).toMatch(/<Notes\s+value=\{value\.notes\}\s+onChange=\{notes\s*=>\s*update\(item\.id, \{ notes \}\)\}\s*\/>/);
     expect(page).toContain("Sugerir com IA");
     expect(page).toContain("suggestFoodDefenseMeasure");
   });

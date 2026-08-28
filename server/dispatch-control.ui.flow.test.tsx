@@ -57,4 +57,23 @@ describe("fluxo de interface do controlo à expedição", () => {
     fireEvent.click(screen.getByRole("button", { name: "Registar incidência à expedição" }));
     expect(mutate).toHaveBeenCalledWith(expect.objectContaining({ profile: "ambiente", orderNumber: "ENC-001", productLabelResult: "NC", productChecks: [expect.objectContaining({ observations: "Rótulo do produto não conforme." })] }));
   });
+
+  it("permite fechar a encomenda com uma referência não verificada e motivo obrigatório", () => {
+    renderDispatchControl();
+    const textboxes = screen.getAllByRole("textbox") as Array<HTMLInputElement | HTMLTextAreaElement>;
+    fireEvent.change(textboxes[0], { target: { value: "ENC-002" } });
+    fireEvent.change(textboxes[1], { target: { value: "Cliente Sul" } });
+    fireEvent.change(textboxes[3], { target: { value: "Pão rústico" } });
+    fireEvent.click(screen.getByRole("button", { name: "Não verificada" }));
+
+    expect(screen.getByText("Motivo de não verificação")).toBeTruthy();
+    expect(screen.queryByText("Quantidade expedida por lote")).toBeNull();
+    fireEvent.change(screen.getByRole("textbox", { name: /Motivo de não verificação/ }), { target: { value: "Referência indisponível no cais de expedição." } });
+    const numbers = screen.getAllByRole("spinbutton") as HTMLInputElement[];
+    fireEvent.change(numbers[numbers.length - 1]!, { target: { value: "20" } });
+
+    expect(screen.getAllByText("Não verificada").length).toBeGreaterThan(1);
+    fireEvent.click(screen.getByRole("button", { name: "Registar expedição com referências não verificadas" }));
+    expect(mutate).toHaveBeenCalledWith(expect.objectContaining({ orderNumber: "ENC-002", lot: "NÃO VERIFICADO", productChecks: [expect.objectContaining({ verificationStatus: "not_verified", name: "Pão rústico", notVerifiedReason: "Referência indisponível no cais de expedição." })] }));
+  });
 });

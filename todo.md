@@ -480,3 +480,11 @@
 - [x] Adicionar filtro à lista «Controlos agendados» do painel «Hoje» para mostrar Todos, Concluídos ou Por realizar.
 - [x] Preservar os links de abertura do preenchimento e a informação de fábrica/responsáveis em cada estado.
 - [x] Adicionar regressões de interface para os três estados e validar a compilação PWA.
+
+- [x] Reproduzir o clique real num controlo pendente do painel «Hoje» e localizar a perda da data operacional.
+- [x] Corrigir a navegação para preservar explicitamente a data da pendência até ao formulário do controlo.
+- [x] Adicionar regressões de clique real, query string e data operacional retroativa no painel «Hoje».
+
+- [x] Permitir marcar referências do controlo à expedição como Não verificadas, exigindo motivo rastreável.
+- [x] Permitir fechar a encomenda quando todas as referências estejam verificadas ou justificadamente não verificadas.
+- [x] Diferenciar referências verificadas e não verificadas nos resultados, relatórios e respetivos testes.

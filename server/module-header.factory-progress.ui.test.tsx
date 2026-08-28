@@ -41,7 +41,7 @@ vi.mock("@/lib/trpc", () => ({
 vi.mock("wouter", () => ({
   Link: ({ children, href, ...props }: { children: React.ReactNode; href: string }) => <a href={href} {...props}>{children}</a>,
   useRoute: () => [true, { module: routeModule.value }],
-  useLocation: () => [window.location.pathname + window.location.search, vi.fn()],
+  useSearch: () => window.location.search,
 }));
 
 import ModuleControl from "../client/src/pages/ModuleControl";
@@ -70,11 +70,15 @@ describe("cabeçalho de controlo — progresso por fábrica", () => {
     expect(input.date.toISOString()).toContain("2026-08-20T12:00:00.000Z");
   });
 
-  it("usa o plannedTaskId da pendência quando o formulário é aberto na URL correspondente", () => {
-    window.history.pushState({}, "", "/controlos/bphf?factoryId=1&plannedTaskId=72");
-    render(<ModuleControl />);
+  it("atualiza o formulário para o plannedTaskId e data da pendência após navegar no mesmo controlo", () => {
+    window.history.pushState({}, "", "/controlos/bphf?factoryId=1");
+    const view = render(<ModuleControl />);
+    expect(authorizationInputs[0]).toMatchObject({ module: "bphf", factoryId: 1, plannedTaskId: undefined });
 
-    expect(authorizationInputs[0]).toMatchObject({ module: "bphf", factoryId: 1, plannedTaskId: 72 });
+    window.history.pushState({}, "", "/controlos/bphf?factoryId=1&plannedTaskId=72");
+    view.rerender(<ModuleControl />);
+
+    expect(authorizationInputs.at(-1)).toMatchObject({ module: "bphf", factoryId: 1, plannedTaskId: 72 });
     expect(screen.getByText("Controlo retroativo")).toBeTruthy();
     expect(screen.getAllByText(/20\/08\/2026/).length).toBeGreaterThan(0);
   });

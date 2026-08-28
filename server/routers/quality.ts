@@ -102,6 +102,23 @@ const dispatchOrderExtractionSchema = z.object({
   products: z.array(z.object({ name: z.string().max(180), orderedQuantity: z.number().int().min(0) })).max(30),
   warnings: z.array(z.string().max(240)).max(12),
 });
+const verifiedDispatchProductCheckSchema = z.object({
+  verificationStatus: z.literal("verified").optional(),
+  name: z.string().min(2).max(180),
+  orderedQuantity: z.number().int().min(0),
+  lots: z.array(z.object({ lot: z.string().min(1).max(120), dispatchedQuantity: z.number().int().min(0) })).min(1).max(20),
+  productLabelResult: z.enum(["C", "NC"]),
+  boxLabelResult: z.enum(["C", "NC"]),
+  productTemperature: z.number().min(-100).max(100),
+  observations: z.string().max(3000).optional(),
+});
+const unverifiedDispatchProductCheckSchema = z.object({
+  verificationStatus: z.literal("not_verified"),
+  name: z.string().min(2).max(180),
+  orderedQuantity: z.number().int().min(0),
+  notVerifiedReason: z.string().min(3).max(3000),
+});
+const dispatchProductCheckSchema = z.union([verifiedDispatchProductCheckSchema, unverifiedDispatchProductCheckSchema]);
 
 function asDateRange(date: Date) {
   const start = new Date(date);
@@ -1175,15 +1192,7 @@ export const qualityRouter = router({
     vehicleTemperature: z.number().min(-100).max(100),
     observations: z.string().max(3000).optional(),
     orderItems: z.array(z.object({ name: z.string().min(1).max(180), orderedQuantity: z.number().int().min(0) })).max(30).optional(),
-    productChecks: z.array(z.object({
-      name: z.string().min(2).max(180),
-      orderedQuantity: z.number().int().min(0),
-      lots: z.array(z.object({ lot: z.string().min(1).max(120), dispatchedQuantity: z.number().int().min(0) })).min(1).max(20),
-      productLabelResult: z.enum(["C", "NC"]),
-      boxLabelResult: z.enum(["C", "NC"]),
-      productTemperature: z.number().min(-100).max(100),
-      observations: z.string().max(3000).optional(),
-    })).min(1).max(30).optional(),
+    productChecks: z.array(dispatchProductCheckSchema).min(1).max(30).optional(),
     evidencePhotos: z.array(z.object({ key: z.string().min(1), url: z.string().startsWith("/manus-storage/"), fileName: z.string().min(1).max(255), mimeType: z.enum(["image/jpeg", "image/png", "image/webp"]) })).max(5).optional(),
     sourceOrderDocument: z.object({ name: z.string().min(1).max(180), url: z.string().startsWith("/manus-storage/") }).optional(),
   })).mutation(async ({ ctx, input }) => {
@@ -1191,24 +1200,34 @@ export const qualityRouter = router({
     await requireControlAuthorization(db, { module: "dispatch_control", factoryId: null, profile: ctx.operatorProfile! });
     const profile = getDispatchProfile(input.profile);
     const limits = { product: profile.productTemperatureLimit, vehicle: profile.vehicleTemperatureLimit };
-    const productChecks = input.productChecks ?? [{ name: input.product, orderedQuantity: input.orderedBoxes, lots: [{ lot: input.lot, dispatchedQuantity: input.dispatchedBoxes }], productLabelResult: input.productLabelResult, boxLabelResult: input.boxLabelResult, productTemperature: input.productTemperature, observations: input.observations }];
+    const productChecks = input.productChecks ?? [{ verificationStatus: "verified" as const, name: input.product, orderedQuantity: input.orderedBoxes, lots: [{ lot: input.lot, dispatchedQuantity: input.dispatchedBoxes }], productLabelResult: input.productLabelResult, boxLabelResult: input.boxLabelResult, productTemperature: input.productTemperature, observations: input.observations }];
     const productValidations = productChecks.map((check) => {
+      if (check.verificationStatus === "not_verified") {
+        return {
+          ...check,
+          dispatchedQuantity: 0,
+          conformity: { result: "N/A" as const, quantityResult: "N/A" as const, productTemperatureResult: "N/A" as const, vehicleTemperatureResult: "N/A" as const },
+        };
+      }
       const dispatchedQuantity = check.lots.reduce((total, lot) => total + lot.dispatchedQuantity, 0);
       const conformity = calculateDispatchConformity({ orderedBoxes: check.orderedQuantity, dispatchedBoxes: dispatchedQuantity, productLabelResult: check.productLabelResult, boxLabelResult: check.boxLabelResult, productTemperature: check.productTemperature, vehicleTemperature: limits.vehicle, productTemperatureLimit: limits.product, vehicleTemperatureLimit: limits.vehicle });
       if (conformity.result === "NC" && !check.observations?.trim()) throw new TRPCError({ code: "BAD_REQUEST", message: `As observações são obrigatórias no produto ${check.name} quando a validação não está conforme.` });
-      return { ...check, dispatchedQuantity, conformity };
+      return { ...check, verificationStatus: "verified" as const, dispatchedQuantity, conformity };
     });
     const vehicleTemperatureResult = input.vehicleTemperature <= limits.vehicle ? "C" : "NC";
     const reasons = [
-      ...productValidations.flatMap((check) => [
+      ...productValidations.filter((check) => check.verificationStatus !== "not_verified").flatMap((check) => [
         ...(check.conformity.quantityResult === "NC" ? [`${check.name}: quantidade expedida diferente da quantidade pedida.`] : []),
         ...(check.conformity.productTemperatureResult === "NC" ? [`${check.name}: temperatura do produto fora do limite.`] : []),
         ...(check.productLabelResult === "NC" ? [`${check.name}: rotulagem do produto não conforme.`] : []),
         ...(check.boxLabelResult === "NC" ? [`${check.name}: rotulagem da caixa não conforme.`] : []),
       ]),
+      ...productValidations.filter((check) => check.verificationStatus === "not_verified").map((check) => `${check.name}: referência não verificada — ${check.notVerifiedReason}.`),
       ...(vehicleTemperatureResult === "NC" ? [`Temperatura do veículo fora do limite (${input.vehicleTemperature} °C; máximo ${limits.vehicle} °C).`] : []),
     ];
-    const conformity = { result: productValidations.every((check) => check.conformity.result === "C") && vehicleTemperatureResult === "C" ? "C" as const : "NC" as const, productValidations, vehicleTemperatureResult, reasons };
+    const hasNonconformity = productValidations.some((check) => check.conformity.result === "NC") || vehicleTemperatureResult === "NC";
+    const hasNotVerified = productValidations.some((check) => check.verificationStatus === "not_verified");
+    const conformity = { result: hasNonconformity ? "NC" as const : hasNotVerified ? "N/A" as const : "C" as const, productValidations, vehicleTemperatureResult, verificationSummary: { verified: productValidations.filter((check) => check.verificationStatus !== "not_verified").length, notVerified: productValidations.filter((check) => check.verificationStatus === "not_verified").length }, reasons };
     if (vehicleTemperatureResult === "NC" && !input.observations?.trim()) throw new TRPCError({ code: "BAD_REQUEST", message: "A observação geral é obrigatória quando a temperatura do veículo não está conforme." });
     const completedAt = new Date();
     const title = `Expedição ${input.orderNumber} — ${input.customer}`;
