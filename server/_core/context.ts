@@ -40,7 +40,6 @@ export async function createContext(
       const sessionConditions = [
         eq(qualityPinSessions.tokenHash, hashSessionToken(token)),
         gt(qualityPinSessions.expiresAt, new Date()),
-        eq(qualityPinSessions.oauthOpenId, user?.openId ?? "pin-only"),
       ];
       const session = (await db.select().from(qualityPinSessions).where(and(...sessionConditions)).limit(1))[0];
       if (session) {

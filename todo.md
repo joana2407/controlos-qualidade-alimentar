@@ -488,3 +488,8 @@
 - [x] Permitir marcar referências do controlo à expedição como Não verificadas, exigindo motivo rastreável.
 - [x] Permitir fechar a encomenda quando todas as referências estejam verificadas ou justificadamente não verificadas.
 - [x] Diferenciar referências verificadas e não verificadas nos resultados, relatórios e respetivos testes.
+
+- [x] Diagnosticar o bloqueio operacional reportado na versão publicada, incluindo sessão PIN, carregamento dos painéis e erros de navegador.
+- [x] Corrigir a causa identificada e validar o acesso real aos controlos publicados.
+- [x] Adicionar regressões da falha encontrada e publicar a recuperação após validação.
+- [x] Confirmar e corrigir especificamente o fluxo «Gerir pontos e Áreas/Zonas» da Checklist Mensal para a Responsável de Qualidade.

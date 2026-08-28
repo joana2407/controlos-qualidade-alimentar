@@ -5271,7 +5271,7 @@ function MonthlyChecklistV2({ createEntry }: any) {
                   onClick={() => setManageOpen(true)}
                 >
                   <SlidersHorizontal className="mr-2 h-4 w-4" />
-                  Gerir pontos
+                  Gerir pontos e Áreas/Zonas
                 </Button>
                 <Button
                   size="sm"
