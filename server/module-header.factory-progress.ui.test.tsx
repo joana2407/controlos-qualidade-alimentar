@@ -9,18 +9,20 @@ const dailyResultsInputs = vi.hoisted(() => [] as unknown[]);
 const routeModule = vi.hoisted(() => ({ value: "bphf" }));
 const authorizationState = vi.hoisted(() => ({ allowed: true, taskId: 51 as number | null, dueAt: new Date("2026-08-20T12:00:00"), isPreviousPending: true, isFuturePlanned: false, reason: "Autorizado" }));
 const uploadEvidenceMutate = vi.hoisted(() => vi.fn());
+const bphfInspections = vi.hoisted(() => [] as Array<{ id: number; criterion: string; area: string; collaboratorName: string; result: string; completedAt: Date }>);
 
 vi.mock("@/lib/trpc", () => ({
   trpc: {
     useUtils: () => ({ quality: { dashboard: { invalidate: vi.fn() }, reports: { invalidate: vi.fn() }, listNcs: { invalidate: vi.fn() }, fragilePending: { invalidate: vi.fn() }, dailyControlResults: { invalidate: vi.fn() }, listBphfInspectionEmployees: { invalidate: vi.fn() }, listBphfCollaboratorInspections: { invalidate: vi.fn() } } }),
     quality: {
-      metadata: { useQuery: () => ({ data: { factories: [{ id: 1, name: "Fábrica 1 (Fatiado)" }, { id: 2, name: "Fábrica 2 (granel)" }, { id: 3, name: "Fábrica 3 (Sem Gluten)" }], areas: [{ id: 1, name: "Produção", group: "bphf", factoryId: 1 }, { id: 2, name: "Produção", group: "bphf", factoryId: 2 }, { id: 3, name: "Produção", group: "bphf", factoryId: 3 }, { id: 11, name: "Linha 1", group: "metal", factoryId: 1 }, { id: 12, name: "Linha 2", group: "metal", factoryId: 1 }] } }) },
+      metadata: { useQuery: () => ({ data: { factories: [{ id: 1, name: "Fábrica 1 (Fatiado)" }, { id: 2, name: "Fábrica 2 (granel)" }, { id: 3, name: "Fábrica 3 (Sem Gluten)" }], areas: [{ id: 1, name: "Produção", group: "bphf", factoryId: 1 }, { id: 4, name: "Embalagem", group: "bphf", factoryId: 1 }, { id: 5, name: "Limpeza", group: "bphf", factoryId: 1 }, { id: 2, name: "Produção", group: "bphf", factoryId: 2 }, { id: 3, name: "Produção", group: "bphf", factoryId: 3 }, { id: 11, name: "Linha 1", group: "metal", factoryId: 1 }, { id: 12, name: "Linha 2", group: "metal", factoryId: 1 }] } }) },
       dashboard: { useQuery: (input: unknown) => { dashboardInputs.push(input); return { isLoading: false, data: { moduleProgress: { bphf: { expected: 3, completed: 1, registeredToday: 1, pending: ["Plano do Dia — bphf"], percentage: 33.3 }, metal_detectors: { expected: 2, completed: 1, registeredToday: 1, pending: ["Plano do Dia — metal_detectors"], percentage: 50 } }, moduleProgressByFactory: { bphf: [{ factoryId: 1, expected: 1, completed: 0, registeredToday: 0, percentage: 0 }, { factoryId: 2, expected: 1, completed: 1, registeredToday: 1, percentage: 100 }, { factoryId: 3, expected: 1, completed: 0, registeredToday: 0, percentage: 0 }], metal_detectors: [{ factoryId: 1, expected: 2, completed: 1, registeredToday: 1, percentage: 50 }] } } }; } },
       dailyControlResults: { useQuery: (input: unknown) => { dailyResultsInputs.push(input); const module = (input as { module?: string }).module; const entries = module === "metal_detectors" ? [{ id: 91, title: "Detetor de metais — Linha 1 · Produto de teste", area: "Linha 1", result: "C", notes: null, payload: {}, completedAt: new Date("2026-08-20T11:30:00"), registeredByName: "Sabrina Esteves", registeredByTitle: "Tec. Qualidade" }] : module === "sensory" ? [{ id: 90, title: "Controlo sensorial — Broa da serra", area: "Controlo sensorial", result: "C", notes: null, payload: { product: "Broa da serra", lot: "L1", validity: "2026-08-28" }, completedAt: new Date("2026-08-20T11:30:00"), registeredByName: "Sabrina Esteves", registeredByTitle: "Tec. Qualidade" }, { id: 92, title: "Controlo sensorial — Pão integral", area: "Controlo sensorial", result: "NC", notes: "Aspeto a rever.", payload: { product: "Pão integral", lot: "L2", validity: "2026-08-28" }, completedAt: new Date("2026-08-20T12:15:00"), registeredByName: "Sabrina Esteves", registeredByTitle: "Tec. Qualidade" }] : [{ id: 90, title: "Higienização das mãos dos manipuladores", area: "Produção", result: "C", notes: "Sem desvios observados.", payload: { collaboratorName: "Colaborador de teste" }, completedAt: new Date("2026-08-20T11:30:00"), registeredByName: "Sabrina Esteves", registeredByTitle: "Tec. Qualidade" }]; return { isLoading: false, data: { entries } }; } },
+      temperatureHistory: { useQuery: () => ({ isLoading: false, data: [{ entryId: 201, equipmentId: "f1-freezer-1", name: "Equipamento de congelação 1", area: "Área da Qualidade", temperature: -19, result: "C", notes: "Leitura estável.", completedAt: new Date("2026-08-20T14:35:00"), registeredByName: "Sabrina Esteves", registeredByTitle: "Tec. Qualidade" }] }) },
       pendingControlTasks: { useQuery: () => ({ isLoading: false, data: [{ id: 72, dueAt: new Date("2026-08-18T12:00:00"), responsible: "Ana", factoryId: 1 }] }) },
       controlAuthorization: { useQuery: () => ({ isLoading: false, data: authorizationState }) },
       listBphfInspectionEmployees: { useQuery: () => ({ data: [{ id: 1, name: "Colaborador de teste" }] }) },
-      listBphfCollaboratorInspections: { useQuery: () => ({ isLoading: false, data: [] }) },
+      listBphfCollaboratorInspections: { useQuery: () => ({ isLoading: false, data: bphfInspections }) },
       addBphfInspectionEmployee: { useMutation: () => ({ isPending: false, mutate: vi.fn() }) },
       createEntry: { useMutation: () => ({ isPending: false, mutate: vi.fn(), mutateAsync: vi.fn() }) },
       uploadVerificationEvidence: { useMutation: () => ({ isPending: false, mutate: uploadEvidenceMutate }) },
@@ -36,7 +38,7 @@ vi.mock("wouter", () => ({
 import ModuleControl from "../client/src/pages/ModuleControl";
 
 describe("cabeçalho de controlo — progresso por fábrica", () => {
-  afterEach(() => { cleanup(); dashboardInputs.length = 0; dailyResultsInputs.length = 0; uploadEvidenceMutate.mockReset(); routeModule.value = "bphf"; Object.assign(authorizationState, { allowed: true, taskId: 51, dueAt: new Date("2026-08-20T12:00:00"), isPreviousPending: true, isFuturePlanned: false, reason: "Autorizado" }); window.history.pushState({}, "", "/"); });
+  afterEach(() => { cleanup(); dashboardInputs.length = 0; dailyResultsInputs.length = 0; bphfInspections.length = 0; uploadEvidenceMutate.mockReset(); routeModule.value = "bphf"; Object.assign(authorizationState, { allowed: true, taskId: 51, dueAt: new Date("2026-08-20T12:00:00"), isPreviousPending: true, isFuturePlanned: false, reason: "Autorizado" }); window.history.pushState({}, "", "/"); });
 
   it("substitui o resumo geral pelos cartões das fábricas incluídas no Plano do Dia", () => {
     render(<ModuleControl />);
@@ -74,6 +76,18 @@ describe("cabeçalho de controlo — progresso por fábrica", () => {
     expect(input.operationalDate.toISOString()).toContain("2026-08-20T12:00:00.000Z");
   });
 
+  it("mantém cada critério BPHF pendente até o próprio ponto ser verificado", () => {
+    const areas = ["Produção", "Embalagem", "Limpeza"];
+    ["Estado de limpeza e conservação do fardamento", "Higienização das mãos dos manipuladores", "Cumprimento geral das regras de BPHF"].forEach((criterion, criterionIndex) => areas.forEach((area, areaIndex) => bphfInspections.push({ id: criterionIndex * 10 + areaIndex + 1, criterion, area, collaboratorName: "Colaborador de teste", result: "C", completedAt: new Date("2026-08-28T11:30:00") })));
+    window.history.pushState({}, "", "/controlos/bphf?factoryId=1");
+    render(<ModuleControl />);
+
+    expect(screen.getAllByText("Mínimo concluído")).toHaveLength(3);
+    expect(screen.getByText("Estado de limpeza e organização dos cacifos do pessoal e de trabalho")).toBeTruthy();
+    expect(screen.getByText("3 de 3 área(s) ainda por verificar.")).toBeTruthy();
+    expect(screen.getAllByText("Em preenchimento").length).toBeGreaterThan(0);
+  });
+
   it("mostra a conclusão por linha nos Detetores de Metais e distingue linhas pendentes", () => {
     routeModule.value = "metal_detectors";
     window.history.pushState({}, "", "/controlos/metal_detectors?factoryId=1");
@@ -95,6 +109,18 @@ describe("cabeçalho de controlo — progresso por fábrica", () => {
     expect(screen.getByText("Resultados registados")).toBeTruthy();
     expect(screen.getAllByText("Higienização das mãos dos manipuladores").length).toBeGreaterThan(0);
     expect(screen.getByText("Sem desvios observados.")).toBeTruthy();
+  });
+
+  it("mostra quem registou e a hora de cada leitura de Temperaturas", () => {
+    routeModule.value = "temperature_controls";
+    Object.assign(authorizationState, { allowed: true, taskId: 513, dueAt: new Date("2026-08-20T12:00:00"), isPreviousPending: false, isFuturePlanned: false, reason: "Autorizado" });
+    window.history.pushState({}, "", "/controlos/temperature_controls?factoryId=1");
+    render(<ModuleControl />);
+
+    expect(screen.getByText("Consulta de resultados")).toBeTruthy();
+    expect(screen.getByText((_, element) => element?.tagName === "P" && element.textContent?.includes("Verificado em 20/08/26, 14:35 por Sabrina Esteves") === true)).toBeTruthy();
+    expect(screen.getByText("Leitura estável.")).toBeTruthy();
+    expect(screen.getByText("Conforme")).toBeTruthy();
   });
 
   it("filtra o histórico sensorial pelo nome do produto e permite limpar a pesquisa", async () => {

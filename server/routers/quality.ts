@@ -1603,6 +1603,19 @@ export const qualityRouter = router({
       .sort((left, right) => (left.lastInspectionAt?.getTime() ?? 0) - (right.lastInspectionAt?.getTime() ?? 0));
   }),
 
+  fragileInspectionHistory: qualitySessionProcedure.input(z.object({ itemId: z.number().int() })).query(async ({ input }) => {
+    const db = await requireDb();
+    const entries = await db.select().from(controlEntries).where(eq(controlEntries.module, "fragile_items")).orderBy(desc(controlEntries.completedAt));
+    return entries.filter((entry) => {
+      const payload = entry.payload && typeof entry.payload === "object" && !Array.isArray(entry.payload) ? entry.payload as Record<string, unknown> : {};
+      return payload.deletedAt === undefined && payload.fragileItemId === input.itemId;
+    }).map((entry) => {
+      const payload = entry.payload && typeof entry.payload === "object" && !Array.isArray(entry.payload) ? entry.payload as Record<string, unknown> : {};
+      const evidencePhotos = Array.isArray(payload.evidencePhotos) ? payload.evidencePhotos : [];
+      return { id: entry.id, state: typeof payload.state === "string" ? payload.state : (entry.result === "C" ? "Íntegro" : "Não conforme"), result: entry.result, notes: entry.notes, completedAt: entry.completedAt, registeredByName: entry.registeredByName, registeredByTitle: entry.registeredByTitle, evidencePhotos };
+    });
+  }),
+
   addFragileItem: qualityOperatorProcedure.input(z.object({
     name: z.string().min(2).max(180),
     location: z.string().min(2).max(120),
@@ -1903,6 +1916,24 @@ export const qualityRouter = router({
     orderNumber: z.string().trim().min(1).max(80).optional(),
     analysisProduct: z.string().trim().min(1).max(180).optional(),
     analysisClient: z.string().trim().min(1).max(180).optional(),
+    detailSearch: z.string().trim().min(1).max(240).optional(),
+    inspectedCollaborator: z.string().trim().min(1).max(180).optional(),
+    verificationType: z.string().trim().min(1).max(180).optional(),
+    line: z.string().trim().min(1).max(180).optional(),
+    productName: z.string().trim().min(1).max(180).optional(),
+    lot: z.string().trim().min(1).max(180).optional(),
+    validity: z.string().trim().min(1).max(40).optional(),
+    customer: z.string().trim().min(1).max(180).optional(),
+    samplePoint: z.string().trim().min(1).max(180).optional(),
+    category: z.string().trim().min(1).max(180).optional(),
+    test: z.string().trim().min(1).max(180).optional(),
+    equipment: z.string().trim().min(1).max(180).optional(),
+    location: z.string().trim().min(1).max(180).optional(),
+    state: z.string().trim().min(1).max(180).optional(),
+    periodicity: z.string().trim().min(1).max(80).optional(),
+    analyst: z.string().trim().min(1).max(180).optional(),
+    deliveryNote: z.string().trim().min(1).max(120).optional(),
+    triage: z.string().trim().min(1).max(180).optional(),
     collaboratorProfileId: z.number().int().optional(),
   }).optional()).query(async ({ input }) => {
     const db = await requireDb();
@@ -1944,9 +1975,49 @@ export const qualityRouter = router({
         return (!input.analysisProduct || normalized(product).includes(normalized(input.analysisProduct))) && (!input.analysisClient || normalized(client).includes(normalized(input.analysisClient)));
       });
     };
+    const detailText = (value: unknown): string => {
+      if (value === null || value === undefined) return "";
+      if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") return String(value);
+      if (Array.isArray(value)) return value.map(detailText).filter(Boolean).join(" ");
+      if (typeof value === "object") return Object.entries(value as Record<string, unknown>).map(([key, item]) => `${key} ${detailText(item)}`).filter(Boolean).join(" ");
+      return "";
+    };
+    const detailFieldValues = (entry: typeof entries[number], field: string): string[] => {
+      const payload = payloadRecord(entry.payload);
+      const values = (...items: unknown[]) => items.map(detailText).filter(Boolean);
+      switch (field) {
+        case "inspectedCollaborator": return values(payload.collaboratorName, payload.inspectedCollaborator, payload.employeeName);
+        case "verificationType": return values(payload.criterion, payload.test, payload.profile, payload.profileLabel, payload.observationResult, entry.title);
+        case "line": return values(payload.line, payload.lineName, payload.location, entry.area, payload.items);
+        case "productName": return values(payload.product, payload.productName, payload.samples, payload.products, payload.productChecks);
+        case "lot": return values(payload.lot, payload.lotNumber, payload.samples, payload.products, payload.productChecks);
+        case "validity": return values(payload.validity, payload.expiryDate, payload.samples, payload.products, payload.productChecks);
+        case "customer": return values(payload.customer, payload.client, payload.samples, payload.products, payload.productChecks);
+        case "samplePoint": return values(payload.samplePoint, payload.samplingPoint, payload.samples, payload.analyses);
+        case "category": return values(payload.category, payload.categories, payload.analyses, payload.criteria);
+        case "test": return values(payload.test, payload.tests, payload.analyses);
+        case "equipment": return values(payload.equipment, payload.items, payload.readings, payload.temperatures);
+        case "location": return values(payload.location, entry.area);
+        case "state": return values(payload.state, payload.inspectionState, payload.status, payload.triage);
+        case "periodicity": return values(payload.periodicity, payload.frequency);
+        case "analyst": return values(payload.analyst, payload.analystName);
+        case "deliveryNote": return values(payload.deliveryNote, payload.deliveryNoteNumber);
+        case "triage": return values(payload.triage);
+        default: return [];
+      }
+    };
+    const matchesDetailFilters = (entry: typeof entries[number]) => {
+      const payload = payloadRecord(entry.payload);
+      const allText = normalized([entry.title, entry.area, entry.notes, entry.registeredByName, detailText(payload)].filter(Boolean).join(" "));
+      if (input?.detailSearch && !allText.includes(normalized(input.detailSearch))) return false;
+      const filters: Array<[string, string | undefined]> = [
+        ["inspectedCollaborator", input?.inspectedCollaborator], ["verificationType", input?.verificationType], ["line", input?.line], ["productName", input?.productName], ["lot", input?.lot], ["validity", input?.validity], ["customer", input?.customer], ["samplePoint", input?.samplePoint], ["category", input?.category], ["test", input?.test], ["equipment", input?.equipment], ["location", input?.location], ["state", input?.state], ["periodicity", input?.periodicity], ["analyst", input?.analyst], ["deliveryNote", input?.deliveryNote], ["triage", input?.triage],
+      ];
+      return filters.every(([field, query]) => !query || detailFieldValues(entry, field).some((value) => normalized(value).includes(normalized(query))));
+    };
     const scopedEntries = scopeToFactory(entries, input?.factoryId).filter((entry) => {
       const orderNumber = typeof payloadRecord(entry.payload).orderNumber === "string" ? payloadRecord(entry.payload).orderNumber as string : null;
-      return !isDeletedEntry(entry) && withinPeriod(entry.completedAt) && (!input?.module || entry.module === input.module) && (!input?.result || entry.result === input.result) && (!input?.orderNumber || orderNumber === input.orderNumber) && (!input?.collaboratorProfileId || entry.registeredByProfileId === input.collaboratorProfileId) && matchesInternalAnalysis(entry);
+      return !isDeletedEntry(entry) && withinPeriod(entry.completedAt) && (!input?.module || entry.module === input.module) && (!input?.result || entry.result === input.result) && (!input?.orderNumber || orderNumber === input.orderNumber) && (!input?.collaboratorProfileId || entry.registeredByProfileId === input.collaboratorProfileId) && matchesInternalAnalysis(entry) && matchesDetailFilters(entry);
     });
     const scopedTasks = scopeToFactory(tasks, input?.factoryId).filter((task) => task.status !== "cancelled" && withinPeriod(task.dueAt) && (!input?.collaboratorProfileId || task.completedByProfileId === input.collaboratorProfileId));
     const scopedNcs = scopeToFactory(ncs, input?.factoryId).filter((nc) => withinPeriod(nc.detectedAt) && (!input?.module || nc.module === input.module) && (!input?.ncStatus || nc.status === input.ncStatus) && (!input?.collaboratorProfileId || nc.reportedByProfileId === input.collaboratorProfileId));
@@ -1993,7 +2064,7 @@ export const qualityRouter = router({
       openNcs: countOpenNonconformities(scopedNcs).open,
       criticalOpen: countOpenNonconformities(scopedNcs).criticalOpen,
       dispatchOrders,
-      filters: { startDate: start, endDate: end, module: input?.module ?? null, result: input?.result ?? null, ncStatus: input?.ncStatus ?? null, orderNumber: input?.orderNumber ?? null, analysisProduct: input?.analysisProduct ?? null, analysisClient: input?.analysisClient ?? null },
+      filters: { startDate: start, endDate: end, module: input?.module ?? null, result: input?.result ?? null, ncStatus: input?.ncStatus ?? null, orderNumber: input?.orderNumber ?? null, analysisProduct: input?.analysisProduct ?? null, analysisClient: input?.analysisClient ?? null, detailSearch: input?.detailSearch ?? null, inspectedCollaborator: input?.inspectedCollaborator ?? null, verificationType: input?.verificationType ?? null, line: input?.line ?? null, productName: input?.productName ?? null, lot: input?.lot ?? null, validity: input?.validity ?? null, customer: input?.customer ?? null, samplePoint: input?.samplePoint ?? null, category: input?.category ?? null, test: input?.test ?? null, equipment: input?.equipment ?? null, location: input?.location ?? null, state: input?.state ?? null, periodicity: input?.periodicity ?? null, analyst: input?.analyst ?? null, deliveryNote: input?.deliveryNote ?? null, triage: input?.triage ?? null },
     };
   }),
 

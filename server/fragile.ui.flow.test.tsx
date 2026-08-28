@@ -17,14 +17,15 @@ const invalidate = vi.fn();
 
 vi.mock("@/lib/trpc", () => ({
   trpc: {
-    useUtils: () => ({ quality: { listFragileItems: { invalidate }, listFragileAreas: { invalidate }, fragilePending: { invalidate } } }),
+    useUtils: () => ({ quality: { listFragileItems: { invalidate }, listFragileAreas: { invalidate }, fragilePending: { invalidate }, fragileInspectionHistory: { invalidate } } }),
     quality: {
       metadata: { useQuery: () => ({ data: { factories: [{ id: 1, name: "Fábrica 1 (Fatiado)" }, { id: 2, name: "Fábrica 2 (granel)" }] } }) },
       listFragileItems: { useQuery: () => ({ data: [{ id: 9, name: "Proteção acrílica", location: "Embalamento", factoryId: 1, periodicity: "S", itemType: "Plástico rígido", referenceImageUrl: null }, { id: 11, name: "Janela de produção", location: "Produção", factoryId: 1, periodicity: "D", itemType: "Vidro", referenceImageUrl: null }, { id: 10, name: "Janelas exterior", location: "Expedição", factoryId: 2, periodicity: "M", itemType: "Vidro", referenceImageUrl: null }] }) },
       listFragileAreas: { useQuery: () => ({ data: [{ id: 1, factoryId: 1, name: "Embalamento", active: "true" }, { id: 2, factoryId: 1, name: "Produção", active: "true" }, { id: 3, factoryId: 2, name: "Expedição", active: "true" }] }) },
       fragilePending: { useQuery: () => ({ isLoading: false, data: [{ id: 9, name: "Proteção acrílica", location: "Embalamento", factoryId: 1, periodicity: "S", itemType: "Plástico rígido", referenceImageUrl: "/manus-storage/protecao-acrilica.png", referenceImageName: "protecao-acrilica.png", lastInspectionAt: null }] }) },
+      fragileInspectionHistory: { useQuery: () => ({ isLoading: false, data: [{ id: 77, state: "Íntegro", result: "C", notes: "Sem alterações na verificação anterior.", completedAt: new Date("2026-08-27T09:15:00Z"), registeredByName: "Sabrina Esteves", registeredByTitle: "Tec. Qualidade", evidencePhotos: [] }] }) },
       addFragileItem: { useMutation: (options?: { onSuccess?: () => void }) => ({ isPending: false, mutate: (input: unknown) => { addMutate(input); options?.onSuccess?.(); } }) },
-      updateFragileItem: { useMutation: () => ({ isPending: false, mutate: (input: unknown, options?: { onSuccess?: () => void }) => { updateMutate(input); options?.onSuccess?.(); } }) },
+      updateFragileItem: { useMutation: (options?: { onSuccess?: () => void }) => ({ isPending: false, mutate: (input: unknown, mutationOptions?: { onSuccess?: () => void }) => { updateMutate(input); options?.onSuccess?.(); mutationOptions?.onSuccess?.(); } }) },
       deleteFragileItem: { useMutation: (options?: { onSuccess?: () => void }) => ({ isPending: false, mutate: (input: unknown) => { deleteMutate(input); options?.onSuccess?.(); } }) },
       renameFragileArea: { useMutation: (options?: { onSuccess?: (result: { updated: number }, variables: { currentName: string; nextName: string }) => void }) => ({ isPending: false, mutate: (input: { factoryId: number; currentName: string; nextName: string }) => { renameAreaMutate(input); options?.onSuccess?.({ updated: 1 }, input); } }) },
       mergeFragileAreas: { useMutation: (options?: { onSuccess?: (result: { updated: number }, variables: { sourceArea: string; targetArea: string }) => void }) => ({ isPending: false, mutate: (input: { factoryId: number; sourceArea: string; targetArea: string }) => { mergeAreasMutate(input); options?.onSuccess?.({ updated: 1 }, input); } }) },
@@ -111,6 +112,9 @@ describe("fluxo de interface de pontos de controlo de quebráveis", () => {
     fireEvent.click(screen.getByRole("button", { name: /inspecionar/i }));
     expect(screen.getByRole("dialog")).toBeTruthy();
     expect(screen.getByRole("heading", { name: "Registar inspeção" })).toBeTruthy();
+    expect(screen.getByText("Histórico de verificações anteriores")).toBeTruthy();
+    expect(screen.getByText("Sem alterações na verificação anterior.")).toBeTruthy();
+    expect(screen.getByText(/Sabrina Esteves/)).toBeTruthy();
     expect(screen.getByRole("dialog").textContent).toContain("Verificação de Proteção acrílica.");
   });
 
@@ -153,6 +157,25 @@ describe("fluxo de interface de pontos de controlo de quebráveis", () => {
     expect(createEntry.mutate).toHaveBeenCalledWith(expect.objectContaining({ result: "NC", payload: expect.objectContaining({ state: "Danificado", evidencePhotos: [expect.objectContaining({ url: "/manus-storage/dano.png" })] }) }));
   });
 
+  it("mantém o gestor, a fábrica, a área e a pesquisa após editar um ponto", async () => {
+    const user = userEvent.setup();
+    render(<FragileOperationsPanel createEntry={{ mutate: vi.fn(), isPending: false }} factoryId="1" />);
+    await user.click(screen.getByRole("button", { name: /gerir pontos/i }));
+    const manager = () => screen.getByRole("heading", { name: "Gerir pontos de controlo" }).closest('[role="dialog"]') as HTMLElement;
+    const managerArea = within(manager()).getByText("Área").parentElement?.querySelector('[role="combobox"]');
+    await user.click(managerArea!);
+    await user.click(screen.getByRole("option", { name: "Embalamento" }));
+    await user.type(within(manager()).getByLabelText("Pesquisar por nome"), "proteção");
+    await user.click(within(manager()).getByRole("button", { name: /editar proteção acrílica/i }));
+    await user.click(screen.getByRole("button", { name: /guardar alterações/i }));
+
+    await waitFor(() => expect(screen.getByRole("heading", { name: "Gerir pontos de controlo" })).toBeTruthy());
+    const restoredManager = manager();
+    expect(within(restoredManager).getByDisplayValue("proteção")).toBeTruthy();
+    expect(within(restoredManager).getAllByRole("combobox")[0].textContent).toContain("Fábrica 1");
+    expect(within(restoredManager).getAllByRole("combobox")[1].textContent).toContain("Embalamento");
+  });
+
   it("permite editar e eliminar um ponto no gestor por qualquer operador", async () => {
     const user = userEvent.setup();
     render(<FragileOperationsPanel createEntry={{ mutate: vi.fn(), isPending: false }} factoryId="1" />);
@@ -172,11 +195,15 @@ describe("fluxo de interface de pontos de controlo de quebráveis", () => {
     const user = userEvent.setup();
     render(<FragileOperationsPanel createEntry={{ mutate: vi.fn(), isPending: false }} factoryId="1" />);
     await user.click(screen.getByRole("button", { name: /gerir pontos/i }));
-    await user.click(screen.getByRole("button", { name: "Editar áreas" }));
+    const manager = () => screen.getByRole("heading", { name: "Gerir pontos de controlo" }).closest('[role="dialog"]') as HTMLElement;
+    await user.type(within(manager()).getByLabelText("Pesquisar por nome"), "proteção");
+    await user.click(within(manager()).getByRole("button", { name: "Editar áreas" }));
     await user.clear(screen.getByLabelText("Nova designação"));
     await user.type(screen.getByLabelText("Nova designação"), "Embalamento principal");
     await user.click(screen.getByRole("button", { name: "Guardar área" }));
     expect(renameAreaMutate).toHaveBeenCalledWith({ factoryId: 1, currentName: "Embalamento", nextName: "Embalamento principal" });
+    await waitFor(() => expect(screen.getByRole("heading", { name: "Gerir pontos de controlo" })).toBeTruthy());
+    expect(within(manager()).getByDisplayValue("proteção")).toBeTruthy();
   });
 
   it("permite fundir uma área numa área de destino existente", async () => {

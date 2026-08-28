@@ -44,12 +44,12 @@ describe("ajuda contextual de BPHF", () => {
       { id: 1, collaboratorName: "Colaborador de teste", collaboratorId: 1, criterion, area: "Produção", result: "C", completedAt },
       { id: 2, collaboratorName: "Colaborador de teste", collaboratorId: 1, criterion, area: "Embalagem", result: "C", completedAt },
     );
-    render(<ControlFactoryContext.Provider value={{ factories: [{ id: 1, name: "Fábrica 1 (Fatiado)" }], factoryId: "1", setFactoryId: vi.fn() }}><Bphf createEntry={{ isPending: false, mutate: vi.fn(), mutateAsync: vi.fn() }} areas={["Produção", "Embalagem", "Logística"]} /></ControlFactoryContext.Provider>);
+    render(<ControlFactoryContext.Provider value={{ factories: [{ id: 1, name: "Fábrica 1 (Fatiado)" }], factoryId: "1", setFactoryId: vi.fn() }}><Bphf createEntry={{ isPending: false, mutate: vi.fn(), mutateAsync: vi.fn() }} areas={["Produção", "Embalagem", "Limpeza"]} /></ControlFactoryContext.Provider>);
 
     expect(screen.getAllByText("Em preenchimento")).toHaveLength(4);
-    expect(screen.getAllByText("✓ Produção")).toHaveLength(4);
-    expect(screen.getAllByText("✓ Embalagem")).toHaveLength(4);
-    expect(screen.getAllByText("• Logística")).toHaveLength(4);
+    expect(screen.getAllByText("✓ Produção")).toHaveLength(1);
+    expect(screen.getAllByText("✓ Embalagem")).toHaveLength(1);
+    expect(screen.getAllByText("• Limpeza")).toHaveLength(4);
     expect(screen.getAllByRole("button", { name: "Registar área verificada" }).every((button) => (button as HTMLButtonElement).disabled)).toBe(true);
   });
 
@@ -62,7 +62,7 @@ describe("ajuda contextual de BPHF", () => {
     );
     render(<ControlFactoryContext.Provider value={{ factories: [{ id: 1, name: "Fábrica 1 (Fatiado)" }], factoryId: "1", setFactoryId: vi.fn() }}><Bphf createEntry={{ isPending: false, mutate: vi.fn(), mutateAsync: vi.fn() }} areas={["Produção", "Embalagem"]} /></ControlFactoryContext.Provider>);
 
-    expect(screen.getAllByText("Mínimo concluído")).toHaveLength(4);
+    expect(screen.getAllByText("Mínimo concluído")).toHaveLength(1);
     expect(screen.getAllByText(/Pode adicionar mais verificações/).length).toBeGreaterThan(0);
     expect(screen.queryAllByRole("button", { name: "Registar verificação adicional" })).toHaveLength(0);
   });

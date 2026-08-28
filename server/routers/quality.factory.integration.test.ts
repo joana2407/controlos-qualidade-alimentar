@@ -328,12 +328,12 @@ describe("procedimentos de qualidade por fábrica", () => {
   });
 
   it("filtra os resultados de Temperaturas por período e equipamento", async () => {
-    entries.push({ id: 77, factoryId: 1, module: "temperature_controls", area: "Área da Qualidade", result: "NC", completedAt: now, payload: { equipment: [{ id: "f1-freezer-1", name: "Equipamento de congelação 1", area: "Área da Qualidade", limit: -18, temperature: -16, result: "NC", notes: "Ajuste solicitado" }, { id: "f1-freezer-2", name: "Equipamento de congelação 2", area: "Área da Qualidade", limit: -18, temperature: -19, result: "C", notes: "" }] } } as any);
+    entries.push({ id: 77, factoryId: 1, module: "temperature_controls", area: "Área da Qualidade", result: "NC", completedAt: now, registeredByName: "Sabrina Esteves", registeredByTitle: "Tec. Qualidade", payload: { equipment: [{ id: "f1-freezer-1", name: "Equipamento de congelação 1", area: "Área da Qualidade", limit: -18, temperature: -16, result: "NC", notes: "Ajuste solicitado" }, { id: "f1-freezer-2", name: "Equipamento de congelação 2", area: "Área da Qualidade", limit: -18, temperature: -19, result: "C", notes: "" }] } } as any);
     const caller = qualityRouter.createCaller(createContext());
 
     const results = await caller.temperatureHistory({ startDate: now, endDate: now, equipmentId: "f1-freezer-1" });
 
-    expect(results).toEqual([expect.objectContaining({ equipmentId: "f1-freezer-1", temperature: -16, result: "NC", notes: "Ajuste solicitado" })]);
+    expect(results).toEqual([expect.objectContaining({ equipmentId: "f1-freezer-1", temperature: -16, result: "NC", notes: "Ajuste solicitado", completedAt: now, registeredByName: "Sabrina Esteves", registeredByTitle: "Tec. Qualidade" })]);
     entries.pop();
   });
 
@@ -435,6 +435,25 @@ describe("procedimentos de qualidade por fábrica", () => {
     expect(report.filteredEntries).toHaveLength(1);
     expect(report.filteredEntries[0]).toMatchObject({ module: "bphf", result: "C" });
     expect(report.filters).toMatchObject({ module: "bphf", result: "C", ncStatus: "open" });
+  });
+
+  it("filtra relatórios pelas variáveis específicas de cada controlo", async () => {
+    const originalEntries = [...entries];
+    entries.push(
+      { id: 101, factoryId: 1, module: "bphf", area: "Embalagem", result: "C", completedAt: new Date(2026, 7, 14, 11, 0), payload: { criterion: "Higiene pessoal", collaboratorName: "Maria Silva", line: "Linha 2" } },
+      { id: 102, factoryId: 1, module: "sensory", area: "Controlo sensorial", result: "NC", completedAt: new Date(2026, 7, 14, 12, 0), payload: { product: "Pão de centeio", lot: "L-2026-08", validity: "2026-09-01", calculation: { percentage: 42 } } },
+      { id: 103, factoryId: 1, module: "temperature_controls", area: "Fábrica 1", result: "C", completedAt: new Date(2026, 7, 14, 13, 0), payload: { equipment: [{ name: "Arca de congelação 1", area: "Qualidade", temperature: -20 }] } },
+    );
+    const caller = qualityRouter.createCaller(createContext());
+    const bphf = await caller.reports({ module: "bphf", inspectedCollaborator: "Maria", verificationType: "Higiene" });
+    expect(bphf.filteredEntries.map((entry) => entry.id)).toEqual([101]);
+    const sensory = await caller.reports({ module: "sensory", productName: "centeio", lot: "L-2026-08" });
+    expect(sensory.filteredEntries.map((entry) => entry.id)).toEqual([102]);
+    const temperatures = await caller.reports({ module: "temperature_controls", equipment: "Arca de congelação 1" });
+    expect(temperatures.filteredEntries.map((entry) => entry.id)).toEqual([103]);
+    const freeSearch = await caller.reports({ detailSearch: "L-2026-08" });
+    expect(freeSearch.filteredEntries.map((entry) => entry.id)).toEqual([102]);
+    entries.splice(0, entries.length, ...originalEntries);
   });
 
   it("filtra relatórios por colaborador e alerta ao acumular três incidências sem NC em seis meses", async () => {
@@ -662,6 +681,24 @@ describe("procedimentos de qualidade por fábrica", () => {
     expect(factoryOne.map((item) => item.id)).toEqual([2]);
     expect(factoryTwoMonthly.map((item) => item.id)).toEqual([3]);
     expect(factoryOne[0]?.lastInspectionAt).toBeNull();
+  });
+
+  it("lista o histórico anterior do ponto de Quebráveis com estado, autoria e observações", async () => {
+    const historyEntries = [
+      { id: 950, factoryId: 1, module: "fragile_items", area: "Zona Tratamento Térmico", title: "Quebrável — Portas forno Anelar 1", result: "NC", notes: "Substituir proteção antes do próximo turno.", completedAt: new Date(2026, 7, 13, 9, 30, 0), registeredByName: "Sabrina Esteves", registeredByTitle: "Tec. Qualidade", payload: { fragileItemId: 1, state: "Danificado", evidencePhotos: [{ url: "/manus-storage/dano.png", fileName: "dano.png" }] } },
+      { id: 951, factoryId: 2, module: "fragile_items", area: "Produção", title: "Quebrável — Janelas-Exterior", result: "C", notes: "Sem alterações.", completedAt: new Date(2026, 7, 13, 10, 0, 0), registeredByName: "Neuza Antunes", registeredByTitle: "Tec. Qualidade", payload: { fragileItemId: 3, state: "Íntegro", evidencePhotos: [] } },
+    ];
+    entries.push(...historyEntries);
+    try {
+      const caller = qualityRouter.createCaller(createContext());
+      const history = await caller.fragileInspectionHistory({ itemId: 1 });
+
+      expect(history).toHaveLength(2);
+      expect(history).toEqual(expect.arrayContaining([expect.objectContaining({ id: 950, state: "Danificado", result: "NC", notes: "Substituir proteção antes do próximo turno.", registeredByName: "Sabrina Esteves", registeredByTitle: "Tec. Qualidade", evidencePhotos: [{ url: "/manus-storage/dano.png", fileName: "dano.png" }] })]));
+      expect(history.map((entry) => entry.id)).not.toContain(951);
+    } finally {
+      entries.splice(entries.length - historyEntries.length, historyEntries.length);
+    }
   });
 
   it("devolve apenas os resultados do controlo, fábrica e data operacional consultados", async () => {
