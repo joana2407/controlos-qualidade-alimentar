@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 const dashboardInputs = vi.hoisted(() => [] as unknown[]);
 const dailyResultsInputs = vi.hoisted(() => [] as unknown[]);
 const routeModule = vi.hoisted(() => ({ value: "bphf" }));
+const authorizationState = vi.hoisted(() => ({ allowed: true, taskId: 51 as number | null, dueAt: new Date("2026-08-20T12:00:00"), isPreviousPending: true, isFuturePlanned: false, reason: "Autorizado" }));
 
 vi.mock("@/lib/trpc", () => ({
   trpc: {
@@ -15,7 +16,7 @@ vi.mock("@/lib/trpc", () => ({
       dashboard: { useQuery: (input: unknown) => { dashboardInputs.push(input); return { isLoading: false, data: { moduleProgress: { bphf: { expected: 3, completed: 1, registeredToday: 1, pending: ["Plano do Dia — bphf"], percentage: 33.3 }, metal_detectors: { expected: 2, completed: 1, registeredToday: 1, pending: ["Plano do Dia — metal_detectors"], percentage: 50 } }, moduleProgressByFactory: { bphf: [{ factoryId: 1, expected: 1, completed: 0, registeredToday: 0, percentage: 0 }, { factoryId: 2, expected: 1, completed: 1, registeredToday: 1, percentage: 100 }, { factoryId: 3, expected: 1, completed: 0, registeredToday: 0, percentage: 0 }], metal_detectors: [{ factoryId: 1, expected: 2, completed: 1, registeredToday: 1, percentage: 50 }] } } }; } },
       dailyControlResults: { useQuery: (input: unknown) => { dailyResultsInputs.push(input); const module = (input as { module?: string }).module; return { isLoading: false, data: { entries: module === "metal_detectors" ? [{ id: 91, title: "Detetor de metais — Linha 1 · Produto de teste", area: "Linha 1", result: "C", notes: null, payload: {}, completedAt: new Date("2026-08-20T11:30:00"), registeredByName: "Sabrina Esteves", registeredByTitle: "Tec. Qualidade" }] : [{ id: 90, title: "Higienização das mãos dos manipuladores", area: "Produção", result: "C", notes: "Sem desvios observados.", payload: { collaboratorName: "Colaborador de teste" }, completedAt: new Date("2026-08-20T11:30:00"), registeredByName: "Sabrina Esteves", registeredByTitle: "Tec. Qualidade" }] } }; } },
       pendingControlTasks: { useQuery: () => ({ isLoading: false, data: [{ id: 72, dueAt: new Date("2026-08-18T12:00:00"), responsible: "Ana", factoryId: 1 }] }) },
-      controlAuthorization: { useQuery: () => ({ isLoading: false, data: { allowed: true, taskId: 51, dueAt: new Date("2026-08-20T12:00:00"), isPreviousPending: true } }) },
+      controlAuthorization: { useQuery: () => ({ isLoading: false, data: authorizationState }) },
       listBphfInspectionEmployees: { useQuery: () => ({ data: [{ id: 1, name: "Colaborador de teste" }] }) },
       listBphfCollaboratorInspections: { useQuery: () => ({ isLoading: false, data: [] }) },
       addBphfInspectionEmployee: { useMutation: () => ({ isPending: false, mutate: vi.fn() }) },
@@ -32,7 +33,7 @@ vi.mock("wouter", () => ({
 import ModuleControl from "../client/src/pages/ModuleControl";
 
 describe("cabeçalho de controlo — progresso por fábrica", () => {
-  afterEach(() => { cleanup(); dashboardInputs.length = 0; dailyResultsInputs.length = 0; routeModule.value = "bphf"; window.history.pushState({}, "", "/"); });
+  afterEach(() => { cleanup(); dashboardInputs.length = 0; dailyResultsInputs.length = 0; routeModule.value = "bphf"; Object.assign(authorizationState, { allowed: true, taskId: 51, dueAt: new Date("2026-08-20T12:00:00"), isPreviousPending: true, isFuturePlanned: false, reason: "Autorizado" }); window.history.pushState({}, "", "/"); });
 
   it("substitui o resumo geral pelos cartões das fábricas incluídas no Plano do Dia", () => {
     render(<ModuleControl />);
@@ -79,5 +80,17 @@ describe("cabeçalho de controlo — progresso por fábrica", () => {
     expect(screen.getAllByText(/Linha 1 — verificada/).length).toBeGreaterThan(0);
     expect(screen.getAllByText(/Linha 2 — pendente/).length).toBeGreaterThan(0);
     expect(screen.getByText("50%")).toBeTruthy();
+  });
+
+  it("mantém os resultados da data selecionada visíveis quando o preenchimento já está fechado", () => {
+    routeModule.value = "shelf_life";
+    Object.assign(authorizationState, { allowed: false, taskId: null, dueAt: null, isPreviousPending: false, reason: "Este controlo já foi concluído." });
+    window.history.pushState({}, "", "/controlos/shelf_life?factoryId=1");
+    render(<ModuleControl />);
+
+    expect(screen.getByText("Preenchimento indisponível")).toBeTruthy();
+    expect(screen.getByText("Resultados registados")).toBeTruthy();
+    expect(screen.getAllByText("Higienização das mãos dos manipuladores").length).toBeGreaterThan(0);
+    expect(screen.getByText("Sem desvios observados.")).toBeTruthy();
   });
 });
