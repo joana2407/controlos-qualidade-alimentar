@@ -22,7 +22,7 @@ vi.mock("@/lib/trpc", () => ({
       metadata: { useQuery: () => ({ data: { factories: [{ id: 1, name: "Fábrica 1 (Fatiado)" }, { id: 2, name: "Fábrica 2 (granel)" }] } }) },
       listFragileItems: { useQuery: () => ({ data: [{ id: 9, name: "Proteção acrílica", location: "Embalamento", factoryId: 1, periodicity: "S", itemType: "Plástico rígido", referenceImageUrl: null }, { id: 11, name: "Janela de produção", location: "Produção", factoryId: 1, periodicity: "D", itemType: "Vidro", referenceImageUrl: null }, { id: 10, name: "Janelas exterior", location: "Expedição", factoryId: 2, periodicity: "M", itemType: "Vidro", referenceImageUrl: null }] }) },
       listFragileAreas: { useQuery: () => ({ data: [{ id: 1, factoryId: 1, name: "Embalamento", active: "true" }, { id: 2, factoryId: 1, name: "Produção", active: "true" }, { id: 3, factoryId: 2, name: "Expedição", active: "true" }] }) },
-      fragilePending: { useQuery: () => ({ isLoading: false, data: [{ id: 9, name: "Proteção acrílica", location: "Embalamento", factoryId: 1, periodicity: "S", itemType: "Plástico rígido", referenceImageUrl: null, lastInspectionAt: null }] }) },
+      fragilePending: { useQuery: () => ({ isLoading: false, data: [{ id: 9, name: "Proteção acrílica", location: "Embalamento", factoryId: 1, periodicity: "S", itemType: "Plástico rígido", referenceImageUrl: "/manus-storage/protecao-acrilica.png", referenceImageName: "protecao-acrilica.png", lastInspectionAt: null }] }) },
       addFragileItem: { useMutation: (options?: { onSuccess?: () => void }) => ({ isPending: false, mutate: (input: unknown) => { addMutate(input); options?.onSuccess?.(); } }) },
       updateFragileItem: { useMutation: () => ({ isPending: false, mutate: (input: unknown, options?: { onSuccess?: () => void }) => { updateMutate(input); options?.onSuccess?.(); } }) },
       deleteFragileItem: { useMutation: (options?: { onSuccess?: () => void }) => ({ isPending: false, mutate: (input: unknown) => { deleteMutate(input); options?.onSuccess?.(); } }) },
@@ -99,6 +99,8 @@ describe("fluxo de interface de pontos de controlo de quebráveis", () => {
     expect(screen.getByText("Inspeções pendentes")).toBeTruthy();
     expect(screen.getByRole("button", { name: /gerir pontos/i })).toBeTruthy();
     expect(screen.getAllByText("Proteção acrílica").length).toBeGreaterThan(0);
+    const referenceImages = screen.getAllByRole("img", { name: "Imagem de referência do ponto Proteção acrílica" });
+    expect(referenceImages.some((image) => image.getAttribute("src") === "/manus-storage/protecao-acrilica.png")).toBe(true);
 
     fireEvent.click(screen.getByRole("button", { name: /inspecionar/i }));
     expect(screen.getByRole("dialog")).toBeTruthy();
