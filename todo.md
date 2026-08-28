@@ -437,3 +437,4 @@
 - [x] Permitir validar produtos do controlo sensorial individualmente e em momentos diferentes, distinguindo estado, resultado, fotografia, observações e data/hora de cada produto.
 - [x] Manter o controlo sensorial disponível para novas validações após o primeiro produto, permitindo registos individuais em momentos diferentes sem bloquear pelo estado concluído.
 - [x] Adicionar filtro por produto ao histórico do controlo sensorial, mantendo o filtro limitado à data selecionada e permitindo limpar a pesquisa.
+- [x] Adicionar filtros por lote e por resultado ao histórico do controlo sensorial, combinados com produto, limitados à data selecionada e com limpeza conjunta.
