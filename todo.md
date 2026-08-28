@@ -459,3 +459,7 @@
 
 - [x] Adicionar geração manual de backups Excel dos relatórios diários para a Responsável de Qualidade, com estado visível, descarga do ficheiro e proteção contra duplicados.
 - [x] Testar a autorização, os estados de carregamento/erro e a repetição segura da geração manual de backups.
+
+- [x] Investigar porque controlos concluídos continuam na lista «Em Atraso», comparando tarefas, entradas, datas operacionais e regras de completude.
+- [x] Corrigir a reconciliação da lista «Em Atraso» para remover controlos totalmente concluídos e preservar apenas pendências reais.
+- [x] Adicionar testes de regressão para todos os módulos relevantes e validar a correção na aplicação publicada.
