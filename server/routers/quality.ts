@@ -45,6 +45,11 @@ const retroactiveReasonLabels: Record<z.infer<typeof retroactiveReasonSchema>, s
 };
 const dateInput = z.coerce.date();
 const BPHF_AREA_NAMES = ["Produção", "Embalagem", "Limpeza"] as const;
+const SUGGESTION_LOCATIONS_BY_FACTORY: Record<string, readonly string[]> = {
+  F1_FATIADO: ["Caixa escritório", "Caixa WC feminino", "Caixa WC masculino"],
+  F2_GRANEL: ["Caixa WC feminino", "Caixa WC masculino"],
+  F3_SEM_GLUTEN: ["Caixa WC feminino", "Caixa WC masculino"],
+};
 const REQUIRED_MODULE_FREQUENCIES = [
   { module: "bphf", frequency: "daily", title: "BPHF obrigatório" },
   { module: "shelf_life", frequency: "daily", title: "Shelf-life obrigatório" },
@@ -166,6 +171,18 @@ function bphfTaskComplete(task: { factoryId: number | null }, entries: Array<{ a
   const expectedAreas = expectedBphfAreas(task, areaCatalog);
   const completedAreas = new Set(entries.map((entry) => entry.area));
   return expectedAreas.every((area) => completedAreas.has(area));
+}
+
+function suggestionLocationsForFactory(factoryCode: string | undefined) {
+  return factoryCode ? SUGGESTION_LOCATIONS_BY_FACTORY[factoryCode] ?? [] : [];
+}
+
+function suggestionBoxesTaskComplete(task: { factoryId: number | null }, entries: Array<{ area: string; factoryId: number | null }>, factoryCatalog: Array<{ id: number; code: string }>) {
+  const factory = factoryCatalog.find((item) => item.id === task.factoryId);
+  const expectedLocations = suggestionLocationsForFactory(factory?.code);
+  if (!expectedLocations.length) return false;
+  const completedLocations = new Set(entries.map((entry) => entry.area));
+  return expectedLocations.every((location) => completedLocations.has(location));
 }
 
 function monthlyChecklistTaskComplete(task: { factoryId: number | null }, entries: Array<{ payload?: unknown }>, items: Array<{ id: number; active: string }>, assignments: Array<{ checklistItemId: number; factoryId: number }>) {
@@ -533,7 +550,7 @@ export const qualityRouter = router({
         if (entry.completedAt < start && !lastFragileInspectionsBeforeDay.has(fragileItemId)) lastFragileInspectionsBeforeDay.set(fragileItemId, entry.completedAt);
       }
     });
-    const isPlannedControlCompleted = (task: typeof plannedControls[number]) => task.status === "completed" || (task.module === "bphf" ? bphfTaskComplete(task, completedToday.filter((entry) => entryMatchesPlannedTask(entry, task)), areaCatalog) : task.module === "metal_detectors" ? metalDetectorsTaskComplete(task, completedToday.filter((entry) => entryMatchesPlannedTask(entry, task)), areaCatalog) : task.module === "monthly_checklist" ? monthlyChecklistTaskComplete(task, completedToday.filter((entry) => entryMatchesPlannedTask(entry, task)), monthlyItems, monthlyAssignments) : task.module === "food_defense" ? foodDefenseTaskComplete(completedToday.filter((entry) => entryMatchesPlannedTask(entry, task))) : completedToday.some((entry) => entryMatchesPlannedTask(entry, task)));
+    const isPlannedControlCompleted = (task: typeof plannedControls[number]) => task.status === "completed" || (task.module === "bphf" ? bphfTaskComplete(task, completedToday.filter((entry) => entryMatchesPlannedTask(entry, task)), areaCatalog) : task.module === "metal_detectors" ? metalDetectorsTaskComplete(task, completedToday.filter((entry) => entryMatchesPlannedTask(entry, task)), areaCatalog) : task.module === "suggestion_boxes" ? suggestionBoxesTaskComplete(task, completedToday.filter((entry) => entryMatchesPlannedTask(entry, task)), factoryCatalog) : task.module === "monthly_checklist" ? monthlyChecklistTaskComplete(task, completedToday.filter((entry) => entryMatchesPlannedTask(entry, task)), monthlyItems, monthlyAssignments) : task.module === "food_defense" ? foodDefenseTaskComplete(completedToday.filter((entry) => entryMatchesPlannedTask(entry, task))) : completedToday.some((entry) => entryMatchesPlannedTask(entry, task)));
     const completedPlannedControls = plannedControls.filter(isPlannedControlCompleted);
     const dailyExpectedCount = todayTasks.length;
     const dailyCompletedCount = completedTasksToday.length + completedPlannedControls.filter((task) => task.status !== "completed").length;
@@ -559,6 +576,11 @@ export const qualityRouter = router({
         expected = expectedAreas.length;
         const completedAreas = new Set(factoryEntriesToday.map((entry) => entry.area));
         completed = expectedAreas.filter((area) => completedAreas.has(area)).length;
+      } else if (module === "suggestion_boxes") {
+        const expectedLocations = suggestionLocationsForFactory(factory.code);
+        expected = expectedLocations.length;
+        const completedLocations = new Set(factoryEntriesToday.map((entry) => entry.area));
+        completed = expectedLocations.filter((location) => completedLocations.has(location)).length;
       } else if (module === "metal_detectors") {
         const expectedLines = areaCatalog.filter((area) => area.group === "metal" && area.factoryId === factory.id && area.active === "true").map((area) => area.name);
         expected = expectedLines.length;
@@ -660,10 +682,12 @@ export const qualityRouter = router({
         id: entry.id,
         title: entry.title,
         area: entry.area,
+        factoryId: entry.factoryId,
         result: entry.result,
         notes: entry.notes,
         payload: asPayload(entry),
         completedAt: entry.completedAt,
+        registeredByProfileId: entry.registeredByProfileId,
         registeredByName: entry.registeredByName,
         registeredByTitle: entry.registeredByTitle,
       })),
@@ -880,8 +904,12 @@ export const qualityRouter = router({
     id: z.number().int(),
     title: z.string().trim().min(2).max(180),
     area: z.string().trim().min(1).max(120),
+    factoryId: z.number().int().nullable().optional(),
     result: resultSchema,
     notes: z.string().trim().max(3000).optional(),
+    productName: z.string().trim().max(180).optional(),
+    lot: z.string().trim().max(120).optional(),
+    validity: z.string().trim().max(40).optional(),
   })).mutation(async ({ ctx, input }) => {
     const db = await requireDb();
     const entry = (await db.select().from(controlEntries).where(eq(controlEntries.id, input.id)).limit(1))[0];
@@ -892,12 +920,26 @@ export const qualityRouter = router({
     const payload = entry.payload && typeof entry.payload === "object" && !Array.isArray(entry.payload) ? { ...entry.payload } as Record<string, unknown> : {};
     const history = Array.isArray(payload.editHistory) ? payload.editHistory : [];
     const editedAt = new Date().toISOString();
+    const nextPayload = { ...payload };
+    if (input.productName !== undefined) {
+      if (input.productName.trim()) nextPayload.product = input.productName.trim();
+      else delete nextPayload.product;
+    }
+    if (input.lot !== undefined) {
+      if (input.lot.trim()) nextPayload.lot = input.lot.trim();
+      else delete nextPayload.lot;
+    }
+    if (input.validity !== undefined) {
+      if (input.validity.trim()) nextPayload.validity = input.validity.trim();
+      else delete nextPayload.validity;
+    }
     await db.update(controlEntries).set({
       title: input.title,
       area: input.area,
+      ...(input.factoryId !== undefined ? { factoryId: input.factoryId } : {}),
       result: input.result,
       notes: input.notes?.trim() || null,
-      payload: { ...payload, editHistory: [...history, { action: "updated", at: editedAt, byProfileId: ctx.operatorProfile!.id, byName: ctx.operatorProfile!.name, byTitle: ctx.operatorProfile!.title }] },
+      payload: { ...nextPayload, editHistory: [...history, { action: "updated", at: editedAt, byProfileId: ctx.operatorProfile!.id, byName: ctx.operatorProfile!.name, byTitle: ctx.operatorProfile!.title }] },
     }).where(eq(controlEntries.id, input.id));
     return { success: true };
   }),
@@ -962,20 +1004,23 @@ export const qualityRouter = router({
       registeredByTitle: ctx.operatorProfile!.title,
       createdBy: ctx.user!.openId,
     });
-    const oneSubmissionModules: Array<typeof qualityModuleValues[number]> = ["sensory", "shelf_life", "suggestion_boxes", "dispatch_control", "internal_analysis", "temperature_controls"];
+    const oneSubmissionModules: Array<typeof qualityModuleValues[number]> = ["sensory", "shelf_life", "dispatch_control", "internal_analysis", "temperature_controls"];
     let plannedControlComplete = Boolean(authorization.task && oneSubmissionModules.includes(input.module));
-    if (authorization.task && ["bphf", "metal_detectors", "fragile_items", "monthly_checklist", "food_defense"].includes(input.module)) {
-      const [taskEntries, progressAreas, progressFragileItems, progressChecklistItems, progressChecklistAssignments] = await Promise.all([
+    if (authorization.task && ["bphf", "metal_detectors", "suggestion_boxes", "fragile_items", "monthly_checklist", "food_defense"].includes(input.module)) {
+      const [taskEntries, progressAreas, progressFragileItems, progressChecklistItems, progressChecklistAssignments, progressFactories] = await Promise.all([
         db.select().from(controlEntries).orderBy(desc(controlEntries.completedAt)),
         db.select().from(areas).orderBy(areas.name),
         db.select().from(fragileItems).orderBy(fragileItems.sortOrder),
         db.select().from(checklistItems).orderBy(checklistItems.sortOrder),
         db.select().from(checklistItemFactories).orderBy(checklistItemFactories.factoryId),
+        db.select().from(factories).orderBy(factories.name),
       ]);
       const taskPayload = (entry: typeof taskEntries[number]) => entry.payload && typeof entry.payload === "object" && !Array.isArray(entry.payload) ? entry.payload as Record<string, unknown> : {};
       const taskEntriesForPlan = taskEntries.filter((entry) => entry.module === input.module && entry.factoryId === authorization.task!.factoryId && taskPayload(entry).plannedTaskId === authorization.task!.id);
       if (input.module === "bphf") {
         plannedControlComplete = bphfTaskComplete(authorization.task!, taskEntriesForPlan, progressAreas);
+      } else if (input.module === "suggestion_boxes") {
+        plannedControlComplete = suggestionBoxesTaskComplete(authorization.task!, taskEntriesForPlan, progressFactories);
       } else if (input.module === "metal_detectors") {
         const expectedAreas = progressAreas.filter((area) => area.group === "metal" && area.factoryId === authorization.task!.factoryId && area.active === "true").map((area) => area.name);
         const completedAreas = new Set(taskEntriesForPlan.map((entry) => entry.area));

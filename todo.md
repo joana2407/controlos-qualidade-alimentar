@@ -442,10 +442,10 @@
 - [x] Mostrar em cada verificação de Temperaturas quem registou e a hora exata da leitura no formulário e no histórico.
 - [x] Tornar os filtros de Relatórios contextuais ao controlo, incluindo as variáveis relevantes de cada módulo e aplicando-as também à exportação Excel.
 - [x] Manter o painel de gestão de pontos de Quebráveis aberto e preservar fábrica, área e pesquisa após editar um ponto ou uma área.
-- [ ] Nos resultados registados de cada controlo, permitir consultar detalhes e, com autorização, editar ou eliminar o registo, propagando a alteração aos indicadores e históricos.
-- [ ] Permitir alterar a fábrica ou linha ao editar um registo de controlo, atualizando os indicadores e preservando a auditoria.
-- [ ] No editor de resultados de controlo, permitir alterar fábrica/linha, nome do produto, lote e validade, mantendo permissões e auditoria.
-- [ ] Fazer as Caixas de Sugestões exigir uma verificação mínima por todas as áreas aplicáveis e mostrar conclusão visual por área.
-- [ ] Adicionar filtro por tipo de verificação ao histórico BPHF: Fardamento, Higienização das mãos, Cumprimento BPHF e Cacifos.
+- [x] Nos resultados registados de cada controlo, permitir consultar detalhes e, com autorização, editar ou eliminar o registo, propagando a alteração aos indicadores e históricos.
+- [x] Permitir alterar a fábrica ou linha ao editar um registo de controlo, atualizando os indicadores e preservando a auditoria.
+- [x] No editor de resultados de controlo, permitir alterar fábrica/linha, nome do produto, lote e validade, mantendo permissões e auditoria.
+- [x] Fazer as Caixas de Sugestões exigir uma verificação mínima por todas as áreas aplicáveis e mostrar conclusão visual por área.
+- [x] Adicionar filtro por tipo de verificação ao histórico BPHF: Fardamento, Higienização das mãos, Cumprimento BPHF e Cacifos.
 - [x] Corrigir o BPHF para que a conclusão global por área não marque todos os critérios como concluídos; um critério, como Cacifos, só fica concluído após o seu próprio registo.
 - [x] No painel «Inspecionar» de Quebráveis, mostrar o histórico de verificações anteriores do ponto selecionado com data, resultado, responsável e observações.
