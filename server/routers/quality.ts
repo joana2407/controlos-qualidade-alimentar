@@ -199,12 +199,13 @@ function foodDefenseTaskComplete(entries: Array<{ payload?: unknown }>) {
   });
 }
 
-function isHistoricalPlanTaskSatisfied(task: { id: number; module: typeof qualityModuleValues[number]; factoryId: number | null; dueAt: Date }, entries: Array<{ area: string; module: string; factoryId: number | null; completedAt: Date; payload?: unknown }>, areaCatalog: Array<{ group: string; factoryId: number | null; active: string; name: string }>, monthlyItems: Array<{ id: number; active: string }> = [], monthlyAssignments: Array<{ checklistItemId: number; factoryId: number }> = []) {
+function isHistoricalPlanTaskSatisfied(task: { id: number; module: typeof qualityModuleValues[number]; factoryId: number | null; dueAt: Date }, entries: Array<{ area: string; module: string; factoryId: number | null; completedAt: Date; payload?: unknown }>, areaCatalog: Array<{ group: string; factoryId: number | null; active: string; name: string }>, monthlyItems: Array<{ id: number; active: string }> = [], monthlyAssignments: Array<{ checklistItemId: number; factoryId: number }> = [], factoryCatalog: Array<{ id: number; code: string }> = []) {
   const taskEntries = entries.filter((entry) => entryMatchesPlannedTask(entry, task));
   if (task.module === "bphf") return bphfTaskComplete(task, taskEntries, areaCatalog);
   if (task.module === "metal_detectors") return metalDetectorsTaskComplete(task, taskEntries, areaCatalog);
   if (task.module === "monthly_checklist") return monthlyChecklistTaskComplete(task, taskEntries, monthlyItems, monthlyAssignments);
   if (task.module === "food_defense") return foodDefenseTaskComplete(taskEntries);
+  if (task.module === "suggestion_boxes") return suggestionBoxesTaskComplete(task, taskEntries, factoryCatalog);
   return oneSubmissionPlanModules.has(task.module) && taskEntries.length > 0;
 }
 
@@ -213,11 +214,11 @@ async function assessControlAuthorization(db: any, input: { module: typeof quali
   const spansAllFoodDefenseFactories = input.module === "food_defense";
   if (!isShared && !input.factoryId) return { allowed: false, reason: "Selecione a fábrica ou linha antes de consultar ou preencher este controlo.", task: null, isPreviousPending: false, isFuturePlanned: false };
   const today = localDateKey(new Date());
-  const [tasks, entries, areaCatalog, monthlyItems, monthlyAssignments] = await Promise.all([db.select().from(controlTasks).orderBy(controlTasks.dueAt), db.select().from(controlEntries).orderBy(desc(controlEntries.completedAt)), db.select().from(areas).orderBy(areas.name), db.select().from(checklistItems).orderBy(checklistItems.sortOrder), db.select().from(checklistItemFactories).orderBy(checklistItemFactories.factoryId)]);
-  const allowsSupplementaryDailyEntries = input.module === "bphf" || input.module === "temperature_controls" || input.module === "sensory";
+  const [tasks, entries, areaCatalog, monthlyItems, monthlyAssignments, factoryCatalog] = await Promise.all([db.select().from(controlTasks).orderBy(controlTasks.dueAt), db.select().from(controlEntries).orderBy(desc(controlEntries.completedAt)), db.select().from(areas).orderBy(areas.name), db.select().from(checklistItems).orderBy(checklistItems.sortOrder), db.select().from(checklistItemFactories).orderBy(checklistItemFactories.factoryId), db.select().from(factories).orderBy(factories.name)]);
+  const allowsSupplementaryDailyEntries = input.module === "bphf" || input.module === "temperature_controls" || input.module === "sensory" || input.module === "suggestion_boxes";
   const eligibleTasks = tasks.filter((item: any) => {
     const isCurrentDay = localDateKey(new Date(item.dueAt)) === today;
-    const isPendingPlan = item.status === "pending" && !isHistoricalPlanTaskSatisfied(item, entries, areaCatalog, monthlyItems, monthlyAssignments);
+    const isPendingPlan = item.status === "pending" && !isHistoricalPlanTaskSatisfied(item, entries, areaCatalog, monthlyItems, monthlyAssignments, factoryCatalog);
     const isCompletedPlanOpenForSupplement = allowsSupplementaryDailyEntries && item.status === "completed" && isCurrentDay;
     return (isPendingPlan || isCompletedPlanOpenForSupplement) && item.area === "Plano do Dia" && item.module === input.module && isBusinessDay(new Date(item.dueAt)) && (isShared ? item.factoryId === null : spansAllFoodDefenseFactories ? item.factoryId !== null : item.factoryId === input.factoryId);
   });
@@ -407,12 +408,13 @@ export const qualityRouter = router({
     const isShared = sharedPlanModules.has(input.module);
     if (!isShared && input.factoryId === undefined) return [];
     const today = localDateKey(new Date());
-    const [tasks, entries, areaCatalog, monthlyItems, monthlyAssignments] = await Promise.all([
+    const [tasks, entries, areaCatalog, monthlyItems, monthlyAssignments, factoryCatalog] = await Promise.all([
       db.select().from(controlTasks).orderBy(controlTasks.dueAt),
       db.select().from(controlEntries).orderBy(desc(controlEntries.completedAt)),
       db.select().from(areas).orderBy(areas.name),
       db.select().from(checklistItems).orderBy(checklistItems.sortOrder),
       db.select().from(checklistItemFactories).orderBy(checklistItemFactories.factoryId),
+      db.select().from(factories).orderBy(factories.name),
     ]);
     return tasks.filter((task) => {
       const assignedProfiles = Array.isArray(task.assigneeProfileIds) ? task.assigneeProfileIds : [];
@@ -424,7 +426,7 @@ export const qualityRouter = router({
         && taskDate < today
         && isBusinessDay(new Date(task.dueAt))
         && task.status === "pending"
-        && !isHistoricalPlanTaskSatisfied(task, entries, areaCatalog, monthlyItems, monthlyAssignments)
+        && !isHistoricalPlanTaskSatisfied(task, entries, areaCatalog, monthlyItems, monthlyAssignments, factoryCatalog)
         && (ctx.operatorProfile!.role === "manager" || assignedProfiles.includes(ctx.operatorProfile!.id));
     }).map((task) => ({ id: task.id, dueAt: task.dueAt, responsible: task.responsible, factoryId: task.factoryId })).sort((left, right) => new Date(left.dueAt).getTime() - new Date(right.dueAt).getTime());
   }),
@@ -534,7 +536,7 @@ export const qualityRouter = router({
     const visibleAdHocTasks = hasScheduleForSelectedDate ? adHocTasks.filter((task) => task.dueAt >= start && task.dueAt < end) : [];
     const visiblePending = hasScheduleForSelectedDate ? pending : [];
     const visibleOverdue = hasScheduleForSelectedDate ? overdue : [];
-    const completedTasksToday = todayTasks.filter((task) => task.status === "completed");
+    const completedTasksToday = todayTasks.filter((task) => task.area !== "Plano do Dia" && task.status === "completed");
     const monthlyChecklistPlannedThisMonth = businessTasks.some((task) => task.module === "monthly_checklist" && task.dueAt.getFullYear() === operationalDate.getFullYear() && task.dueAt.getMonth() === operationalDate.getMonth());
     const monthlyChecklistReminder = !input?.factoryId && operationalDate.getDate() >= 20 && !monthlyChecklistPlannedThisMonth;
     const foodDefensePlannedThisYear = businessTasks.some((task) => task.module === "food_defense" && task.dueAt.getFullYear() === operationalDate.getFullYear());
@@ -550,17 +552,25 @@ export const qualityRouter = router({
         if (entry.completedAt < start && !lastFragileInspectionsBeforeDay.has(fragileItemId)) lastFragileInspectionsBeforeDay.set(fragileItemId, entry.completedAt);
       }
     });
-    const isPlannedControlCompleted = (task: typeof plannedControls[number]) => task.status === "completed" || (task.module === "bphf" ? bphfTaskComplete(task, completedToday.filter((entry) => entryMatchesPlannedTask(entry, task)), areaCatalog) : task.module === "metal_detectors" ? metalDetectorsTaskComplete(task, completedToday.filter((entry) => entryMatchesPlannedTask(entry, task)), areaCatalog) : task.module === "suggestion_boxes" ? suggestionBoxesTaskComplete(task, completedToday.filter((entry) => entryMatchesPlannedTask(entry, task)), factoryCatalog) : task.module === "monthly_checklist" ? monthlyChecklistTaskComplete(task, completedToday.filter((entry) => entryMatchesPlannedTask(entry, task)), monthlyItems, monthlyAssignments) : task.module === "food_defense" ? foodDefenseTaskComplete(completedToday.filter((entry) => entryMatchesPlannedTask(entry, task))) : completedToday.some((entry) => entryMatchesPlannedTask(entry, task)));
+    const isPlannedControlCompleted = (task: typeof plannedControls[number]) => {
+      const taskEntries = completedToday.filter((entry) => entryMatchesPlannedTask(entry, task));
+      if (task.module === "bphf") return bphfTaskComplete(task, taskEntries, areaCatalog);
+      if (task.module === "metal_detectors") return metalDetectorsTaskComplete(task, taskEntries, areaCatalog);
+      if (task.module === "suggestion_boxes") return suggestionBoxesTaskComplete(task, taskEntries, factoryCatalog);
+      if (task.module === "monthly_checklist") return monthlyChecklistTaskComplete(task, taskEntries, monthlyItems, monthlyAssignments);
+      if (task.module === "food_defense") return foodDefenseTaskComplete(taskEntries);
+      return task.status === "completed" || taskEntries.length > 0;
+    };
     const completedPlannedControls = plannedControls.filter(isPlannedControlCompleted);
     const dailyExpectedCount = todayTasks.length;
-    const dailyCompletedCount = completedTasksToday.length + completedPlannedControls.filter((task) => task.status !== "completed").length;
+    const dailyCompletedCount = completedTasksToday.length + completedPlannedControls.length;
     const effectiveDailyExpectedCount = dailyExpectedCount;
     const visibleFactories = input?.factoryId ? factoryCatalog.filter((factory) => factory.id === input.factoryId) : factoryCatalog;
     const moduleProgressByFactory = Object.fromEntries(qualityModuleValues.map((module) => [module, visibleFactories.map((factory) => {
       const factoryControls = plannedControls.filter((task) => task.module === module && task.factoryId === factory.id);
       const isAnnualFoodDefense = module === "food_defense";
       if (!isAnnualFoodDefense && !factoryControls.length) return { factoryId: factory.id, expected: 0, completed: 0, registeredToday: 0, percentage: 0 };
-      const pendingControl = factoryControls.find((task) => task.status === "pending");
+      const pendingControl = factoryControls.find((task) => !isPlannedControlCompleted(task));
       const factoryEntriesToday = module === "food_defense"
         ? scopedEntries.filter((entry) => entry.module === module && entry.factoryId === factory.id && entry.completedAt.getFullYear() === operationalDate.getFullYear())
         : completedToday.filter((entry) => entry.module === module && entry.factoryId === factory.id);
@@ -736,17 +746,18 @@ export const qualityRouter = router({
 
   listTasks: qualitySessionProcedure.input(z.object({ factoryId: z.number().int().optional() }).optional()).query(async ({ ctx, input }) => {
     const db = await requireDb();
-    const [tasks, entries, areaCatalog, monthlyItems, monthlyAssignments] = await Promise.all([
+    const [tasks, entries, areaCatalog, monthlyItems, monthlyAssignments, factoryCatalog] = await Promise.all([
       db.select().from(controlTasks).orderBy(controlTasks.dueAt),
       db.select().from(controlEntries).orderBy(desc(controlEntries.completedAt)),
       db.select().from(areas).orderBy(areas.name),
       db.select().from(checklistItems).orderBy(checklistItems.sortOrder),
       db.select().from(checklistItemFactories).orderBy(checklistItemFactories.factoryId),
+      db.select().from(factories).orderBy(factories.name),
     ]);
     const profile = ctx.operatorProfile!;
     return scopeToFactory(tasks, input?.factoryId).filter((task) => {
       const assignees = Array.isArray(task.assigneeProfileIds) ? task.assigneeProfileIds : [];
-      const completedFromPreviousRegistration = task.status === "pending" && task.area === "Plano do Dia" && isHistoricalPlanTaskSatisfied(task, entries, areaCatalog, monthlyItems, monthlyAssignments);
+      const completedFromPreviousRegistration = task.status === "pending" && task.area === "Plano do Dia" && isHistoricalPlanTaskSatisfied(task, entries, areaCatalog, monthlyItems, monthlyAssignments, factoryCatalog);
       return isBusinessDay(task.dueAt) && task.status !== "cancelled" && !completedFromPreviousRegistration && (profile.role === "manager" || assignees.includes(profile.id));
     }).map((task) => {
       const report = entries.find((entry) => entry.payload?.taskId === task.id);

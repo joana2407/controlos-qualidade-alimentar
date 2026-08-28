@@ -38,9 +38,9 @@ const actions = [
   { id: 2, factoryId: 2, status: "pending", dueAt: now },
 ];
 const factoryRows = [
-  { id: 1, name: "Fábrica 1 (Fatiado)" },
-  { id: 2, name: "Fábrica 2 (granel)" },
-  { id: 3, name: "Fabrica 3 (Sem Gluten)" },
+  { id: 1, code: "F1_FATIADO", name: "Fábrica 1 (Fatiado)" },
+  { id: 2, code: "F2_GRANEL", name: "Fábrica 2 (granel)" },
+  { id: 3, code: "F3_SEM_GLUTEN", name: "Fabrica 3 (Sem Gluten)" },
 ];
 const areaRows = [{ id: 101, name: "Produção T", group: "bphf", factoryId: 1, active: "true" }];
 const monthlyRows = [{ id: 301, active: "true" }, { id: 302, active: "true" }];
@@ -266,6 +266,25 @@ describe("procedimentos de qualidade por fábrica", () => {
       expect(dbInserts).toEqual(expect.arrayContaining([expect.objectContaining({ module: "sensory", title: "Controlo sensorial — Produto 2", factoryId: 1 })]));
       expect(dbUpdates).toEqual(expect.arrayContaining([expect.objectContaining({ status: "completed", completedByProfileId: 1 })]));
     } finally {
+      tasks.pop();
+    }
+  });
+
+  it("mantém as Caixas de Sugestões incompletas quando só uma localização foi verificada", async () => {
+    tasks.push({ id: 516, factoryId: 1, status: "completed", dueAt: now, completedAt: now, module: "suggestion_boxes", area: "Plano do Dia", title: "Plano do Dia — Caixas F1", responsible: "Sabrina Esteves", assigneeProfileIds: [1] });
+    entries.push({ id: 516, factoryId: 1, module: "suggestion_boxes", area: "Caixa WC feminino", result: "C", completedAt: now, payload: { plannedTaskId: 516, plannedDate: now.toISOString(), location: "Caixa WC feminino" } } as any);
+    try {
+      const caller = qualityRouter.createCaller(createContext({ id: 1, name: "Sabrina Esteves", title: "Tec. Qualidade", role: "technician" }));
+
+      const dashboard = await caller.dashboard({ date: now });
+      const access = await caller.controlAuthorization({ module: "suggestion_boxes", factoryId: 1, plannedTaskId: 516 });
+
+      expect(dashboard.moduleProgressByFactory.suggestion_boxes[0]).toMatchObject({ factoryId: 1, expected: 3, completed: 1, percentage: 33.3 });
+      expect(dashboard.moduleProgress.suggestion_boxes).toMatchObject({ expected: 3, completed: 1, percentage: 33.3 });
+      expect(dashboard.moduleProgress.suggestion_boxes.pending).toContain("Plano do Dia — Caixas F1");
+      expect(access).toMatchObject({ allowed: true, taskId: 516 });
+    } finally {
+      entries.pop();
       tasks.pop();
     }
   });
