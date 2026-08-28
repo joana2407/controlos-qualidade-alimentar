@@ -5030,7 +5030,7 @@ function MonthlyChecklistLegacy({ createEntry }: any) {
               onClick={() =>
                 addItem.mutate({
                   factoryIds: [Number(factoryId)],
-                  area: newArea,
+                  areaNames: [newArea],
                   label: newLabel,
                 })
               }
@@ -5066,7 +5066,7 @@ function MonthlyChecklistV2({ createEntry }: any) {
   const [manageOpen, setManageOpen] = useState(false);
   const [editorOpen, setEditorOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<any>(null);
-  const [pointArea, setPointArea] = useState("");
+  const [pointAreas, setPointAreas] = useState<string[]>([]);
   const [pointLabel, setPointLabel] = useState("");
   const [pointFactoryIds, setPointFactoryIds] = useState<number[]>([]);
   const [newAreaName, setNewAreaName] = useState("");
@@ -5139,7 +5139,9 @@ function MonthlyChecklistV2({ createEntry }: any) {
   }, [factoryId, monthlyFactories, setFactoryId]);
   const areas = useMemo(() => {
     const names = new Set((checklistAreas.data ?? []).map(item => item.name));
-    (items.data ?? []).forEach(item => names.add(item.area));
+    (items.data ?? []).forEach(item =>
+      (item.areaNames ?? [item.area]).forEach(name => names.add(name))
+    );
     if (!names.size) names.add("Geral");
     return Array.from(names).sort((left, right) =>
       left.localeCompare(right, "pt-PT")
@@ -5148,7 +5150,9 @@ function MonthlyChecklistV2({ createEntry }: any) {
   useEffect(() => {
     if (areas.length && !areas.includes(area)) setArea(areas[0]);
   }, [area, areas]);
-  const grouped = (items.data ?? []).filter(item => item.area === area);
+  const grouped = (items.data ?? []).filter(item =>
+    (item.areaNames ?? [item.area]).includes(area)
+  );
   const applicable = grouped.filter(
     item => results[item.id] && results[item.id] !== "N/A"
   );
@@ -5163,7 +5167,7 @@ function MonthlyChecklistV2({ createEntry }: any) {
   const openCreate = () => {
     setManageOpen(false);
     setEditingItem(null);
-    setPointArea(areas[0] ?? "Geral");
+    setPointAreas(areas[0] ? [areas[0]] : []);
     setPointLabel("");
     setPointFactoryIds(factoryId ? [Number(factoryId)] : []);
     setEditorOpen(true);
@@ -5171,7 +5175,7 @@ function MonthlyChecklistV2({ createEntry }: any) {
   const openEdit = (item: any) => {
     setManageOpen(false);
     setEditingItem(item);
-    setPointArea(item.area);
+    setPointAreas(item.areaNames?.length ? item.areaNames : [item.area]);
     setPointLabel(item.label);
     setPointFactoryIds(item.factoryIds ?? []);
     setEditorOpen(true);
@@ -5182,14 +5186,26 @@ function MonthlyChecklistV2({ createEntry }: any) {
         ? current.filter(item => item !== id)
         : [...current, id]
     );
+  const togglePointArea = (name: string) =>
+    setPointAreas(current =>
+      current.includes(name)
+        ? current.filter(item => item !== name)
+        : [...current, name]
+    );
+  const toggleAllPointAreas = () =>
+    setPointAreas(current =>
+      areas.length > 0 && areas.every(name => current.includes(name))
+        ? []
+        : [...areas]
+    );
   const savePoint = () => {
-    if (!pointArea.trim() || !pointLabel.trim() || !pointFactoryIds.length)
+    if (!pointAreas.length || !pointLabel.trim() || !pointFactoryIds.length)
       return toast.error(
-        "Indique a Área/Zona, o ponto e pelo menos uma fábrica."
+        "Indique pelo menos uma Área/Zona, o ponto e uma fábrica."
       );
     const input = {
       factoryIds: pointFactoryIds,
-      area: pointArea.trim(),
+      areaNames: pointAreas,
       label: pointLabel.trim(),
     };
     if (editingItem) updateItem.mutate({ id: editingItem.id, ...input });
@@ -5542,7 +5558,7 @@ function MonthlyChecklistV2({ createEntry }: any) {
                   <div className="min-w-0 flex-1">
                     <p className="font-medium">{item.label}</p>
                     <p className="mt-1 text-sm text-muted-foreground">
-                      {item.area} ·{" "}
+                      {(item.areaNames ?? [item.area]).join(", ")} ·{" "}
                       {(item.factoryIds ?? [])
                         .map(
                           id =>
@@ -5598,22 +5614,39 @@ function MonthlyChecklistV2({ createEntry }: any) {
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-2">
-              <Label>Área/Zona</Label>
-              <Select
-                value={pointArea || undefined}
-                onValueChange={setPointArea}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecione uma Área/Zona" />
-                </SelectTrigger>
-                <SelectContent>
-                  {areas.map(item => (
-                    <SelectItem key={item} value={item}>
-                      {item}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <div className="flex items-center justify-between gap-3">
+                <Label>Áreas/Zonas atribuídas</Label>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={toggleAllPointAreas}
+                  disabled={!areas.length}
+                >
+                  {areas.length > 0 && areas.every(name => pointAreas.includes(name))
+                    ? "Limpar seleção"
+                    : "Todas as Áreas/Zonas"}
+                </Button>
+              </div>
+              <div className="grid gap-2 sm:grid-cols-2">
+                {areas.map(item => (
+                  <Button
+                    key={item}
+                    type="button"
+                    variant={pointAreas.includes(item) ? "default" : "outline"}
+                    className="justify-start"
+                    onClick={() => togglePointArea(item)}
+                    aria-pressed={pointAreas.includes(item)}
+                  >
+                    {item}
+                  </Button>
+                ))}
+              </div>
+              {!areas.length && (
+                <p className="text-sm text-muted-foreground">
+                  Crie primeiro uma Área/Zona no painel de gestão.
+                </p>
+              )}
             </div>
             <div className="space-y-2">
               <Label>Ponto de controlo</Label>

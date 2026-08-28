@@ -25,4 +25,13 @@ describe("Checklist mensal", () => {
     expect(moduleControl).toMatch(/aria-label=\{`Editar \$\{item\.label\}`\}/);
     expect(moduleControl).toMatch(/aria-label=\{`Eliminar \$\{item\.label\}`\}/);
   });
+
+  it("permite atribuir um ponto a várias Áreas/Zonas ou a todas em simultâneo", () => {
+    expect(moduleControl).toContain("areaNames: pointAreas");
+    expect(moduleControl).toContain("togglePointArea");
+    expect(moduleControl).toContain("toggleAllPointAreas");
+    expect(moduleControl).toContain("Todas as Áreas/Zonas");
+    expect(moduleControl).toContain("Áreas/Zonas atribuídas");
+    expect(moduleControl).toContain("(item.areaNames ?? [item.area]).includes(area)");
+  });
 });

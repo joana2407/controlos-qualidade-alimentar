@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { areas, checklistAreas, checklistItemFactories, checklistItems, controlPlans, correctiveActions, controlEntries, controlTasks, dailyReportArchives, dailyReportArchiveViews, factories, fragileAreas, fragileItems, nonconformities, qualityPinProfiles } from "../../drizzle/schema";
+import { areas, checklistAreas, checklistItemAreas, checklistItemFactories, checklistItems, controlPlans, correctiveActions, controlEntries, controlTasks, dailyReportArchives, dailyReportArchiveViews, factories, fragileAreas, fragileItems, nonconformities, qualityPinProfiles } from "../../drizzle/schema";
 import type { TrpcContext } from "../_core/context";
 import { getDb } from "../db";
 import { storageGetSignedUrl, storagePut } from "../storage";
@@ -46,6 +46,7 @@ const areaRows = [{ id: 101, name: "Produção T", group: "bphf", factoryId: 1, 
 const monthlyAreaRows = [{ id: 201, name: "Geral", active: "true" }];
 const monthlyRows = [{ id: 301, area: "Geral", active: "true" }, { id: 302, area: "Geral", active: "true" }];
 const monthlyAssignments = [{ checklistItemId: 301, factoryId: 1 }, { checklistItemId: 302, factoryId: 1 }];
+const monthlyAreaAssignments = [{ checklistItemId: 301, checklistAreaId: 201 }, { checklistItemId: 302, checklistAreaId: 201 }];
 const archiveRows: any[] = [];
 const archiveViewRows: any[] = [];
 const profileRows = [{ id: 1, name: "Sabrina Esteves", title: "Tec. Qualidade", active: "true", role: "technician" }, { id: 2, name: "Neuza Antunes", title: "Tec. Qualidade", active: "true", role: "technician" }, { id: 3, name: "Joana Pina", title: "Resp. Qualidade", active: "true", role: "manager" }];
@@ -82,6 +83,7 @@ function mockDatabase() {
     if (table === areas) return areaRows;
     if (table === checklistAreas) return monthlyAreaRows;
     if (table === checklistItems) return monthlyRows;
+    if (table === checklistItemAreas) return monthlyAreaAssignments;
     if (table === checklistItemFactories) return monthlyAssignments;
     if (table === dailyReportArchives) return archiveRows;
     if (table === dailyReportArchiveViews) return archiveViewRows;
@@ -108,7 +110,7 @@ function mockDatabase() {
 }
 
 describe("procedimentos de qualidade por fábrica", () => {
-  beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(now); tasks.splice(0, tasks.length, ...initialTasks.map((task) => ({ ...task, assigneeProfileIds: [...task.assigneeProfileIds] }))); monthlyAreaRows.splice(0, monthlyAreaRows.length, { id: 201, name: "Geral", active: "true" }); monthlyRows.splice(0, monthlyRows.length, { id: 301, area: "Geral", active: "true" }, { id: 302, area: "Geral", active: "true" }); plans.length = 0; archiveRows.length = 0; archiveViewRows.length = 0; dbUpdates.length = 0; dbInserts.length = 0; vi.clearAllMocks(); vi.mocked(getDb).mockResolvedValue(mockDatabase() as any); vi.mocked(storagePut).mockResolvedValue({ key: "dispatch-orders/3/encomenda.pdf", url: "/manus-storage/dispatch-orders/3/encomenda.pdf" }); vi.mocked(storageGetSignedUrl).mockResolvedValue("https://storage.example/encomenda.pdf"); });
+  beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(now); tasks.splice(0, tasks.length, ...initialTasks.map((task) => ({ ...task, assigneeProfileIds: [...task.assigneeProfileIds] }))); monthlyAreaRows.splice(0, monthlyAreaRows.length, { id: 201, name: "Geral", active: "true" }); monthlyRows.splice(0, monthlyRows.length, { id: 301, area: "Geral", active: "true" }, { id: 302, area: "Geral", active: "true" }); monthlyAreaAssignments.splice(0, monthlyAreaAssignments.length, { checklistItemId: 301, checklistAreaId: 201 }, { checklistItemId: 302, checklistAreaId: 201 }); plans.length = 0; archiveRows.length = 0; archiveViewRows.length = 0; dbUpdates.length = 0; dbInserts.length = 0; vi.clearAllMocks(); vi.mocked(getDb).mockResolvedValue(mockDatabase() as any); vi.mocked(storagePut).mockResolvedValue({ key: "dispatch-orders/3/encomenda.pdf", url: "/manus-storage/dispatch-orders/3/encomenda.pdf" }); vi.mocked(storageGetSignedUrl).mockResolvedValue("https://storage.example/encomenda.pdf"); });
 
   it("filtra o painel e as tarefas pela fábrica selecionada", async () => {
     const caller = qualityRouter.createCaller(createContext());
@@ -702,6 +704,7 @@ describe("procedimentos de qualidade por fábrica", () => {
 
     monthlyAreaRows.push({ id: 201, name: "Geral", active: "true" });
     monthlyRows.splice(0, monthlyRows.length);
+    monthlyAreaAssignments.splice(0, monthlyAreaAssignments.length);
     const listed = await caller.listChecklistAreas();
     expect(listed).toEqual([{ id: 201, name: "Geral", itemCount: 0 }]);
 
@@ -709,8 +712,10 @@ describe("procedimentos de qualidade por fábrica", () => {
     expect(dbUpdates).toContainEqual(expect.objectContaining({ name: "Higiene" }));
     expect(dbUpdates).toContainEqual(expect.objectContaining({ area: "Higiene" }));
     monthlyRows.push({ id: 303, area: "Geral", active: "true" });
+    monthlyAreaAssignments.push({ checklistItemId: 303, checklistAreaId: 201 });
     await expect(caller.removeChecklistArea({ id: 201 })).rejects.toMatchObject({ code: "BAD_REQUEST" });
     monthlyRows.splice(0, monthlyRows.length);
+    monthlyAreaAssignments.splice(0, monthlyAreaAssignments.length);
     await caller.removeChecklistArea({ id: 201 });
     expect(dbUpdates).toContainEqual(expect.objectContaining({ active: "false" }));
   });
@@ -720,6 +725,21 @@ describe("procedimentos de qualidade por fábrica", () => {
     await expect(technician.addChecklistArea({ name: "Área reservada" })).rejects.toMatchObject({ code: "FORBIDDEN" });
     await expect(technician.updateChecklistArea({ id: 201, name: "Área reservada" })).rejects.toMatchObject({ code: "FORBIDDEN" });
     await expect(technician.removeChecklistArea({ id: 201 })).rejects.toMatchObject({ code: "FORBIDDEN" });
+  });
+
+  it("devolve e contabiliza o mesmo ponto em todas as Áreas/Zonas atribuídas", async () => {
+    monthlyAreaRows.push({ id: 202, name: "Produção", active: "true" });
+    monthlyAreaAssignments.push({ checklistItemId: 301, checklistAreaId: 202 });
+    entries.push({ id: 990, factoryId: 1, module: "monthly_checklist", area: "Geral", result: "C", completedAt: now, payload: { checklistItemId: 301 } });
+    try {
+      const caller = qualityRouter.createCaller(createContext());
+      const listed = await caller.listChecklistItems({ factoryId: 1 });
+      expect(listed.find(item => item.id === 301)?.areaNames).toEqual(["Geral", "Produção"]);
+      const progress = await caller.monthlyChecklistProgress();
+      expect(progress.find(item => item.factoryId === 1)).toMatchObject({ total: 3, completed: 1, percentage: 33 });
+    } finally {
+      entries.splice(entries.findIndex(entry => entry.id === 990), 1);
+    }
   });
 
   it("filtra os pontos de quebráveis pela fábrica e pela periodicidade", async () => {

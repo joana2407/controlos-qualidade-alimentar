@@ -7,6 +7,7 @@ import {
   factories,
   checklistAreas,
   checklistItems,
+  checklistItemAreas,
   checklistItemFactories,
   controlPlans,
   controlEntries,
@@ -1599,10 +1600,29 @@ export const qualityRouter = router({
 
   listChecklistAreas: qualitySessionProcedure.query(async () => {
     const db = await requireDb();
-    const [areaRows, itemRows] = await Promise.all([db.select().from(checklistAreas).orderBy(checklistAreas.name), db.select().from(checklistItems)]);
-    const itemCountByArea = new Map<string, number>();
-    itemRows.filter((item) => item.active === "true").forEach((item) => itemCountByArea.set(item.area, (itemCountByArea.get(item.area) ?? 0) + 1));
-    return areaRows.filter((area) => area.active === "true").map((area) => ({ id: area.id, name: area.name, itemCount: itemCountByArea.get(area.name) ?? 0 }));
+    const [areaRows, itemRows, itemAreas] = await Promise.all([
+      db.select().from(checklistAreas).orderBy(checklistAreas.name),
+      db.select().from(checklistItems),
+      db.select().from(checklistItemAreas),
+    ]);
+    const activeItemIds = new Set(
+      itemRows.filter(item => item.active === "true").map(item => item.id)
+    );
+    const itemCountByAreaId = new Map<number, number>();
+    itemAreas.forEach(assignment => {
+      if (!activeItemIds.has(assignment.checklistItemId)) return;
+      itemCountByAreaId.set(
+        assignment.checklistAreaId,
+        (itemCountByAreaId.get(assignment.checklistAreaId) ?? 0) + 1
+      );
+    });
+    return areaRows
+      .filter(area => area.active === "true")
+      .map(area => ({
+        id: area.id,
+        name: area.name,
+        itemCount: itemCountByAreaId.get(area.id) ?? 0,
+      }));
   }),
 
   addChecklistArea: qualityManagerProcedure.input(z.object({ name: z.string().min(2).max(120) })).mutation(async ({ ctx, input }) => {
@@ -1628,40 +1648,69 @@ export const qualityRouter = router({
     const db = await requireDb();
     const current = await db.select().from(checklistAreas).where(eq(checklistAreas.id, input.id)).limit(1);
     if (!current[0]) throw new TRPCError({ code: "NOT_FOUND", message: "A Área/Zona selecionada não existe." });
-    const linkedItems = await db.select().from(checklistItems).where(eq(checklistItems.area, current[0].name));
-    if (linkedItems.some((item) => item.active === "true")) throw new TRPCError({ code: "BAD_REQUEST", message: "Não é possível eliminar uma Área/Zona com pontos associados. Edite ou elimine primeiro os pontos dessa área." });
+    const [linkedAssignments, linkedItems] = await Promise.all([
+      db.select().from(checklistItemAreas).where(eq(checklistItemAreas.checklistAreaId, input.id)),
+      db.select().from(checklistItems),
+    ]);
+    const linkedItemIds = new Set(linkedAssignments.map(assignment => assignment.checklistItemId));
+    if (linkedItems.some(item => linkedItemIds.has(item.id) && item.active === "true")) throw new TRPCError({ code: "BAD_REQUEST", message: "Não é possível eliminar uma Área/Zona com pontos associados. Edite ou elimine primeiro os pontos dessa área." });
     await db.update(checklistAreas).set({ active: "false" }).where(eq(checklistAreas.id, input.id));
     return { success: true };
   }),
 
   listChecklistItems: qualitySessionProcedure.input(z.object({ factoryId: z.number().int().min(1).max(3) }).optional()).query(async ({ input }) => {
     const db = await requireDb();
-    const [items, assignments] = await Promise.all([db.select().from(checklistItems).orderBy(checklistItems.area, checklistItems.sortOrder), db.select().from(checklistItemFactories)]);
-    return items.map((item) => ({ ...item, factoryIds: assignments.filter((assignment) => assignment.checklistItemId === item.id).map((assignment) => assignment.factoryId) })).filter((item) => item.active === "true" && (!input?.factoryId || item.factoryIds.includes(input.factoryId)));
+    const [items, factoryAssignments, areaAssignments, areaRows] = await Promise.all([
+      db.select().from(checklistItems).orderBy(checklistItems.area, checklistItems.sortOrder),
+      db.select().from(checklistItemFactories),
+      db.select().from(checklistItemAreas),
+      db.select().from(checklistAreas),
+    ]);
+    const areaNameById = new Map(areaRows.map(area => [area.id, area.name]));
+    return items
+      .map(item => {
+        const areaNames = areaAssignments
+          .filter(assignment => assignment.checklistItemId === item.id)
+          .map(assignment => areaNameById.get(assignment.checklistAreaId))
+          .filter((name): name is string => Boolean(name));
+        const resolvedAreaNames = areaNames.length ? areaNames : [item.area];
+        return {
+          ...item,
+          area: resolvedAreaNames[0],
+          areaNames: resolvedAreaNames,
+          factoryIds: factoryAssignments
+            .filter(assignment => assignment.checklistItemId === item.id)
+            .map(assignment => assignment.factoryId),
+        };
+      })
+      .filter(item => item.active === "true" && (!input?.factoryId || item.factoryIds.includes(input.factoryId)));
   }),
 
   addChecklistItem: qualityManagerProcedure.input(z.object({
     factoryIds: z.array(z.number().int().min(1).max(3)).min(1),
-    area: z.string().min(2).max(120),
+    areaNames: z.array(z.string().min(2).max(120)).min(1),
     label: z.string().min(3).max(500),
   })).mutation(async ({ ctx, input }) => {
     const db = await requireDb();
     const factoryIds = Array.from(new Set(input.factoryIds));
-    const area = normalizeChecklistAreaName(input.area);
-    await ensureChecklistArea(db, area, ctx.user!.openId);
-    const inserted = await db.insert(checklistItems).values({ factoryId: factoryIds[0], area, label: input.label.trim(), createdBy: ctx.user!.openId, sortOrder: 100, active: "true" }).$returningId();
+    const areaNames = Array.from(new Set(input.areaNames.map(normalizeChecklistAreaName)));
+    const areaIds = await Promise.all(areaNames.map(name => ensureChecklistArea(db, name, ctx.user!.openId)));
+    const inserted = await db.insert(checklistItems).values({ factoryId: factoryIds[0], area: areaNames[0], label: input.label.trim(), createdBy: ctx.user!.openId, sortOrder: 100, active: "true" }).$returningId();
     await db.insert(checklistItemFactories).values(factoryIds.map((factoryId) => ({ checklistItemId: inserted[0]!.id, factoryId })));
+    await db.insert(checklistItemAreas).values(areaIds.map(checklistAreaId => ({ checklistItemId: inserted[0]!.id, checklistAreaId })));
     return { success: true };
   }),
 
-  updateChecklistItem: qualityManagerProcedure.input(z.object({ id: z.number().int(), factoryIds: z.array(z.number().int().min(1).max(3)).min(1), area: z.string().min(2).max(120), label: z.string().min(3).max(500) })).mutation(async ({ ctx, input }) => {
+  updateChecklistItem: qualityManagerProcedure.input(z.object({ id: z.number().int(), factoryIds: z.array(z.number().int().min(1).max(3)).min(1), areaNames: z.array(z.string().min(2).max(120)).min(1), label: z.string().min(3).max(500) })).mutation(async ({ ctx, input }) => {
     const db = await requireDb();
     const factoryIds = Array.from(new Set(input.factoryIds));
-    const area = normalizeChecklistAreaName(input.area);
-    await ensureChecklistArea(db, area, ctx.user!.openId);
-    await db.update(checklistItems).set({ factoryId: factoryIds[0], area, label: input.label.trim() }).where(eq(checklistItems.id, input.id));
+    const areaNames = Array.from(new Set(input.areaNames.map(normalizeChecklistAreaName)));
+    const areaIds = await Promise.all(areaNames.map(name => ensureChecklistArea(db, name, ctx.user!.openId)));
+    await db.update(checklistItems).set({ factoryId: factoryIds[0], area: areaNames[0], label: input.label.trim() }).where(eq(checklistItems.id, input.id));
     await db.delete(checklistItemFactories).where(eq(checklistItemFactories.checklistItemId, input.id));
     await db.insert(checklistItemFactories).values(factoryIds.map((factoryId) => ({ checklistItemId: input.id, factoryId })));
+    await db.delete(checklistItemAreas).where(eq(checklistItemAreas.checklistItemId, input.id));
+    await db.insert(checklistItemAreas).values(areaIds.map(checklistAreaId => ({ checklistItemId: input.id, checklistAreaId })));
     return { success: true };
   }),
 
@@ -1677,18 +1726,34 @@ export const qualityRouter = router({
     const now = new Date();
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
     const startOfNextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
-    const [items, assignments, entries, monthlyFactories] = await Promise.all([
+    const [items, factoryAssignments, areaAssignments, areaRows, entries, monthlyFactories] = await Promise.all([
       db.select().from(checklistItems),
       db.select().from(checklistItemFactories),
+      db.select().from(checklistItemAreas),
+      db.select().from(checklistAreas),
       db.select().from(controlEntries).where(eq(controlEntries.module, "monthly_checklist")),
       db.select().from(factories),
     ]);
     const monthEntries = entries.filter((entry) => entry.completedAt >= startOfMonth && entry.completedAt < startOfNextMonth);
+    const areaNameById = new Map(areaRows.map(area => [area.id, area.name]));
     return monthlyFactories.filter((factory) => [1, 2, 3].includes(factory.id)).map((factory) => {
-      const factoryItems = items.filter((item) => assignments.some((assignment) => assignment.checklistItemId === item.id && assignment.factoryId === factory.id) && item.active === "true");
-      const completedIds = new Set(monthEntries.filter((entry) => entry.factoryId === factory.id).map((entry) => Number((entry.payload as Record<string, unknown>)?.checklistItemId)).filter(Boolean));
-      const completed = factoryItems.filter((item) => completedIds.has(item.id)).length;
-      return { factoryId: factory.id, factoryName: factory.name, total: factoryItems.length, completed, percentage: factoryItems.length ? Math.round((completed / factoryItems.length) * 100) : 0 };
+      const factoryItems = items.filter((item) => factoryAssignments.some((assignment) => assignment.checklistItemId === item.id && assignment.factoryId === factory.id) && item.active === "true");
+      const plannedChecks = factoryItems.flatMap(item => {
+        const itemAreaNames = areaAssignments
+          .filter(assignment => assignment.checklistItemId === item.id)
+          .map(assignment => areaNameById.get(assignment.checklistAreaId))
+          .filter((name): name is string => Boolean(name));
+        return (itemAreaNames.length ? itemAreaNames : [item.area]).map(areaName => `${item.id}:${areaName}`);
+      });
+      const completedChecks = new Set(monthEntries
+        .filter(entry => entry.factoryId === factory.id)
+        .map(entry => {
+          const itemId = Number((entry.payload as Record<string, unknown>)?.checklistItemId);
+          return itemId && entry.area ? `${itemId}:${entry.area}` : null;
+        })
+        .filter((key): key is string => Boolean(key)));
+      const completed = plannedChecks.filter(key => completedChecks.has(key)).length;
+      return { factoryId: factory.id, factoryName: factory.name, total: plannedChecks.length, completed, percentage: plannedChecks.length ? Math.round((completed / plannedChecks.length) * 100) : 0 };
     });
   }),
 
@@ -2221,16 +2286,17 @@ export const qualityRouter = router({
 
   initializeChecklist: qualityManagerProcedure.mutation(async ({ ctx }) => {
     const db = await requireDb();
-    await ensureChecklistArea(db, "Geral", ctx.user!.openId);
+    const defaultAreaId = await ensureChecklistArea(db, "Geral", ctx.user!.openId);
     const existing = await db.select().from(checklistItems).limit(1);
     if (existing.length) return { success: true, created: 0 };
-    await db.insert(checklistItems).values(MONTHLY_CHECKLIST_TEMPLATE.map((label, index) => ({
+    const inserted = await db.insert(checklistItems).values(MONTHLY_CHECKLIST_TEMPLATE.map((label, index) => ({
       area: "Geral",
       label,
       sortOrder: index + 1,
       active: "true" as const,
       createdBy: ctx.user!.openId,
-    })));
+    }))).$returningId();
+    await db.insert(checklistItemAreas).values(inserted.map(item => ({ checklistItemId: item.id, checklistAreaId: defaultAreaId })));
     return { success: true, created: MONTHLY_CHECKLIST_TEMPLATE.length };
   }),
 });

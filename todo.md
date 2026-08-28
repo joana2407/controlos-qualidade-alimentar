@@ -493,3 +493,8 @@
 - [x] Corrigir a causa identificada e validar o acesso real aos controlos publicados.
 - [x] Adicionar regressões da falha encontrada e publicar a recuperação após validação.
 - [x] Confirmar e corrigir especificamente o fluxo «Gerir pontos e Áreas/Zonas» da Checklist Mensal para a Responsável de Qualidade.
+
+- [x] Permitir atribuir um ponto da Checklist Mensal a várias Áreas/Zonas em simultâneo.
+- [x] Adicionar a opção «Todas as Áreas/Zonas» no editor de pontos da Checklist Mensal.
+- [x] Migrar as atribuições existentes sem perder pontos, fábricas, históricos ou indicadores mensais.
+- [x] Adicionar regressões de servidor e interface para atribuição múltipla de Áreas/Zonas.
