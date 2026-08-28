@@ -449,6 +449,6 @@
 - [x] Adicionar filtro por tipo de verificação ao histórico BPHF: Fardamento, Higienização das mãos, Cumprimento BPHF e Cacifos.
 - [x] Corrigir o BPHF para que a conclusão global por área não marque todos os critérios como concluídos; um critério, como Cacifos, só fica concluído após o seu próprio registo.
 - [x] No painel «Inspecionar» de Quebráveis, mostrar o histórico de verificações anteriores do ponto selecionado com data, resultado, responsável e observações.
-- [ ] Nos detalhes de Quebráveis dos Relatórios e do painel de controlo, adicionar acesso ao histórico completo do ponto com data, resultado, responsável e fotografias anexadas quando existirem.
-- [ ] Corrigir o caso BPHF de 28/08 na Fábrica 1: Limpeza/Cacifos deve permanecer pendente e impedir o indicador de 100% sem verificação própria.
+- [x] Nos detalhes de Quebráveis dos Relatórios e do painel de controlo, adicionar acesso ao histórico completo do ponto com data, resultado, responsável e fotografias anexadas quando existirem.
+- [x] Corrigir o caso BPHF de 28/08 na Fábrica 1: Limpeza/Cacifos deve permanecer pendente e impedir o indicador de 100% sem verificação própria.
 - [x] Corrigir o progresso das Caixas de Sugestões em 28/08: um único ponto verificado não pode apresentar 100% nem encerrar as restantes localizações aplicáveis.

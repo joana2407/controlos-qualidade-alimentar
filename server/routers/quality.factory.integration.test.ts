@@ -425,10 +425,10 @@ describe("procedimentos de qualidade por fábrica", () => {
     const dashboard = await caller.dashboard();
 
     expect(dashboard.plannedControls.map((control) => control.factoryId)).toEqual([1, 2]);
-    expect(dashboard.moduleProgress.bphf).toMatchObject({ expected: 6, completed: 0, registeredToday: 0, percentage: 0 });
+    expect(dashboard.moduleProgress.bphf).toMatchObject({ expected: 24, completed: 0, percentage: 0 });
     expect(dashboard.moduleProgressByFactory.bphf).toEqual([
-      { factoryId: 1, expected: 3, completed: 0, registeredToday: 0, percentage: 0, pendingTaskId: 4 },
-      { factoryId: 2, expected: 3, completed: 0, registeredToday: 0, percentage: 0, pendingTaskId: 5 },
+      { factoryId: 1, expected: 12, completed: 0, registeredToday: 0, percentage: 0, pendingTaskId: 4 },
+      { factoryId: 2, expected: 12, completed: 0, registeredToday: 0, percentage: 0, pendingTaskId: 5 },
       { factoryId: 3, expected: 0, completed: 0, registeredToday: 0, percentage: 0 },
     ]);
   });
@@ -735,10 +735,11 @@ describe("procedimentos de qualidade por fábrica", () => {
     expect(pendingTasks).toEqual([expect.objectContaining({ id: 99, factoryId: 1 })]);
   });
 
-  it("considera o BPHF concluído com uma verificação por cada área prevista, sem exigir todos os critérios em todas as áreas", async () => {
+  it("mantém BPHF pendente quando falta um critério numa área e só fecha com todos os critérios", async () => {
     const bphfPlan = { id: 122, factoryId: 1, status: "pending", dueAt: now, completedAt: null, module: "bphf", area: "Plano do Dia", title: "Plano do Dia — BPHF F1", responsible: "Ana", assigneeProfileIds: [3] };
     const bphfAreas = ["Produção", "Embalagem", "Limpeza"].map((name, index) => ({ id: 810 + index, name, group: "bphf", factoryId: 1, active: "true" }));
-    const bphfEntries = bphfAreas.map((area, index) => ({ id: 820 + index, factoryId: 1, module: "bphf", area: area.name, title: "Higienização das mãos dos manipuladores", result: "C", completedAt: now, payload: { criterion: "Higienização das mãos dos manipuladores", plannedTaskId: 122, plannedDate: now.toISOString() } }));
+    const criteria = ["Estado de limpeza e conservação do fardamento", "Higienização das mãos dos manipuladores", "Cumprimento geral das regras de BPHF", "Estado de limpeza e organização dos cacifos do pessoal e de trabalho"];
+    const bphfEntries = bphfAreas.flatMap((area, areaIndex) => criteria.slice(0, areaIndex === 2 ? 3 : 4).map((criterion, criterionIndex) => ({ id: 820 + areaIndex * 10 + criterionIndex, factoryId: 1, module: "bphf", area: area.name, title: criterion, result: "C", completedAt: now, payload: { criterion, plannedTaskId: 122, plannedDate: now.toISOString() } })));
     const originalAreas = [...areaRows];
     tasks.push(bphfPlan);
     areaRows.splice(0, areaRows.length, ...bphfAreas);
@@ -748,8 +749,15 @@ describe("procedimentos de qualidade por fábrica", () => {
       const dashboard = await caller.dashboard({ date: now });
       const progress = dashboard.moduleProgressByFactory.bphf.find((item) => item.factoryId === 1);
 
-      expect(progress).toMatchObject({ expected: 3, completed: 3, percentage: 100 });
-      expect(dashboard.moduleProgress.bphf.pending).not.toContain("Plano do Dia — BPHF F1");
+      expect(progress).toMatchObject({ expected: 12, completed: 11, percentage: 91.7 });
+      expect(dashboard.moduleProgress.bphf.pending).toContain("Plano do Dia — BPHF F1");
+
+      entries.push({ id: 899, factoryId: 1, module: "bphf", area: "Limpeza", title: criteria[3], result: "C", completedAt: now, payload: { criterion: criteria[3], plannedTaskId: 122, plannedDate: now.toISOString() } });
+      const completedDashboard = await caller.dashboard({ date: now });
+      const completedProgress = completedDashboard.moduleProgressByFactory.bphf.find((item) => item.factoryId === 1);
+      expect(completedProgress).toMatchObject({ expected: 12, completed: 12, percentage: 100 });
+      expect(completedDashboard.moduleProgress.bphf.pending).not.toContain("Plano do Dia — BPHF F1");
+      entries.pop();
     } finally {
       tasks.splice(tasks.indexOf(bphfPlan), 1);
       entries.splice(entries.length - bphfEntries.length, bphfEntries.length);

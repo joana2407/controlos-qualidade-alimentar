@@ -45,6 +45,12 @@ const retroactiveReasonLabels: Record<z.infer<typeof retroactiveReasonSchema>, s
 };
 const dateInput = z.coerce.date();
 const BPHF_AREA_NAMES = ["Produção", "Embalagem", "Limpeza"] as const;
+const BPHF_CRITERIA = [
+  "Estado de limpeza e conservação do fardamento",
+  "Higienização das mãos dos manipuladores",
+  "Cumprimento geral das regras de BPHF",
+  "Estado de limpeza e organização dos cacifos do pessoal e de trabalho",
+] as const;
 const SUGGESTION_LOCATIONS_BY_FACTORY: Record<string, readonly string[]> = {
   F1_FATIADO: ["Caixa escritório", "Caixa WC feminino", "Caixa WC masculino"],
   F2_GRANEL: ["Caixa WC feminino", "Caixa WC masculino"],
@@ -167,10 +173,10 @@ function expectedBphfAreas(task: { factoryId: number | null }, areaCatalog: Arra
   return configuredAreas.length ? configuredAreas : [...BPHF_AREA_NAMES];
 }
 
-function bphfTaskComplete(task: { factoryId: number | null }, entries: Array<{ area: string }>, areaCatalog: Array<{ group: string; factoryId: number | null; active: string; name: string }>) {
+function bphfTaskComplete(task: { factoryId: number | null }, entries: Array<{ area: string; title?: string }>, areaCatalog: Array<{ group: string; factoryId: number | null; active: string; name: string }>) {
   const expectedAreas = expectedBphfAreas(task, areaCatalog);
-  const completedAreas = new Set(entries.map((entry) => entry.area));
-  return expectedAreas.every((area) => completedAreas.has(area));
+  const completedSlots = new Set(entries.map((entry) => `${entry.area}::${entry.title ?? ""}`));
+  return expectedAreas.every((area) => BPHF_CRITERIA.every((criterion) => completedSlots.has(`${area}::${criterion}`)));
 }
 
 function suggestionLocationsForFactory(factoryCode: string | undefined) {
@@ -583,9 +589,9 @@ export const qualityRouter = router({
         completed = applicablePoints.filter((item) => completedPointIds.has(item.id)).length;
       } else if (module === "bphf") {
         const expectedAreas = expectedBphfAreas({ factoryId: factory.id }, areaCatalog);
-        expected = expectedAreas.length;
-        const completedAreas = new Set(factoryEntriesToday.map((entry) => entry.area));
-        completed = expectedAreas.filter((area) => completedAreas.has(area)).length;
+        expected = expectedAreas.length * BPHF_CRITERIA.length;
+        const completedSlots = new Set(factoryEntriesToday.map((entry) => `${entry.area}::${entry.title}`));
+        completed = expectedAreas.reduce((total, area) => total + BPHF_CRITERIA.filter((criterion) => completedSlots.has(`${area}::${criterion}`)).length, 0);
       } else if (module === "suggestion_boxes") {
         const expectedLocations = suggestionLocationsForFactory(factory.code);
         expected = expectedLocations.length;
