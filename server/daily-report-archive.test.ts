@@ -63,6 +63,12 @@ describe("arquivo diário de relatórios", () => {
     expect(isLisbonArchiveTime(new Date("2026-12-21T23:55:00.000Z"))).toBe(true);
   });
 
+  it("aceita a execução alguns minutos depois da hora prevista, sem aceitar a hora seguinte", () => {
+    expect(isLisbonArchiveTime(new Date("2026-08-21T22:58:33.000Z"))).toBe(true);
+    expect(isLisbonArchiveTime(new Date("2026-08-21T23:58:33.000Z"))).toBe(false);
+    expect(isLisbonArchiveTime(new Date("2026-08-22T22:58:33.000Z"))).toBe(false);
+  });
+
   it("mantém uma V1 de recuperação e cria apenas uma V2 para o controlo retroativo", async () => {
     const mock = createArchiveDb();
     archiveMock.db = mock.db;

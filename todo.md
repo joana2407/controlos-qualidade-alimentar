@@ -452,3 +452,7 @@
 - [x] Nos detalhes de Quebráveis dos Relatórios e do painel de controlo, adicionar acesso ao histórico completo do ponto com data, resultado, responsável e fotografias anexadas quando existirem.
 - [x] Corrigir o caso BPHF de 28/08 na Fábrica 1: Limpeza/Cacifos deve permanecer pendente e impedir o indicador de 100% sem verificação própria.
 - [x] Corrigir o progresso das Caixas de Sugestões em 28/08: um único ponto verificado não pode apresentar 100% nem encerrar as restantes localizações aplicáveis.
+
+- [x] Investigar porque os backups diários dos relatórios Excel não estão a ser executados, incluindo agendamento, endpoint, logs e armazenamento.
+- [x] Corrigir a execução dos backups diários e validar a criação de um arquivo Excel sem alterar snapshots existentes.
+- [x] Atualizar testes e documentação operacional dos backups após a correção.

@@ -15,7 +15,9 @@ function lisbonParts(date: Date) {
 
 export function isLisbonArchiveTime(date: Date) {
   const parts = lisbonParts(date);
-  return parts.hour === "23" && parts.minute === "55" && !["Sat", "Sun"].includes(parts.weekday);
+  const minute = Number(parts.minute);
+  // O agendador pode iniciar alguns minutos depois da hora cron.
+  return parts.hour === "23" && minute >= 50 && minute <= 59 && !["Sat", "Sun"].includes(parts.weekday);
 }
 
 export function lisbonDateKey(date: Date) {
