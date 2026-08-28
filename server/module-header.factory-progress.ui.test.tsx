@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import React from "react";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const dashboardInputs = vi.hoisted(() => [] as unknown[]);
@@ -92,5 +93,21 @@ describe("cabeçalho de controlo — progresso por fábrica", () => {
     expect(screen.getByText("Resultados registados")).toBeTruthy();
     expect(screen.getAllByText("Higienização das mãos dos manipuladores").length).toBeGreaterThan(0);
     expect(screen.getByText("Sem desvios observados.")).toBeTruthy();
+  });
+
+  it("permite preparar vários produtos no controlo sensorial sem remover o último cartão", async () => {
+    const user = userEvent.setup();
+    routeModule.value = "sensory";
+    Object.assign(authorizationState, { allowed: true, taskId: null, dueAt: null, isPreviousPending: false, reason: "Autorizado" });
+    window.history.pushState({}, "", "/controlos/sensory");
+    render(<ModuleControl />);
+
+    expect(screen.getByText("Produtos a verificar")).toBeTruthy();
+    expect(screen.getAllByPlaceholderText("Produto acabado")).toHaveLength(1);
+    expect(screen.getByRole("button", { name: "Remover produto 1" })).toHaveProperty("disabled", true);
+    await user.click(screen.getByRole("button", { name: "Adicionar produto" }));
+    expect(screen.getAllByPlaceholderText("Produto acabado")).toHaveLength(2);
+    expect(screen.getByText(/2 produtos preparados/)).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Remover produto 2" })).toHaveProperty("disabled", false);
   });
 });

@@ -102,6 +102,12 @@ describe("fluxo de interface de pontos de controlo de quebráveis", () => {
     const referenceImages = screen.getAllByRole("img", { name: "Imagem de referência do ponto Proteção acrílica" });
     expect(referenceImages.some((image) => image.getAttribute("src") === "/manus-storage/protecao-acrilica.png")).toBe(true);
 
+    fireEvent.click(screen.getByRole("button", { name: "Ampliar imagem de referência do ponto Proteção acrílica" }));
+    expect(screen.getByRole("heading", { name: "Imagem de referência" })).toBeTruthy();
+    expect(screen.getByRole("img", { name: "Imagem de referência ampliada do ponto Proteção acrílica" }).getAttribute("src")).toBe("/manus-storage/protecao-acrilica.png");
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(screen.queryByRole("heading", { name: "Imagem de referência" })).toBeNull();
+
     fireEvent.click(screen.getByRole("button", { name: /inspecionar/i }));
     expect(screen.getByRole("dialog")).toBeTruthy();
     expect(screen.getByRole("heading", { name: "Registar inspeção" })).toBeTruthy();

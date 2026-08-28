@@ -430,6 +430,6 @@
 - [x] Corrigir a completitude e as pendências BPHF quando todas as verificações de uma fábrica e data já estão registadas, prevenindo situações semelhantes.
 - [x] Garantir que Detetores de Metais só atinge 100% quando todas as linhas agendadas estão verificadas e mostrar a conclusão por linha.
 - [x] Mostrar na lista de pontos de Quebráveis a imagem de referência associada a cada ponto, com acesso acessível à visualização sem bloquear «Inspecionar».
-- [ ] Permitir abrir em tamanho ampliado a imagem de referência de cada ponto de Quebráveis a partir da lista de verificações.
-- [ ] Permitir adicionar vários produtos no controlo sensorial, mantendo pelo menos um produto verificado obrigatório e validação individual.
+- [x] Permitir abrir em tamanho ampliado a imagem de referência de cada ponto de Quebráveis a partir da lista de verificações.
+- [x] Permitir adicionar vários produtos no controlo sensorial, mantendo pelo menos um produto verificado obrigatório e validação individual.
 - [x] Garantir que todos os painéis de controlos mostram, após o fecho, as verificações efetuadas e os resultados da data selecionada, incluindo observações e autoria.
