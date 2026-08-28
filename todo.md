@@ -429,3 +429,4 @@
 - [x] Agrupar o aviso BPHF de abertura obrigatória de NC pelo colaborador inspecionado.
 - [x] Corrigir a completitude e as pendências BPHF quando todas as verificações de uma fábrica e data já estão registadas, prevenindo situações semelhantes.
 - [x] Garantir que Detetores de Metais só atinge 100% quando todas as linhas agendadas estão verificadas e mostrar a conclusão por linha.
+- [ ] Mostrar na lista de pontos de Quebráveis a imagem de referência associada a cada ponto, com acesso acessível à visualização sem bloquear «Inspecionar».
