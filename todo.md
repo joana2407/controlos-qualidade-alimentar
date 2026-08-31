@@ -573,3 +573,7 @@
 - [x] Calcular a completitude e o preenchimento dos Detetores apenas pelas linhas selecionadas no Plano do Dia.
 - [x] Adicionar regressões para critérios BPHF e linhas de Detetores selecionados no planeamento.
 - [x] Reorganizar a seleção de linhas de Detetores no Plano do Dia para usar o mesmo padrão simples de opções do BPHF.
+- [ ] Executar um teste funcional controlado com F1 e F2 para confirmar que linhas de Detetores não selecionadas não ficam pendentes.
+- [x] Auditar por fábrica a coerência entre tarefas planeadas, completitude e controlos preenchidos.
+- [x] Verificar ligações, rotas e aberturas de todos os painéis de controlo.
+- [x] Corrigir incongruências confirmadas e executar regressões integrais.

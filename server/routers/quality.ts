@@ -2023,6 +2023,8 @@ export const qualityRouter = router({
         areaCatalog,
         monthlyItems,
         monthlyAssignments,
+        monthlyAreaAssignments,
+        monthlyAreaRows,
         factoryCatalog,
       ] = await Promise.all([
         db.select().from(controlTasks).orderBy(controlTasks.dueAt),
@@ -2036,6 +2038,8 @@ export const qualityRouter = router({
           .select()
           .from(checklistItemFactories)
           .orderBy(checklistItemFactories.factoryId),
+        db.select().from(checklistItemAreas),
+        db.select().from(checklistAreas),
         db.select().from(factories).orderBy(factories.name),
       ]);
       const profile = ctx.operatorProfile!;
@@ -2053,7 +2057,9 @@ export const qualityRouter = router({
               areaCatalog,
               monthlyItems,
               monthlyAssignments,
-              factoryCatalog
+              factoryCatalog,
+              monthlyAreaAssignments,
+              monthlyAreaRows
             );
           return (
             isBusinessDay(task.dueAt) &&
@@ -2913,20 +2919,11 @@ export const qualityRouter = router({
             progressFactories
           );
         } else if (input.module === "metal_detectors") {
-          const expectedAreas = progressAreas
-            .filter(
-              area =>
-                area.group === "metal" &&
-                area.factoryId === authorization.task!.factoryId &&
-                area.active === "true"
-            )
-            .map(area => area.name);
-          const completedAreas = new Set(
-            taskEntriesForPlan.map(entry => entry.area)
+          plannedControlComplete = metalDetectorsTaskComplete(
+            authorization.task!,
+            taskEntriesForPlan,
+            progressAreas
           );
-          plannedControlComplete =
-            expectedAreas.length > 0 &&
-            expectedAreas.every(area => completedAreas.has(area));
         } else if (input.module === "monthly_checklist") {
           plannedControlComplete = monthlyChecklistTaskComplete(
             authorization.task!,

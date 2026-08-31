@@ -63,6 +63,7 @@ const fragileAreaRows = [
 ];
 const dbUpdates: Record<string, unknown>[] = [];
 const dbInserts: Record<string, unknown>[] = [];
+let persistInsertedControlEntries = false;
 
 function createContext(operatorProfile: TrpcContext["operatorProfile"] = { id: 3, name: "Joana Pina", title: "Resp. Qualidade", role: "manager" }): TrpcContext {
   return {
@@ -105,12 +106,12 @@ function mockDatabase() {
       },
     }),
     update: () => ({ set: (values: Record<string, unknown>) => ({ where: async () => { dbUpdates.push(values); return { success: true }; } }) }),
-    insert: () => ({ values: (values: Record<string, unknown>) => { dbInserts.push(values); return { $returningId: async () => [{ id: dbInserts.length }], success: true, onDuplicateKeyUpdate: async () => ({ success: true }) }; } }),
+    insert: (table: unknown) => ({ values: (values: Record<string, unknown>) => { dbInserts.push(values); if (table === controlEntries && persistInsertedControlEntries) entries.push({ id: 10_000 + dbInserts.length, ...values } as any); return { $returningId: async () => [{ id: dbInserts.length }], success: true, onDuplicateKeyUpdate: async () => ({ success: true }) }; } }),
   };
 }
 
 describe("procedimentos de qualidade por fábrica", () => {
-  beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(now); tasks.splice(0, tasks.length, ...initialTasks.map((task) => ({ ...task, assigneeProfileIds: [...task.assigneeProfileIds] }))); monthlyAreaRows.splice(0, monthlyAreaRows.length, { id: 201, name: "Geral", active: "true" }); monthlyRows.splice(0, monthlyRows.length, { id: 301, area: "Geral", active: "true" }, { id: 302, area: "Geral", active: "true" }); monthlyAreaAssignments.splice(0, monthlyAreaAssignments.length, { checklistItemId: 301, checklistAreaId: 201 }, { checklistItemId: 302, checklistAreaId: 201 }); plans.length = 0; archiveRows.length = 0; archiveViewRows.length = 0; dbUpdates.length = 0; dbInserts.length = 0; vi.clearAllMocks(); vi.mocked(getDb).mockResolvedValue(mockDatabase() as any); vi.mocked(storagePut).mockResolvedValue({ key: "dispatch-orders/3/encomenda.pdf", url: "/manus-storage/dispatch-orders/3/encomenda.pdf" }); vi.mocked(storageGetSignedUrl).mockResolvedValue("https://storage.example/encomenda.pdf"); });
+  beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(now); tasks.splice(0, tasks.length, ...initialTasks.map((task) => ({ ...task, assigneeProfileIds: [...task.assigneeProfileIds] }))); monthlyAreaRows.splice(0, monthlyAreaRows.length, { id: 201, name: "Geral", active: "true" }); monthlyRows.splice(0, monthlyRows.length, { id: 301, area: "Geral", active: "true" }, { id: 302, area: "Geral", active: "true" }); monthlyAreaAssignments.splice(0, monthlyAreaAssignments.length, { checklistItemId: 301, checklistAreaId: 201 }, { checklistItemId: 302, checklistAreaId: 201 }); plans.length = 0; archiveRows.length = 0; archiveViewRows.length = 0; dbUpdates.length = 0; dbInserts.length = 0; persistInsertedControlEntries = false; vi.clearAllMocks(); vi.mocked(getDb).mockResolvedValue(mockDatabase() as any); vi.mocked(storagePut).mockResolvedValue({ key: "dispatch-orders/3/encomenda.pdf", url: "/manus-storage/dispatch-orders/3/encomenda.pdf" }); vi.mocked(storageGetSignedUrl).mockResolvedValue("https://storage.example/encomenda.pdf"); });
 
   it("filtra o painel e as tarefas pela fábrica selecionada", async () => {
     const caller = qualityRouter.createCaller(createContext());
@@ -438,6 +439,25 @@ describe("procedimentos de qualidade por fábrica", () => {
     }
   });
 
+  it("fecha a tarefa de Detetores quando a única linha selecionada no Plano fica verificada", async () => {
+    const plannedTaskId = 519;
+    tasks.push({ id: plannedTaskId, factoryId: 1, status: "pending", dueAt: now, completedAt: null, module: "metal_detectors", area: "Plano do Dia", title: "Plano do Dia — Detetores F1", responsible: "Sabrina Esteves", assigneeProfileIds: [1], metalDetectorLines: ["Linha 1"] });
+    areaRows.push({ id: 204, name: "Linha 1", group: "metal", factoryId: 1, active: "true" } as any, { id: 205, name: "Linha 2", group: "metal", factoryId: 1, active: "true" } as any);
+    persistInsertedControlEntries = true;
+    try {
+      const caller = qualityRouter.createCaller(createContext({ id: 1, name: "Sabrina Esteves", title: "Tec. Qualidade", role: "technician" }));
+
+      await expect(caller.createEntry({ module: "metal_detectors", title: "Detetor de metais — Linha 1 · Produto adicional", area: "Linha 1", factoryId: 1, result: "C", plannedTaskId, payload: { product: "Produto adicional", lot: "L-1", productValidation: "C" }, createNonconformity: false, severity: "critical" })).resolves.toMatchObject({ success: true });
+
+      expect(dbUpdates).toEqual(expect.arrayContaining([expect.objectContaining({ status: "completed", completedByProfileId: 1 })]));
+    } finally {
+      persistInsertedControlEntries = false;
+      entries.splice(-1, 1);
+      areaRows.splice(-2, 2);
+      tasks.pop();
+    }
+  });
+
   it("não mantém Checklist Mensal como pendência quando todos os itens aplicáveis foram registados", async () => {
     const previousDate = new Date(2026, 7, 13, 10, 0, 0);
     tasks.push({ id: 512, factoryId: 1, status: "pending", dueAt: previousDate, completedAt: null, module: "monthly_checklist", area: "Plano do Dia", title: "Plano do Dia — Checklist F1", responsible: "Sabrina Esteves", assigneeProfileIds: [1] });
@@ -473,10 +493,12 @@ describe("procedimentos de qualidade por fábrica", () => {
       const caller = qualityRouter.createCaller(createContext({ id: 1, name: "Sabrina Esteves", title: "Tec. Qualidade", role: "technician" }));
 
       const dashboard = await caller.dashboard({ date: previousDate });
+      const listedTasks = await caller.listTasks();
       const access = await caller.controlAuthorization({ module: "monthly_checklist", factoryId: 1, plannedTaskId });
       const pendingControls = await caller.pendingControlTasks({ module: "monthly_checklist", factoryId: 1 });
 
       expect(dashboard.moduleProgressByFactory.monthly_checklist[0]).toMatchObject({ factoryId: 1, expected: 3, completed: 2, percentage: 66.7, pendingTaskId: plannedTaskId });
+      expect(listedTasks.map(task => task.id)).toContain(plannedTaskId);
       expect(access).toMatchObject({ allowed: true, taskId: plannedTaskId, isPreviousPending: true });
       expect(pendingControls.map(task => task.id)).toContain(plannedTaskId);
     } finally {
