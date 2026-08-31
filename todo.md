@@ -573,16 +573,16 @@
 - [x] Calcular a completitude e o preenchimento dos Detetores apenas pelas linhas selecionadas no Plano do Dia.
 - [x] Adicionar regressões para critérios BPHF e linhas de Detetores selecionados no planeamento.
 - [x] Reorganizar a seleção de linhas de Detetores no Plano do Dia para usar o mesmo padrão simples de opções do BPHF.
-- [ ] Executar um teste funcional controlado com F1 e F2 para confirmar que linhas de Detetores não selecionadas não ficam pendentes.
+- [x] Executar um teste funcional controlado com F1 e F2 para confirmar que linhas de Detetores não selecionadas não ficam pendentes.
 - [x] Auditar por fábrica a coerência entre tarefas planeadas, completitude e controlos preenchidos.
 - [x] Verificar ligações, rotas e aberturas de todos os painéis de controlo.
 - [x] Corrigir incongruências confirmadas e executar regressões integrais.
-- [ ] Permitir à Responsável editar as fábricas atribuídas a um ponto da Checklist Mensal, preservando o histórico existente.
-- [ ] Adicionar regressões de interface e servidor para a reatribuição de fábrica dos pontos mensais.
-- [ ] Corrigir a validação da data de fecho no tratamento de incidências e adicionar regressão do fluxo de conclusão.
-- [ ] Agrupar o alerta de abertura de NC por ponto de controlo reincidente e clarificar a exceção BPHF por colaborador.
-- [ ] Adicionar regressões para reincidência por ponto e por colaborador BPHF.
-- [ ] Adicionar ao painel de Incidências um filtro para mostrar apenas Não Conformidades abertas, respeitando fábrica e intervalo de datas.
+- [x] Manter a edição da fábrica individualmente em cada ponto da Checklist Mensal, sem criar uma reatribuição em massa por Área/Zona, por indicação da utilizadora.
+- [x] Não adicionar regressões para reatribuição de fábrica em massa dos pontos mensais, por indicação da utilizadora.
+- [x] Corrigir a validação da data de fecho no tratamento de incidências e adicionar regressão do fluxo de conclusão.
+- [x] Agrupar o alerta de abertura de NC por ponto de controlo reincidente e clarificar a exceção BPHF por colaborador.
+- [x] Adicionar regressões para reincidência por ponto e por colaborador BPHF.
+- [x] Adicionar ao painel de Incidências um filtro para mostrar apenas Não Conformidades abertas, respeitando fábrica e intervalo de datas.
 - [x] Diagnosticar por que não existem ficheiros de backup automáticos guardados e por que o backup retroativo devolve conteúdo bruto.
 - [x] Corrigir a geração e o armazenamento de backups Excel automáticos e manuais para datas anteriores.
 - [x] Validar com segurança a criação de um backup retroativo e confirmar as execuções automáticas futuras.

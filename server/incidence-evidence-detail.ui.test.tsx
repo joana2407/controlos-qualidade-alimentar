@@ -3,7 +3,19 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-const { similarAlerts } = vi.hoisted(() => ({ similarAlerts: [] as Array<{ title: string; module: string; factoryId: number | null; factoryName: string; collaboratorId?: number | null; collaboratorName?: string | null; total: number }> }));
+const { similarAlerts, updateIncidence } = vi.hoisted(() => ({
+  similarAlerts: [] as Array<{
+    title: string;
+    module: string;
+    factoryId: number | null;
+    factoryName: string;
+    pointKey?: string | null;
+    collaboratorId?: number | null;
+    collaboratorName?: string | null;
+    total: number;
+  }>,
+  updateIncidence: vi.fn(),
+}));
 
 vi.mock("@/components/OfflineIncidencePanel", () => ({ OfflineIncidencePanel: () => null }));
 vi.mock("@/contexts/QualityAccessContext", () => ({ useQualityAccess: () => ({ canManage: true, activeProfile: { id: 3, name: "Joana Pina" } }) }));
@@ -16,7 +28,7 @@ vi.mock("@/lib/trpc", () => ({
       listNcs: { useQuery: () => ({ data: [] }) },
       incidenceRecurrenceAlerts: { useQuery: () => ({ data: [] }) },
       similarIncidenceAlerts: { useQuery: () => ({ data: similarAlerts }) },
-      updateIncidence: { useMutation: () => ({ mutate: vi.fn(), isPending: false }) },
+      updateIncidence: { useMutation: () => ({ mutate: updateIncidence, isPending: false }) },
       deleteIncidence: { useMutation: () => ({ mutate: vi.fn(), isPending: false }) },
       uploadVerificationEvidence: { useMutation: () => ({ mutate: vi.fn(), isPending: false }) },
     },
@@ -25,7 +37,7 @@ vi.mock("@/lib/trpc", () => ({
 
 import Nonconformities from "../client/src/pages/Nonconformities";
 
-afterEach(() => { cleanup(); similarAlerts.length = 0; });
+afterEach(() => { cleanup(); similarAlerts.length = 0; updateIncidence.mockReset(); });
 
 describe("detalhe de incidência com evidências", () => {
   it("apresenta a fotografia anexada depois de selecionar a incidência", () => {
@@ -78,13 +90,41 @@ describe("detalhe de incidência com evidências", () => {
     expect(screen.getByRole("button", { name: /Incidência com foto/i })).toBeTruthy();
   });
 
+  it("oferece um filtro próprio para mostrar apenas NC abertas", () => {
+    render(<Nonconformities />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Mostrar apenas NC abertas" }));
+
+    expect(screen.getByRole("button", { name: "A mostrar NC abertas" }).getAttribute("aria-pressed")).toBe("true");
+  });
+
+  it("normaliza a data de conclusão antes de guardar o tratamento", () => {
+    render(<Nonconformities />);
+    fireEvent.click(screen.getByRole("button", { name: /Incidência com foto/i }));
+    fireEvent.click(screen.getByRole("button", { name: "Iniciar tratamento" }));
+    fireEvent.click(screen.getByRole("combobox", { name: "Estado do tratamento" }));
+    fireEvent.click(screen.getByRole("option", { name: "Tratamento concluído" }));
+    fireEvent.change(screen.getByLabelText("Responsável pelo tratamento"), { target: { value: "Neuza Antunes" } });
+    fireEvent.change(screen.getByLabelText("Correção ou tratamento efetuado"), { target: { value: "Correção aplicada." } });
+    fireEvent.change(screen.getByLabelText("Data de conclusão do tratamento"), { target: { value: "2026-08-21" } });
+    fireEvent.click(screen.getByRole("button", { name: "Guardar tratamento" }));
+
+    expect(updateIncidence).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: 9,
+        treatment: expect.objectContaining({ completedAt: "2026-08-21" }),
+      }),
+      expect.any(Object)
+    );
+  });
+
   it("abre diretamente a lista filtrada pelo grupo indicado no aviso de NC", () => {
     similarAlerts.push({ title: "Colaborador: Maria Silva", module: "bphf", factoryId: 1, factoryName: "Fábrica 1 (Fatiado)", collaboratorId: 71, collaboratorName: "Maria Silva", total: 3 });
     render(<Nonconformities />);
 
     fireEvent.click(screen.getByRole("button", { name: /abrir as 3 incidências semelhantes/i }));
 
-    expect(screen.getByRole("status").textContent).toMatch(/a visualizar as 3 incidências semelhantes/i);
+    expect(screen.getByRole("status").textContent).toMatch(/a visualizar as 3 incidências no mesmo ponto/i);
     expect(screen.getByRole("status").textContent).toMatch(/colaborador inspecionado «Maria Silva»/i);
     expect(screen.getByRole("button", { name: "Limpar acesso direto" })).toBeTruthy();
   });

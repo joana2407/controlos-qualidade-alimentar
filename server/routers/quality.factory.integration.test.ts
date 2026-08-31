@@ -256,20 +256,26 @@ describe("procedimentos de qualidade por fábrica", () => {
     const metalAreas = [
       { id: 901, name: "Linha 1", group: "metal", factoryId: 1, active: "true" },
       { id: 902, name: "Linha 2", group: "metal", factoryId: 1, active: "true" },
+      { id: 903, name: "Linha granel", group: "metal", factoryId: 2, active: "true" },
+      { id: 904, name: "Linha de embalagem", group: "metal", factoryId: 2, active: "true" },
     ];
     areaRows.push(...metalAreas as any);
     try {
       const caller = qualityRouter.createCaller(createContext());
       await caller.publishDailyPlan({
         date: new Date(2026, 7, 20, 10, 0, 0),
-        factoryIds: [1],
+        factoryIds: [1, 2],
         assigneeProfileIds: [1, 2, 3],
         modules: ["metal_detectors"],
-        metalDetectorLinesByFactory: { "1": ["Linha 1"] },
+        metalDetectorLinesByFactory: {
+          "1": ["Linha 1"],
+          "2": ["Linha granel"],
+        },
       });
 
       expect(dbInserts.at(-1)).toEqual(expect.arrayContaining([
         expect.objectContaining({ module: "metal_detectors", factoryId: 1, metalDetectorLines: ["Linha 1"] }),
+        expect.objectContaining({ module: "metal_detectors", factoryId: 2, metalDetectorLines: ["Linha granel"] }),
       ]));
     } finally {
       areaRows.splice(-metalAreas.length, metalAreas.length);
@@ -1047,6 +1053,58 @@ describe("procedimentos de qualidade por fábrica", () => {
       expect(alerts).toEqual(expect.arrayContaining([expect.objectContaining({ module: "bphf", factoryId: null, factoryName: "Várias fábricas / linhas", title: "Colaborador: Maria Silva", collaboratorId: 71, collaboratorName: "Maria Silva", total: 3 })]));
     } finally {
       entries.splice(entries.length - bphfEntries.length, bphfEntries.length);
+    }
+  });
+
+  it("agrupa alertas obrigatórios de outros controlos pelo mesmo ponto controlado", async () => {
+    const pointEntries = [
+      { id: 904, factoryId: 1, module: "fragile_items", area: "Produção", title: "Quebrável — Quadro elétrico", result: "NC", completedAt: new Date(2026, 7, 10, 10, 0, 0), payload: { fragileItemId: 87 } },
+      { id: 905, factoryId: 1, module: "fragile_items", area: "Produção", title: "Quebrável — Quadro elétrico", result: "NC", completedAt: new Date(2026, 7, 11, 10, 0, 0), payload: { fragileItemId: 87 } },
+      { id: 906, factoryId: 1, module: "fragile_items", area: "Produção", title: "Quebrável — Quadro elétrico", result: "NC", completedAt: new Date(2026, 7, 12, 10, 0, 0), payload: { fragileItemId: 87 } },
+      { id: 907, factoryId: 1, module: "fragile_items", area: "Produção", title: "Quebrável — Quadro elétrico", result: "NC", completedAt: new Date(2026, 7, 12, 12, 0, 0), payload: { fragileItemId: 88 } },
+    ];
+    entries.push(...pointEntries);
+    try {
+      const caller = qualityRouter.createCaller(createContext());
+      const alerts = await caller.similarIncidenceAlerts();
+
+      expect(alerts).toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          module: "fragile_items",
+          factoryId: 1,
+          title: "Quebrável — Quadro elétrico",
+          pointKey: "fragile_items|1|id:87",
+          total: 3,
+        }),
+      ]));
+      expect(alerts.some(alert => alert.pointKey === "fragile_items|1|id:88")).toBe(false);
+    } finally {
+      entries.splice(entries.length - pointEntries.length, pointEntries.length);
+    }
+  });
+
+  it("aceita a data de conclusão portuguesa ao guardar o tratamento da incidência", async () => {
+    const incidence = { id: 908, factoryId: 1, module: "fragile_items", area: "Produção", title: "Quebrável — Quadro elétrico", result: "NC", completedAt: now, payload: {} };
+    entries.unshift(incidence);
+    try {
+      const caller = qualityRouter.createCaller(createContext());
+      await caller.updateIncidence({
+        id: 908,
+        treatment: {
+          status: "completed",
+          correction: "Substituição executada.",
+          responsible: "Joana Pina",
+          completedAt: "28/08/2026",
+        },
+      });
+
+      expect(dbUpdates.at(-1)).toMatchObject({
+        payload: expect.objectContaining({
+          incidenceTreatment: expect.objectContaining({ completedAt: "2026-08-28" }),
+        }),
+      });
+    } finally {
+      entries.shift();
     }
   });
 

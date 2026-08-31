@@ -91,6 +91,7 @@ type OccurrenceItem = {
     mimeType: "image/jpeg" | "image/png" | "image/webp";
   }>;
   treatment: IncidenceTreatment;
+  pointKey: string;
   bphfContext: {
     collaboratorName: string;
     criterion: string;
@@ -102,6 +103,7 @@ type SimilarIncidenceFilter = {
   title: string;
   module: string;
   factoryId: number | null;
+  pointKey?: string | null;
   collaboratorId?: number | null;
   collaboratorName?: string | null;
   total: number;
@@ -109,6 +111,51 @@ type SimilarIncidenceFilter = {
 
 const normaliseSimilarTitle = (value: string) =>
   value.trim().toLocaleLowerCase("pt-PT").replace(/\s+/g, " ");
+const normaliseIsoDate = (value: unknown) => {
+  if (typeof value !== "string") return "";
+  const trimmed = value.trim();
+  const iso = trimmed.match(/^(\d{4}-\d{2}-\d{2})/);
+  if (iso) return iso[1];
+  const portuguese = trimmed.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  return portuguese
+    ? `${portuguese[3]}-${portuguese[2].padStart(2, "0")}-${portuguese[1].padStart(2, "0")}`
+    : "";
+};
+const controlledPointKey = (item: {
+  module: string;
+  factoryId?: number | null;
+  title?: string | null;
+  area?: string | null;
+  payload?: unknown;
+}) => {
+  const payload =
+    item.payload && typeof item.payload === "object" && !Array.isArray(item.payload)
+      ? (item.payload as Record<string, unknown>)
+      : {};
+  const pointId = [
+    "fragileItemId",
+    "checklistItemId",
+    "suggestionBoxId",
+    "metalDetectorLineId",
+    "temperaturePointId",
+    "foodDefenseItemId",
+  ]
+    .map(key => payload[key])
+    .find(value => typeof value === "number" || typeof value === "string");
+  const pointName = [
+    payload.line,
+    payload.location,
+    payload.equipmentName,
+    payload.product,
+    item.area,
+    item.title,
+  ].find(value => typeof value === "string" && value.trim());
+  const discriminator =
+    pointId !== undefined
+      ? `id:${String(pointId)}`
+      : `name:${normaliseSimilarTitle(String(pointName ?? "Ponto não identificado"))}`;
+  return `${item.module}|${item.factoryId ?? "none"}|${discriminator}`;
+};
 const treatmentStatusFor = (item: {
   treatmentStatus?: string;
   generatedNonconformity?: boolean;
@@ -142,9 +189,8 @@ const incidenceTreatmentFrom = (value: unknown): IncidenceTreatment => {
     correction: typeof record.correction === "string" ? record.correction : "",
     responsible:
       typeof record.responsible === "string" ? record.responsible : "",
-    dueDate: typeof record.dueDate === "string" ? record.dueDate : "",
-    completedAt:
-      typeof record.completedAt === "string" ? record.completedAt : "",
+    dueDate: normaliseIsoDate(record.dueDate),
+    completedAt: normaliseIsoDate(record.completedAt),
     notes: typeof record.notes === "string" ? record.notes : "",
     evidencePhotos: photos,
   };
@@ -199,6 +245,7 @@ export default function Nonconformities() {
   const [treatmentFilter, setTreatmentFilter] = useState<
     IncidenceTreatment["status"] | "all"
   >("all");
+  const [openNcOnly, setOpenNcOnly] = useState(false);
   const filters = useMemo(
     () => ({
       factoryId: factoryId ? Number(factoryId) : undefined,
@@ -270,8 +317,10 @@ export default function Nonconformities() {
             );
             const matchesSameCollaborator = similarFilter?.collaboratorId
               ? Number(payload.collaboratorId) === similarFilter.collaboratorId
-              : normaliseSimilarTitle(item.title) ===
-                normaliseSimilarTitle(similarFilter?.title ?? "");
+              : similarFilter?.pointKey
+                ? controlledPointKey(item) === similarFilter.pointKey
+                : normaliseSimilarTitle(item.title) ===
+                  normaliseSimilarTitle(similarFilter?.title ?? "");
             const matchesFactory =
               Boolean(similarFilter?.collaboratorId) ||
               item.factoryId === similarFilter?.factoryId;
@@ -324,8 +373,9 @@ export default function Nonconformities() {
               (item.payload as Record<string, unknown>) ?? {},
               item.result ?? "NC"
             ),
+            pointKey: controlledPointKey(item),
           })),
-        ...(!similarFilter && treatmentFilter !== "pending"
+        ...(!similarFilter && (treatmentFilter !== "pending" || openNcOnly)
           ? (ncs.data ?? [])
           : []
         ).map(item => ({
@@ -353,12 +403,20 @@ export default function Nonconformities() {
             status: "completed" as const,
           },
           bphfContext: null,
+          pointKey: controlledPointKey(item),
         })),
-      ].sort(
+      ]
+        .filter(item =>
+          !openNcOnly ||
+          (item.type === "nonconformity"
+            ? item.status !== "closed"
+            : item.generatedNonconformity && !item.nonconformityId)
+        )
+        .sort(
         (left, right) =>
           new Date(right.date).getTime() - new Date(left.date).getTime()
       ),
-    [incidences.data, ncs.data, similarFilter, treatmentFilter]
+    [incidences.data, ncs.data, openNcOnly, similarFilter, treatmentFilter]
   );
   const selected = occurrences.find(item => item.key === selectedKey) ?? null;
   const localOpenNcCount =
@@ -383,6 +441,7 @@ export default function Nonconformities() {
     setStartDate("");
     setEndDate("");
     setTreatmentFilter("all");
+    setOpenNcOnly(false);
     setSelectedKey("");
   };
   const openSimilarIncidences = (alert: SimilarIncidenceFilter) => {
@@ -555,9 +614,22 @@ export default function Nonconformities() {
                 />
               </div>
             </div>
-            <div className="mt-2">
+            <div className="mt-2 flex flex-wrap gap-2">
               <Button variant="ghost" size="sm" onClick={clearDates}>
                 Limpar intervalo de datas
+              </Button>
+              <Button
+                variant={openNcOnly ? "default" : "outline"}
+                size="sm"
+                aria-pressed={openNcOnly}
+                onClick={() => {
+                  setOpenNcOnly(current => !current);
+                  setSelectedKey("");
+                }}
+              >
+                {openNcOnly
+                  ? "A mostrar NC abertas"
+                  : "Mostrar apenas NC abertas"}
               </Button>
             </div>
           </div>
@@ -768,11 +840,11 @@ export default function Nonconformities() {
               <div>
                 <p className="font-semibold">Abertura de NC obrigatória</p>
                 <p className="mt-1 text-sm text-red-900">
-                  Foram registadas 3 ou mais incidências NC semelhantes, ainda
-                  sem NC associada, nos últimos 6 meses. Nos controlos BPHF, a
-                  repetição é calculada pelo colaborador inspecionado. Abra a
-                  Não Conformidade no sistema externo para dar início ao
-                  tratamento.
+                  Foram registadas 3 ou mais incidências NC no mesmo ponto de
+                  controlo, ainda sem NC associada, nos últimos 6 meses. Nos
+                  controlos BPHF, a repetição é calculada pelo colaborador
+                  inspecionado. Abra a Não Conformidade no sistema externo para
+                  dar início ao tratamento.
                 </p>
                 <div className="mt-3 flex flex-wrap gap-2">
                   {similarIncidenceAlerts.data.map(alert => (
@@ -787,6 +859,7 @@ export default function Nonconformities() {
                           title: alert.title,
                           module: alert.module,
                           factoryId: alert.factoryId,
+                          pointKey: alert.pointKey,
                           collaboratorId: alert.collaboratorId,
                           collaboratorName: alert.collaboratorName,
                           total: alert.total,
@@ -809,7 +882,7 @@ export default function Nonconformities() {
           >
             <p>
               A visualizar as{" "}
-              <strong>{similarFilter.total} incidências semelhantes</strong>
+              <strong>{similarFilter.total} incidências no mesmo ponto</strong>
               {similarFilter.collaboratorName ? (
                 <>
                   {" "}
@@ -1317,7 +1390,15 @@ export default function Nonconformities() {
                                   updateIncidence.mutate(
                                     {
                                       id: selected.id,
-                                      treatment: treatmentDraft,
+                                      treatment: {
+                                        ...treatmentDraft,
+                                        dueDate: normaliseIsoDate(
+                                          treatmentDraft.dueDate
+                                        ),
+                                        completedAt: normaliseIsoDate(
+                                          treatmentDraft.completedAt
+                                        ),
+                                      },
                                     },
                                     {
                                       onSuccess: () => {

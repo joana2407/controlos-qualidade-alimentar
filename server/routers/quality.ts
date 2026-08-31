@@ -94,12 +94,27 @@ const incidenceTreatmentStatusSchema = z.enum([
   "in_progress",
   "completed",
 ]);
+const normaliseIncidenceIsoDate = (value: unknown) => {
+  if (typeof value !== "string") return value;
+  const trimmed = value.trim();
+  if (!trimmed) return undefined;
+  const iso = trimmed.match(/^(\d{4}-\d{2}-\d{2})/);
+  if (iso) return iso[1];
+  const portuguese = trimmed.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  return portuguese
+    ? `${portuguese[3]}-${portuguese[2].padStart(2, "0")}-${portuguese[1].padStart(2, "0")}`
+    : trimmed;
+};
+const incidenceIsoDateSchema = z.preprocess(
+  normaliseIncidenceIsoDate,
+  z.string().date().optional()
+);
 const incidenceTreatmentSchema = z.object({
   status: incidenceTreatmentStatusSchema,
   correction: z.string().max(3000).optional(),
   responsible: z.string().max(160).optional(),
-  dueDate: z.string().date().optional(),
-  completedAt: z.string().date().optional(),
+  dueDate: incidenceIsoDateSchema,
+  completedAt: incidenceIsoDateSchema,
   notes: z.string().max(3000).optional(),
   evidencePhotos: z
     .array(
@@ -126,6 +141,41 @@ function incidenceDecisionFromPayload(
     : payload.treatmentDecision === "no_nc"
       ? ("no_nc" as const)
       : ("pending" as const);
+}
+function controlledPointKey(
+  entry: {
+    module: string;
+    factoryId: number | null;
+    title?: string | null;
+    area?: string | null;
+  },
+  payload: Record<string, unknown>
+) {
+  const pointId = [
+    "fragileItemId",
+    "checklistItemId",
+    "suggestionBoxId",
+    "metalDetectorLineId",
+    "temperaturePointId",
+    "foodDefenseItemId",
+  ]
+    .map(key => payload[key])
+    .find(value => typeof value === "number" || typeof value === "string");
+  const pointName = [
+    payload.line,
+    payload.location,
+    payload.equipmentName,
+    payload.product,
+    entry.area,
+    entry.title,
+  ].find(value => typeof value === "string" && value.trim());
+  const normalisedName = String(pointName ?? "Ponto não identificado")
+    .trim()
+    .toLocaleLowerCase("pt-PT")
+    .replace(/\s+/g, " ");
+  return `${entry.module}|${entry.factoryId ?? "none"}|${
+    pointId !== undefined ? `id:${String(pointId)}` : `name:${normalisedName}`
+  }`;
 }
 const BPHF_AREA_NAMES = ["Produção", "Embalagem", "Limpeza"] as const;
 const BPHF_CRITERIA = [
@@ -3562,6 +3612,7 @@ export const qualityRouter = router({
         factoryId: number | null;
         collaboratorId: number | null;
         collaboratorName: string | null;
+        pointKey: string | null;
         factoryIds: number[];
         entries: typeof entries;
       }
@@ -3595,7 +3646,7 @@ export const qualityRouter = router({
         collaboratorId > 0 && Boolean(collaboratorName);
       const key = hasBphfCollaborator
         ? `${entry.module}|collaborator:${collaboratorId}`
-        : `${entry.module}|${entry.factoryId ?? "none"}|${normalizedTitle}`;
+        : controlledPointKey(entry, payload);
       const group = grouped.get(key) ?? {
         title: hasBphfCollaborator
           ? `Colaborador: ${collaboratorName}`
@@ -3604,6 +3655,7 @@ export const qualityRouter = router({
         factoryId: hasBphfCollaborator ? null : entry.factoryId,
         collaboratorId: hasBphfCollaborator ? collaboratorId : null,
         collaboratorName: hasBphfCollaborator ? collaboratorName : null,
+        pointKey: hasBphfCollaborator ? null : key,
         factoryIds: entry.factoryId ? [entry.factoryId] : [],
         entries: [] as typeof entries,
       };
@@ -3628,6 +3680,7 @@ export const qualityRouter = router({
             : "Sem fábrica/linha",
         collaboratorId: group.collaboratorId,
         collaboratorName: group.collaboratorName,
+        pointKey: group.pointKey,
         total: group.entries.length,
         mostRecentAt: group.entries.reduce(
           (latest, entry) =>
