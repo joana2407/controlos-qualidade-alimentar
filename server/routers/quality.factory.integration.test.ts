@@ -238,6 +238,7 @@ describe("procedimentos de qualidade por fábrica", () => {
       assigneeProfileIds: [1, 2, 3],
       modules: ["bphf"],
       bphfCriteria: [selectedCriterion],
+      bphfCriteriaPeriodicities: { [selectedCriterion]: "weekly" },
     });
 
     expect(dbInserts.at(-1)).toEqual(
@@ -246,6 +247,7 @@ describe("procedimentos de qualidade por fábrica", () => {
           module: "bphf",
           factoryId: 1,
           bphfCriteria: [selectedCriterion],
+          bphfCriteriaPeriodicities: { [selectedCriterion]: "weekly" },
         }),
       ])
     );

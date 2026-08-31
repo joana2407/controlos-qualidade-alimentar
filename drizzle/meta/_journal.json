@@ -225,6 +225,13 @@
       "when": 1788186879421,
       "tag": "0032_sharp_bushwacker",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "5",
+      "when": 1788189938477,
+      "tag": "0033_greedy_shocker",
+      "breakpoints": true
     }
   ]
 }

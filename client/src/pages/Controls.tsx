@@ -98,6 +98,17 @@ const BPHF_PLAN_INSPECTIONS = [
   "Cumprimento geral das regras de BPHF",
   "Estado de limpeza e organização dos cacifos do pessoal e de trabalho",
 ] as const;
+const BPHF_PERIODICITIES = [
+  { value: "daily", label: "Diária" },
+  { value: "weekly", label: "Semanal" },
+  { value: "monthly", label: "Mensal" },
+  { value: "quarterly", label: "Trimestral" },
+  { value: "annual", label: "Anual" },
+] as const;
+const defaultBphfCriteriaPeriodicities = () =>
+  Object.fromEntries(
+    BPHF_PLAN_INSPECTIONS.map(criterion => [criterion, "daily"])
+  ) as Record<(typeof BPHF_PLAN_INSPECTIONS)[number], (typeof BPHF_PERIODICITIES)[number]["value"]>;
 
 type ModuleProgress = {
   expected: number;
@@ -403,6 +414,7 @@ export default function Controls() {
   const [planBphfCriteria, setPlanBphfCriteria] = useState<string[]>([
     ...BPHF_PLAN_INSPECTIONS,
   ]);
+  const [planBphfCriteriaPeriodicities, setPlanBphfCriteriaPeriodicities] = useState(defaultBphfCriteriaPeriodicities);
   const [lastPlanPublication, setLastPlanPublication] = useState<Array<{
     date: string;
     created: number;
@@ -482,6 +494,7 @@ export default function Controls() {
       invalidateTasks();
       setPlanModules([]);
       setPlanBphfCriteria([...BPHF_PLAN_INSPECTIONS]);
+      setPlanBphfCriteriaPeriodicities(defaultBphfCriteriaPeriodicities());
       setPlanDates([]);
       setLastPlanPublication(result.dates ?? null);
       setPlanOpen(false);
@@ -542,11 +555,16 @@ export default function Controls() {
     );
   }
   function togglePlanBphfCriterion(criterion: string) {
-    setPlanBphfCriteria(current =>
-      current.includes(criterion)
+    setPlanBphfCriteria(current => {
+      const selected = current.includes(criterion);
+      setPlanBphfCriteriaPeriodicities(periodicities => ({
+        ...periodicities,
+        [criterion]: periodicities[criterion as (typeof BPHF_PLAN_INSPECTIONS)[number]] ?? "daily",
+      }));
+      return selected
         ? current.filter(item => item !== criterion)
-        : [...current, criterion]
-    );
+        : [...current, criterion];
+    });
   }
   function togglePlanFactory(id: number) {
     setPlanFactoryIds(current =>
@@ -594,6 +612,9 @@ export default function Controls() {
       modules: planModules as (typeof MODULES)[number]["id"][],
       bphfCriteria: planModules.includes("bphf")
         ? (planBphfCriteria as (typeof BPHF_PLAN_INSPECTIONS)[number][])
+        : undefined,
+      bphfCriteriaPeriodicities: planModules.includes("bphf")
+        ? Object.fromEntries(planBphfCriteria.map(criterion => [criterion, planBphfCriteriaPeriodicities[criterion as (typeof BPHF_PLAN_INSPECTIONS)[number]] ?? "daily"]))
         : undefined,
     });
   }
@@ -1148,11 +1169,10 @@ export default function Controls() {
                                 type="button"
                                 variant="outline"
                                 size="sm"
-                                onClick={() =>
-                                  setPlanBphfCriteria([
-                                    ...BPHF_PLAN_INSPECTIONS,
-                                  ])
-                                }
+                                onClick={() => {
+                                  setPlanBphfCriteria([...BPHF_PLAN_INSPECTIONS]);
+                                  setPlanBphfCriteriaPeriodicities(current => ({ ...defaultBphfCriteriaPeriodicities(), ...current }));
+                                }}
                               >
                                 Todas
                               </Button>
@@ -1167,20 +1187,10 @@ export default function Controls() {
                             </div>
                           </div>
                           <div className="grid gap-2 rounded-lg border bg-white p-3 sm:grid-cols-2">
-                            {BPHF_PLAN_INSPECTIONS.map(criterion => (
-                              <label
-                                key={criterion}
-                                className="flex items-start gap-2 text-sm text-slate-800"
-                              >
-                                <Checkbox
-                                  checked={planBphfCriteria.includes(criterion)}
-                                  onCheckedChange={() =>
-                                    togglePlanBphfCriterion(criterion)
-                                  }
-                                />
-                                <span>{criterion}</span>
-                              </label>
-                            ))}
+                            {BPHF_PLAN_INSPECTIONS.map(criterion => {
+                              const selected = planBphfCriteria.includes(criterion);
+                              return <div key={criterion} className={`rounded-md border p-2.5 ${selected ? "border-teal-200 bg-teal-50/50" : "border-slate-100 bg-slate-50"}`}><label className="flex items-start gap-2 text-sm text-slate-800"><Checkbox checked={selected} onCheckedChange={() => togglePlanBphfCriterion(criterion)} /><span>{criterion}</span></label><div className="mt-2 pl-6"><Label className="text-[11px] text-slate-600" htmlFor={`bphf-periodicity-${criterion}`}>Periodicidade</Label><Select value={planBphfCriteriaPeriodicities[criterion]} onValueChange={(value) => setPlanBphfCriteriaPeriodicities(current => ({ ...current, [criterion]: value as (typeof BPHF_PERIODICITIES)[number]["value"] }))} disabled={!selected}><SelectTrigger id={`bphf-periodicity-${criterion}`} className="mt-1 h-8 bg-white text-xs"><SelectValue /></SelectTrigger><SelectContent>{BPHF_PERIODICITIES.map(periodicity => <SelectItem key={periodicity.value} value={periodicity.value}>{periodicity.label}</SelectItem>)}</SelectContent></Select></div></div>;
+                            })}
                           </div>
                         </div>
                       )}

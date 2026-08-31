@@ -111,11 +111,12 @@ describe("cabeçalho de controlo — progresso por fábrica", () => {
   });
 
   it("mostra no formulário apenas os critérios BPHF escolhidos para o Plano do Dia", () => {
-    Object.assign(authorizationState as any, { bphfCriteria: ["Higienização das mãos dos manipuladores"] });
+    Object.assign(authorizationState as any, { bphfCriteria: ["Higienização das mãos dos manipuladores"], bphfCriteriaPeriodicities: { "Higienização das mãos dos manipuladores": "weekly" } });
     window.history.pushState({}, "", "/controlos/bphf?factoryId=1&plannedTaskId=51");
     render(<ModuleControl />);
 
     expect(screen.getAllByText("Higienização das mãos dos manipuladores").length).toBeGreaterThan(0);
+    expect(screen.getByText("Semanal")).toBeTruthy();
     expect(screen.queryByText("Estado de limpeza e conservação do fardamento")).toBeNull();
     expect(screen.queryByText("Cumprimento geral das regras de BPHF")).toBeNull();
   });

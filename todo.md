@@ -553,9 +553,9 @@
 - [x] Adicionar regressões de interface, permissões e histórico para o tratamento de incidências sem NC.
 
 - [x] Permitir à Responsável selecionar no Plano do Dia as inspeções BPHF aplicáveis a cada fábrica ou linha.
-- [ ] Guardar por tarefa as inspeções BPHF selecionadas e a respetiva periodicidade configurada.
+- [x] Guardar por tarefa as inspeções BPHF selecionadas e a respetiva periodicidade configurada.
 - [x] Calcular a completitude BPHF apenas com as inspeções selecionadas para essa data, mantendo critérios não planeados fora da pendência.
-- [ ] Adicionar regressões de criação de plano, preenchimento parcial e periodicidades BPHF.
+- [x] Adicionar regressões de criação de plano, preenchimento parcial e periodicidades BPHF.
 - [x] Auditar a tarefa mensal de 28/08 e a sua associação à Fábrica 3, para explicar o bloqueio do preenchimento.
 - [x] Permitir abrir e completar uma Checklist Mensal incompleta na data operacional da pendência.
 - [x] Adicionar regressões de autorização para uma Checklist Mensal parcialmente preenchida, incluindo várias Áreas/Zonas.

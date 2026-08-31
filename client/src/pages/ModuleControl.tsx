@@ -139,6 +139,13 @@ const BPHF_CRITERIA = [
   "Cumprimento geral das regras de BPHF",
   "Estado de limpeza e organização dos cacifos do pessoal e de trabalho",
 ] as const;
+const BPHF_PERIODICITY_LABELS: Record<string, string> = {
+  daily: "Diária",
+  weekly: "Semanal",
+  monthly: "Mensal",
+  quarterly: "Trimestral",
+  annual: "Anual",
+};
 const BPHF_CRITERIA_HELP: Record<(typeof BPHF_CRITERIA)[number], string> = {
   "Estado de limpeza e conservação do fardamento":
     "Confirme que o fardamento está limpo, íntegro e adequado à função, sem sujidade visível ou danos que possam comprometer a higiene.",
@@ -2057,6 +2064,7 @@ export default function ModuleControl() {
     plannedTaskId: authorization.data?.taskId,
     referenceDate: authorization.data?.dueAt,
     bphfCriteria: authorization.data?.bphfCriteria,
+    bphfCriteriaPeriodicities: authorization.data?.bphfCriteriaPeriodicities,
   };
   if (resultsOnly)
     return (
@@ -2638,6 +2646,7 @@ export function Bphf({
   plannedTaskId,
   referenceDate,
   bphfCriteria,
+  bphfCriteriaPeriodicities,
 }: any) {
   const { factoryId } = useControlFactory();
   const employees = trpc.quality.listBphfInspectionEmployees.useQuery();
@@ -2858,6 +2867,7 @@ export function Bphf({
                     <div>
                       <div className="flex items-start gap-1.5">
                         <p className="font-medium">{criterion}</p>
+                        {bphfCriteriaPeriodicities?.[criterion] ? <Badge variant="outline" className="border-teal-200 bg-teal-50 text-[10px] text-teal-800">{BPHF_PERIODICITY_LABELS[bphfCriteriaPeriodicities[criterion]] ?? bphfCriteriaPeriodicities[criterion]}</Badge> : null}
                         <ContextualHelpIcon
                           label={`Explicação do critério BPHF: ${criterion}`}
                           className="mt-0.5 shrink-0"

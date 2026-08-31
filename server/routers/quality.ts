@@ -134,6 +134,7 @@ const BPHF_CRITERIA = [
   "Cumprimento geral das regras de BPHF",
   "Estado de limpeza e organização dos cacifos do pessoal e de trabalho",
 ] as const;
+const BPHF_CRITERIC_PERIODICITIES = ["daily", "weekly", "monthly", "quarterly", "annual"] as const;
 const SUGGESTION_LOCATIONS_BY_FACTORY: Record<string, readonly string[]> = {
   F1_FATIADO: ["Caixa escritório", "Caixa WC feminino", "Caixa WC masculino"],
   F2_GRANEL: ["Caixa WC feminino", "Caixa WC masculino"],
@@ -1053,6 +1054,7 @@ export const qualityRouter = router({
         assignedTo: access.task?.responsible ?? null,
         dueAt: access.task?.dueAt ?? null,
         bphfCriteria: access.task?.bphfCriteria ?? null,
+        bphfCriteriaPeriodicities: access.task?.bphfCriteriaPeriodicities ?? null,
         isPreviousPending: access.isPreviousPending ?? false,
         isFuturePlanned: access.isFuturePlanned ?? false,
       };
@@ -2158,6 +2160,7 @@ export const qualityRouter = router({
           assigneeProfileIds: z.array(z.number().int()).min(1).max(10),
           modules: z.array(qualityModuleSchema).min(1).max(8),
           bphfCriteria: z.array(z.enum(BPHF_CRITERIA)).min(1).max(BPHF_CRITERIA.length).optional(),
+          bphfCriteriaPeriodicities: z.partialRecord(z.enum(BPHF_CRITERIA), z.enum(BPHF_CRITERIC_PERIODICITIES)).optional(),
           priority: z.enum(["normal", "critical"]).default("normal"),
         })
         .refine(input => Boolean(input.date || input.dates?.length), {
@@ -2202,6 +2205,14 @@ export const qualityRouter = router({
       const selectedFactories = Array.from(new Set(input.factoryIds));
       const plannedBphfCriteria = input.modules.includes("bphf")
         ? Array.from(new Set(input.bphfCriteria ?? BPHF_CRITERIA))
+        : null;
+      const plannedBphfCriteriaPeriodicities = plannedBphfCriteria
+        ? Object.fromEntries(
+            plannedBphfCriteria.map(criterion => [
+              criterion,
+              input.bphfCriteriaPeriodicities?.[criterion] ?? "daily",
+            ])
+          )
         : null;
       const temperatureFactories = selectedFactories.filter(factoryId =>
         [1, 2].includes(factoryId)
@@ -2262,6 +2273,8 @@ export const qualityRouter = router({
           responsible: profiles.map(profile => profile.name).join(", "),
           assigneeProfileIds: input.assigneeProfileIds,
           bphfCriteria: module === "bphf" ? plannedBphfCriteria : null,
+          bphfCriteriaPeriodicities:
+            module === "bphf" ? plannedBphfCriteriaPeriodicities : null,
           createdBy: ctx.user!.openId,
         }))
       );
