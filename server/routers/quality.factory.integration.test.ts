@@ -917,18 +917,18 @@ describe("procedimentos de qualidade por fábrica", () => {
     }
   });
 
-  it("agrupa alertas BPHF obrigatórios pelo colaborador inspecionado, mesmo entre pontos distintos", async () => {
+  it("agrupa alertas BPHF obrigatórios pelo colaborador inspecionado, mesmo entre pontos e fábricas distintos", async () => {
     const bphfEntries = [
       { id: 901, factoryId: 1, module: "bphf", area: "Produção", title: "Higienização das mãos", result: "NC", completedAt: new Date(2026, 7, 10, 10, 0, 0), payload: { collaboratorId: 71, collaboratorName: "Maria Silva" } },
-      { id: 902, factoryId: 1, module: "bphf", area: "Embalagem", title: "Uso de touca", result: "NC", completedAt: new Date(2026, 7, 11, 10, 0, 0), payload: { collaboratorId: 71, collaboratorName: "Maria Silva" } },
-      { id: 903, factoryId: 1, module: "bphf", area: "Limpeza", title: "Estado do fardamento", result: "NC", completedAt: new Date(2026, 7, 12, 10, 0, 0), payload: { collaboratorId: 71, collaboratorName: "Maria Silva" } },
+      { id: 902, factoryId: 2, module: "bphf", area: "Embalagem", title: "Uso de touca", result: "NC", completedAt: new Date(2026, 7, 11, 10, 0, 0), payload: { collaboratorId: 71, collaboratorName: "Maria Silva" } },
+      { id: 903, factoryId: 3, module: "bphf", area: "Limpeza", title: "Estado do fardamento", result: "NC", completedAt: new Date(2026, 7, 12, 10, 0, 0), payload: { collaboratorId: 71, collaboratorName: "Maria Silva" } },
     ];
     entries.push(...bphfEntries);
     try {
       const caller = qualityRouter.createCaller(createContext());
       const alerts = await caller.similarIncidenceAlerts();
 
-      expect(alerts).toEqual(expect.arrayContaining([expect.objectContaining({ module: "bphf", factoryId: 1, title: "Colaborador: Maria Silva", collaboratorId: 71, collaboratorName: "Maria Silva", total: 3 })]));
+      expect(alerts).toEqual(expect.arrayContaining([expect.objectContaining({ module: "bphf", factoryId: null, factoryName: "Várias fábricas / linhas", title: "Colaborador: Maria Silva", collaboratorId: 71, collaboratorName: "Maria Silva", total: 3 })]));
     } finally {
       entries.splice(entries.length - bphfEntries.length, bphfEntries.length);
     }

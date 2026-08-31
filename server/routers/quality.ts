@@ -26,26 +26,107 @@ import {
   resultValues,
 } from "../../drizzle/schema";
 import { getDb } from "../db";
-import { createManualDailyReportArchive, createRetroactiveDailyReportRevision } from "../daily-report-archive";
+import {
+  createManualDailyReportArchive,
+  createRetroactiveDailyReportRevision,
+} from "../daily-report-archive";
 import { ensureDailyReportArchiveBackup } from "../daily-report-backup";
-import { businessDayAfter, calculateConformityRate, calculateDispatchConformity, calculateSensoryScore, fragileInspectionDelayDays, fragileInspectionDueDate, isBusinessDay, isFragileInspectionPending, nextBusinessDay, shouldCreateCriticalMetalAlert } from "../quality.logic";
-import { calculatePlanCompliance, countOpenNonconformities, scopeToFactory } from "../factory.scope.logic";
+import {
+  businessDayAfter,
+  calculateConformityRate,
+  calculateDispatchConformity,
+  calculateSensoryScore,
+  fragileInspectionDelayDays,
+  fragileInspectionDueDate,
+  isBusinessDay,
+  isFragileInspectionPending,
+  nextBusinessDay,
+  shouldCreateCriticalMetalAlert,
+} from "../quality.logic";
+import {
+  calculatePlanCompliance,
+  countOpenNonconformities,
+  scopeToFactory,
+} from "../factory.scope.logic";
 import { storageGetSignedUrl, storagePut } from "../storage";
 import { invokeLLM } from "../_core/llm";
-import { createSessionToken, hashPin, hashSessionToken, QUALITY_OPERATOR_COOKIE, QUALITY_SESSION_HOURS, QUALITY_TEAM_DEFAULTS, validatePin, verifyPin } from "../team-access";
+import {
+  createSessionToken,
+  hashPin,
+  hashSessionToken,
+  QUALITY_OPERATOR_COOKIE,
+  QUALITY_SESSION_HOURS,
+  QUALITY_TEAM_DEFAULTS,
+  validatePin,
+  verifyPin,
+} from "../team-access";
 import { getSessionCookieOptions } from "../_core/cookies";
-import { protectedProcedure, publicProcedure, qualityManagerProcedure, qualityOperatorProcedure, qualitySessionProcedure, router } from "../_core/trpc";
+import {
+  protectedProcedure,
+  publicProcedure,
+  qualityManagerProcedure,
+  qualityOperatorProcedure,
+  qualitySessionProcedure,
+  router,
+} from "../_core/trpc";
 import { getDispatchProfile } from "../../shared/dispatch-control";
 
 const qualityModuleSchema = z.enum(qualityModuleValues);
 const resultSchema = z.enum(resultValues);
-const retroactiveReasonSchema = z.enum(["verified_not_registered", "technical_unavailability", "other"]);
-const retroactiveReasonLabels: Record<z.infer<typeof retroactiveReasonSchema>, string> = {
-  verified_not_registered: "Controlo verificado no dia agendado, mas não registado",
-  technical_unavailability: "Adiado por falta de disponibilidade técnica para verificação no dia em que estava agendado",
+const retroactiveReasonSchema = z.enum([
+  "verified_not_registered",
+  "technical_unavailability",
+  "other",
+]);
+const retroactiveReasonLabels: Record<
+  z.infer<typeof retroactiveReasonSchema>,
+  string
+> = {
+  verified_not_registered:
+    "Controlo verificado no dia agendado, mas não registado",
+  technical_unavailability:
+    "Adiado por falta de disponibilidade técnica para verificação no dia em que estava agendado",
   other: "Outra opção",
 };
 const dateInput = z.coerce.date();
+const incidenceTreatmentStatusSchema = z.enum([
+  "pending",
+  "in_progress",
+  "completed",
+]);
+const incidenceTreatmentSchema = z.object({
+  status: incidenceTreatmentStatusSchema,
+  correction: z.string().max(3000).optional(),
+  responsible: z.string().max(160).optional(),
+  dueDate: z.string().date().optional(),
+  completedAt: z.string().date().optional(),
+  notes: z.string().max(3000).optional(),
+  evidencePhotos: z
+    .array(
+      z.object({
+        key: z.string().min(1),
+        url: z.string().startsWith("/manus-storage/"),
+        fileName: z.string().min(1).max(255),
+        mimeType: z.enum(["image/jpeg", "image/png", "image/webp"]),
+      })
+    )
+    .max(8)
+    .optional(),
+});
+function incidenceTreatmentFromPayload(payload: Record<string, unknown>) {
+  const parsed = incidenceTreatmentSchema.safeParse(payload.incidenceTreatment);
+  return parsed.success ? parsed.data : { status: "pending" as const };
+}
+function incidenceDecisionFromPayload(
+  payload: Record<string, unknown>,
+  generatedNonconformity: boolean
+) {
+  return generatedNonconformity
+    ? ("nc_generated" as const)
+    : payload.treatmentDecision === "no_nc"
+      ? ("no_nc" as const)
+      : ("pending" as const);
+}
 const BPHF_AREA_NAMES = ["Produção", "Embalagem", "Limpeza"] as const;
 const BPHF_CRITERIA = [
   "Estado de limpeza e conservação do fardamento",
@@ -61,9 +142,21 @@ const SUGGESTION_LOCATIONS_BY_FACTORY: Record<string, readonly string[]> = {
 const REQUIRED_MODULE_FREQUENCIES = [
   { module: "bphf", frequency: "daily", title: "BPHF obrigatório" },
   { module: "shelf_life", frequency: "daily", title: "Shelf-life obrigatório" },
-  { module: "suggestion_boxes", frequency: "weekly", title: "Caixas de sugestões obrigatórias" },
-  { module: "sensory", frequency: "weekly", title: "Controlo sensorial obrigatório" },
-  { module: "monthly_checklist", frequency: "monthly", title: "Checklist mensal obrigatório" },
+  {
+    module: "suggestion_boxes",
+    frequency: "weekly",
+    title: "Caixas de sugestões obrigatórias",
+  },
+  {
+    module: "sensory",
+    frequency: "weekly",
+    title: "Controlo sensorial obrigatório",
+  },
+  {
+    module: "monthly_checklist",
+    frequency: "monthly",
+    title: "Checklist mensal obrigatório",
+  },
 ] as const;
 const MONTHLY_CHECKLIST_TEMPLATE = [
   "Cumprimento do plano de higienização",
@@ -100,14 +193,29 @@ const MONTHLY_CHECKLIST_TEMPLATE = [
 const dispatchOrderExtractionSchema = z.object({
   orderNumber: z.string().max(80),
   customer: z.string().max(160),
-  products: z.array(z.object({ name: z.string().max(180), orderedQuantity: z.number().int().min(0) })).max(30),
+  products: z
+    .array(
+      z.object({
+        name: z.string().max(180),
+        orderedQuantity: z.number().int().min(0),
+      })
+    )
+    .max(30),
   warnings: z.array(z.string().max(240)).max(12),
 });
 const verifiedDispatchProductCheckSchema = z.object({
   verificationStatus: z.literal("verified").optional(),
   name: z.string().min(2).max(180),
   orderedQuantity: z.number().int().min(0),
-  lots: z.array(z.object({ lot: z.string().min(1).max(120), dispatchedQuantity: z.number().int().min(0) })).min(1).max(20),
+  lots: z
+    .array(
+      z.object({
+        lot: z.string().min(1).max(120),
+        dispatchedQuantity: z.number().int().min(0),
+      })
+    )
+    .min(1)
+    .max(20),
   productLabelResult: z.enum(["C", "NC"]),
   boxLabelResult: z.enum(["C", "NC"]),
   productTemperature: z.number().min(-100).max(100),
@@ -119,7 +227,10 @@ const unverifiedDispatchProductCheckSchema = z.object({
   orderedQuantity: z.number().int().min(0),
   notVerifiedReason: z.string().min(3).max(3000),
 });
-const dispatchProductCheckSchema = z.union([verifiedDispatchProductCheckSchema, unverifiedDispatchProductCheckSchema]);
+const dispatchProductCheckSchema = z.union([
+  verifiedDispatchProductCheckSchema,
+  unverifiedDispatchProductCheckSchema,
+]);
 
 function asDateRange(date: Date) {
   const start = new Date(date);
@@ -151,113 +262,354 @@ function isLastBusinessDayOfMonth(date: Date) {
 
 function isPlanDue(frequency: string, date: Date) {
   if (!isBusinessDay(date)) return false;
-  if (frequency === "daily" || frequency === "per_shift") return isBusinessDay(date);
+  if (frequency === "daily" || frequency === "per_shift")
+    return isBusinessDay(date);
   if (frequency === "weekly") return date.getDay() === 5;
   if (frequency === "monthly") return false;
   return false;
 }
 
 const sharedPlanModules = new Set(["dispatch_control", "internal_analysis"]);
-const oneSubmissionPlanModules = new Set<typeof qualityModuleValues[number]>(["sensory", "shelf_life", "suggestion_boxes", "dispatch_control", "internal_analysis", "temperature_controls"]);
+const oneSubmissionPlanModules = new Set<(typeof qualityModuleValues)[number]>([
+  "sensory",
+  "shelf_life",
+  "suggestion_boxes",
+  "dispatch_control",
+  "internal_analysis",
+  "temperature_controls",
+]);
 const FOOD_DEFENSE_EXPECTED_CRITERIA = 131;
 
 type OperationalProfile = { id: number; role: string; name: string };
 
 function entryPayload(entry: { payload?: unknown }) {
-  return entry.payload && typeof entry.payload === "object" && !Array.isArray(entry.payload) ? entry.payload as Record<string, unknown> : {};
+  return entry.payload &&
+    typeof entry.payload === "object" &&
+    !Array.isArray(entry.payload)
+    ? (entry.payload as Record<string, unknown>)
+    : {};
 }
 
 function entryOperationalDate(entry: { completedAt: Date; payload?: unknown }) {
   const plannedDate = entryPayload(entry).plannedDate;
-  return typeof plannedDate === "string" && !Number.isNaN(new Date(plannedDate).getTime()) ? localDateKey(new Date(plannedDate)) : localDateKey(new Date(entry.completedAt));
+  return typeof plannedDate === "string" &&
+    !Number.isNaN(new Date(plannedDate).getTime())
+    ? localDateKey(new Date(plannedDate))
+    : localDateKey(new Date(entry.completedAt));
 }
 
-function entryMatchesPlannedTask(entry: { module: string; factoryId: number | null; completedAt: Date; payload?: unknown }, task: { id: number; module: typeof qualityModuleValues[number]; factoryId: number | null; dueAt: Date }) {
-  if (entry.module !== task.module || entry.factoryId !== task.factoryId) return false;
+function entryMatchesPlannedTask(
+  entry: {
+    module: string;
+    factoryId: number | null;
+    completedAt: Date;
+    payload?: unknown;
+  },
+  task: {
+    id: number;
+    module: (typeof qualityModuleValues)[number];
+    factoryId: number | null;
+    dueAt: Date;
+  }
+) {
+  if (entry.module !== task.module || entry.factoryId !== task.factoryId)
+    return false;
   const payload = entryPayload(entry);
-  return Number(payload.plannedTaskId) === task.id || entryOperationalDate(entry) === localDateKey(new Date(task.dueAt));
+  return (
+    Number(payload.plannedTaskId) === task.id ||
+    entryOperationalDate(entry) === localDateKey(new Date(task.dueAt))
+  );
 }
 
-function metalDetectorsTaskComplete(task: { factoryId: number | null }, entries: Array<{ area: string; module: string; factoryId: number | null; completedAt: Date; payload?: unknown }>, areaCatalog: Array<{ group: string; factoryId: number | null; active: string; name: string }>) {
-  const expectedAreas = areaCatalog.filter((area) => area.group === "metal" && area.factoryId === task.factoryId && area.active === "true").map((area) => area.name);
+function metalDetectorsTaskComplete(
+  task: { factoryId: number | null },
+  entries: Array<{
+    area: string;
+    module: string;
+    factoryId: number | null;
+    completedAt: Date;
+    payload?: unknown;
+  }>,
+  areaCatalog: Array<{
+    group: string;
+    factoryId: number | null;
+    active: string;
+    name: string;
+  }>
+) {
+  const expectedAreas = areaCatalog
+    .filter(
+      area =>
+        area.group === "metal" &&
+        area.factoryId === task.factoryId &&
+        area.active === "true"
+    )
+    .map(area => area.name);
   if (!expectedAreas.length) return false;
-  const completedAreas = new Set(entries.map((entry) => entry.area));
-  return expectedAreas.every((area) => completedAreas.has(area));
+  const completedAreas = new Set(entries.map(entry => entry.area));
+  return expectedAreas.every(area => completedAreas.has(area));
 }
 
-function expectedBphfAreas(task: { factoryId: number | null }, areaCatalog: Array<{ group: string; factoryId: number | null; active: string; name: string }>) {
+function expectedBphfAreas(
+  task: { factoryId: number | null },
+  areaCatalog: Array<{
+    group: string;
+    factoryId: number | null;
+    active: string;
+    name: string;
+  }>
+) {
   const configuredAreas = areaCatalog
-    .filter((area) => area.group === "bphf" && area.factoryId === task.factoryId && area.active === "true" && BPHF_AREA_NAMES.includes(area.name as typeof BPHF_AREA_NAMES[number]))
-    .map((area) => area.name);
+    .filter(
+      area =>
+        area.group === "bphf" &&
+        area.factoryId === task.factoryId &&
+        area.active === "true" &&
+        BPHF_AREA_NAMES.includes(area.name as (typeof BPHF_AREA_NAMES)[number])
+    )
+    .map(area => area.name);
   return configuredAreas.length ? configuredAreas : [...BPHF_AREA_NAMES];
 }
 
-function bphfTaskComplete(task: { factoryId: number | null }, entries: Array<{ area: string; title?: string }>, areaCatalog: Array<{ group: string; factoryId: number | null; active: string; name: string }>) {
+function bphfTaskComplete(
+  task: { factoryId: number | null },
+  entries: Array<{ area: string; title?: string }>,
+  areaCatalog: Array<{
+    group: string;
+    factoryId: number | null;
+    active: string;
+    name: string;
+  }>
+) {
   const expectedAreas = expectedBphfAreas(task, areaCatalog);
-  const completedSlots = new Set(entries.map((entry) => `${entry.area}::${entry.title ?? ""}`));
-  return expectedAreas.every((area) => BPHF_CRITERIA.every((criterion) => completedSlots.has(`${area}::${criterion}`)));
+  const completedSlots = new Set(
+    entries.map(entry => `${entry.area}::${entry.title ?? ""}`)
+  );
+  return expectedAreas.every(area =>
+    BPHF_CRITERIA.every(criterion =>
+      completedSlots.has(`${area}::${criterion}`)
+    )
+  );
 }
 
 function suggestionLocationsForFactory(factoryCode: string | undefined) {
-  return factoryCode ? SUGGESTION_LOCATIONS_BY_FACTORY[factoryCode] ?? [] : [];
+  return factoryCode
+    ? (SUGGESTION_LOCATIONS_BY_FACTORY[factoryCode] ?? [])
+    : [];
 }
 
-function suggestionBoxesTaskComplete(task: { factoryId: number | null }, entries: Array<{ area: string; factoryId: number | null }>, factoryCatalog: Array<{ id: number; code: string }>) {
-  const factory = factoryCatalog.find((item) => item.id === task.factoryId);
+function suggestionBoxesTaskComplete(
+  task: { factoryId: number | null },
+  entries: Array<{ area: string; factoryId: number | null }>,
+  factoryCatalog: Array<{ id: number; code: string }>
+) {
+  const factory = factoryCatalog.find(item => item.id === task.factoryId);
   const expectedLocations = suggestionLocationsForFactory(factory?.code);
   if (!expectedLocations.length) return false;
-  const completedLocations = new Set(entries.map((entry) => entry.area));
-  return expectedLocations.every((location) => completedLocations.has(location));
+  const completedLocations = new Set(entries.map(entry => entry.area));
+  return expectedLocations.every(location => completedLocations.has(location));
 }
 
-function monthlyChecklistTaskComplete(task: { factoryId: number | null }, entries: Array<{ payload?: unknown }>, items: Array<{ id: number; active: string }>, assignments: Array<{ checklistItemId: number; factoryId: number }>) {
-  const expectedIds = items.filter((item) => item.active === "true" && (assignments.some((assignment) => assignment.checklistItemId === item.id) ? assignments.some((assignment) => assignment.checklistItemId === item.id && assignment.factoryId === task.factoryId) : true)).map((item) => item.id);
+function monthlyChecklistTaskComplete(
+  task: { factoryId: number | null },
+  entries: Array<{ payload?: unknown }>,
+  items: Array<{ id: number; active: string }>,
+  assignments: Array<{ checklistItemId: number; factoryId: number }>
+) {
+  const expectedIds = items
+    .filter(
+      item =>
+        item.active === "true" &&
+        (assignments.some(assignment => assignment.checklistItemId === item.id)
+          ? assignments.some(
+              assignment =>
+                assignment.checklistItemId === item.id &&
+                assignment.factoryId === task.factoryId
+            )
+          : true)
+    )
+    .map(item => item.id);
   if (!expectedIds.length) return false;
-  const completedIds = new Set(entries.map((entry) => entryPayload(entry).checklistItemId).filter((id): id is number => typeof id === "number"));
-  return expectedIds.every((id) => completedIds.has(id));
+  const completedIds = new Set(
+    entries
+      .map(entry => entryPayload(entry).checklistItemId)
+      .filter((id): id is number => typeof id === "number")
+  );
+  return expectedIds.every(id => completedIds.has(id));
 }
 
 function foodDefenseTaskComplete(entries: Array<{ payload?: unknown }>) {
-  return entries.some((entry) => {
+  return entries.some(entry => {
     const criteria = entryPayload(entry).criteria;
-    return Array.isArray(criteria) && criteria.length >= FOOD_DEFENSE_EXPECTED_CRITERIA;
+    return (
+      Array.isArray(criteria) &&
+      criteria.length >= FOOD_DEFENSE_EXPECTED_CRITERIA
+    );
   });
 }
 
-function isHistoricalPlanTaskSatisfied(task: { id: number; module: typeof qualityModuleValues[number]; factoryId: number | null; dueAt: Date }, entries: Array<{ area: string; module: string; factoryId: number | null; completedAt: Date; payload?: unknown }>, areaCatalog: Array<{ group: string; factoryId: number | null; active: string; name: string }>, monthlyItems: Array<{ id: number; active: string }> = [], monthlyAssignments: Array<{ checklistItemId: number; factoryId: number }> = [], factoryCatalog: Array<{ id: number; code: string }> = []) {
-  const taskEntries = entries.filter((entry) => entryMatchesPlannedTask(entry, task));
-  if (task.module === "bphf") return bphfTaskComplete(task, taskEntries, areaCatalog);
-  if (task.module === "metal_detectors") return metalDetectorsTaskComplete(task, taskEntries, areaCatalog);
-  if (task.module === "monthly_checklist") return monthlyChecklistTaskComplete(task, taskEntries, monthlyItems, monthlyAssignments);
-  if (task.module === "food_defense") return foodDefenseTaskComplete(taskEntries);
-  if (task.module === "suggestion_boxes") return suggestionBoxesTaskComplete(task, taskEntries, factoryCatalog);
+function isHistoricalPlanTaskSatisfied(
+  task: {
+    id: number;
+    module: (typeof qualityModuleValues)[number];
+    factoryId: number | null;
+    dueAt: Date;
+  },
+  entries: Array<{
+    area: string;
+    module: string;
+    factoryId: number | null;
+    completedAt: Date;
+    payload?: unknown;
+  }>,
+  areaCatalog: Array<{
+    group: string;
+    factoryId: number | null;
+    active: string;
+    name: string;
+  }>,
+  monthlyItems: Array<{ id: number; active: string }> = [],
+  monthlyAssignments: Array<{
+    checklistItemId: number;
+    factoryId: number;
+  }> = [],
+  factoryCatalog: Array<{ id: number; code: string }> = []
+) {
+  const taskEntries = entries.filter(entry =>
+    entryMatchesPlannedTask(entry, task)
+  );
+  if (task.module === "bphf")
+    return bphfTaskComplete(task, taskEntries, areaCatalog);
+  if (task.module === "metal_detectors")
+    return metalDetectorsTaskComplete(task, taskEntries, areaCatalog);
+  if (task.module === "monthly_checklist")
+    return monthlyChecklistTaskComplete(
+      task,
+      taskEntries,
+      monthlyItems,
+      monthlyAssignments
+    );
+  if (task.module === "food_defense")
+    return foodDefenseTaskComplete(taskEntries);
+  if (task.module === "suggestion_boxes")
+    return suggestionBoxesTaskComplete(task, taskEntries, factoryCatalog);
   return oneSubmissionPlanModules.has(task.module) && taskEntries.length > 0;
 }
 
-async function assessControlAuthorization(db: any, input: { module: typeof qualityModuleValues[number]; factoryId?: number | null; plannedTaskId?: number; plannedDate?: Date; profile: OperationalProfile }) {
+async function assessControlAuthorization(
+  db: any,
+  input: {
+    module: (typeof qualityModuleValues)[number];
+    factoryId?: number | null;
+    plannedTaskId?: number;
+    plannedDate?: Date;
+    profile: OperationalProfile;
+  }
+) {
   const isShared = sharedPlanModules.has(input.module);
   const spansAllFoodDefenseFactories = input.module === "food_defense";
-  if (!isShared && !input.factoryId) return { allowed: false, reason: "Selecione a fábrica ou linha antes de consultar ou preencher este controlo.", task: null, isPreviousPending: false, isFuturePlanned: false };
+  if (!isShared && !input.factoryId)
+    return {
+      allowed: false,
+      reason:
+        "Selecione a fábrica ou linha antes de consultar ou preencher este controlo.",
+      task: null,
+      isPreviousPending: false,
+      isFuturePlanned: false,
+    };
   const today = localDateKey(new Date());
-  const [tasks, entries, areaCatalog, monthlyItems, monthlyAssignments, factoryCatalog] = await Promise.all([db.select().from(controlTasks).orderBy(controlTasks.dueAt), db.select().from(controlEntries).orderBy(desc(controlEntries.completedAt)), db.select().from(areas).orderBy(areas.name), db.select().from(checklistItems).orderBy(checklistItems.sortOrder), db.select().from(checklistItemFactories).orderBy(checklistItemFactories.factoryId), db.select().from(factories).orderBy(factories.name)]);
-  const allowsSupplementaryDailyEntries = input.module === "bphf" || input.module === "temperature_controls" || input.module === "sensory" || input.module === "suggestion_boxes" || input.module === "metal_detectors";
+  const [
+    tasks,
+    entries,
+    areaCatalog,
+    monthlyItems,
+    monthlyAssignments,
+    factoryCatalog,
+  ] = await Promise.all([
+    db.select().from(controlTasks).orderBy(controlTasks.dueAt),
+    db.select().from(controlEntries).orderBy(desc(controlEntries.completedAt)),
+    db.select().from(areas).orderBy(areas.name),
+    db.select().from(checklistItems).orderBy(checklistItems.sortOrder),
+    db
+      .select()
+      .from(checklistItemFactories)
+      .orderBy(checklistItemFactories.factoryId),
+    db.select().from(factories).orderBy(factories.name),
+  ]);
+  const allowsSupplementaryDailyEntries =
+    input.module === "bphf" ||
+    input.module === "temperature_controls" ||
+    input.module === "sensory" ||
+    input.module === "suggestion_boxes" ||
+    input.module === "metal_detectors";
   const eligibleTasks = tasks.filter((item: any) => {
     const isCurrentDay = localDateKey(new Date(item.dueAt)) === today;
-    const hasIncompletePlannedCoverage = item.status !== "cancelled" && !isHistoricalPlanTaskSatisfied(item, entries, areaCatalog, monthlyItems, monthlyAssignments, factoryCatalog);
-    const isCompletedPlanOpenForSupplement = allowsSupplementaryDailyEntries && item.status === "completed" && isCurrentDay;
-    return (hasIncompletePlannedCoverage || isCompletedPlanOpenForSupplement) && item.area === "Plano do Dia" && item.module === input.module && isBusinessDay(new Date(item.dueAt)) && (isShared ? item.factoryId === null : spansAllFoodDefenseFactories ? item.factoryId !== null : item.factoryId === input.factoryId);
+    const hasIncompletePlannedCoverage =
+      item.status !== "cancelled" &&
+      !isHistoricalPlanTaskSatisfied(
+        item,
+        entries,
+        areaCatalog,
+        monthlyItems,
+        monthlyAssignments,
+        factoryCatalog
+      );
+    const isCompletedPlanOpenForSupplement =
+      allowsSupplementaryDailyEntries &&
+      item.status === "completed" &&
+      isCurrentDay;
+    return (
+      (hasIncompletePlannedCoverage || isCompletedPlanOpenForSupplement) &&
+      item.area === "Plano do Dia" &&
+      item.module === input.module &&
+      isBusinessDay(new Date(item.dueAt)) &&
+      (isShared
+        ? item.factoryId === null
+        : spansAllFoodDefenseFactories
+          ? item.factoryId !== null
+          : item.factoryId === input.factoryId)
+    );
   });
   const matchingTasks = input.plannedTaskId
     ? eligibleTasks
     : input.plannedDate
-      ? eligibleTasks.filter((item: any) => localDateKey(new Date(item.dueAt)) === localDateKey(input.plannedDate!))
-      : eligibleTasks.filter((item: any) => localDateKey(new Date(item.dueAt)) <= today);
+      ? eligibleTasks.filter(
+          (item: any) =>
+            localDateKey(new Date(item.dueAt)) ===
+            localDateKey(input.plannedDate!)
+        )
+      : eligibleTasks.filter(
+          (item: any) => localDateKey(new Date(item.dueAt)) <= today
+        );
   const task = input.plannedTaskId
     ? matchingTasks.find((item: any) => item.id === input.plannedTaskId)
-    : [...matchingTasks].sort((left: any, right: any) => Number(localDateKey(new Date(right.dueAt)) === today) - Number(localDateKey(new Date(left.dueAt)) === today) || new Date(right.dueAt).getTime() - new Date(left.dueAt).getTime())[0];
-  if (!task) return { allowed: false, reason: "Este controlo não está incluído num Plano do Dia publicado para hoje nem existem pendências anteriores atribuídas.", task: null, isPreviousPending: false, isFuturePlanned: false };
-  const assignees = Array.isArray(task.assigneeProfileIds) ? task.assigneeProfileIds : [];
-  if (input.profile.role !== "manager" && !assignees.includes(input.profile.id)) return { allowed: false, reason: "Este controlo foi agendado para outro colaborador. Apenas os responsáveis designados ou a Responsável de Qualidade podem preenchê-lo.", task, isPreviousPending: false, isFuturePlanned: false };
+    : [...matchingTasks].sort(
+        (left: any, right: any) =>
+          Number(localDateKey(new Date(right.dueAt)) === today) -
+            Number(localDateKey(new Date(left.dueAt)) === today) ||
+          new Date(right.dueAt).getTime() - new Date(left.dueAt).getTime()
+      )[0];
+  if (!task)
+    return {
+      allowed: false,
+      reason:
+        "Este controlo não está incluído num Plano do Dia publicado para hoje nem existem pendências anteriores atribuídas.",
+      task: null,
+      isPreviousPending: false,
+      isFuturePlanned: false,
+    };
+  const assignees = Array.isArray(task.assigneeProfileIds)
+    ? task.assigneeProfileIds
+    : [];
+  if (input.profile.role !== "manager" && !assignees.includes(input.profile.id))
+    return {
+      allowed: false,
+      reason:
+        "Este controlo foi agendado para outro colaborador. Apenas os responsáveis designados ou a Responsável de Qualidade podem preenchê-lo.",
+      task,
+      isPreviousPending: false,
+      isFuturePlanned: false,
+    };
   const isPreviousPending = localDateKey(new Date(task.dueAt)) < today;
   const isFuturePlanned = localDateKey(new Date(task.dueAt)) > today;
   const plannedDate = new Date(task.dueAt).toLocaleDateString("pt-PT");
@@ -265,19 +617,34 @@ async function assessControlAuthorization(db: any, input: { module: typeof quali
     ? `Preenchimento autorizado para a pendência do Plano do Dia de ${plannedDate}. A data prevista será mantida no registo.`
     : isFuturePlanned
       ? `Antecipação autorizada para o controlo previsto no Plano do Dia de ${plannedDate}. A data prevista e a data efetiva ficarão ambas registadas.`
-    : input.profile.role === "manager" ? "Preenchimento autorizado como Responsável de Qualidade." : "Preenchimento autorizado pelo Plano do Dia.";
+      : input.profile.role === "manager"
+        ? "Preenchimento autorizado como Responsável de Qualidade."
+        : "Preenchimento autorizado pelo Plano do Dia.";
   return { allowed: true, reason, task, isPreviousPending, isFuturePlanned };
 }
 
-async function requireControlAuthorization(db: any, input: { module: typeof qualityModuleValues[number]; factoryId?: number | null; plannedTaskId?: number; profile: OperationalProfile }) {
+async function requireControlAuthorization(
+  db: any,
+  input: {
+    module: (typeof qualityModuleValues)[number];
+    factoryId?: number | null;
+    plannedTaskId?: number;
+    profile: OperationalProfile;
+  }
+) {
   const access = await assessControlAuthorization(db, input);
-  if (!access.allowed) throw new TRPCError({ code: "FORBIDDEN", message: access.reason });
+  if (!access.allowed)
+    throw new TRPCError({ code: "FORBIDDEN", message: access.reason });
   return access;
 }
 
 async function requireDb() {
   const db = await getDb();
-  if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "A base de dados não está disponível." });
+  if (!db)
+    throw new TRPCError({
+      code: "INTERNAL_SERVER_ERROR",
+      message: "A base de dados não está disponível.",
+    });
   return db;
 }
 
@@ -287,92 +654,220 @@ function normalizeChecklistAreaName(name: string) {
 
 async function ensureChecklistArea(db: any, name: string, createdBy: string) {
   const normalizedName = normalizeChecklistAreaName(name);
-  const existing = await db.select().from(checklistAreas).where(eq(checklistAreas.name, normalizedName)).limit(1);
+  const existing = await db
+    .select()
+    .from(checklistAreas)
+    .where(eq(checklistAreas.name, normalizedName))
+    .limit(1);
   if (existing[0]) {
-    if (existing[0].active !== "true") await db.update(checklistAreas).set({ active: "true" }).where(eq(checklistAreas.id, existing[0].id));
+    if (existing[0].active !== "true")
+      await db
+        .update(checklistAreas)
+        .set({ active: "true" })
+        .where(eq(checklistAreas.id, existing[0].id));
     return existing[0].id;
   }
-  const inserted = await db.insert(checklistAreas).values({ name: normalizedName, active: "true", createdBy }).$returningId();
+  const inserted = await db
+    .insert(checklistAreas)
+    .values({ name: normalizedName, active: "true", createdBy })
+    .$returningId();
   return Number(inserted[0]!.id);
 }
 
 export const qualityRouter = router({
   accessStatus: publicProcedure.query(async ({ ctx }) => {
     const db = await requireDb();
-    const existing = await db.select().from(qualityPinProfiles).orderBy(qualityPinProfiles.id);
-    const existingCodes = new Set(existing.map((profile) => profile.code));
-    const missing = QUALITY_TEAM_DEFAULTS.filter((profile) => !existingCodes.has(profile.code));
+    const existing = await db
+      .select()
+      .from(qualityPinProfiles)
+      .orderBy(qualityPinProfiles.id);
+    const existingCodes = new Set(existing.map(profile => profile.code));
+    const missing = QUALITY_TEAM_DEFAULTS.filter(
+      profile => !existingCodes.has(profile.code)
+    );
     if (missing.length) {
-      await db.insert(qualityPinProfiles).values(missing.map((profile) => ({ ...profile, active: "true" as const, pinHash: null, createdBy: ctx.user?.openId ?? "system-quality" })));
+      await db
+        .insert(qualityPinProfiles)
+        .values(
+          missing.map(profile => ({
+            ...profile,
+            active: "true" as const,
+            pinHash: null,
+            createdBy: ctx.user?.openId ?? "system-quality",
+          }))
+        );
     }
-    const profiles = missing.length ? await db.select().from(qualityPinProfiles).orderBy(qualityPinProfiles.id) : existing;
-    const managerProfile = profiles.find((profile) => profile.role === "manager");
+    const profiles = missing.length
+      ? await db
+          .select()
+          .from(qualityPinProfiles)
+          .orderBy(qualityPinProfiles.id)
+      : existing;
+    const managerProfile = profiles.find(profile => profile.role === "manager");
     return {
-      profiles: profiles.map((profile) => ({ id: profile.id, code: profile.code, name: profile.name, title: profile.title, role: profile.role, isConfigured: Boolean(profile.pinHash), active: profile.active === "true" })),
+      profiles: profiles.map(profile => ({
+        id: profile.id,
+        code: profile.code,
+        name: profile.name,
+        title: profile.title,
+        role: profile.role,
+        isConfigured: Boolean(profile.pinHash),
+        active: profile.active === "true",
+      })),
       activeProfile: ctx.operatorProfile,
       canManage: ctx.operatorProfile?.role === "manager",
       canBootstrap: ctx.user?.role === "admin" && !managerProfile?.pinHash,
-      needsInitialSetup: !profiles.every((profile) => Boolean(profile.pinHash)),
+      needsInitialSetup: !profiles.every(profile => Boolean(profile.pinHash)),
     };
   }),
 
-  configureTeamPins: protectedProcedure.input(z.object({
-    pins: z.array(z.object({ code: z.string().min(3).max(48), pin: z.string().regex(/^\d{4,8}$/) })).min(1).max(4),
-  })).mutation(async ({ ctx, input }) => {
-    const db = await requireDb();
-    const profiles = await db.select().from(qualityPinProfiles);
-    const managerConfigured = profiles.some((profile) => profile.role === "manager" && Boolean(profile.pinHash));
-    if (ctx.operatorProfile?.role !== "manager" && !(ctx.user.role === "admin" && !managerConfigured)) {
-      throw new TRPCError({ code: "FORBIDDEN", message: "Apenas a Responsável de Qualidade pode definir PINs." });
-    }
-    for (const { code, pin } of input.pins) {
-      if (!validatePin(pin)) throw new TRPCError({ code: "BAD_REQUEST", message: "Cada PIN deve ter entre 4 e 8 algarismos." });
-      const profile = profiles.find((item) => item.code === code);
-      if (!profile) throw new TRPCError({ code: "NOT_FOUND", message: "Perfil de equipa não encontrado." });
-      await db.update(qualityPinProfiles).set({ pinHash: hashPin(pin) }).where(eq(qualityPinProfiles.id, profile.id));
-    }
-    return { success: true };
-  }),
+  configureTeamPins: protectedProcedure
+    .input(
+      z.object({
+        pins: z
+          .array(
+            z.object({
+              code: z.string().min(3).max(48),
+              pin: z.string().regex(/^\d{4,8}$/),
+            })
+          )
+          .min(1)
+          .max(4),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const db = await requireDb();
+      const profiles = await db.select().from(qualityPinProfiles);
+      const managerConfigured = profiles.some(
+        profile => profile.role === "manager" && Boolean(profile.pinHash)
+      );
+      if (
+        ctx.operatorProfile?.role !== "manager" &&
+        !(ctx.user.role === "admin" && !managerConfigured)
+      ) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "Apenas a Responsável de Qualidade pode definir PINs.",
+        });
+      }
+      for (const { code, pin } of input.pins) {
+        if (!validatePin(pin))
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "Cada PIN deve ter entre 4 e 8 algarismos.",
+          });
+        const profile = profiles.find(item => item.code === code);
+        if (!profile)
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "Perfil de equipa não encontrado.",
+          });
+        await db
+          .update(qualityPinProfiles)
+          .set({ pinHash: hashPin(pin) })
+          .where(eq(qualityPinProfiles.id, profile.id));
+      }
+      return { success: true };
+    }),
 
-  activatePinProfile: publicProcedure.input(z.object({ profileId: z.number().int(), pin: z.string().regex(/^\d{4,8}$/) })).mutation(async ({ ctx, input }) => {
-    const db = await requireDb();
-    const profile = (await db.select().from(qualityPinProfiles).where(eq(qualityPinProfiles.id, input.profileId)).limit(1))[0];
-    if (!profile || profile.active !== "true" || !verifyPin(input.pin, profile.pinHash)) {
-      throw new TRPCError({ code: "UNAUTHORIZED", message: "PIN inválido ou perfil indisponível." });
-    }
-    const token = createSessionToken();
-    const expiresAt = new Date(Date.now() + QUALITY_SESSION_HOURS * 60 * 60 * 1000);
-    await db.insert(qualityPinSessions).values({ profileId: profile.id, tokenHash: hashSessionToken(token), oauthOpenId: ctx.user?.openId ?? "pin-only", expiresAt });
-    ctx.res.cookie(QUALITY_OPERATOR_COOKIE, token, { ...getSessionCookieOptions(ctx.req), maxAge: QUALITY_SESSION_HOURS * 60 * 60 * 1000 });
-    return { success: true, profile: { id: profile.id, name: profile.name, title: profile.title, role: profile.role } };
-  }),
+  activatePinProfile: publicProcedure
+    .input(
+      z.object({
+        profileId: z.number().int(),
+        pin: z.string().regex(/^\d{4,8}$/),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const db = await requireDb();
+      const profile = (
+        await db
+          .select()
+          .from(qualityPinProfiles)
+          .where(eq(qualityPinProfiles.id, input.profileId))
+          .limit(1)
+      )[0];
+      if (
+        !profile ||
+        profile.active !== "true" ||
+        !verifyPin(input.pin, profile.pinHash)
+      ) {
+        throw new TRPCError({
+          code: "UNAUTHORIZED",
+          message: "PIN inválido ou perfil indisponível.",
+        });
+      }
+      const token = createSessionToken();
+      const expiresAt = new Date(
+        Date.now() + QUALITY_SESSION_HOURS * 60 * 60 * 1000
+      );
+      await db
+        .insert(qualityPinSessions)
+        .values({
+          profileId: profile.id,
+          tokenHash: hashSessionToken(token),
+          oauthOpenId: ctx.user?.openId ?? "pin-only",
+          expiresAt,
+        });
+      ctx.res.cookie(QUALITY_OPERATOR_COOKIE, token, {
+        ...getSessionCookieOptions(ctx.req),
+        maxAge: QUALITY_SESSION_HOURS * 60 * 60 * 1000,
+      });
+      return {
+        success: true,
+        profile: {
+          id: profile.id,
+          name: profile.name,
+          title: profile.title,
+          role: profile.role,
+        },
+      };
+    }),
 
   deactivatePinProfile: publicProcedure.mutation(({ ctx }) => {
-    ctx.res.clearCookie(QUALITY_OPERATOR_COOKIE, { ...getSessionCookieOptions(ctx.req), maxAge: -1 });
+    ctx.res.clearCookie(QUALITY_OPERATOR_COOKIE, {
+      ...getSessionCookieOptions(ctx.req),
+      maxAge: -1,
+    });
     return { success: true };
   }),
 
   metadata: qualitySessionProcedure.query(async () => {
     const db = await requireDb();
-    const [persistedAreas, persistedFactories, persistedProfiles] = await Promise.all([
-      db.select().from(areas).orderBy(areas.group, areas.name),
-      db.select().from(factories).orderBy(factories.name),
-      db.select().from(qualityPinProfiles).orderBy(qualityPinProfiles.name),
-    ]);
+    const [persistedAreas, persistedFactories, persistedProfiles] =
+      await Promise.all([
+        db.select().from(areas).orderBy(areas.group, areas.name),
+        db.select().from(factories).orderBy(factories.name),
+        db.select().from(qualityPinProfiles).orderBy(qualityPinProfiles.name),
+      ]);
     return {
-      areas: persistedAreas.map((area) => ({ id: area.id, name: area.name, group: area.group, factoryId: area.factoryId })),
-      factories: persistedFactories.map((factory) => ({ id: factory.id, code: factory.code, name: factory.name })),
-      collaborators: persistedProfiles.filter((profile) => profile.active === "true").map((profile) => ({ id: profile.id, name: profile.name, title: profile.title })),
+      areas: persistedAreas.map(area => ({
+        id: area.id,
+        name: area.name,
+        group: area.group,
+        factoryId: area.factoryId,
+      })),
+      factories: persistedFactories.map(factory => ({
+        id: factory.id,
+        code: factory.code,
+        name: factory.name,
+      })),
+      collaborators: persistedProfiles
+        .filter(profile => profile.active === "true")
+        .map(profile => ({
+          id: profile.id,
+          name: profile.name,
+          title: profile.title,
+        })),
       modules: [
-      { id: "bphf", label: "Verificação de BPHF" },
-      { id: "metal_detectors", label: "Verificação de detetores de metais" },
-      { id: "sensory", label: "Controlo sensorial de produto acabado" },
-      { id: "shelf_life", label: "Controlo de amostras em shelf-life" },
-      { id: "monthly_checklist", label: "Checklist mensal por área" },
-      { id: "suggestion_boxes", label: "Verificação de caixas de sugestões" },
-      { id: "fragile_items", label: "Verificação de quebráveis" },
-      { id: "dispatch_control", label: "Controlo à expedição" },
-      { id: "internal_analysis", label: "Análises internas" },
+        { id: "bphf", label: "Verificação de BPHF" },
+        { id: "metal_detectors", label: "Verificação de detetores de metais" },
+        { id: "sensory", label: "Controlo sensorial de produto acabado" },
+        { id: "shelf_life", label: "Controlo de amostras em shelf-life" },
+        { id: "monthly_checklist", label: "Checklist mensal por área" },
+        { id: "suggestion_boxes", label: "Verificação de caixas de sugestões" },
+        { id: "fragile_items", label: "Verificação de quebráveis" },
+        { id: "dispatch_control", label: "Controlo à expedição" },
+        { id: "internal_analysis", label: "Análises internas" },
       ],
     };
   }),
@@ -384,137 +879,300 @@ export const qualityRouter = router({
 
   listBphfInspectionEmployees: qualitySessionProcedure.query(async () => {
     const db = await requireDb();
-    const employees = await db.select().from(bphfInspectionEmployees).where(eq(bphfInspectionEmployees.active, "true")).orderBy(bphfInspectionEmployees.name);
-    return employees.map((employee) => ({ id: employee.id, name: employee.name }));
+    const employees = await db
+      .select()
+      .from(bphfInspectionEmployees)
+      .where(eq(bphfInspectionEmployees.active, "true"))
+      .orderBy(bphfInspectionEmployees.name);
+    return employees.map(employee => ({
+      id: employee.id,
+      name: employee.name,
+    }));
   }),
 
-  addBphfInspectionEmployee: qualityOperatorProcedure.input(z.object({
-    name: z.string().trim().min(2).max(160),
-  })).mutation(async ({ ctx, input }) => {
-    const db = await requireDb();
-    const name = input.name.replace(/\s+/g, " ").trim();
-    const existing = await db.select().from(bphfInspectionEmployees).where(eq(bphfInspectionEmployees.name, name)).limit(1);
-    if (existing[0]) {
-      if (existing[0].active !== "true") await db.update(bphfInspectionEmployees).set({ active: "true" }).where(eq(bphfInspectionEmployees.id, existing[0].id));
-      return { id: existing[0].id, name: existing[0].name, alreadyExists: true };
-    }
-    const result = await db.insert(bphfInspectionEmployees).values({ name, active: "true", createdBy: ctx.user?.openId ?? `quality-profile-${ctx.operatorProfile!.id}` });
-    return { id: Number(result[0].insertId), name, alreadyExists: false };
-  }),
+  addBphfInspectionEmployee: qualityOperatorProcedure
+    .input(
+      z.object({
+        name: z.string().trim().min(2).max(160),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const db = await requireDb();
+      const name = input.name.replace(/\s+/g, " ").trim();
+      const existing = await db
+        .select()
+        .from(bphfInspectionEmployees)
+        .where(eq(bphfInspectionEmployees.name, name))
+        .limit(1);
+      if (existing[0]) {
+        if (existing[0].active !== "true")
+          await db
+            .update(bphfInspectionEmployees)
+            .set({ active: "true" })
+            .where(eq(bphfInspectionEmployees.id, existing[0].id));
+        return {
+          id: existing[0].id,
+          name: existing[0].name,
+          alreadyExists: true,
+        };
+      }
+      const result = await db
+        .insert(bphfInspectionEmployees)
+        .values({
+          name,
+          active: "true",
+          createdBy:
+            ctx.user?.openId ?? `quality-profile-${ctx.operatorProfile!.id}`,
+        });
+      return { id: Number(result[0].insertId), name, alreadyExists: false };
+    }),
 
-  listBphfCollaboratorInspections: qualitySessionProcedure.input(z.object({
-    collaboratorId: z.number().int().optional(),
-    factoryId: z.number().int().optional(),
-    result: resultSchema.optional(),
-    operationalDate: dateInput.optional(),
-    plannedTaskId: z.number().int().optional(),
-  }).optional()).query(async ({ input }) => {
-    const db = await requireDb();
-    const conditions = [eq(controlEntries.module, "bphf")];
-    if (input?.factoryId) conditions.push(eq(controlEntries.factoryId, input.factoryId));
-    const entries = await db.select().from(controlEntries).where(and(...conditions)).orderBy(desc(controlEntries.completedAt)).limit(150);
-    return entries.flatMap((entry) => {
-      const payload = entry.payload as Record<string, unknown>;
-      const collaboratorId = Number(payload.collaboratorId);
-      const collaboratorName = typeof payload.collaboratorName === "string" ? payload.collaboratorName : "";
-      if (!collaboratorId || !collaboratorName) return [];
-      if (input?.collaboratorId && collaboratorId !== input.collaboratorId) return [];
-      if (input?.result && entry.result !== input.result) return [];
-      if (input?.plannedTaskId && Number(payload.plannedTaskId) !== input.plannedTaskId) return [];
-      if (input?.operationalDate && entryOperationalDate(entry) !== localDateKey(input.operationalDate)) return [];
-      return [{ id: entry.id, collaboratorId, collaboratorName, criterion: typeof payload.criterion === "string" ? payload.criterion : entry.title, area: entry.area, result: entry.result, notes: entry.notes, completedAt: entry.completedAt, factoryId: entry.factoryId }];
-    });
-  }),
+  listBphfCollaboratorInspections: qualitySessionProcedure
+    .input(
+      z
+        .object({
+          collaboratorId: z.number().int().optional(),
+          factoryId: z.number().int().optional(),
+          result: resultSchema.optional(),
+          operationalDate: dateInput.optional(),
+          plannedTaskId: z.number().int().optional(),
+        })
+        .optional()
+    )
+    .query(async ({ input }) => {
+      const db = await requireDb();
+      const conditions = [eq(controlEntries.module, "bphf")];
+      if (input?.factoryId)
+        conditions.push(eq(controlEntries.factoryId, input.factoryId));
+      const entries = await db
+        .select()
+        .from(controlEntries)
+        .where(and(...conditions))
+        .orderBy(desc(controlEntries.completedAt))
+        .limit(150);
+      return entries.flatMap(entry => {
+        const payload = entry.payload as Record<string, unknown>;
+        const collaboratorId = Number(payload.collaboratorId);
+        const collaboratorName =
+          typeof payload.collaboratorName === "string"
+            ? payload.collaboratorName
+            : "";
+        if (!collaboratorId || !collaboratorName) return [];
+        if (input?.collaboratorId && collaboratorId !== input.collaboratorId)
+          return [];
+        if (input?.result && entry.result !== input.result) return [];
+        if (
+          input?.plannedTaskId &&
+          Number(payload.plannedTaskId) !== input.plannedTaskId
+        )
+          return [];
+        if (
+          input?.operationalDate &&
+          entryOperationalDate(entry) !== localDateKey(input.operationalDate)
+        )
+          return [];
+        return [
+          {
+            id: entry.id,
+            collaboratorId,
+            collaboratorName,
+            criterion:
+              typeof payload.criterion === "string"
+                ? payload.criterion
+                : entry.title,
+            area: entry.area,
+            result: entry.result,
+            notes: entry.notes,
+            completedAt: entry.completedAt,
+            factoryId: entry.factoryId,
+          },
+        ];
+      });
+    }),
 
-  controlAuthorization: qualitySessionProcedure.input(z.object({
-    module: qualityModuleSchema,
-    factoryId: z.number().int().optional(),
-    plannedTaskId: z.number().int().optional(),
-    plannedDate: z.date().optional(),
-  })).query(async ({ ctx, input }) => {
-    const db = await requireDb();
-    const access = await assessControlAuthorization(db, { module: input.module, factoryId: input.factoryId ?? null, plannedTaskId: input.plannedTaskId, plannedDate: input.plannedDate, profile: ctx.operatorProfile! });
-    return {
-      allowed: access.allowed,
-      reason: access.reason,
-      taskId: access.task?.id ?? null,
-      assignedTo: access.task?.responsible ?? null,
-      dueAt: access.task?.dueAt ?? null,
-      isPreviousPending: access.isPreviousPending ?? false,
-      isFuturePlanned: access.isFuturePlanned ?? false,
-    };
-  }),
+  controlAuthorization: qualitySessionProcedure
+    .input(
+      z.object({
+        module: qualityModuleSchema,
+        factoryId: z.number().int().optional(),
+        plannedTaskId: z.number().int().optional(),
+        plannedDate: z.date().optional(),
+      })
+    )
+    .query(async ({ ctx, input }) => {
+      const db = await requireDb();
+      const access = await assessControlAuthorization(db, {
+        module: input.module,
+        factoryId: input.factoryId ?? null,
+        plannedTaskId: input.plannedTaskId,
+        plannedDate: input.plannedDate,
+        profile: ctx.operatorProfile!,
+      });
+      return {
+        allowed: access.allowed,
+        reason: access.reason,
+        taskId: access.task?.id ?? null,
+        assignedTo: access.task?.responsible ?? null,
+        dueAt: access.task?.dueAt ?? null,
+        isPreviousPending: access.isPreviousPending ?? false,
+        isFuturePlanned: access.isFuturePlanned ?? false,
+      };
+    }),
 
-  pendingControlTasks: qualitySessionProcedure.input(z.object({
-    module: qualityModuleSchema,
-    factoryId: z.number().int().nullable().optional(),
-  })).query(async ({ ctx, input }) => {
-    const db = await requireDb();
-    const isShared = sharedPlanModules.has(input.module);
-    if (!isShared && input.factoryId === undefined) return [];
-    const today = localDateKey(new Date());
-    const [tasks, entries, areaCatalog, monthlyItems, monthlyAssignments, factoryCatalog] = await Promise.all([
-      db.select().from(controlTasks).orderBy(controlTasks.dueAt),
-      db.select().from(controlEntries).orderBy(desc(controlEntries.completedAt)),
-      db.select().from(areas).orderBy(areas.name),
-      db.select().from(checklistItems).orderBy(checklistItems.sortOrder),
-      db.select().from(checklistItemFactories).orderBy(checklistItemFactories.factoryId),
-      db.select().from(factories).orderBy(factories.name),
-    ]);
-    return tasks.filter((task) => {
-      const assignedProfiles = Array.isArray(task.assigneeProfileIds) ? task.assigneeProfileIds : [];
-      const taskDate = localDateKey(new Date(task.dueAt));
-      const inScope = isShared ? task.factoryId === null : task.factoryId === input.factoryId;
-      return task.area === "Plano do Dia"
-        && task.module === input.module
-        && inScope
-        && taskDate < today
-        && isBusinessDay(new Date(task.dueAt))
-        && task.status === "pending"
-        && !isHistoricalPlanTaskSatisfied(task, entries, areaCatalog, monthlyItems, monthlyAssignments, factoryCatalog)
-        && (ctx.operatorProfile!.role === "manager" || assignedProfiles.includes(ctx.operatorProfile!.id));
-    }).map((task) => ({ id: task.id, dueAt: task.dueAt, responsible: task.responsible, factoryId: task.factoryId })).sort((left, right) => new Date(left.dueAt).getTime() - new Date(right.dueAt).getTime());
-  }),
+  pendingControlTasks: qualitySessionProcedure
+    .input(
+      z.object({
+        module: qualityModuleSchema,
+        factoryId: z.number().int().nullable().optional(),
+      })
+    )
+    .query(async ({ ctx, input }) => {
+      const db = await requireDb();
+      const isShared = sharedPlanModules.has(input.module);
+      if (!isShared && input.factoryId === undefined) return [];
+      const today = localDateKey(new Date());
+      const [
+        tasks,
+        entries,
+        areaCatalog,
+        monthlyItems,
+        monthlyAssignments,
+        factoryCatalog,
+      ] = await Promise.all([
+        db.select().from(controlTasks).orderBy(controlTasks.dueAt),
+        db
+          .select()
+          .from(controlEntries)
+          .orderBy(desc(controlEntries.completedAt)),
+        db.select().from(areas).orderBy(areas.name),
+        db.select().from(checklistItems).orderBy(checklistItems.sortOrder),
+        db
+          .select()
+          .from(checklistItemFactories)
+          .orderBy(checklistItemFactories.factoryId),
+        db.select().from(factories).orderBy(factories.name),
+      ]);
+      return tasks
+        .filter(task => {
+          const assignedProfiles = Array.isArray(task.assigneeProfileIds)
+            ? task.assigneeProfileIds
+            : [];
+          const taskDate = localDateKey(new Date(task.dueAt));
+          const inScope = isShared
+            ? task.factoryId === null
+            : task.factoryId === input.factoryId;
+          return (
+            task.area === "Plano do Dia" &&
+            task.module === input.module &&
+            inScope &&
+            taskDate < today &&
+            isBusinessDay(new Date(task.dueAt)) &&
+            task.status === "pending" &&
+            !isHistoricalPlanTaskSatisfied(
+              task,
+              entries,
+              areaCatalog,
+              monthlyItems,
+              monthlyAssignments,
+              factoryCatalog
+            ) &&
+            (ctx.operatorProfile!.role === "manager" ||
+              assignedProfiles.includes(ctx.operatorProfile!.id))
+          );
+        })
+        .map(task => ({
+          id: task.id,
+          dueAt: task.dueAt,
+          responsible: task.responsible,
+          factoryId: task.factoryId,
+        }))
+        .sort(
+          (left, right) =>
+            new Date(left.dueAt).getTime() - new Date(right.dueAt).getTime()
+        );
+    }),
 
   listFactories: qualitySessionProcedure.query(async () => {
     const db = await requireDb();
     return db.select().from(factories).orderBy(factories.name);
   }),
 
-  addArea: qualityManagerProcedure.input(z.object({
-    name: z.string().min(2).max(120),
-    group: z.enum(["bphf", "metal", "general"]),
-    factoryId: z.number().int().optional(),
-  })).mutation(async ({ ctx, input }) => {
-    const db = await requireDb();
-    await db.insert(areas).values({ ...input, factoryId: input.factoryId ?? null, active: "true", createdBy: ctx.user!.openId });
-    return { success: true };
-  }),
+  addArea: qualityManagerProcedure
+    .input(
+      z.object({
+        name: z.string().min(2).max(120),
+        group: z.enum(["bphf", "metal", "general"]),
+        factoryId: z.number().int().optional(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const db = await requireDb();
+      await db
+        .insert(areas)
+        .values({
+          ...input,
+          factoryId: input.factoryId ?? null,
+          active: "true",
+          createdBy: ctx.user!.openId,
+        });
+      return { success: true };
+    }),
 
   listPlans: qualitySessionProcedure.query(async () => {
     const db = await requireDb();
-    return db.select().from(controlPlans).orderBy(controlPlans.module, controlPlans.title);
+    return db
+      .select()
+      .from(controlPlans)
+      .orderBy(controlPlans.module, controlPlans.title);
   }),
 
-  addPlan: qualityManagerProcedure.input(z.object({
-    title: z.string().min(2).max(180),
-    module: qualityModuleSchema,
-    areaId: z.number().int(),
-    factoryId: z.number().int().optional(),
-    frequency: z.enum(["daily", "weekly", "monthly", "per_shift", "per_lot"]),
-    critical: z.boolean().default(false),
-  })).mutation(async ({ ctx, input }) => {
-    const db = await requireDb();
-    await db.insert(controlPlans).values({ ...input, factoryId: input.factoryId ?? null, critical: input.critical ? "true" : "false", active: "true", createdBy: ctx.user!.openId });
-    return { success: true };
-  }),
+  addPlan: qualityManagerProcedure
+    .input(
+      z.object({
+        title: z.string().min(2).max(180),
+        module: qualityModuleSchema,
+        areaId: z.number().int(),
+        factoryId: z.number().int().optional(),
+        frequency: z.enum([
+          "daily",
+          "weekly",
+          "monthly",
+          "per_shift",
+          "per_lot",
+        ]),
+        critical: z.boolean().default(false),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const db = await requireDb();
+      await db
+        .insert(controlPlans)
+        .values({
+          ...input,
+          factoryId: input.factoryId ?? null,
+          critical: input.critical ? "true" : "false",
+          active: "true",
+          createdBy: ctx.user!.openId,
+        });
+      return { success: true };
+    }),
 
   initializeMasterData: qualityManagerProcedure.mutation(async ({ ctx }) => {
     const db = await requireDb();
-    const [existingAreas, existingFactories] = await Promise.all([db.select().from(areas).limit(1), db.select().from(factories).limit(1)]);
+    const [existingAreas, existingFactories] = await Promise.all([
+      db.select().from(areas).limit(1),
+      db.select().from(factories).limit(1),
+    ]);
     const defaultAreas = [
-      { name: "Embalagem T", group: "bphf" as const }, { name: "Produção T", group: "bphf" as const }, { name: "Embalagem SG", group: "bphf" as const }, { name: "Produção SG", group: "bphf" as const },
-      { name: "SG", group: "metal" as const }, { name: "Tradicional 1", group: "metal" as const }, { name: "Tradicional 2", group: "metal" as const }, { name: "Granel", group: "metal" as const }, { name: "Fábrica II", group: "metal" as const },
+      { name: "Embalagem T", group: "bphf" as const },
+      { name: "Produção T", group: "bphf" as const },
+      { name: "Embalagem SG", group: "bphf" as const },
+      { name: "Produção SG", group: "bphf" as const },
+      { name: "SG", group: "metal" as const },
+      { name: "Tradicional 1", group: "metal" as const },
+      { name: "Tradicional 2", group: "metal" as const },
+      { name: "Granel", group: "metal" as const },
+      { name: "Fábrica II", group: "metal" as const },
     ];
     const defaultFactories = [
       { code: "F1_FATIADO", name: "Fábrica 1 (Fatiado)" },
@@ -523,1096 +1181,3028 @@ export const qualityRouter = router({
       { code: "LINHA_CROUTONS", name: "Linha Croutons" },
     ];
     let created = 0;
-    if (!existingAreas.length) { await db.insert(areas).values(defaultAreas.map((area) => ({ ...area, factoryId: null, active: "true" as const, createdBy: ctx.user!.openId }))); created += defaultAreas.length; }
-    if (!existingFactories.length) { await db.insert(factories).values(defaultFactories.map((factory) => ({ ...factory, active: "true" as const, createdBy: ctx.user!.openId }))); created += defaultFactories.length; }
+    if (!existingAreas.length) {
+      await db
+        .insert(areas)
+        .values(
+          defaultAreas.map(area => ({
+            ...area,
+            factoryId: null,
+            active: "true" as const,
+            createdBy: ctx.user!.openId,
+          }))
+        );
+      created += defaultAreas.length;
+    }
+    if (!existingFactories.length) {
+      await db
+        .insert(factories)
+        .values(
+          defaultFactories.map(factory => ({
+            ...factory,
+            active: "true" as const,
+            createdBy: ctx.user!.openId,
+          }))
+        );
+      created += defaultFactories.length;
+    }
     const currentFactories = await db.select().from(factories);
-    const existingBphfAreas = await db.select().from(areas).where(eq(areas.group, "bphf"));
-    const existingMetalAreas = await db.select().from(areas).where(eq(areas.group, "metal"));
-    const bphfAreasToCreate = currentFactories.flatMap((factory) => BPHF_AREA_NAMES
-      .filter((name) => !existingBphfAreas.some((area) => area.factoryId === factory.id && area.name === name))
-      .map((name) => ({ name, group: "bphf" as const, factoryId: factory.id, active: "true" as const, createdBy: ctx.user!.openId })));
-    if (bphfAreasToCreate.length) { await db.insert(areas).values(bphfAreasToCreate); created += bphfAreasToCreate.length; }
+    const existingBphfAreas = await db
+      .select()
+      .from(areas)
+      .where(eq(areas.group, "bphf"));
+    const existingMetalAreas = await db
+      .select()
+      .from(areas)
+      .where(eq(areas.group, "metal"));
+    const bphfAreasToCreate = currentFactories.flatMap(factory =>
+      BPHF_AREA_NAMES.filter(
+        name =>
+          !existingBphfAreas.some(
+            area => area.factoryId === factory.id && area.name === name
+          )
+      ).map(name => ({
+        name,
+        group: "bphf" as const,
+        factoryId: factory.id,
+        active: "true" as const,
+        createdBy: ctx.user!.openId,
+      }))
+    );
+    if (bphfAreasToCreate.length) {
+      await db.insert(areas).values(bphfAreasToCreate);
+      created += bphfAreasToCreate.length;
+    }
     const metalLinesByFactory: Record<string, string[]> = {
       F1_FATIADO: ["Linha 1", "Linha 2", "Linha Croutons"],
       F2_GRANEL: ["Linha principal"],
       F3_SEM_GLUTEN: ["Linha principal SG"],
     };
-    const metalAreasToCreate = currentFactories.flatMap((factory) => (metalLinesByFactory[factory.code] ?? [])
-      .filter((name) => !existingMetalAreas.some((area) => area.factoryId === factory.id && area.name === name))
-      .map((name) => ({ name, group: "metal" as const, factoryId: factory.id, active: "true" as const, createdBy: ctx.user!.openId })));
-    if (metalAreasToCreate.length) { await db.insert(areas).values(metalAreasToCreate); created += metalAreasToCreate.length; }
+    const metalAreasToCreate = currentFactories.flatMap(factory =>
+      (metalLinesByFactory[factory.code] ?? [])
+        .filter(
+          name =>
+            !existingMetalAreas.some(
+              area => area.factoryId === factory.id && area.name === name
+            )
+        )
+        .map(name => ({
+          name,
+          group: "metal" as const,
+          factoryId: factory.id,
+          active: "true" as const,
+          createdBy: ctx.user!.openId,
+        }))
+    );
+    if (metalAreasToCreate.length) {
+      await db.insert(areas).values(metalAreasToCreate);
+      created += metalAreasToCreate.length;
+    }
     return { success: true, created };
   }),
 
-  dashboard: qualitySessionProcedure.input(z.object({ factoryId: z.number().int().optional(), date: dateInput.optional() }).optional()).query(async ({ input }) => {
-    const db = await requireDb();
-    const [tasks, ncs, entries, actions, fragileCatalog, factoryCatalog, areaCatalog, monthlyItems, monthlyAssignments] = await Promise.all([
-      db.select().from(controlTasks).orderBy(controlTasks.dueAt),
-      db.select().from(nonconformities).orderBy(desc(nonconformities.detectedAt)),
-      db.select().from(controlEntries).orderBy(desc(controlEntries.completedAt)),
-      db.select().from(correctiveActions).orderBy(correctiveActions.dueAt),
-      db.select().from(fragileItems).orderBy(fragileItems.location, fragileItems.sortOrder, fragileItems.name),
-      db.select().from(factories).orderBy(factories.name),
-      db.select().from(areas).orderBy(areas.name),
-      db.select().from(checklistItems).orderBy(checklistItems.sortOrder),
-      db.select().from(checklistItemFactories).orderBy(checklistItemFactories.factoryId),
-    ]);
-    const scopedTasks = scopeToFactory(tasks, input?.factoryId);
-    const scopedNcs = scopeToFactory(ncs, input?.factoryId);
-    const scopedEntries = scopeToFactory(entries, input?.factoryId);
-    const scopedActions = scopeToFactory(actions, input?.factoryId);
-    const scopedFragileCatalog = scopeToFactory(fragileCatalog, input?.factoryId);
-    const now = new Date();
-    const operationalDate = input?.date ? new Date(input.date.getFullYear(), input.date.getMonth(), input.date.getDate()) : nextBusinessDay(now);
-    const { start, end } = asDateRange(operationalDate);
-    const tomorrowDate = businessDayAfter(operationalDate);
-    const { start: tomorrowStart, end: tomorrowEnd } = asDateRange(tomorrowDate);
-    const workingWeekStart = startOfWorkingWeek(operationalDate);
-    const workingWeekEnd = new Date(workingWeekStart);
-    workingWeekEnd.setDate(workingWeekEnd.getDate() + 5);
-    const businessTasks = scopedTasks.filter((task) => isBusinessDay(task.dueAt) && task.status !== "cancelled");
-    const pending = businessTasks.filter((task) => task.status === "pending");
-    const overdue = pending.filter((task) => task.dueAt < start);
-    const completedToday = scopedEntries.filter((entry) => entryOperationalDate(entry) === localDateKey(operationalDate));
-    const todayTasks = businessTasks.filter((task) => task.dueAt >= start && task.dueAt < end);
-    const plannedControls = todayTasks.filter((task) => task.area === "Plano do Dia");
-    const adHocTasks = businessTasks.filter((task) => task.area !== "Plano do Dia");
-    const hasScheduleForSelectedDate = todayTasks.length > 0;
-    const visibleAdHocTasks = hasScheduleForSelectedDate ? adHocTasks.filter((task) => task.dueAt >= start && task.dueAt < end) : [];
-    const visiblePending = hasScheduleForSelectedDate ? pending : [];
-    const visibleOverdue = hasScheduleForSelectedDate ? overdue : [];
-    const completedTasksToday = todayTasks.filter((task) => task.area !== "Plano do Dia" && task.status === "completed");
-    const monthlyChecklistPlannedThisMonth = businessTasks.some((task) => task.module === "monthly_checklist" && task.dueAt.getFullYear() === operationalDate.getFullYear() && task.dueAt.getMonth() === operationalDate.getMonth());
-    const monthlyChecklistReminder = !input?.factoryId && operationalDate.getDate() >= 20 && !monthlyChecklistPlannedThisMonth;
-    const foodDefensePlannedThisYear = businessTasks.some((task) => task.module === "food_defense" && task.dueAt.getFullYear() === operationalDate.getFullYear());
-    const foodDefenseReminder = !input?.factoryId && !foodDefensePlannedThisYear;
-    const payloadFor = (entry: typeof entries[number]) => entryPayload(entry);
-    const lastFragileInspections = new Map<number, Date>();
-    const lastFragileInspectionsBeforeDay = new Map<number, Date>();
-    scopedEntries.filter((entry) => entry.module === "fragile_items").forEach((entry) => {
-      const payload = entry.payload;
-      const fragileItemId = payload && typeof payload === "object" && !Array.isArray(payload) ? (payload as { fragileItemId?: unknown }).fragileItemId : null;
-      if (typeof fragileItemId === "number") {
-        if (!lastFragileInspections.has(fragileItemId)) lastFragileInspections.set(fragileItemId, entry.completedAt);
-        if (entry.completedAt < start && !lastFragileInspectionsBeforeDay.has(fragileItemId)) lastFragileInspectionsBeforeDay.set(fragileItemId, entry.completedAt);
-      }
-    });
-    const isPlannedControlCompleted = (task: typeof plannedControls[number]) => {
-      const taskEntries = completedToday.filter((entry) => entryMatchesPlannedTask(entry, task));
-      if (task.module === "bphf") return bphfTaskComplete(task, taskEntries, areaCatalog);
-      if (task.module === "metal_detectors") return metalDetectorsTaskComplete(task, taskEntries, areaCatalog);
-      if (task.module === "suggestion_boxes") return suggestionBoxesTaskComplete(task, taskEntries, factoryCatalog);
-      if (task.module === "monthly_checklist") return monthlyChecklistTaskComplete(task, taskEntries, monthlyItems, monthlyAssignments);
-      if (task.module === "food_defense") return foodDefenseTaskComplete(taskEntries);
-      return task.status === "completed" || taskEntries.length > 0;
-    };
-    const completedPlannedControls = plannedControls.filter(isPlannedControlCompleted);
-    const dailyExpectedCount = todayTasks.length;
-    const dailyCompletedCount = completedTasksToday.length + completedPlannedControls.length;
-    const effectiveDailyExpectedCount = dailyExpectedCount;
-    const visibleFactories = input?.factoryId ? factoryCatalog.filter((factory) => factory.id === input.factoryId) : factoryCatalog;
-    const moduleProgressByFactory = Object.fromEntries(qualityModuleValues.map((module) => [module, visibleFactories.map((factory) => {
-      const factoryControls = plannedControls.filter((task) => task.module === module && task.factoryId === factory.id);
-      const isAnnualFoodDefense = module === "food_defense";
-      if (!isAnnualFoodDefense && !factoryControls.length) return { factoryId: factory.id, expected: 0, completed: 0, registeredToday: 0, percentage: 0 };
-      const pendingControl = factoryControls.find((task) => !isPlannedControlCompleted(task));
-      const factoryEntriesToday = module === "food_defense"
-        ? scopedEntries.filter((entry) => entry.module === module && entry.factoryId === factory.id && entry.completedAt.getFullYear() === operationalDate.getFullYear())
-        : completedToday.filter((entry) => entry.module === module && entry.factoryId === factory.id);
-      let expected = isAnnualFoodDefense ? 1 : factoryControls.length;
-      let completed = isAnnualFoodDefense ? 0 : factoryControls.filter(isPlannedControlCompleted).length;
-      if (module === "fragile_items") {
-        const applicablePoints = fragileCatalog.filter((item) => item.factoryId === factory.id && item.status === "active" && isFragileInspectionPending(item.periodicity, lastFragileInspectionsBeforeDay.get(item.id), operationalDate));
-        expected = applicablePoints.length;
-        const completedPointIds = new Set(factoryEntriesToday.map((entry) => payloadFor(entry).fragileItemId).filter((id): id is number => typeof id === "number"));
-        completed = applicablePoints.filter((item) => completedPointIds.has(item.id)).length;
-      } else if (module === "bphf") {
-        const expectedAreas = expectedBphfAreas({ factoryId: factory.id }, areaCatalog);
-        expected = expectedAreas.length * BPHF_CRITERIA.length;
-        const completedSlots = new Set(factoryEntriesToday.map((entry) => `${entry.area}::${entry.title}`));
-        completed = expectedAreas.reduce((total, area) => total + BPHF_CRITERIA.filter((criterion) => completedSlots.has(`${area}::${criterion}`)).length, 0);
-      } else if (module === "suggestion_boxes") {
-        const expectedLocations = suggestionLocationsForFactory(factory.code);
-        expected = expectedLocations.length;
-        const completedLocations = new Set(factoryEntriesToday.map((entry) => entry.area));
-        completed = expectedLocations.filter((location) => completedLocations.has(location)).length;
-      } else if (module === "metal_detectors") {
-        const expectedLines = areaCatalog.filter((area) => area.group === "metal" && area.factoryId === factory.id && area.active === "true").map((area) => area.name);
-        expected = expectedLines.length;
-        const completedLines = new Set(factoryEntriesToday.map((entry) => entry.area));
-        completed = expectedLines.filter((line) => completedLines.has(line)).length;
-      } else if (module === "monthly_checklist") {
-        const activeItems = monthlyItems.filter((item) => item.active === "true" && (monthlyAssignments.some((assignment) => assignment.checklistItemId === item.id) ? monthlyAssignments.some((assignment) => assignment.checklistItemId === item.id && assignment.factoryId === factory.id) : true));
-        expected = activeItems.length;
-        const currentMonthStart = new Date(operationalDate.getFullYear(), operationalDate.getMonth(), 1);
-        const currentMonthEnd = new Date(operationalDate.getFullYear(), operationalDate.getMonth() + 1, 1);
-        const completedItemIds = new Set(scopedEntries.filter((entry) => entry.module === "monthly_checklist" && entry.factoryId === factory.id && entry.completedAt >= currentMonthStart && entry.completedAt < currentMonthEnd).map((entry) => payloadFor(entry).checklistItemId).filter((id): id is number => typeof id === "number"));
-        completed = activeItems.filter((item) => completedItemIds.has(item.id)).length;
-      } else if (module === "temperature_controls") {
-        expected = factory.id === 1 ? 2 : factory.id === 2 ? 1 : 0;
-        const completedEquipmentIds = new Set(factoryEntriesToday.flatMap((entry) => Array.isArray(payloadFor(entry).equipment) ? payloadFor(entry).equipment : []).map((item) => item && typeof item === "object" ? (item as Record<string, unknown>).id : null).filter((id): id is string => typeof id === "string"));
-        completed = completedEquipmentIds.size;
-      } else if (module === "food_defense") {
-        expected = FOOD_DEFENSE_EXPECTED_CRITERIA;
-        const latestAssessment = factoryEntriesToday[0];
-        const criteria: unknown[] = latestAssessment && Array.isArray(payloadFor(latestAssessment).criteria) ? payloadFor(latestAssessment).criteria as unknown[] : [];
-        completed = criteria.length;
-      }
-      completed = Math.min(completed, expected);
-      return { factoryId: factory.id, expected, completed, registeredToday: expected ? completed : 0, percentage: expected ? Number((completed / expected * 100).toFixed(1)) : 0, ...(pendingControl && completed < expected ? { pendingTaskId: pendingControl.id } : {}) };
-    })]));
-    const moduleProgress = Object.fromEntries(qualityModuleValues.map((module) => {
-      const factoryProgress = moduleProgressByFactory[module] ?? [];
-      const moduleControls = plannedControls.filter((task) => task.module === module);
-      const isSharedModule = sharedPlanModules.has(module);
-      const expected = isSharedModule ? moduleControls.length : factoryProgress.reduce((sum, item) => sum + item.expected, 0);
-      const completed = isSharedModule ? moduleControls.filter(isPlannedControlCompleted).length : factoryProgress.reduce((sum, item) => sum + item.completed, 0);
-      const pendingTaskTitles = moduleControls.filter((task) => !isPlannedControlCompleted(task)).map((task) => task.title);
-      const completionTimes = completedToday.filter((entry) => entry.module === module && moduleControls.some((task) => task.factoryId === null || task.factoryId === entry.factoryId)).map((entry) => entry.completedAt);
-      const lastCompletedAt = completionTimes.reduce<Date | undefined>((latest, date) => !latest || date > latest ? date : latest, undefined);
-      return [module, { expected, completed, registeredToday: expected ? completed : 0, pending: Array.from(new Set(pendingTaskTitles)), percentage: expected ? Number((completed / expected * 100).toFixed(1)) : 0, lastCompletedAt }];
-    }));
-    const critical = scopedNcs.filter((nc) => nc.status !== "closed" && nc.severity === "critical");
-    const openActions = scopedActions.filter((action) => action.status !== "verified");
-    const fragilePending = plannedControls.some((task) => task.module === "fragile_items") ? scopedFragileCatalog.filter((item) => item.status === "active" && isFragileInspectionPending(item.periodicity, lastFragileInspections.get(item.id), now)) : [];
-
-    return {
-      tasks: visibleAdHocTasks.slice(0, 20),
-      plannedControls: plannedControls.map((task) => ({ ...task, completed: isPlannedControlCompleted(task) })),
-      operationalDate,
-      taskGroups: {
-        today: visibleAdHocTasks,
-        tomorrow: hasScheduleForSelectedDate ? adHocTasks.filter((task) => task.dueAt >= tomorrowStart && task.dueAt < tomorrowEnd) : [],
-        thisWeek: hasScheduleForSelectedDate ? adHocTasks.filter((task) => task.dueAt >= workingWeekStart && task.dueAt < workingWeekEnd && !(task.dueAt >= start && task.dueAt < tomorrowEnd)) : [],
-      },
-      criticalNcs: critical.slice(0, 6),
-      dueActions: openActions.filter((action) => action.dueAt && action.dueAt < now).slice(0, 6),
-      metrics: {
-        pending: visiblePending.length,
-        overdue: visibleOverdue.length,
-        criticalOpen: critical.length,
-        completedToday: completedToday.length,
-        fragilePending: fragilePending.length,
-        dailyExecutionRate: effectiveDailyExpectedCount ? Number((dailyCompletedCount / effectiveDailyExpectedCount * 100).toFixed(1)) : 0,
-      },
-      moduleProgress,
-      moduleProgressByFactory,
-      monthlyChecklistReminder,
-      foodDefenseReminder,
-    };
-  }),
-
-  controlObservations: qualitySessionProcedure.input(z.object({ module: qualityModuleSchema, factoryId: z.number().int() })).query(async ({ input }) => {
-    const db = await requireDb();
-    const operationalDate = nextBusinessDay(new Date());
-    const { start, end } = asDateRange(operationalDate);
-    const entries = await db.select().from(controlEntries).orderBy(desc(controlEntries.completedAt));
-    return {
-      operationalDate,
-      entries: entries.filter((entry) => entry.module === input.module && entry.factoryId === input.factoryId && entry.completedAt >= start && entry.completedAt < end).map((entry) => ({ id: entry.id, title: entry.title, area: entry.area, result: entry.result, notes: entry.notes, payload: entry.payload, completedAt: entry.completedAt, registeredByName: entry.registeredByName, registeredByTitle: entry.registeredByTitle })),
-    };
-  }),
-
-  dailyControlResults: qualitySessionProcedure.input(z.object({
-    module: qualityModuleSchema,
-    operationalDate: z.coerce.date(),
-    factoryId: z.number().int().nullable().optional(),
-  })).query(async ({ input }) => {
-    const db = await requireDb();
-    const { start, end } = asDateRange(input.operationalDate);
-    const entries = await db.select().from(controlEntries).orderBy(desc(controlEntries.completedAt));
-    const asPayload = (entry: typeof entries[number]) => entry.payload && typeof entry.payload === "object" && !Array.isArray(entry.payload) ? entry.payload as Record<string, unknown> : {};
-    return {
-      operationalDate: input.operationalDate,
-      entries: entries.filter((entry) => {
-        const payload = asPayload(entry);
-        const lifecycle = payload.recordLifecycle && typeof payload.recordLifecycle === "object" && !Array.isArray(payload.recordLifecycle) ? payload.recordLifecycle as Record<string, unknown> : {};
-        const plannedDate = typeof payload.plannedDate === "string" ? new Date(payload.plannedDate) : entry.completedAt;
-        return entry.module === input.module
-          && (input.factoryId === undefined || entry.factoryId === input.factoryId)
-          && lifecycle.status !== "deleted"
-          && plannedDate >= start
-          && plannedDate < end;
-      }).map((entry) => ({
-        id: entry.id,
-        title: entry.title,
-        area: entry.area,
-        factoryId: entry.factoryId,
-        result: entry.result,
-        notes: entry.notes,
-        payload: asPayload(entry),
-        completedAt: entry.completedAt,
-        registeredByProfileId: entry.registeredByProfileId,
-        registeredByName: entry.registeredByName,
-        registeredByTitle: entry.registeredByTitle,
-      })),
-    };
-  }),
-
-  temperatureHistory: qualitySessionProcedure.input(z.object({
-    startDate: dateInput.optional(),
-    endDate: dateInput.optional(),
-    equipmentId: z.string().trim().min(1).max(100).optional(),
-  }).optional()).query(async ({ input }) => {
-    const db = await requireDb();
-    const entries = await db.select().from(controlEntries).orderBy(desc(controlEntries.completedAt));
-    const start = input?.startDate ? asDateRange(input.startDate).start : null;
-    const end = input?.endDate ? asDateRange(input.endDate).end : null;
-    return entries.filter((entry) => {
-      const payload = typeof entry.payload === "string" ? (() => { try { return JSON.parse(entry.payload) as Record<string, unknown>; } catch { return {}; } })() : (entry.payload && typeof entry.payload === "object" ? entry.payload as Record<string, unknown> : {});
-      if (entry.module !== "temperature_controls" || payload.deletedAt) return false;
-      if (start && entry.completedAt < start) return false;
-      if (end && entry.completedAt > end) return false;
-      return true;
-    }).flatMap((entry) => {
-      const payload = typeof entry.payload === "string" ? (() => { try { return JSON.parse(entry.payload) as Record<string, unknown>; } catch { return {}; } })() : (entry.payload && typeof entry.payload === "object" ? entry.payload as Record<string, unknown> : {});
-      const equipment = Array.isArray(payload.equipment) ? payload.equipment : [];
-      return equipment.flatMap((item: unknown) => {
-        const value = item && typeof item === "object" ? item as Record<string, unknown> : {};
-        const equipmentId = typeof value.id === "string" ? value.id : "";
-        if (!equipmentId || (input?.equipmentId && equipmentId !== input.equipmentId)) return [];
-        return [{
-          entryId: entry.id,
-          equipmentId,
-          name: typeof value.name === "string" ? value.name : "Equipamento",
-          area: typeof value.area === "string" ? value.area : entry.area,
-          limit: typeof value.limit === "number" ? value.limit : null,
-          temperature: typeof value.temperature === "number" ? value.temperature : null,
-          result: typeof value.result === "string" ? value.result : entry.result,
-          notes: typeof value.notes === "string" ? value.notes : null,
-          completedAt: entry.completedAt,
-          factoryId: entry.factoryId,
-          registeredByName: entry.registeredByName,
-          registeredByTitle: entry.registeredByTitle,
-        }];
-      });
-    });
-  }),
-
-  listTasks: qualitySessionProcedure.input(z.object({ factoryId: z.number().int().optional() }).optional()).query(async ({ ctx, input }) => {
-    const db = await requireDb();
-    const [tasks, entries, areaCatalog, monthlyItems, monthlyAssignments, factoryCatalog] = await Promise.all([
-      db.select().from(controlTasks).orderBy(controlTasks.dueAt),
-      db.select().from(controlEntries).orderBy(desc(controlEntries.completedAt)),
-      db.select().from(areas).orderBy(areas.name),
-      db.select().from(checklistItems).orderBy(checklistItems.sortOrder),
-      db.select().from(checklistItemFactories).orderBy(checklistItemFactories.factoryId),
-      db.select().from(factories).orderBy(factories.name),
-    ]);
-    const profile = ctx.operatorProfile!;
-    return scopeToFactory(tasks, input?.factoryId).filter((task) => {
-      const assignees = Array.isArray(task.assigneeProfileIds) ? task.assigneeProfileIds : [];
-      const completedFromPreviousRegistration = task.status === "pending" && task.area === "Plano do Dia" && isHistoricalPlanTaskSatisfied(task, entries, areaCatalog, monthlyItems, monthlyAssignments, factoryCatalog);
-      return isBusinessDay(task.dueAt) && task.status !== "cancelled" && !completedFromPreviousRegistration && (profile.role === "manager" || assignees.includes(profile.id));
-    }).map((task) => {
-      const report = entries.find((entry) => entry.payload?.taskId === task.id);
-      const storedPhotos = report?.payload && typeof report.payload.executionReport === "object" && report.payload.executionReport && !Array.isArray(report.payload.executionReport) ? (report.payload.executionReport as { evidencePhotos?: unknown }).evidencePhotos : [];
-      const evidencePhotos = Array.isArray(storedPhotos) ? storedPhotos.filter((photo): photo is { url: string; fileName: string; mimeType: string } => Boolean(photo && typeof photo === "object" && typeof (photo as { url?: unknown }).url === "string" && typeof (photo as { fileName?: unknown }).fileName === "string" && typeof (photo as { mimeType?: unknown }).mimeType === "string")) : [];
-      const qualityModule = task.area === "Plano do Dia" ? task.module : null;
-      return report ? { ...task, qualityModule, executionReport: { result: report.result, notes: report.notes, completedAt: report.completedAt, registeredByName: report.registeredByName, registeredByTitle: report.registeredByTitle, evidencePhotos } } : { ...task, qualityModule, executionReport: null };
-    });
-  }),
-
-  createTask: qualityManagerProcedure.input(z.object({
-    title: z.string().min(2).max(180),
-    description: z.string().max(3000).optional(),
-    factoryId: z.number().int().optional(),
-    dueAt: dateInput,
-    assigneeProfileIds: z.array(z.number().int()).min(1).max(10),
-  })).mutation(async ({ ctx, input }) => {
-    if (!isBusinessDay(input.dueAt)) throw new TRPCError({ code: "BAD_REQUEST", message: "As tarefas de controlo só podem ser agendadas em dias úteis, de segunda a sexta-feira." });
-    const db = await requireDb();
-    const selectedProfiles = await db.select().from(qualityPinProfiles).where(inArray(qualityPinProfiles.id, input.assigneeProfileIds)).orderBy(qualityPinProfiles.id);
-    const profiles = selectedProfiles.filter((profile) => input.assigneeProfileIds.includes(profile.id));
-    if (profiles.length !== input.assigneeProfileIds.length || profiles.some((profile) => profile.active !== "true")) throw new TRPCError({ code: "BAD_REQUEST", message: "Selecione utilizadores ativos para a tarefa." });
-    await db.insert(controlTasks).values({ title: input.title, description: input.description?.trim() || null, module: "bphf", area: "Sem área", factoryId: input.factoryId ?? null, dueAt: input.dueAt, responsible: profiles.map((profile) => profile.name).join(", "), assigneeProfileIds: input.assigneeProfileIds, createdBy: ctx.user!.openId });
-    return { success: true };
-  }),
-
-  publishDailyPlan: qualityManagerProcedure.input(z.object({
-    date: dateInput.optional(),
-    dates: z.array(dateInput).min(1).max(31).optional(),
-    factoryIds: z.array(z.number().int()).min(1).max(10),
-    assigneeProfileIds: z.array(z.number().int()).min(1).max(10),
-    modules: z.array(qualityModuleSchema).min(1).max(8),
-    priority: z.enum(["normal", "critical"]).default("normal"),
-  }).refine((input) => Boolean(input.date || input.dates?.length), {
-    message: "Selecione pelo menos uma data para o Plano do Dia.",
-  })).mutation(async ({ ctx, input }) => {
-    const selectedDates = Array.from(new Map((input.dates?.length ? input.dates : input.date ? [input.date] : []).map((date) => [localDateKey(date), date])).values());
-    if (selectedDates.some((date) => !isBusinessDay(date))) throw new TRPCError({ code: "BAD_REQUEST", message: "Todos os Planos do Dia têm de ser publicados para dias úteis." });
-    const db = await requireDb();
-    const profiles = await db.select().from(qualityPinProfiles).where(inArray(qualityPinProfiles.id, input.assigneeProfileIds)).orderBy(qualityPinProfiles.id);
-    if (profiles.length !== input.assigneeProfileIds.length || profiles.some((profile) => profile.active !== "true")) throw new TRPCError({ code: "BAD_REQUEST", message: "Selecione responsáveis ativos para o Plano do Dia." });
-    const existing = await db.select().from(controlTasks).where(eq(controlTasks.status, "pending"));
-    const selectedFactories = Array.from(new Set(input.factoryIds));
-    const temperatureFactories = selectedFactories.filter((factoryId) => [1, 2].includes(factoryId));
-    if (input.modules.includes("temperature_controls") && !temperatureFactories.length) throw new TRPCError({ code: "BAD_REQUEST", message: "Selecione a Fábrica 1 ou a Fábrica 2 para publicar os Controlos de Temperatura." });
-    const plannedControls: { module: typeof qualityModuleValues[number]; factoryId: number | null }[] = [];
-    for (const module of Array.from(new Set(input.modules))) {
-      if (sharedPlanModules.has(module)) plannedControls.push({ module, factoryId: null });
-      else (module === "temperature_controls" ? temperatureFactories : selectedFactories).forEach((factoryId) => plannedControls.push({ module, factoryId }));
-    }
-    const plannedDateKeys = new Set(selectedDates.map(localDateKey));
-    const existingPlans = existing.filter((task) => task.area === "Plano do Dia" && plannedDateKeys.has(localDateKey(new Date(task.dueAt))));
-    const controlsByDate = selectedDates.map((date) => {
-      const controls = plannedControls.filter(({ module, factoryId }) => !existingPlans.some((task) => localDateKey(new Date(task.dueAt)) === localDateKey(date) && task.module === module && task.factoryId === factoryId));
-      return { date, controls };
-    });
-    const controlsToCreate = controlsByDate.flatMap(({ date, controls }) => controls.map(({ module, factoryId }) => ({
-      title: `Plano do Dia — ${module.replace(/_/g, " ")}`,
-      description: input.priority === "critical" ? "Controlo prioritário publicado pela Responsável de Qualidade." : "Controlo publicado no Plano do Dia.",
-      module,
-      area: "Plano do Dia",
-      factoryId,
-      dueAt: date,
-      responsible: profiles.map((profile) => profile.name).join(", "),
-      assigneeProfileIds: input.assigneeProfileIds,
-      createdBy: ctx.user!.openId,
-    })));
-    if (controlsToCreate.length) await db.insert(controlTasks).values(controlsToCreate);
-    const dateSummary = controlsByDate.map(({ date, controls }) => ({ date: localDateKey(date), created: controls.length, alreadyPresent: plannedControls.length - controls.length }));
-    return { success: true, created: controlsToCreate.length, alreadyPresent: dateSummary.reduce((total, item) => total + item.alreadyPresent, 0), dates: dateSummary };
-  }),
-
-  updateTask: qualityManagerProcedure.input(z.object({
-    id: z.number().int(),
-    title: z.string().min(2).max(180),
-    description: z.string().max(3000).optional(),
-    factoryId: z.number().int().optional(),
-    dueAt: dateInput,
-    assigneeProfileIds: z.array(z.number().int()).min(1).max(10),
-  })).mutation(async ({ input }) => {
-    if (!isBusinessDay(input.dueAt)) throw new TRPCError({ code: "BAD_REQUEST", message: "As tarefas de controlo só podem ser agendadas em dias úteis, de segunda a sexta-feira." });
-    const db = await requireDb();
-    const task = (await db.select().from(controlTasks).where(eq(controlTasks.id, input.id)).limit(1))[0];
-    if (!task) throw new TRPCError({ code: "NOT_FOUND", message: "Tarefa não encontrada." });
-    if (task.status !== "pending") throw new TRPCError({ code: "BAD_REQUEST", message: "Só é possível editar tarefas ainda pendentes." });
-    const selectedProfiles = await db.select().from(qualityPinProfiles).where(inArray(qualityPinProfiles.id, input.assigneeProfileIds)).orderBy(qualityPinProfiles.id);
-    const profiles = selectedProfiles.filter((profile) => input.assigneeProfileIds.includes(profile.id));
-    if (profiles.length !== input.assigneeProfileIds.length || profiles.some((profile) => profile.active !== "true")) throw new TRPCError({ code: "BAD_REQUEST", message: "Selecione utilizadores ativos para a tarefa." });
-    await db.update(controlTasks).set({ title: input.title.trim(), description: input.description?.trim() || null, factoryId: input.factoryId ?? null, dueAt: input.dueAt, responsible: profiles.map((profile) => profile.name).join(", "), assigneeProfileIds: input.assigneeProfileIds }).where(eq(controlTasks.id, input.id));
-    return { success: true };
-  }),
-
-  deleteTask: qualityManagerProcedure.input(z.object({ id: z.number().int() })).mutation(async ({ input }) => {
-    const db = await requireDb();
-    const task = (await db.select().from(controlTasks).where(eq(controlTasks.id, input.id)).limit(1))[0];
-    if (!task) throw new TRPCError({ code: "NOT_FOUND", message: "Tarefa não encontrada." });
-    if (task.status !== "pending") throw new TRPCError({ code: "BAD_REQUEST", message: "Só é possível eliminar tarefas ainda pendentes." });
-    await db.update(controlTasks).set({ status: "cancelled" }).where(eq(controlTasks.id, input.id));
-    return { success: true };
-  }),
-
-  uploadTaskReportPhoto: qualityOperatorProcedure.input(z.object({
-    taskId: z.number().int(),
-    fileName: z.string().min(1).max(255),
-    mimeType: z.enum(["image/jpeg", "image/png", "image/webp"]),
-    dataUrl: z.string().min(20).max(7_000_000),
-  })).mutation(async ({ ctx, input }) => {
-    const db = await requireDb();
-    const task = (await db.select().from(controlTasks).where(eq(controlTasks.id, input.taskId)).limit(1))[0];
-    if (!task || task.status !== "pending") throw new TRPCError({ code: "NOT_FOUND", message: "Tarefa pendente não encontrada." });
-    const assignees = Array.isArray(task.assigneeProfileIds) ? task.assigneeProfileIds : [];
-    if (ctx.operatorProfile!.role !== "manager" && (!assignees.length || !assignees.includes(ctx.operatorProfile!.id))) throw new TRPCError({ code: "FORBIDDEN", message: "Esta tarefa está atribuída a outro utilizador." });
-    const base64 = input.dataUrl.split(",")[1];
-    if (!base64) throw new TRPCError({ code: "BAD_REQUEST", message: "Imagem inválida." });
-    const safeName = input.fileName.replace(/[^a-zA-Z0-9._-]/g, "_");
-    const { key, url } = await storagePut(`task-reports/${input.taskId}/${ctx.operatorProfile!.id}/${Date.now()}-${safeName}`, Buffer.from(base64, "base64"), input.mimeType);
-    return { key, url, fileName: input.fileName, mimeType: input.mimeType };
-  }),
-
-  uploadInternalAnalysisPhoto: qualityOperatorProcedure.input(z.object({
-    fileName: z.string().min(1).max(255),
-    mimeType: z.enum(["image/jpeg", "image/png", "image/webp"]),
-    dataUrl: z.string().min(20).max(7_000_000),
-  })).mutation(async ({ ctx, input }) => {
-    const db = await requireDb();
-    await requireControlAuthorization(db, { module: "internal_analysis", factoryId: null, profile: ctx.operatorProfile! });
-    const base64 = input.dataUrl.split(",")[1];
-    if (!base64) throw new TRPCError({ code: "BAD_REQUEST", message: "Imagem inválida." });
-    const safeName = input.fileName.replace(/[^a-zA-Z0-9._-]/g, "_");
-    const { key, url } = await storagePut(`internal-analysis/${ctx.operatorProfile!.id}/${Date.now()}-${safeName}`, Buffer.from(base64, "base64"), input.mimeType);
-    return { key, url, fileName: input.fileName, mimeType: input.mimeType };
-  }),
-
-  completeTask: qualityOperatorProcedure.input(z.object({
-    id: z.number().int(),
-    result: resultSchema,
-    notes: z.string().trim().min(3).max(3000),
-    evidencePhotos: z.array(z.object({ url: z.string().startsWith("/manus-storage/task-reports/"), fileName: z.string().min(1).max(255), mimeType: z.enum(["image/jpeg", "image/png", "image/webp"]) })).max(5).optional(),
-  })).mutation(async ({ ctx, input }) => {
-    const db = await requireDb();
-    const task = (await db.select().from(controlTasks).where(eq(controlTasks.id, input.id)).limit(1))[0];
-    const assignees = Array.isArray(task?.assigneeProfileIds) ? task.assigneeProfileIds : [];
-    if (task && ctx.operatorProfile!.role !== "manager" && (!assignees.length || !assignees.includes(ctx.operatorProfile!.id))) throw new TRPCError({ code: "FORBIDDEN", message: "Esta tarefa está atribuída a outro utilizador." });
-    if (!task) throw new TRPCError({ code: "NOT_FOUND", message: "Tarefa não encontrada." });
-    if (task.status !== "pending") throw new TRPCError({ code: "BAD_REQUEST", message: "Esta tarefa já não está pendente." });
-    const completedAt = new Date();
-    await db.update(controlTasks).set({ status: "completed", completedAt, completedByProfileId: ctx.operatorProfile!.id, completedByName: ctx.operatorProfile!.name, completedByTitle: ctx.operatorProfile!.title }).where(eq(controlTasks.id, input.id));
-    await db.insert(controlEntries).values({
-      module: task.module,
-      title: task.title,
-      area: task.area,
-      factoryId: task.factoryId,
-      result: input.result,
-      notes: input.notes,
-      payload: { taskId: task.id, executionReport: { evidencePhotos: input.evidencePhotos ?? [] } },
-      completedAt,
-      registeredByProfileId: ctx.operatorProfile!.id,
-      registeredByName: ctx.operatorProfile!.name,
-      registeredByTitle: ctx.operatorProfile!.title,
-      createdBy: ctx.user!.openId,
-    });
-    return { success: true, critical: shouldCreateCriticalMetalAlert(task.module, input.result), incidence: input.result === "NC" };
-  }),
-
-  updateControlEntry: qualityOperatorProcedure.input(z.object({
-    id: z.number().int(),
-    title: z.string().trim().min(2).max(180),
-    area: z.string().trim().min(1).max(120),
-    factoryId: z.number().int().nullable().optional(),
-    result: resultSchema,
-    notes: z.string().trim().max(3000).optional(),
-    productName: z.string().trim().max(180).optional(),
-    lot: z.string().trim().max(120).optional(),
-    validity: z.string().trim().max(40).optional(),
-  })).mutation(async ({ ctx, input }) => {
-    const db = await requireDb();
-    const entry = (await db.select().from(controlEntries).where(eq(controlEntries.id, input.id)).limit(1))[0];
-    if (!entry) throw new TRPCError({ code: "NOT_FOUND", message: "Registo de controlo não encontrado." });
-    const isManager = ctx.operatorProfile!.role === "manager";
-    const isAuthor = entry.registeredByProfileId === ctx.operatorProfile!.id || (!entry.registeredByProfileId && entry.registeredByName === ctx.operatorProfile!.name);
-    if (!isManager && !isAuthor) throw new TRPCError({ code: "FORBIDDEN", message: "Apenas o técnico que registou este controlo ou a Responsável de Qualidade o pode editar." });
-    const payload = entry.payload && typeof entry.payload === "object" && !Array.isArray(entry.payload) ? { ...entry.payload } as Record<string, unknown> : {};
-    const history = Array.isArray(payload.editHistory) ? payload.editHistory : [];
-    const editedAt = new Date().toISOString();
-    const nextPayload = { ...payload };
-    if (input.productName !== undefined) {
-      if (input.productName.trim()) nextPayload.product = input.productName.trim();
-      else delete nextPayload.product;
-    }
-    if (input.lot !== undefined) {
-      if (input.lot.trim()) nextPayload.lot = input.lot.trim();
-      else delete nextPayload.lot;
-    }
-    if (input.validity !== undefined) {
-      if (input.validity.trim()) nextPayload.validity = input.validity.trim();
-      else delete nextPayload.validity;
-    }
-    await db.update(controlEntries).set({
-      title: input.title,
-      area: input.area,
-      ...(input.factoryId !== undefined ? { factoryId: input.factoryId } : {}),
-      result: input.result,
-      notes: input.notes?.trim() || null,
-      payload: { ...nextPayload, editHistory: [...history, { action: "updated", at: editedAt, byProfileId: ctx.operatorProfile!.id, byName: ctx.operatorProfile!.name, byTitle: ctx.operatorProfile!.title }] },
-    }).where(eq(controlEntries.id, input.id));
-    return { success: true };
-  }),
-
-  deleteControlEntry: qualityOperatorProcedure.input(z.object({ id: z.number().int() })).mutation(async ({ ctx, input }) => {
-    const db = await requireDb();
-    const entry = (await db.select().from(controlEntries).where(eq(controlEntries.id, input.id)).limit(1))[0];
-    if (!entry) throw new TRPCError({ code: "NOT_FOUND", message: "Registo de controlo não encontrado." });
-    const isManager = ctx.operatorProfile!.role === "manager";
-    const isAuthor = entry.registeredByProfileId === ctx.operatorProfile!.id || (!entry.registeredByProfileId && entry.registeredByName === ctx.operatorProfile!.name);
-    if (!isManager && !isAuthor) throw new TRPCError({ code: "FORBIDDEN", message: "Apenas o técnico que registou este controlo ou a Responsável de Qualidade o pode eliminar." });
-    const payload = entry.payload && typeof entry.payload === "object" && !Array.isArray(entry.payload) ? { ...entry.payload } as Record<string, unknown> : {};
-    const history = Array.isArray(payload.editHistory) ? payload.editHistory : [];
-    const deletedAt = new Date().toISOString();
-    await db.update(controlEntries).set({ payload: { ...payload, recordLifecycle: { status: "deleted", deletedAt, deletedByProfileId: ctx.operatorProfile!.id, deletedByName: ctx.operatorProfile!.name, deletedByTitle: ctx.operatorProfile!.title }, editHistory: [...history, { action: "deleted", at: deletedAt, byProfileId: ctx.operatorProfile!.id, byName: ctx.operatorProfile!.name, byTitle: ctx.operatorProfile!.title }] } }).where(eq(controlEntries.id, input.id));
-    return { success: true };
-  }),
-
-  createEntry: qualityOperatorProcedure.input(z.object({
-    module: qualityModuleSchema,
-    title: z.string().min(2).max(180),
-    area: z.string().min(2).max(120),
-    factoryId: z.number().int().optional(),
-    result: resultSchema.optional(),
-    notes: z.string().max(3000).optional(),
-    payload: z.record(z.string(), z.unknown()).default({}),
-    performedAt: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
-    retroactiveReason: retroactiveReasonSchema.optional(),
-    retroactiveJustification: z.string().trim().max(1500).optional(),
-    plannedTaskId: z.number().int().optional(),
-    createNonconformity: z.boolean().default(false),
-    severity: z.enum(["critical", "high", "medium", "low"]).default("medium"),
-  })).mutation(async ({ ctx, input }) => {
-    const db = await requireDb();
-    const authorization = await requireControlAuthorization(db, { module: input.module, factoryId: input.factoryId ?? null, plannedTaskId: input.plannedTaskId, profile: ctx.operatorProfile! });
-    const plannedDateKey = authorization.task?.dueAt ? localDateKey(new Date(authorization.task.dueAt)) : null;
-    const todayKey = localDateKey(new Date());
-    if (input.performedAt && (!plannedDateKey || input.performedAt > todayKey || (authorization.isPreviousPending && input.performedAt < plannedDateKey))) throw new TRPCError({ code: "BAD_REQUEST", message: "A data de realização deve situar-se entre a data prevista do controlo e hoje." });
-    if (authorization.isPreviousPending && !input.retroactiveReason) throw new TRPCError({ code: "BAD_REQUEST", message: "Selecione a justificação do preenchimento fora da data prevista." });
-    if (authorization.isPreviousPending && input.retroactiveReason === "technical_unavailability" && !input.performedAt) throw new TRPCError({ code: "BAD_REQUEST", message: "Indique a data real da verificação efetuada após a indisponibilidade técnica." });
-    if (authorization.isPreviousPending && input.retroactiveReason === "other" && !input.retroactiveJustification?.trim()) throw new TRPCError({ code: "BAD_REQUEST", message: "Indique a justificação para a opção selecionada." });
-    const completedAt = input.performedAt ? new Date(`${input.performedAt}T12:00:00`) : new Date();
-    const insertedEntry = await db.insert(controlEntries).values({
-      module: input.module,
-      title: input.title,
-      area: input.area,
-      factoryId: input.factoryId ?? null,
-      result: input.result ?? null,
-      notes: input.notes ?? null,
-      payload: {
-        ...input.payload,
-        plannedTaskId: authorization.task?.id ?? null,
-        plannedDate: authorization.task?.dueAt ? new Date(authorization.task.dueAt).toISOString() : null,
-        registeredAgainstPreviousPlan: authorization.isPreviousPending ?? false,
-        registeredAheadOfPlannedDate: authorization.isFuturePlanned ?? false,
-        actualVerificationDate: input.performedAt ?? localDateKey(completedAt),
-        retroactiveJustification: authorization.isPreviousPending && input.retroactiveReason ? { code: input.retroactiveReason, label: retroactiveReasonLabels[input.retroactiveReason], details: input.retroactiveReason === "other" ? input.retroactiveJustification?.trim() ?? null : null } : null,
-      },
-      completedAt,
-      registeredByProfileId: ctx.operatorProfile!.id,
-      registeredByName: ctx.operatorProfile!.name,
-      registeredByTitle: ctx.operatorProfile!.title,
-      createdBy: ctx.user!.openId,
-    });
-    const oneSubmissionModules: Array<typeof qualityModuleValues[number]> = ["sensory", "shelf_life", "dispatch_control", "internal_analysis", "temperature_controls"];
-    let plannedControlComplete = Boolean(authorization.task && oneSubmissionModules.includes(input.module));
-    if (authorization.task && ["bphf", "metal_detectors", "suggestion_boxes", "fragile_items", "monthly_checklist", "food_defense"].includes(input.module)) {
-      const [taskEntries, progressAreas, progressFragileItems, progressChecklistItems, progressChecklistAssignments, progressFactories] = await Promise.all([
-        db.select().from(controlEntries).orderBy(desc(controlEntries.completedAt)),
+  dashboard: qualitySessionProcedure
+    .input(
+      z
+        .object({
+          factoryId: z.number().int().optional(),
+          date: dateInput.optional(),
+        })
+        .optional()
+    )
+    .query(async ({ input }) => {
+      const db = await requireDb();
+      const [
+        tasks,
+        ncs,
+        entries,
+        actions,
+        fragileCatalog,
+        factoryCatalog,
+        areaCatalog,
+        monthlyItems,
+        monthlyAssignments,
+      ] = await Promise.all([
+        db.select().from(controlTasks).orderBy(controlTasks.dueAt),
+        db
+          .select()
+          .from(nonconformities)
+          .orderBy(desc(nonconformities.detectedAt)),
+        db
+          .select()
+          .from(controlEntries)
+          .orderBy(desc(controlEntries.completedAt)),
+        db.select().from(correctiveActions).orderBy(correctiveActions.dueAt),
+        db
+          .select()
+          .from(fragileItems)
+          .orderBy(
+            fragileItems.location,
+            fragileItems.sortOrder,
+            fragileItems.name
+          ),
+        db.select().from(factories).orderBy(factories.name),
         db.select().from(areas).orderBy(areas.name),
-        db.select().from(fragileItems).orderBy(fragileItems.sortOrder),
         db.select().from(checklistItems).orderBy(checklistItems.sortOrder),
-        db.select().from(checklistItemFactories).orderBy(checklistItemFactories.factoryId),
+        db
+          .select()
+          .from(checklistItemFactories)
+          .orderBy(checklistItemFactories.factoryId),
+      ]);
+      const scopedTasks = scopeToFactory(tasks, input?.factoryId);
+      const scopedNcs = scopeToFactory(ncs, input?.factoryId);
+      const scopedEntries = scopeToFactory(entries, input?.factoryId);
+      const scopedActions = scopeToFactory(actions, input?.factoryId);
+      const scopedFragileCatalog = scopeToFactory(
+        fragileCatalog,
+        input?.factoryId
+      );
+      const now = new Date();
+      const operationalDate = input?.date
+        ? new Date(
+            input.date.getFullYear(),
+            input.date.getMonth(),
+            input.date.getDate()
+          )
+        : nextBusinessDay(now);
+      const { start, end } = asDateRange(operationalDate);
+      const tomorrowDate = businessDayAfter(operationalDate);
+      const { start: tomorrowStart, end: tomorrowEnd } =
+        asDateRange(tomorrowDate);
+      const workingWeekStart = startOfWorkingWeek(operationalDate);
+      const workingWeekEnd = new Date(workingWeekStart);
+      workingWeekEnd.setDate(workingWeekEnd.getDate() + 5);
+      const businessTasks = scopedTasks.filter(
+        task => isBusinessDay(task.dueAt) && task.status !== "cancelled"
+      );
+      const pending = businessTasks.filter(task => task.status === "pending");
+      const overdue = pending.filter(task => task.dueAt < start);
+      const completedToday = scopedEntries.filter(
+        entry => entryOperationalDate(entry) === localDateKey(operationalDate)
+      );
+      const todayTasks = businessTasks.filter(
+        task => task.dueAt >= start && task.dueAt < end
+      );
+      const plannedControls = todayTasks.filter(
+        task => task.area === "Plano do Dia"
+      );
+      const adHocTasks = businessTasks.filter(
+        task => task.area !== "Plano do Dia"
+      );
+      const hasScheduleForSelectedDate = todayTasks.length > 0;
+      const visibleAdHocTasks = hasScheduleForSelectedDate
+        ? adHocTasks.filter(task => task.dueAt >= start && task.dueAt < end)
+        : [];
+      const visiblePending = hasScheduleForSelectedDate ? pending : [];
+      const visibleOverdue = hasScheduleForSelectedDate ? overdue : [];
+      const completedTasksToday = todayTasks.filter(
+        task => task.area !== "Plano do Dia" && task.status === "completed"
+      );
+      const monthlyChecklistPlannedThisMonth = businessTasks.some(
+        task =>
+          task.module === "monthly_checklist" &&
+          task.dueAt.getFullYear() === operationalDate.getFullYear() &&
+          task.dueAt.getMonth() === operationalDate.getMonth()
+      );
+      const monthlyChecklistReminder =
+        !input?.factoryId &&
+        operationalDate.getDate() >= 20 &&
+        !monthlyChecklistPlannedThisMonth;
+      const foodDefensePlannedThisYear = businessTasks.some(
+        task =>
+          task.module === "food_defense" &&
+          task.dueAt.getFullYear() === operationalDate.getFullYear()
+      );
+      const foodDefenseReminder =
+        !input?.factoryId && !foodDefensePlannedThisYear;
+      const payloadFor = (entry: (typeof entries)[number]) =>
+        entryPayload(entry);
+      const lastFragileInspections = new Map<number, Date>();
+      const lastFragileInspectionsBeforeDay = new Map<number, Date>();
+      scopedEntries
+        .filter(entry => entry.module === "fragile_items")
+        .forEach(entry => {
+          const payload = entry.payload;
+          const fragileItemId =
+            payload && typeof payload === "object" && !Array.isArray(payload)
+              ? (payload as { fragileItemId?: unknown }).fragileItemId
+              : null;
+          if (typeof fragileItemId === "number") {
+            if (!lastFragileInspections.has(fragileItemId))
+              lastFragileInspections.set(fragileItemId, entry.completedAt);
+            if (
+              entry.completedAt < start &&
+              !lastFragileInspectionsBeforeDay.has(fragileItemId)
+            )
+              lastFragileInspectionsBeforeDay.set(
+                fragileItemId,
+                entry.completedAt
+              );
+          }
+        });
+      const isPlannedControlCompleted = (
+        task: (typeof plannedControls)[number]
+      ) => {
+        const taskEntries = completedToday.filter(entry =>
+          entryMatchesPlannedTask(entry, task)
+        );
+        if (task.module === "bphf")
+          return bphfTaskComplete(task, taskEntries, areaCatalog);
+        if (task.module === "metal_detectors")
+          return metalDetectorsTaskComplete(task, taskEntries, areaCatalog);
+        if (task.module === "suggestion_boxes")
+          return suggestionBoxesTaskComplete(task, taskEntries, factoryCatalog);
+        if (task.module === "monthly_checklist")
+          return monthlyChecklistTaskComplete(
+            task,
+            taskEntries,
+            monthlyItems,
+            monthlyAssignments
+          );
+        if (task.module === "food_defense")
+          return foodDefenseTaskComplete(taskEntries);
+        return task.status === "completed" || taskEntries.length > 0;
+      };
+      const completedPlannedControls = plannedControls.filter(
+        isPlannedControlCompleted
+      );
+      const dailyExpectedCount = todayTasks.length;
+      const dailyCompletedCount =
+        completedTasksToday.length + completedPlannedControls.length;
+      const effectiveDailyExpectedCount = dailyExpectedCount;
+      const visibleFactories = input?.factoryId
+        ? factoryCatalog.filter(factory => factory.id === input.factoryId)
+        : factoryCatalog;
+      const moduleProgressByFactory = Object.fromEntries(
+        qualityModuleValues.map(module => [
+          module,
+          visibleFactories.map(factory => {
+            const factoryControls = plannedControls.filter(
+              task => task.module === module && task.factoryId === factory.id
+            );
+            const isAnnualFoodDefense = module === "food_defense";
+            if (!isAnnualFoodDefense && !factoryControls.length)
+              return {
+                factoryId: factory.id,
+                expected: 0,
+                completed: 0,
+                registeredToday: 0,
+                percentage: 0,
+              };
+            const pendingControl = factoryControls.find(
+              task => !isPlannedControlCompleted(task)
+            );
+            const factoryEntriesToday =
+              module === "food_defense"
+                ? scopedEntries.filter(
+                    entry =>
+                      entry.module === module &&
+                      entry.factoryId === factory.id &&
+                      entry.completedAt.getFullYear() ===
+                        operationalDate.getFullYear()
+                  )
+                : completedToday.filter(
+                    entry =>
+                      entry.module === module && entry.factoryId === factory.id
+                  );
+            let expected = isAnnualFoodDefense ? 1 : factoryControls.length;
+            let completed = isAnnualFoodDefense
+              ? 0
+              : factoryControls.filter(isPlannedControlCompleted).length;
+            if (module === "fragile_items") {
+              const applicablePoints = fragileCatalog.filter(
+                item =>
+                  item.factoryId === factory.id &&
+                  item.status === "active" &&
+                  isFragileInspectionPending(
+                    item.periodicity,
+                    lastFragileInspectionsBeforeDay.get(item.id),
+                    operationalDate
+                  )
+              );
+              expected = applicablePoints.length;
+              const completedPointIds = new Set(
+                factoryEntriesToday
+                  .map(entry => payloadFor(entry).fragileItemId)
+                  .filter((id): id is number => typeof id === "number")
+              );
+              completed = applicablePoints.filter(item =>
+                completedPointIds.has(item.id)
+              ).length;
+            } else if (module === "bphf") {
+              const expectedAreas = expectedBphfAreas(
+                { factoryId: factory.id },
+                areaCatalog
+              );
+              expected = expectedAreas.length * BPHF_CRITERIA.length;
+              const completedSlots = new Set(
+                factoryEntriesToday.map(
+                  entry => `${entry.area}::${entry.title}`
+                )
+              );
+              completed = expectedAreas.reduce(
+                (total, area) =>
+                  total +
+                  BPHF_CRITERIA.filter(criterion =>
+                    completedSlots.has(`${area}::${criterion}`)
+                  ).length,
+                0
+              );
+            } else if (module === "suggestion_boxes") {
+              const expectedLocations = suggestionLocationsForFactory(
+                factory.code
+              );
+              expected = expectedLocations.length;
+              const completedLocations = new Set(
+                factoryEntriesToday.map(entry => entry.area)
+              );
+              completed = expectedLocations.filter(location =>
+                completedLocations.has(location)
+              ).length;
+            } else if (module === "metal_detectors") {
+              const expectedLines = areaCatalog
+                .filter(
+                  area =>
+                    area.group === "metal" &&
+                    area.factoryId === factory.id &&
+                    area.active === "true"
+                )
+                .map(area => area.name);
+              expected = expectedLines.length;
+              const completedLines = new Set(
+                factoryEntriesToday.map(entry => entry.area)
+              );
+              completed = expectedLines.filter(line =>
+                completedLines.has(line)
+              ).length;
+            } else if (module === "monthly_checklist") {
+              const activeItems = monthlyItems.filter(
+                item =>
+                  item.active === "true" &&
+                  (monthlyAssignments.some(
+                    assignment => assignment.checklistItemId === item.id
+                  )
+                    ? monthlyAssignments.some(
+                        assignment =>
+                          assignment.checklistItemId === item.id &&
+                          assignment.factoryId === factory.id
+                      )
+                    : true)
+              );
+              expected = activeItems.length;
+              const currentMonthStart = new Date(
+                operationalDate.getFullYear(),
+                operationalDate.getMonth(),
+                1
+              );
+              const currentMonthEnd = new Date(
+                operationalDate.getFullYear(),
+                operationalDate.getMonth() + 1,
+                1
+              );
+              const completedItemIds = new Set(
+                scopedEntries
+                  .filter(
+                    entry =>
+                      entry.module === "monthly_checklist" &&
+                      entry.factoryId === factory.id &&
+                      entry.completedAt >= currentMonthStart &&
+                      entry.completedAt < currentMonthEnd
+                  )
+                  .map(entry => payloadFor(entry).checklistItemId)
+                  .filter((id): id is number => typeof id === "number")
+              );
+              completed = activeItems.filter(item =>
+                completedItemIds.has(item.id)
+              ).length;
+            } else if (module === "temperature_controls") {
+              expected = factory.id === 1 ? 2 : factory.id === 2 ? 1 : 0;
+              const completedEquipmentIds = new Set(
+                factoryEntriesToday
+                  .flatMap(entry =>
+                    Array.isArray(payloadFor(entry).equipment)
+                      ? payloadFor(entry).equipment
+                      : []
+                  )
+                  .map(item =>
+                    item && typeof item === "object"
+                      ? (item as Record<string, unknown>).id
+                      : null
+                  )
+                  .filter((id): id is string => typeof id === "string")
+              );
+              completed = completedEquipmentIds.size;
+            } else if (module === "food_defense") {
+              expected = FOOD_DEFENSE_EXPECTED_CRITERIA;
+              const latestAssessment = factoryEntriesToday[0];
+              const criteria: unknown[] =
+                latestAssessment &&
+                Array.isArray(payloadFor(latestAssessment).criteria)
+                  ? (payloadFor(latestAssessment).criteria as unknown[])
+                  : [];
+              completed = criteria.length;
+            }
+            completed = Math.min(completed, expected);
+            return {
+              factoryId: factory.id,
+              expected,
+              completed,
+              registeredToday: expected ? completed : 0,
+              percentage: expected
+                ? Number(((completed / expected) * 100).toFixed(1))
+                : 0,
+              ...(pendingControl && completed < expected
+                ? { pendingTaskId: pendingControl.id }
+                : {}),
+            };
+          }),
+        ])
+      );
+      const moduleProgress = Object.fromEntries(
+        qualityModuleValues.map(module => {
+          const factoryProgress = moduleProgressByFactory[module] ?? [];
+          const moduleControls = plannedControls.filter(
+            task => task.module === module
+          );
+          const isSharedModule = sharedPlanModules.has(module);
+          const expected = isSharedModule
+            ? moduleControls.length
+            : factoryProgress.reduce((sum, item) => sum + item.expected, 0);
+          const completed = isSharedModule
+            ? moduleControls.filter(isPlannedControlCompleted).length
+            : factoryProgress.reduce((sum, item) => sum + item.completed, 0);
+          const pendingTaskTitles = moduleControls
+            .filter(task => !isPlannedControlCompleted(task))
+            .map(task => task.title);
+          const completionTimes = completedToday
+            .filter(
+              entry =>
+                entry.module === module &&
+                moduleControls.some(
+                  task =>
+                    task.factoryId === null ||
+                    task.factoryId === entry.factoryId
+                )
+            )
+            .map(entry => entry.completedAt);
+          const lastCompletedAt = completionTimes.reduce<Date | undefined>(
+            (latest, date) => (!latest || date > latest ? date : latest),
+            undefined
+          );
+          return [
+            module,
+            {
+              expected,
+              completed,
+              registeredToday: expected ? completed : 0,
+              pending: Array.from(new Set(pendingTaskTitles)),
+              percentage: expected
+                ? Number(((completed / expected) * 100).toFixed(1))
+                : 0,
+              lastCompletedAt,
+            },
+          ];
+        })
+      );
+      const critical = scopedNcs.filter(
+        nc => nc.status !== "closed" && nc.severity === "critical"
+      );
+      const openActions = scopedActions.filter(
+        action => action.status !== "verified"
+      );
+      const fragilePending = plannedControls.some(
+        task => task.module === "fragile_items"
+      )
+        ? scopedFragileCatalog.filter(
+            item =>
+              item.status === "active" &&
+              isFragileInspectionPending(
+                item.periodicity,
+                lastFragileInspections.get(item.id),
+                now
+              )
+          )
+        : [];
+
+      return {
+        tasks: visibleAdHocTasks.slice(0, 20),
+        plannedControls: plannedControls.map(task => ({
+          ...task,
+          completed: isPlannedControlCompleted(task),
+        })),
+        operationalDate,
+        taskGroups: {
+          today: visibleAdHocTasks,
+          tomorrow: hasScheduleForSelectedDate
+            ? adHocTasks.filter(
+                task => task.dueAt >= tomorrowStart && task.dueAt < tomorrowEnd
+              )
+            : [],
+          thisWeek: hasScheduleForSelectedDate
+            ? adHocTasks.filter(
+                task =>
+                  task.dueAt >= workingWeekStart &&
+                  task.dueAt < workingWeekEnd &&
+                  !(task.dueAt >= start && task.dueAt < tomorrowEnd)
+              )
+            : [],
+        },
+        criticalNcs: critical.slice(0, 6),
+        dueActions: openActions
+          .filter(action => action.dueAt && action.dueAt < now)
+          .slice(0, 6),
+        metrics: {
+          pending: visiblePending.length,
+          overdue: visibleOverdue.length,
+          criticalOpen: critical.length,
+          completedToday: completedToday.length,
+          fragilePending: fragilePending.length,
+          dailyExecutionRate: effectiveDailyExpectedCount
+            ? Number(
+                (
+                  (dailyCompletedCount / effectiveDailyExpectedCount) *
+                  100
+                ).toFixed(1)
+              )
+            : 0,
+        },
+        moduleProgress,
+        moduleProgressByFactory,
+        monthlyChecklistReminder,
+        foodDefenseReminder,
+      };
+    }),
+
+  controlObservations: qualitySessionProcedure
+    .input(
+      z.object({ module: qualityModuleSchema, factoryId: z.number().int() })
+    )
+    .query(async ({ input }) => {
+      const db = await requireDb();
+      const operationalDate = nextBusinessDay(new Date());
+      const { start, end } = asDateRange(operationalDate);
+      const entries = await db
+        .select()
+        .from(controlEntries)
+        .orderBy(desc(controlEntries.completedAt));
+      return {
+        operationalDate,
+        entries: entries
+          .filter(
+            entry =>
+              entry.module === input.module &&
+              entry.factoryId === input.factoryId &&
+              entry.completedAt >= start &&
+              entry.completedAt < end
+          )
+          .map(entry => ({
+            id: entry.id,
+            title: entry.title,
+            area: entry.area,
+            result: entry.result,
+            notes: entry.notes,
+            payload: entry.payload,
+            completedAt: entry.completedAt,
+            registeredByName: entry.registeredByName,
+            registeredByTitle: entry.registeredByTitle,
+          })),
+      };
+    }),
+
+  dailyControlResults: qualitySessionProcedure
+    .input(
+      z.object({
+        module: qualityModuleSchema,
+        operationalDate: z.coerce.date(),
+        factoryId: z.number().int().nullable().optional(),
+      })
+    )
+    .query(async ({ input }) => {
+      const db = await requireDb();
+      const { start, end } = asDateRange(input.operationalDate);
+      const entries = await db
+        .select()
+        .from(controlEntries)
+        .orderBy(desc(controlEntries.completedAt));
+      const asPayload = (entry: (typeof entries)[number]) =>
+        entry.payload &&
+        typeof entry.payload === "object" &&
+        !Array.isArray(entry.payload)
+          ? (entry.payload as Record<string, unknown>)
+          : {};
+      return {
+        operationalDate: input.operationalDate,
+        entries: entries
+          .filter(entry => {
+            const payload = asPayload(entry);
+            const lifecycle =
+              payload.recordLifecycle &&
+              typeof payload.recordLifecycle === "object" &&
+              !Array.isArray(payload.recordLifecycle)
+                ? (payload.recordLifecycle as Record<string, unknown>)
+                : {};
+            const plannedDate =
+              typeof payload.plannedDate === "string"
+                ? new Date(payload.plannedDate)
+                : entry.completedAt;
+            return (
+              entry.module === input.module &&
+              (input.factoryId === undefined ||
+                entry.factoryId === input.factoryId) &&
+              lifecycle.status !== "deleted" &&
+              plannedDate >= start &&
+              plannedDate < end
+            );
+          })
+          .map(entry => ({
+            id: entry.id,
+            title: entry.title,
+            area: entry.area,
+            factoryId: entry.factoryId,
+            result: entry.result,
+            notes: entry.notes,
+            payload: asPayload(entry),
+            completedAt: entry.completedAt,
+            registeredByProfileId: entry.registeredByProfileId,
+            registeredByName: entry.registeredByName,
+            registeredByTitle: entry.registeredByTitle,
+          })),
+      };
+    }),
+
+  temperatureHistory: qualitySessionProcedure
+    .input(
+      z
+        .object({
+          startDate: dateInput.optional(),
+          endDate: dateInput.optional(),
+          equipmentId: z.string().trim().min(1).max(100).optional(),
+        })
+        .optional()
+    )
+    .query(async ({ input }) => {
+      const db = await requireDb();
+      const entries = await db
+        .select()
+        .from(controlEntries)
+        .orderBy(desc(controlEntries.completedAt));
+      const start = input?.startDate
+        ? asDateRange(input.startDate).start
+        : null;
+      const end = input?.endDate ? asDateRange(input.endDate).end : null;
+      return entries
+        .filter(entry => {
+          const payload =
+            typeof entry.payload === "string"
+              ? (() => {
+                  try {
+                    return JSON.parse(entry.payload) as Record<string, unknown>;
+                  } catch {
+                    return {};
+                  }
+                })()
+              : entry.payload && typeof entry.payload === "object"
+                ? (entry.payload as Record<string, unknown>)
+                : {};
+          if (entry.module !== "temperature_controls" || payload.deletedAt)
+            return false;
+          if (start && entry.completedAt < start) return false;
+          if (end && entry.completedAt > end) return false;
+          return true;
+        })
+        .flatMap(entry => {
+          const payload =
+            typeof entry.payload === "string"
+              ? (() => {
+                  try {
+                    return JSON.parse(entry.payload) as Record<string, unknown>;
+                  } catch {
+                    return {};
+                  }
+                })()
+              : entry.payload && typeof entry.payload === "object"
+                ? (entry.payload as Record<string, unknown>)
+                : {};
+          const equipment = Array.isArray(payload.equipment)
+            ? payload.equipment
+            : [];
+          return equipment.flatMap((item: unknown) => {
+            const value =
+              item && typeof item === "object"
+                ? (item as Record<string, unknown>)
+                : {};
+            const equipmentId = typeof value.id === "string" ? value.id : "";
+            if (
+              !equipmentId ||
+              (input?.equipmentId && equipmentId !== input.equipmentId)
+            )
+              return [];
+            return [
+              {
+                entryId: entry.id,
+                equipmentId,
+                name:
+                  typeof value.name === "string" ? value.name : "Equipamento",
+                area: typeof value.area === "string" ? value.area : entry.area,
+                limit: typeof value.limit === "number" ? value.limit : null,
+                temperature:
+                  typeof value.temperature === "number"
+                    ? value.temperature
+                    : null,
+                result:
+                  typeof value.result === "string"
+                    ? value.result
+                    : entry.result,
+                notes: typeof value.notes === "string" ? value.notes : null,
+                completedAt: entry.completedAt,
+                factoryId: entry.factoryId,
+                registeredByName: entry.registeredByName,
+                registeredByTitle: entry.registeredByTitle,
+              },
+            ];
+          });
+        });
+    }),
+
+  listTasks: qualitySessionProcedure
+    .input(z.object({ factoryId: z.number().int().optional() }).optional())
+    .query(async ({ ctx, input }) => {
+      const db = await requireDb();
+      const [
+        tasks,
+        entries,
+        areaCatalog,
+        monthlyItems,
+        monthlyAssignments,
+        factoryCatalog,
+      ] = await Promise.all([
+        db.select().from(controlTasks).orderBy(controlTasks.dueAt),
+        db
+          .select()
+          .from(controlEntries)
+          .orderBy(desc(controlEntries.completedAt)),
+        db.select().from(areas).orderBy(areas.name),
+        db.select().from(checklistItems).orderBy(checklistItems.sortOrder),
+        db
+          .select()
+          .from(checklistItemFactories)
+          .orderBy(checklistItemFactories.factoryId),
         db.select().from(factories).orderBy(factories.name),
       ]);
-      const taskPayload = (entry: typeof taskEntries[number]) => entry.payload && typeof entry.payload === "object" && !Array.isArray(entry.payload) ? entry.payload as Record<string, unknown> : {};
-      const taskEntriesForPlan = taskEntries.filter((entry) => entry.module === input.module && entry.factoryId === authorization.task!.factoryId && taskPayload(entry).plannedTaskId === authorization.task!.id);
-      if (input.module === "bphf") {
-        plannedControlComplete = bphfTaskComplete(authorization.task!, taskEntriesForPlan, progressAreas);
-      } else if (input.module === "suggestion_boxes") {
-        plannedControlComplete = suggestionBoxesTaskComplete(authorization.task!, taskEntriesForPlan, progressFactories);
-      } else if (input.module === "metal_detectors") {
-        const expectedAreas = progressAreas.filter((area) => area.group === "metal" && area.factoryId === authorization.task!.factoryId && area.active === "true").map((area) => area.name);
-        const completedAreas = new Set(taskEntriesForPlan.map((entry) => entry.area));
-        plannedControlComplete = expectedAreas.length > 0 && expectedAreas.every((area) => completedAreas.has(area));
-      } else if (input.module === "monthly_checklist") {
-        const expectedItemIds = progressChecklistItems.filter((item) => item.active === "true" && (progressChecklistAssignments.some((assignment) => assignment.checklistItemId === item.id) ? progressChecklistAssignments.some((assignment) => assignment.checklistItemId === item.id && assignment.factoryId === authorization.task!.factoryId) : true)).map((item) => item.id);
-        const completedItemIds = new Set(taskEntriesForPlan.map((entry) => taskPayload(entry).checklistItemId).filter((id): id is number => typeof id === "number"));
-        plannedControlComplete = expectedItemIds.length > 0 && expectedItemIds.every((id) => completedItemIds.has(id));
-      } else if (input.module === "food_defense") {
-        const criteria = Array.isArray(input.payload.criteria) ? input.payload.criteria : [];
-        plannedControlComplete = criteria.length >= FOOD_DEFENSE_EXPECTED_CRITERIA;
-      } else if (input.module === "fragile_items") {
-        const priorInspections = new Map<number, Date>();
-        taskEntries.filter((entry) => entry.module === "fragile_items" && entry.completedAt < new Date(authorization.task!.dueAt)).forEach((entry) => {
-          const itemId = taskPayload(entry).fragileItemId;
-          if (typeof itemId === "number" && !priorInspections.has(itemId)) priorInspections.set(itemId, entry.completedAt);
+      const profile = ctx.operatorProfile!;
+      return scopeToFactory(tasks, input?.factoryId)
+        .filter(task => {
+          const assignees = Array.isArray(task.assigneeProfileIds)
+            ? task.assigneeProfileIds
+            : [];
+          const completedFromPreviousRegistration =
+            task.status === "pending" &&
+            task.area === "Plano do Dia" &&
+            isHistoricalPlanTaskSatisfied(
+              task,
+              entries,
+              areaCatalog,
+              monthlyItems,
+              monthlyAssignments,
+              factoryCatalog
+            );
+          return (
+            isBusinessDay(task.dueAt) &&
+            task.status !== "cancelled" &&
+            !completedFromPreviousRegistration &&
+            (profile.role === "manager" || assignees.includes(profile.id))
+          );
+        })
+        .map(task => {
+          const report = entries.find(
+            entry => entry.payload?.taskId === task.id
+          );
+          const storedPhotos =
+            report?.payload &&
+            typeof report.payload.executionReport === "object" &&
+            report.payload.executionReport &&
+            !Array.isArray(report.payload.executionReport)
+              ? (report.payload.executionReport as { evidencePhotos?: unknown })
+                  .evidencePhotos
+              : [];
+          const evidencePhotos = Array.isArray(storedPhotos)
+            ? storedPhotos.filter(
+                (
+                  photo
+                ): photo is {
+                  url: string;
+                  fileName: string;
+                  mimeType: string;
+                } =>
+                  Boolean(
+                    photo &&
+                      typeof photo === "object" &&
+                      typeof (photo as { url?: unknown }).url === "string" &&
+                      typeof (photo as { fileName?: unknown }).fileName ===
+                        "string" &&
+                      typeof (photo as { mimeType?: unknown }).mimeType ===
+                        "string"
+                  )
+              )
+            : [];
+          const qualityModule =
+            task.area === "Plano do Dia" ? task.module : null;
+          return report
+            ? {
+                ...task,
+                qualityModule,
+                executionReport: {
+                  result: report.result,
+                  notes: report.notes,
+                  completedAt: report.completedAt,
+                  registeredByName: report.registeredByName,
+                  registeredByTitle: report.registeredByTitle,
+                  evidencePhotos,
+                },
+              }
+            : { ...task, qualityModule, executionReport: null };
         });
-        const expectedItemIds = progressFragileItems.filter((item) => item.factoryId === authorization.task!.factoryId && item.status === "active" && isFragileInspectionPending(item.periodicity, priorInspections.get(item.id), new Date(authorization.task!.dueAt))).map((item) => item.id);
-        const completedItemIds = new Set(taskEntriesForPlan.map((entry) => taskPayload(entry).fragileItemId).filter((id): id is number => typeof id === "number"));
-        plannedControlComplete = expectedItemIds.length > 0 && expectedItemIds.every((id) => completedItemIds.has(id));
+    }),
+
+  createTask: qualityManagerProcedure
+    .input(
+      z.object({
+        title: z.string().min(2).max(180),
+        description: z.string().max(3000).optional(),
+        factoryId: z.number().int().optional(),
+        dueAt: dateInput,
+        assigneeProfileIds: z.array(z.number().int()).min(1).max(10),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      if (!isBusinessDay(input.dueAt))
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message:
+            "As tarefas de controlo só podem ser agendadas em dias úteis, de segunda a sexta-feira.",
+        });
+      const db = await requireDb();
+      const selectedProfiles = await db
+        .select()
+        .from(qualityPinProfiles)
+        .where(inArray(qualityPinProfiles.id, input.assigneeProfileIds))
+        .orderBy(qualityPinProfiles.id);
+      const profiles = selectedProfiles.filter(profile =>
+        input.assigneeProfileIds.includes(profile.id)
+      );
+      if (
+        profiles.length !== input.assigneeProfileIds.length ||
+        profiles.some(profile => profile.active !== "true")
+      )
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Selecione utilizadores ativos para a tarefa.",
+        });
+      await db
+        .insert(controlTasks)
+        .values({
+          title: input.title,
+          description: input.description?.trim() || null,
+          module: "bphf",
+          area: "Sem área",
+          factoryId: input.factoryId ?? null,
+          dueAt: input.dueAt,
+          responsible: profiles.map(profile => profile.name).join(", "),
+          assigneeProfileIds: input.assigneeProfileIds,
+          createdBy: ctx.user!.openId,
+        });
+      return { success: true };
+    }),
+
+  publishDailyPlan: qualityManagerProcedure
+    .input(
+      z
+        .object({
+          date: dateInput.optional(),
+          dates: z.array(dateInput).min(1).max(31).optional(),
+          factoryIds: z.array(z.number().int()).min(1).max(10),
+          assigneeProfileIds: z.array(z.number().int()).min(1).max(10),
+          modules: z.array(qualityModuleSchema).min(1).max(8),
+          priority: z.enum(["normal", "critical"]).default("normal"),
+        })
+        .refine(input => Boolean(input.date || input.dates?.length), {
+          message: "Selecione pelo menos uma data para o Plano do Dia.",
+        })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const selectedDates = Array.from(
+        new Map(
+          (input.dates?.length
+            ? input.dates
+            : input.date
+              ? [input.date]
+              : []
+          ).map(date => [localDateKey(date), date])
+        ).values()
+      );
+      if (selectedDates.some(date => !isBusinessDay(date)))
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message:
+            "Todos os Planos do Dia têm de ser publicados para dias úteis.",
+        });
+      const db = await requireDb();
+      const profiles = await db
+        .select()
+        .from(qualityPinProfiles)
+        .where(inArray(qualityPinProfiles.id, input.assigneeProfileIds))
+        .orderBy(qualityPinProfiles.id);
+      if (
+        profiles.length !== input.assigneeProfileIds.length ||
+        profiles.some(profile => profile.active !== "true")
+      )
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Selecione responsáveis ativos para o Plano do Dia.",
+        });
+      const existing = await db
+        .select()
+        .from(controlTasks)
+        .where(eq(controlTasks.status, "pending"));
+      const selectedFactories = Array.from(new Set(input.factoryIds));
+      const temperatureFactories = selectedFactories.filter(factoryId =>
+        [1, 2].includes(factoryId)
+      );
+      if (
+        input.modules.includes("temperature_controls") &&
+        !temperatureFactories.length
+      )
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message:
+            "Selecione a Fábrica 1 ou a Fábrica 2 para publicar os Controlos de Temperatura.",
+        });
+      const plannedControls: {
+        module: (typeof qualityModuleValues)[number];
+        factoryId: number | null;
+      }[] = [];
+      for (const module of Array.from(new Set(input.modules))) {
+        if (sharedPlanModules.has(module))
+          plannedControls.push({ module, factoryId: null });
+        else
+          (module === "temperature_controls"
+            ? temperatureFactories
+            : selectedFactories
+          ).forEach(factoryId => plannedControls.push({ module, factoryId }));
       }
-    }
-    if (authorization.task && plannedControlComplete) {
-      await db.update(controlTasks).set({ status: "completed", completedAt, completedByProfileId: ctx.operatorProfile!.id, completedByName: ctx.operatorProfile!.name, completedByTitle: ctx.operatorProfile!.title }).where(eq(controlTasks.id, authorization.task.id));
-      if (authorization.isPreviousPending) {
-        try {
-          await createRetroactiveDailyReportRevision({ taskId: authorization.task.id, entryId: Number((insertedEntry as any)?.[0]?.insertId) || null, dueAt: new Date(authorization.task.dueAt), module: input.module, reason: retroactiveReasonLabels[input.retroactiveReason!], createdBy: ctx.operatorProfile!.name });
-        } catch (error) {
-          console.error("[DailyReportArchive] Não foi possível criar a revisão retroativa", error);
+      const plannedDateKeys = new Set(selectedDates.map(localDateKey));
+      const existingPlans = existing.filter(
+        task =>
+          task.area === "Plano do Dia" &&
+          plannedDateKeys.has(localDateKey(new Date(task.dueAt)))
+      );
+      const controlsByDate = selectedDates.map(date => {
+        const controls = plannedControls.filter(
+          ({ module, factoryId }) =>
+            !existingPlans.some(
+              task =>
+                localDateKey(new Date(task.dueAt)) === localDateKey(date) &&
+                task.module === module &&
+                task.factoryId === factoryId
+            )
+        );
+        return { date, controls };
+      });
+      const controlsToCreate = controlsByDate.flatMap(({ date, controls }) =>
+        controls.map(({ module, factoryId }) => ({
+          title: `Plano do Dia — ${module.replace(/_/g, " ")}`,
+          description:
+            input.priority === "critical"
+              ? "Controlo prioritário publicado pela Responsável de Qualidade."
+              : "Controlo publicado no Plano do Dia.",
+          module,
+          area: "Plano do Dia",
+          factoryId,
+          dueAt: date,
+          responsible: profiles.map(profile => profile.name).join(", "),
+          assigneeProfileIds: input.assigneeProfileIds,
+          createdBy: ctx.user!.openId,
+        }))
+      );
+      if (controlsToCreate.length)
+        await db.insert(controlTasks).values(controlsToCreate);
+      const dateSummary = controlsByDate.map(({ date, controls }) => ({
+        date: localDateKey(date),
+        created: controls.length,
+        alreadyPresent: plannedControls.length - controls.length,
+      }));
+      return {
+        success: true,
+        created: controlsToCreate.length,
+        alreadyPresent: dateSummary.reduce(
+          (total, item) => total + item.alreadyPresent,
+          0
+        ),
+        dates: dateSummary,
+      };
+    }),
+
+  updateTask: qualityManagerProcedure
+    .input(
+      z.object({
+        id: z.number().int(),
+        title: z.string().min(2).max(180),
+        description: z.string().max(3000).optional(),
+        factoryId: z.number().int().optional(),
+        dueAt: dateInput,
+        assigneeProfileIds: z.array(z.number().int()).min(1).max(10),
+      })
+    )
+    .mutation(async ({ input }) => {
+      if (!isBusinessDay(input.dueAt))
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message:
+            "As tarefas de controlo só podem ser agendadas em dias úteis, de segunda a sexta-feira.",
+        });
+      const db = await requireDb();
+      const task = (
+        await db
+          .select()
+          .from(controlTasks)
+          .where(eq(controlTasks.id, input.id))
+          .limit(1)
+      )[0];
+      if (!task)
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Tarefa não encontrada.",
+        });
+      if (task.status !== "pending")
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Só é possível editar tarefas ainda pendentes.",
+        });
+      const selectedProfiles = await db
+        .select()
+        .from(qualityPinProfiles)
+        .where(inArray(qualityPinProfiles.id, input.assigneeProfileIds))
+        .orderBy(qualityPinProfiles.id);
+      const profiles = selectedProfiles.filter(profile =>
+        input.assigneeProfileIds.includes(profile.id)
+      );
+      if (
+        profiles.length !== input.assigneeProfileIds.length ||
+        profiles.some(profile => profile.active !== "true")
+      )
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Selecione utilizadores ativos para a tarefa.",
+        });
+      await db
+        .update(controlTasks)
+        .set({
+          title: input.title.trim(),
+          description: input.description?.trim() || null,
+          factoryId: input.factoryId ?? null,
+          dueAt: input.dueAt,
+          responsible: profiles.map(profile => profile.name).join(", "),
+          assigneeProfileIds: input.assigneeProfileIds,
+        })
+        .where(eq(controlTasks.id, input.id));
+      return { success: true };
+    }),
+
+  deleteTask: qualityManagerProcedure
+    .input(z.object({ id: z.number().int() }))
+    .mutation(async ({ input }) => {
+      const db = await requireDb();
+      const task = (
+        await db
+          .select()
+          .from(controlTasks)
+          .where(eq(controlTasks.id, input.id))
+          .limit(1)
+      )[0];
+      if (!task)
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Tarefa não encontrada.",
+        });
+      if (task.status !== "pending")
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Só é possível eliminar tarefas ainda pendentes.",
+        });
+      await db
+        .update(controlTasks)
+        .set({ status: "cancelled" })
+        .where(eq(controlTasks.id, input.id));
+      return { success: true };
+    }),
+
+  uploadTaskReportPhoto: qualityOperatorProcedure
+    .input(
+      z.object({
+        taskId: z.number().int(),
+        fileName: z.string().min(1).max(255),
+        mimeType: z.enum(["image/jpeg", "image/png", "image/webp"]),
+        dataUrl: z.string().min(20).max(7_000_000),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const db = await requireDb();
+      const task = (
+        await db
+          .select()
+          .from(controlTasks)
+          .where(eq(controlTasks.id, input.taskId))
+          .limit(1)
+      )[0];
+      if (!task || task.status !== "pending")
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Tarefa pendente não encontrada.",
+        });
+      const assignees = Array.isArray(task.assigneeProfileIds)
+        ? task.assigneeProfileIds
+        : [];
+      if (
+        ctx.operatorProfile!.role !== "manager" &&
+        (!assignees.length || !assignees.includes(ctx.operatorProfile!.id))
+      )
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "Esta tarefa está atribuída a outro utilizador.",
+        });
+      const base64 = input.dataUrl.split(",")[1];
+      if (!base64)
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Imagem inválida.",
+        });
+      const safeName = input.fileName.replace(/[^a-zA-Z0-9._-]/g, "_");
+      const { key, url } = await storagePut(
+        `task-reports/${input.taskId}/${ctx.operatorProfile!.id}/${Date.now()}-${safeName}`,
+        Buffer.from(base64, "base64"),
+        input.mimeType
+      );
+      return { key, url, fileName: input.fileName, mimeType: input.mimeType };
+    }),
+
+  uploadInternalAnalysisPhoto: qualityOperatorProcedure
+    .input(
+      z.object({
+        fileName: z.string().min(1).max(255),
+        mimeType: z.enum(["image/jpeg", "image/png", "image/webp"]),
+        dataUrl: z.string().min(20).max(7_000_000),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const db = await requireDb();
+      await requireControlAuthorization(db, {
+        module: "internal_analysis",
+        factoryId: null,
+        profile: ctx.operatorProfile!,
+      });
+      const base64 = input.dataUrl.split(",")[1];
+      if (!base64)
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Imagem inválida.",
+        });
+      const safeName = input.fileName.replace(/[^a-zA-Z0-9._-]/g, "_");
+      const { key, url } = await storagePut(
+        `internal-analysis/${ctx.operatorProfile!.id}/${Date.now()}-${safeName}`,
+        Buffer.from(base64, "base64"),
+        input.mimeType
+      );
+      return { key, url, fileName: input.fileName, mimeType: input.mimeType };
+    }),
+
+  completeTask: qualityOperatorProcedure
+    .input(
+      z.object({
+        id: z.number().int(),
+        result: resultSchema,
+        notes: z.string().trim().min(3).max(3000),
+        evidencePhotos: z
+          .array(
+            z.object({
+              url: z.string().startsWith("/manus-storage/task-reports/"),
+              fileName: z.string().min(1).max(255),
+              mimeType: z.enum(["image/jpeg", "image/png", "image/webp"]),
+            })
+          )
+          .max(5)
+          .optional(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const db = await requireDb();
+      const task = (
+        await db
+          .select()
+          .from(controlTasks)
+          .where(eq(controlTasks.id, input.id))
+          .limit(1)
+      )[0];
+      const assignees = Array.isArray(task?.assigneeProfileIds)
+        ? task.assigneeProfileIds
+        : [];
+      if (
+        task &&
+        ctx.operatorProfile!.role !== "manager" &&
+        (!assignees.length || !assignees.includes(ctx.operatorProfile!.id))
+      )
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "Esta tarefa está atribuída a outro utilizador.",
+        });
+      if (!task)
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Tarefa não encontrada.",
+        });
+      if (task.status !== "pending")
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Esta tarefa já não está pendente.",
+        });
+      const completedAt = new Date();
+      await db
+        .update(controlTasks)
+        .set({
+          status: "completed",
+          completedAt,
+          completedByProfileId: ctx.operatorProfile!.id,
+          completedByName: ctx.operatorProfile!.name,
+          completedByTitle: ctx.operatorProfile!.title,
+        })
+        .where(eq(controlTasks.id, input.id));
+      await db.insert(controlEntries).values({
+        module: task.module,
+        title: task.title,
+        area: task.area,
+        factoryId: task.factoryId,
+        result: input.result,
+        notes: input.notes,
+        payload: {
+          taskId: task.id,
+          executionReport: { evidencePhotos: input.evidencePhotos ?? [] },
+        },
+        completedAt,
+        registeredByProfileId: ctx.operatorProfile!.id,
+        registeredByName: ctx.operatorProfile!.name,
+        registeredByTitle: ctx.operatorProfile!.title,
+        createdBy: ctx.user!.openId,
+      });
+      return {
+        success: true,
+        critical: shouldCreateCriticalMetalAlert(task.module, input.result),
+        incidence: input.result === "NC",
+      };
+    }),
+
+  updateControlEntry: qualityOperatorProcedure
+    .input(
+      z.object({
+        id: z.number().int(),
+        title: z.string().trim().min(2).max(180),
+        area: z.string().trim().min(1).max(120),
+        factoryId: z.number().int().nullable().optional(),
+        result: resultSchema,
+        notes: z.string().trim().max(3000).optional(),
+        productName: z.string().trim().max(180).optional(),
+        lot: z.string().trim().max(120).optional(),
+        validity: z.string().trim().max(40).optional(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const db = await requireDb();
+      const entry = (
+        await db
+          .select()
+          .from(controlEntries)
+          .where(eq(controlEntries.id, input.id))
+          .limit(1)
+      )[0];
+      if (!entry)
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Registo de controlo não encontrado.",
+        });
+      const isManager = ctx.operatorProfile!.role === "manager";
+      const isAuthor =
+        entry.registeredByProfileId === ctx.operatorProfile!.id ||
+        (!entry.registeredByProfileId &&
+          entry.registeredByName === ctx.operatorProfile!.name);
+      if (!isManager && !isAuthor)
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message:
+            "Apenas o técnico que registou este controlo ou a Responsável de Qualidade o pode editar.",
+        });
+      const payload =
+        entry.payload &&
+        typeof entry.payload === "object" &&
+        !Array.isArray(entry.payload)
+          ? ({ ...entry.payload } as Record<string, unknown>)
+          : {};
+      const history = Array.isArray(payload.editHistory)
+        ? payload.editHistory
+        : [];
+      const editedAt = new Date().toISOString();
+      const nextPayload = { ...payload };
+      if (input.productName !== undefined) {
+        if (input.productName.trim())
+          nextPayload.product = input.productName.trim();
+        else delete nextPayload.product;
+      }
+      if (input.lot !== undefined) {
+        if (input.lot.trim()) nextPayload.lot = input.lot.trim();
+        else delete nextPayload.lot;
+      }
+      if (input.validity !== undefined) {
+        if (input.validity.trim()) nextPayload.validity = input.validity.trim();
+        else delete nextPayload.validity;
+      }
+      await db
+        .update(controlEntries)
+        .set({
+          title: input.title,
+          area: input.area,
+          ...(input.factoryId !== undefined
+            ? { factoryId: input.factoryId }
+            : {}),
+          result: input.result,
+          notes: input.notes?.trim() || null,
+          payload: {
+            ...nextPayload,
+            editHistory: [
+              ...history,
+              {
+                action: "updated",
+                at: editedAt,
+                byProfileId: ctx.operatorProfile!.id,
+                byName: ctx.operatorProfile!.name,
+                byTitle: ctx.operatorProfile!.title,
+              },
+            ],
+          },
+        })
+        .where(eq(controlEntries.id, input.id));
+      return { success: true };
+    }),
+
+  deleteControlEntry: qualityOperatorProcedure
+    .input(z.object({ id: z.number().int() }))
+    .mutation(async ({ ctx, input }) => {
+      const db = await requireDb();
+      const entry = (
+        await db
+          .select()
+          .from(controlEntries)
+          .where(eq(controlEntries.id, input.id))
+          .limit(1)
+      )[0];
+      if (!entry)
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Registo de controlo não encontrado.",
+        });
+      const isManager = ctx.operatorProfile!.role === "manager";
+      const isAuthor =
+        entry.registeredByProfileId === ctx.operatorProfile!.id ||
+        (!entry.registeredByProfileId &&
+          entry.registeredByName === ctx.operatorProfile!.name);
+      if (!isManager && !isAuthor)
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message:
+            "Apenas o técnico que registou este controlo ou a Responsável de Qualidade o pode eliminar.",
+        });
+      const payload =
+        entry.payload &&
+        typeof entry.payload === "object" &&
+        !Array.isArray(entry.payload)
+          ? ({ ...entry.payload } as Record<string, unknown>)
+          : {};
+      const history = Array.isArray(payload.editHistory)
+        ? payload.editHistory
+        : [];
+      const deletedAt = new Date().toISOString();
+      await db
+        .update(controlEntries)
+        .set({
+          payload: {
+            ...payload,
+            recordLifecycle: {
+              status: "deleted",
+              deletedAt,
+              deletedByProfileId: ctx.operatorProfile!.id,
+              deletedByName: ctx.operatorProfile!.name,
+              deletedByTitle: ctx.operatorProfile!.title,
+            },
+            editHistory: [
+              ...history,
+              {
+                action: "deleted",
+                at: deletedAt,
+                byProfileId: ctx.operatorProfile!.id,
+                byName: ctx.operatorProfile!.name,
+                byTitle: ctx.operatorProfile!.title,
+              },
+            ],
+          },
+        })
+        .where(eq(controlEntries.id, input.id));
+      return { success: true };
+    }),
+
+  createEntry: qualityOperatorProcedure
+    .input(
+      z.object({
+        module: qualityModuleSchema,
+        title: z.string().min(2).max(180),
+        area: z.string().min(2).max(120),
+        factoryId: z.number().int().optional(),
+        result: resultSchema.optional(),
+        notes: z.string().max(3000).optional(),
+        payload: z.record(z.string(), z.unknown()).default({}),
+        performedAt: z
+          .string()
+          .regex(/^\d{4}-\d{2}-\d{2}$/)
+          .optional(),
+        retroactiveReason: retroactiveReasonSchema.optional(),
+        retroactiveJustification: z.string().trim().max(1500).optional(),
+        plannedTaskId: z.number().int().optional(),
+        createNonconformity: z.boolean().default(false),
+        severity: z
+          .enum(["critical", "high", "medium", "low"])
+          .default("medium"),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const db = await requireDb();
+      const authorization = await requireControlAuthorization(db, {
+        module: input.module,
+        factoryId: input.factoryId ?? null,
+        plannedTaskId: input.plannedTaskId,
+        profile: ctx.operatorProfile!,
+      });
+      const plannedDateKey = authorization.task?.dueAt
+        ? localDateKey(new Date(authorization.task.dueAt))
+        : null;
+      const todayKey = localDateKey(new Date());
+      if (
+        input.performedAt &&
+        (!plannedDateKey ||
+          input.performedAt > todayKey ||
+          (authorization.isPreviousPending &&
+            input.performedAt < plannedDateKey))
+      )
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message:
+            "A data de realização deve situar-se entre a data prevista do controlo e hoje.",
+        });
+      if (authorization.isPreviousPending && !input.retroactiveReason)
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message:
+            "Selecione a justificação do preenchimento fora da data prevista.",
+        });
+      if (
+        authorization.isPreviousPending &&
+        input.retroactiveReason === "technical_unavailability" &&
+        !input.performedAt
+      )
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message:
+            "Indique a data real da verificação efetuada após a indisponibilidade técnica.",
+        });
+      if (
+        authorization.isPreviousPending &&
+        input.retroactiveReason === "other" &&
+        !input.retroactiveJustification?.trim()
+      )
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Indique a justificação para a opção selecionada.",
+        });
+      const completedAt = input.performedAt
+        ? new Date(`${input.performedAt}T12:00:00`)
+        : new Date();
+      const insertedEntry = await db.insert(controlEntries).values({
+        module: input.module,
+        title: input.title,
+        area: input.area,
+        factoryId: input.factoryId ?? null,
+        result: input.result ?? null,
+        notes: input.notes ?? null,
+        payload: {
+          ...input.payload,
+          plannedTaskId: authorization.task?.id ?? null,
+          plannedDate: authorization.task?.dueAt
+            ? new Date(authorization.task.dueAt).toISOString()
+            : null,
+          registeredAgainstPreviousPlan:
+            authorization.isPreviousPending ?? false,
+          registeredAheadOfPlannedDate: authorization.isFuturePlanned ?? false,
+          actualVerificationDate:
+            input.performedAt ?? localDateKey(completedAt),
+          retroactiveJustification:
+            authorization.isPreviousPending && input.retroactiveReason
+              ? {
+                  code: input.retroactiveReason,
+                  label: retroactiveReasonLabels[input.retroactiveReason],
+                  details:
+                    input.retroactiveReason === "other"
+                      ? (input.retroactiveJustification?.trim() ?? null)
+                      : null,
+                }
+              : null,
+        },
+        completedAt,
+        registeredByProfileId: ctx.operatorProfile!.id,
+        registeredByName: ctx.operatorProfile!.name,
+        registeredByTitle: ctx.operatorProfile!.title,
+        createdBy: ctx.user!.openId,
+      });
+      const oneSubmissionModules: Array<(typeof qualityModuleValues)[number]> =
+        [
+          "sensory",
+          "shelf_life",
+          "dispatch_control",
+          "internal_analysis",
+          "temperature_controls",
+        ];
+      let plannedControlComplete = Boolean(
+        authorization.task && oneSubmissionModules.includes(input.module)
+      );
+      if (
+        authorization.task &&
+        [
+          "bphf",
+          "metal_detectors",
+          "suggestion_boxes",
+          "fragile_items",
+          "monthly_checklist",
+          "food_defense",
+        ].includes(input.module)
+      ) {
+        const [
+          taskEntries,
+          progressAreas,
+          progressFragileItems,
+          progressChecklistItems,
+          progressChecklistAssignments,
+          progressFactories,
+        ] = await Promise.all([
+          db
+            .select()
+            .from(controlEntries)
+            .orderBy(desc(controlEntries.completedAt)),
+          db.select().from(areas).orderBy(areas.name),
+          db.select().from(fragileItems).orderBy(fragileItems.sortOrder),
+          db.select().from(checklistItems).orderBy(checklistItems.sortOrder),
+          db
+            .select()
+            .from(checklistItemFactories)
+            .orderBy(checklistItemFactories.factoryId),
+          db.select().from(factories).orderBy(factories.name),
+        ]);
+        const taskPayload = (entry: (typeof taskEntries)[number]) =>
+          entry.payload &&
+          typeof entry.payload === "object" &&
+          !Array.isArray(entry.payload)
+            ? (entry.payload as Record<string, unknown>)
+            : {};
+        const taskEntriesForPlan = taskEntries.filter(
+          entry =>
+            entry.module === input.module &&
+            entry.factoryId === authorization.task!.factoryId &&
+            taskPayload(entry).plannedTaskId === authorization.task!.id
+        );
+        if (input.module === "bphf") {
+          plannedControlComplete = bphfTaskComplete(
+            authorization.task!,
+            taskEntriesForPlan,
+            progressAreas
+          );
+        } else if (input.module === "suggestion_boxes") {
+          plannedControlComplete = suggestionBoxesTaskComplete(
+            authorization.task!,
+            taskEntriesForPlan,
+            progressFactories
+          );
+        } else if (input.module === "metal_detectors") {
+          const expectedAreas = progressAreas
+            .filter(
+              area =>
+                area.group === "metal" &&
+                area.factoryId === authorization.task!.factoryId &&
+                area.active === "true"
+            )
+            .map(area => area.name);
+          const completedAreas = new Set(
+            taskEntriesForPlan.map(entry => entry.area)
+          );
+          plannedControlComplete =
+            expectedAreas.length > 0 &&
+            expectedAreas.every(area => completedAreas.has(area));
+        } else if (input.module === "monthly_checklist") {
+          const expectedItemIds = progressChecklistItems
+            .filter(
+              item =>
+                item.active === "true" &&
+                (progressChecklistAssignments.some(
+                  assignment => assignment.checklistItemId === item.id
+                )
+                  ? progressChecklistAssignments.some(
+                      assignment =>
+                        assignment.checklistItemId === item.id &&
+                        assignment.factoryId === authorization.task!.factoryId
+                    )
+                  : true)
+            )
+            .map(item => item.id);
+          const completedItemIds = new Set(
+            taskEntriesForPlan
+              .map(entry => taskPayload(entry).checklistItemId)
+              .filter((id): id is number => typeof id === "number")
+          );
+          plannedControlComplete =
+            expectedItemIds.length > 0 &&
+            expectedItemIds.every(id => completedItemIds.has(id));
+        } else if (input.module === "food_defense") {
+          const criteria = Array.isArray(input.payload.criteria)
+            ? input.payload.criteria
+            : [];
+          plannedControlComplete =
+            criteria.length >= FOOD_DEFENSE_EXPECTED_CRITERIA;
+        } else if (input.module === "fragile_items") {
+          const priorInspections = new Map<number, Date>();
+          taskEntries
+            .filter(
+              entry =>
+                entry.module === "fragile_items" &&
+                entry.completedAt < new Date(authorization.task!.dueAt)
+            )
+            .forEach(entry => {
+              const itemId = taskPayload(entry).fragileItemId;
+              if (typeof itemId === "number" && !priorInspections.has(itemId))
+                priorInspections.set(itemId, entry.completedAt);
+            });
+          const expectedItemIds = progressFragileItems
+            .filter(
+              item =>
+                item.factoryId === authorization.task!.factoryId &&
+                item.status === "active" &&
+                isFragileInspectionPending(
+                  item.periodicity,
+                  priorInspections.get(item.id),
+                  new Date(authorization.task!.dueAt)
+                )
+            )
+            .map(item => item.id);
+          const completedItemIds = new Set(
+            taskEntriesForPlan
+              .map(entry => taskPayload(entry).fragileItemId)
+              .filter((id): id is number => typeof id === "number")
+          );
+          plannedControlComplete =
+            expectedItemIds.length > 0 &&
+            expectedItemIds.every(id => completedItemIds.has(id));
         }
       }
-    }
-    const isCriticalMetal = shouldCreateCriticalMetalAlert(input.module, input.result);
-    return { success: true, critical: isCriticalMetal, incidence: input.result === "NC" };
-  }),
+      if (authorization.task && plannedControlComplete) {
+        await db
+          .update(controlTasks)
+          .set({
+            status: "completed",
+            completedAt,
+            completedByProfileId: ctx.operatorProfile!.id,
+            completedByName: ctx.operatorProfile!.name,
+            completedByTitle: ctx.operatorProfile!.title,
+          })
+          .where(eq(controlTasks.id, authorization.task.id));
+        if (authorization.isPreviousPending) {
+          try {
+            await createRetroactiveDailyReportRevision({
+              taskId: authorization.task.id,
+              entryId: Number((insertedEntry as any)?.[0]?.insertId) || null,
+              dueAt: new Date(authorization.task.dueAt),
+              module: input.module,
+              reason: retroactiveReasonLabels[input.retroactiveReason!],
+              createdBy: ctx.operatorProfile!.name,
+            });
+          } catch (error) {
+            console.error(
+              "[DailyReportArchive] Não foi possível criar a revisão retroativa",
+              error
+            );
+          }
+        }
+      }
+      const isCriticalMetal = shouldCreateCriticalMetalAlert(
+        input.module,
+        input.result
+      );
+      return {
+        success: true,
+        critical: isCriticalMetal,
+        incidence: input.result === "NC",
+      };
+    }),
 
-  calculateSensory: qualitySessionProcedure.input(z.object({
-    aspeto: z.number().int().min(1).max(5),
-    fimDeBoca: z.number().int().min(1).max(5),
-    cor: z.number().int().min(1).max(5),
-    cheiro: z.number().int().min(1).max(5),
-    textura: z.number().int().min(1).max(5),
-    sabor: z.number().int().min(1).max(5),
-  })).query(({ input }) => calculateSensoryScore(input)),
+  calculateSensory: qualitySessionProcedure
+    .input(
+      z.object({
+        aspeto: z.number().int().min(1).max(5),
+        fimDeBoca: z.number().int().min(1).max(5),
+        cor: z.number().int().min(1).max(5),
+        cheiro: z.number().int().min(1).max(5),
+        textura: z.number().int().min(1).max(5),
+        sabor: z.number().int().min(1).max(5),
+      })
+    )
+    .query(({ input }) => calculateSensoryScore(input)),
 
-  calculateDispatchConformity: qualitySessionProcedure.input(z.object({
-    orderedBoxes: z.number().int().min(0),
-    dispatchedBoxes: z.number().int().min(0),
-    productLabelResult: z.enum(["C", "NC"]),
-    boxLabelResult: z.enum(["C", "NC"]),
-    productTemperature: z.number().min(-100).max(100),
-    vehicleTemperature: z.number().min(-100).max(100),
-    productTemperatureLimit: z.number().min(-100).max(100),
-    vehicleTemperatureLimit: z.number().min(-100).max(100),
-  })).query(({ input }) => calculateDispatchConformity(input)),
+  calculateDispatchConformity: qualitySessionProcedure
+    .input(
+      z.object({
+        orderedBoxes: z.number().int().min(0),
+        dispatchedBoxes: z.number().int().min(0),
+        productLabelResult: z.enum(["C", "NC"]),
+        boxLabelResult: z.enum(["C", "NC"]),
+        productTemperature: z.number().min(-100).max(100),
+        vehicleTemperature: z.number().min(-100).max(100),
+        productTemperatureLimit: z.number().min(-100).max(100),
+        vehicleTemperatureLimit: z.number().min(-100).max(100),
+      })
+    )
+    .query(({ input }) => calculateDispatchConformity(input)),
 
-  parseDispatchOrderPdf: qualityOperatorProcedure.input(z.object({
-    fileName: z.string().min(5).max(180),
-    mimeType: z.literal("application/pdf"),
-    dataUrl: z.string().min(32).max(16_500_000),
-  })).mutation(async ({ ctx, input }) => {
-    const db = await requireDb();
-    await requireControlAuthorization(db, { module: "dispatch_control", factoryId: null, profile: ctx.operatorProfile! });
-    const match = /^data:application\/pdf;base64,([A-Za-z0-9+/=\s]+)$/i.exec(input.dataUrl);
-    if (!match) throw new TRPCError({ code: "BAD_REQUEST", message: "O ficheiro enviado não é um PDF válido." });
-    const pdfBuffer = Buffer.from(match[1].replace(/\s/g, ""), "base64");
-    if (!pdfBuffer.subarray(0, 4).equals(Buffer.from("%PDF"))) throw new TRPCError({ code: "BAD_REQUEST", message: "O ficheiro enviado não corresponde a um documento PDF." });
-    if (pdfBuffer.byteLength > 12_000_000) throw new TRPCError({ code: "PAYLOAD_TOO_LARGE", message: "A encomenda PDF deve ter no máximo 12 MB." });
-    const safeName = input.fileName.replace(/[^a-zA-Z0-9._-]/g, "_");
-    const stored = await storagePut(`dispatch-orders/${ctx.operatorProfile!.id}/${Date.now()}-${safeName}`, pdfBuffer, input.mimeType);
-    const signedUrl = await storageGetSignedUrl(stored.key);
-    try {
-      const response = await invokeLLM({
-        model: "gemini-3-flash-preview",
-        messages: [
-          { role: "system", content: "Extrai dados de encomendas de panificação em PDF. Nunca inventes valores: quando um campo não estiver legível, devolve uma string vazia, lista vazia ou uma advertência. Quantidades são números inteiros de caixas/unidades pedidas. Devolve apenas JSON conforme o esquema." },
-          { role: "user", content: [{ type: "text", text: "Extrai o número da encomenda, cliente e todas as linhas de produto com quantidade pedida." }, { type: "file_url", file_url: { url: signedUrl, mime_type: "application/pdf" } }] },
-        ],
-        response_format: {
-          type: "json_schema",
-          json_schema: {
-            name: "dispatch_order",
-            strict: true,
-            schema: {
-              type: "object",
-              properties: {
-                orderNumber: { type: "string" },
-                customer: { type: "string" },
-                products: { type: "array", items: { type: "object", properties: { name: { type: "string" }, orderedQuantity: { type: "integer" } }, required: ["name", "orderedQuantity"], additionalProperties: false } },
-                warnings: { type: "array", items: { type: "string" } },
+  parseDispatchOrderPdf: qualityOperatorProcedure
+    .input(
+      z.object({
+        fileName: z.string().min(5).max(180),
+        mimeType: z.literal("application/pdf"),
+        dataUrl: z.string().min(32).max(16_500_000),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const db = await requireDb();
+      await requireControlAuthorization(db, {
+        module: "dispatch_control",
+        factoryId: null,
+        profile: ctx.operatorProfile!,
+      });
+      const match = /^data:application\/pdf;base64,([A-Za-z0-9+/=\s]+)$/i.exec(
+        input.dataUrl
+      );
+      if (!match)
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "O ficheiro enviado não é um PDF válido.",
+        });
+      const pdfBuffer = Buffer.from(match[1].replace(/\s/g, ""), "base64");
+      if (!pdfBuffer.subarray(0, 4).equals(Buffer.from("%PDF")))
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "O ficheiro enviado não corresponde a um documento PDF.",
+        });
+      if (pdfBuffer.byteLength > 12_000_000)
+        throw new TRPCError({
+          code: "PAYLOAD_TOO_LARGE",
+          message: "A encomenda PDF deve ter no máximo 12 MB.",
+        });
+      const safeName = input.fileName.replace(/[^a-zA-Z0-9._-]/g, "_");
+      const stored = await storagePut(
+        `dispatch-orders/${ctx.operatorProfile!.id}/${Date.now()}-${safeName}`,
+        pdfBuffer,
+        input.mimeType
+      );
+      const signedUrl = await storageGetSignedUrl(stored.key);
+      try {
+        const response = await invokeLLM({
+          model: "gemini-3-flash-preview",
+          messages: [
+            {
+              role: "system",
+              content:
+                "Extrai dados de encomendas de panificação em PDF. Nunca inventes valores: quando um campo não estiver legível, devolve uma string vazia, lista vazia ou uma advertência. Quantidades são números inteiros de caixas/unidades pedidas. Devolve apenas JSON conforme o esquema.",
+            },
+            {
+              role: "user",
+              content: [
+                {
+                  type: "text",
+                  text: "Extrai o número da encomenda, cliente e todas as linhas de produto com quantidade pedida.",
+                },
+                {
+                  type: "file_url",
+                  file_url: { url: signedUrl, mime_type: "application/pdf" },
+                },
+              ],
+            },
+          ],
+          response_format: {
+            type: "json_schema",
+            json_schema: {
+              name: "dispatch_order",
+              strict: true,
+              schema: {
+                type: "object",
+                properties: {
+                  orderNumber: { type: "string" },
+                  customer: { type: "string" },
+                  products: {
+                    type: "array",
+                    items: {
+                      type: "object",
+                      properties: {
+                        name: { type: "string" },
+                        orderedQuantity: { type: "integer" },
+                      },
+                      required: ["name", "orderedQuantity"],
+                      additionalProperties: false,
+                    },
+                  },
+                  warnings: { type: "array", items: { type: "string" } },
+                },
+                required: ["orderNumber", "customer", "products", "warnings"],
+                additionalProperties: false,
               },
-              required: ["orderNumber", "customer", "products", "warnings"],
-              additionalProperties: false,
             },
           },
-        },
-      });
-      const content = response.choices[0]?.message.content;
-      const extracted = dispatchOrderExtractionSchema.parse(JSON.parse(typeof content === "string" ? content : "{}"));
-      return { ...extracted, document: { name: input.fileName, url: stored.url } };
-    } catch (error) {
-      throw new TRPCError({ code: "BAD_REQUEST", message: "Não foi possível extrair os dados da encomenda. Confirme se o PDF está legível e preencha os campos manualmente." });
-    }
-  }),
+        });
+        const content = response.choices[0]?.message.content;
+        const extracted = dispatchOrderExtractionSchema.parse(
+          JSON.parse(typeof content === "string" ? content : "{}")
+        );
+        return {
+          ...extracted,
+          document: { name: input.fileName, url: stored.url },
+        };
+      } catch (error) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message:
+            "Não foi possível extrair os dados da encomenda. Confirme se o PDF está legível e preencha os campos manualmente.",
+        });
+      }
+    }),
 
-  registerDispatchControl: qualityOperatorProcedure.input(z.object({
-    factoryId: z.number().int().optional(),
-    profile: z.enum(["ambiente", "congelado"]),
-    orderNumber: z.string().min(1).max(80),
-    customer: z.string().min(2).max(160),
-    deliveryNote: z.string().max(120).optional(),
-    product: z.string().min(2).max(180),
-    lot: z.string().min(1).max(120),
-    orderedBoxes: z.number().int().min(0),
-    dispatchedBoxes: z.number().int().min(0),
-    productLabelResult: z.enum(["C", "NC"]),
-    boxLabelResult: z.enum(["C", "NC"]),
-    productTemperature: z.number().min(-100).max(100),
-    vehicleTemperature: z.number().min(-100).max(100),
-    observations: z.string().max(3000).optional(),
-    orderItems: z.array(z.object({ name: z.string().min(1).max(180), orderedQuantity: z.number().int().min(0) })).max(30).optional(),
-    productChecks: z.array(dispatchProductCheckSchema).min(1).max(30).optional(),
-    evidencePhotos: z.array(z.object({ key: z.string().min(1), url: z.string().startsWith("/manus-storage/"), fileName: z.string().min(1).max(255), mimeType: z.enum(["image/jpeg", "image/png", "image/webp"]) })).max(5).optional(),
-    sourceOrderDocument: z.object({ name: z.string().min(1).max(180), url: z.string().startsWith("/manus-storage/") }).optional(),
-  })).mutation(async ({ ctx, input }) => {
-    const db = await requireDb();
-    await requireControlAuthorization(db, { module: "dispatch_control", factoryId: null, profile: ctx.operatorProfile! });
-    const profile = getDispatchProfile(input.profile);
-    const limits = { product: profile.productTemperatureLimit, vehicle: profile.vehicleTemperatureLimit };
-    const productChecks = input.productChecks ?? [{ verificationStatus: "verified" as const, name: input.product, orderedQuantity: input.orderedBoxes, lots: [{ lot: input.lot, dispatchedQuantity: input.dispatchedBoxes }], productLabelResult: input.productLabelResult, boxLabelResult: input.boxLabelResult, productTemperature: input.productTemperature, observations: input.observations }];
-    const productValidations = productChecks.map((check) => {
-      if (check.verificationStatus === "not_verified") {
+  registerDispatchControl: qualityOperatorProcedure
+    .input(
+      z.object({
+        factoryId: z.number().int().optional(),
+        profile: z.enum(["ambiente", "congelado"]),
+        orderNumber: z.string().min(1).max(80),
+        customer: z.string().min(2).max(160),
+        deliveryNote: z.string().max(120).optional(),
+        product: z.string().min(2).max(180),
+        lot: z.string().min(1).max(120),
+        orderedBoxes: z.number().int().min(0),
+        dispatchedBoxes: z.number().int().min(0),
+        productLabelResult: z.enum(["C", "NC"]),
+        boxLabelResult: z.enum(["C", "NC"]),
+        productTemperature: z.number().min(-100).max(100),
+        vehicleTemperature: z.number().min(-100).max(100),
+        observations: z.string().max(3000).optional(),
+        orderItems: z
+          .array(
+            z.object({
+              name: z.string().min(1).max(180),
+              orderedQuantity: z.number().int().min(0),
+            })
+          )
+          .max(30)
+          .optional(),
+        productChecks: z
+          .array(dispatchProductCheckSchema)
+          .min(1)
+          .max(30)
+          .optional(),
+        evidencePhotos: z
+          .array(
+            z.object({
+              key: z.string().min(1),
+              url: z.string().startsWith("/manus-storage/"),
+              fileName: z.string().min(1).max(255),
+              mimeType: z.enum(["image/jpeg", "image/png", "image/webp"]),
+            })
+          )
+          .max(5)
+          .optional(),
+        sourceOrderDocument: z
+          .object({
+            name: z.string().min(1).max(180),
+            url: z.string().startsWith("/manus-storage/"),
+          })
+          .optional(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const db = await requireDb();
+      await requireControlAuthorization(db, {
+        module: "dispatch_control",
+        factoryId: null,
+        profile: ctx.operatorProfile!,
+      });
+      const profile = getDispatchProfile(input.profile);
+      const limits = {
+        product: profile.productTemperatureLimit,
+        vehicle: profile.vehicleTemperatureLimit,
+      };
+      const productChecks = input.productChecks ?? [
+        {
+          verificationStatus: "verified" as const,
+          name: input.product,
+          orderedQuantity: input.orderedBoxes,
+          lots: [{ lot: input.lot, dispatchedQuantity: input.dispatchedBoxes }],
+          productLabelResult: input.productLabelResult,
+          boxLabelResult: input.boxLabelResult,
+          productTemperature: input.productTemperature,
+          observations: input.observations,
+        },
+      ];
+      const productValidations = productChecks.map(check => {
+        if (check.verificationStatus === "not_verified") {
+          return {
+            ...check,
+            dispatchedQuantity: 0,
+            conformity: {
+              result: "N/A" as const,
+              quantityResult: "N/A" as const,
+              productTemperatureResult: "N/A" as const,
+              vehicleTemperatureResult: "N/A" as const,
+            },
+          };
+        }
+        const dispatchedQuantity = check.lots.reduce(
+          (total, lot) => total + lot.dispatchedQuantity,
+          0
+        );
+        const conformity = calculateDispatchConformity({
+          orderedBoxes: check.orderedQuantity,
+          dispatchedBoxes: dispatchedQuantity,
+          productLabelResult: check.productLabelResult,
+          boxLabelResult: check.boxLabelResult,
+          productTemperature: check.productTemperature,
+          vehicleTemperature: limits.vehicle,
+          productTemperatureLimit: limits.product,
+          vehicleTemperatureLimit: limits.vehicle,
+        });
+        if (conformity.result === "NC" && !check.observations?.trim())
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: `As observações são obrigatórias no produto ${check.name} quando a validação não está conforme.`,
+          });
         return {
           ...check,
-          dispatchedQuantity: 0,
-          conformity: { result: "N/A" as const, quantityResult: "N/A" as const, productTemperatureResult: "N/A" as const, vehicleTemperatureResult: "N/A" as const },
+          verificationStatus: "verified" as const,
+          dispatchedQuantity,
+          conformity,
         };
-      }
-      const dispatchedQuantity = check.lots.reduce((total, lot) => total + lot.dispatchedQuantity, 0);
-      const conformity = calculateDispatchConformity({ orderedBoxes: check.orderedQuantity, dispatchedBoxes: dispatchedQuantity, productLabelResult: check.productLabelResult, boxLabelResult: check.boxLabelResult, productTemperature: check.productTemperature, vehicleTemperature: limits.vehicle, productTemperatureLimit: limits.product, vehicleTemperatureLimit: limits.vehicle });
-      if (conformity.result === "NC" && !check.observations?.trim()) throw new TRPCError({ code: "BAD_REQUEST", message: `As observações são obrigatórias no produto ${check.name} quando a validação não está conforme.` });
-      return { ...check, verificationStatus: "verified" as const, dispatchedQuantity, conformity };
-    });
-    const vehicleTemperatureResult = input.vehicleTemperature <= limits.vehicle ? "C" : "NC";
-    const reasons = [
-      ...productValidations.filter((check) => check.verificationStatus !== "not_verified").flatMap((check) => [
-        ...(check.conformity.quantityResult === "NC" ? [`${check.name}: quantidade expedida diferente da quantidade pedida.`] : []),
-        ...(check.conformity.productTemperatureResult === "NC" ? [`${check.name}: temperatura do produto fora do limite.`] : []),
-        ...(check.productLabelResult === "NC" ? [`${check.name}: rotulagem do produto não conforme.`] : []),
-        ...(check.boxLabelResult === "NC" ? [`${check.name}: rotulagem da caixa não conforme.`] : []),
-      ]),
-      ...productValidations.filter((check) => check.verificationStatus === "not_verified").map((check) => `${check.name}: referência não verificada — ${check.notVerifiedReason}.`),
-      ...(vehicleTemperatureResult === "NC" ? [`Temperatura do veículo fora do limite (${input.vehicleTemperature} °C; máximo ${limits.vehicle} °C).`] : []),
-    ];
-    const hasNonconformity = productValidations.some((check) => check.conformity.result === "NC") || vehicleTemperatureResult === "NC";
-    const hasNotVerified = productValidations.some((check) => check.verificationStatus === "not_verified");
-    const conformity = { result: hasNonconformity ? "NC" as const : hasNotVerified ? "N/A" as const : "C" as const, productValidations, vehicleTemperatureResult, verificationSummary: { verified: productValidations.filter((check) => check.verificationStatus !== "not_verified").length, notVerified: productValidations.filter((check) => check.verificationStatus === "not_verified").length }, reasons };
-    if (vehicleTemperatureResult === "NC" && !input.observations?.trim()) throw new TRPCError({ code: "BAD_REQUEST", message: "A observação geral é obrigatória quando a temperatura do veículo não está conforme." });
-    const completedAt = new Date();
-    const title = `Expedição ${input.orderNumber} — ${input.customer}`;
-    const area = `Expedição ${input.profile}`;
-    const payload = { ...input, productChecks: productValidations, profileLabel: profile.label, temperatureLimits: limits, ...conformity };
-    await db.insert(controlEntries).values({ module: "dispatch_control", title, area, factoryId: null, result: conformity.result, notes: input.observations ?? null, payload, completedAt, registeredByProfileId: ctx.operatorProfile!.id, registeredByName: ctx.operatorProfile!.name, registeredByTitle: ctx.operatorProfile!.title, createdBy: ctx.user!.openId });
-    return { success: true, conformity, limits, incidence: conformity.result === "NC" };
-  }),
+      });
+      const vehicleTemperatureResult =
+        input.vehicleTemperature <= limits.vehicle ? "C" : "NC";
+      const reasons = [
+        ...productValidations
+          .filter(check => check.verificationStatus !== "not_verified")
+          .flatMap(check => [
+            ...(check.conformity.quantityResult === "NC"
+              ? [
+                  `${check.name}: quantidade expedida diferente da quantidade pedida.`,
+                ]
+              : []),
+            ...(check.conformity.productTemperatureResult === "NC"
+              ? [`${check.name}: temperatura do produto fora do limite.`]
+              : []),
+            ...(check.productLabelResult === "NC"
+              ? [`${check.name}: rotulagem do produto não conforme.`]
+              : []),
+            ...(check.boxLabelResult === "NC"
+              ? [`${check.name}: rotulagem da caixa não conforme.`]
+              : []),
+          ]),
+        ...productValidations
+          .filter(check => check.verificationStatus === "not_verified")
+          .map(
+            check =>
+              `${check.name}: referência não verificada — ${check.notVerifiedReason}.`
+          ),
+        ...(vehicleTemperatureResult === "NC"
+          ? [
+              `Temperatura do veículo fora do limite (${input.vehicleTemperature} °C; máximo ${limits.vehicle} °C).`,
+            ]
+          : []),
+      ];
+      const hasNonconformity =
+        productValidations.some(check => check.conformity.result === "NC") ||
+        vehicleTemperatureResult === "NC";
+      const hasNotVerified = productValidations.some(
+        check => check.verificationStatus === "not_verified"
+      );
+      const conformity = {
+        result: hasNonconformity
+          ? ("NC" as const)
+          : hasNotVerified
+            ? ("N/A" as const)
+            : ("C" as const),
+        productValidations,
+        vehicleTemperatureResult,
+        verificationSummary: {
+          verified: productValidations.filter(
+            check => check.verificationStatus !== "not_verified"
+          ).length,
+          notVerified: productValidations.filter(
+            check => check.verificationStatus === "not_verified"
+          ).length,
+        },
+        reasons,
+      };
+      if (vehicleTemperatureResult === "NC" && !input.observations?.trim())
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message:
+            "A observação geral é obrigatória quando a temperatura do veículo não está conforme.",
+        });
+      const completedAt = new Date();
+      const title = `Expedição ${input.orderNumber} — ${input.customer}`;
+      const area = `Expedição ${input.profile}`;
+      const payload = {
+        ...input,
+        productChecks: productValidations,
+        profileLabel: profile.label,
+        temperatureLimits: limits,
+        ...conformity,
+      };
+      await db
+        .insert(controlEntries)
+        .values({
+          module: "dispatch_control",
+          title,
+          area,
+          factoryId: null,
+          result: conformity.result,
+          notes: input.observations ?? null,
+          payload,
+          completedAt,
+          registeredByProfileId: ctx.operatorProfile!.id,
+          registeredByName: ctx.operatorProfile!.name,
+          registeredByTitle: ctx.operatorProfile!.title,
+          createdBy: ctx.user!.openId,
+        });
+      return {
+        success: true,
+        conformity,
+        limits,
+        incidence: conformity.result === "NC",
+      };
+    }),
 
-  listIncidences: qualitySessionProcedure.input(z.object({
-    date: dateInput.optional(),
-    startDate: dateInput.optional(),
-    endDate: dateInput.optional(),
-    factoryId: z.number().int().optional(),
-  }).optional()).query(async ({ input }) => {
-    const db = await requireDb();
-    if (input?.startDate && input.endDate && asDateRange(input.startDate).start > asDateRange(input.endDate).start) throw new TRPCError({ code: "BAD_REQUEST", message: "A data final não pode ser anterior à data inicial." });
-    const defaultRange = asDateRange(input?.date ?? new Date());
-    const start = input?.startDate ? asDateRange(input.startDate).start : input?.date ? defaultRange.start : new Date(0);
-    const end = input?.endDate ? asDateRange(input.endDate).end : input?.date ? defaultRange.end : new Date("9999-12-31T23:59:59.999Z");
-    const [entries, factoryRows, ncRows] = await Promise.all([
-      db.select().from(controlEntries).orderBy(desc(controlEntries.completedAt)),
-      db.select().from(factories).orderBy(factories.name),
-      db.select().from(nonconformities).orderBy(desc(nonconformities.detectedAt)),
-    ]);
-    const factoryNames = new Map(factoryRows.map((factory) => [factory.id, factory.name]));
-    return entries.filter((entry) => {
-      const payload = entry.payload && typeof entry.payload === "object" && !Array.isArray(entry.payload) ? entry.payload as Record<string, unknown> : {};
-      return entry.result === "NC" && !payload.deletedAt && entry.completedAt >= start && entry.completedAt < end && (!input?.factoryId || entry.factoryId === input.factoryId);
-    }).map((entry) => {
-      const linked = ncRows.find((nc) => nc.sourceEntryId === entry.id);
-      const payload = entry.payload && typeof entry.payload === "object" && !Array.isArray(entry.payload) ? entry.payload as Record<string, unknown> : {};
-      const occurrenceNumber = typeof payload.nonconformityOccurrenceNumber === "string" ? payload.nonconformityOccurrenceNumber : null;
-      const generatedNonconformity = Boolean(linked) || payload.generatedNonconformity === true;
-      const treatmentStatus = generatedNonconformity ? "nc_generated" : payload.treatmentDecision === "no_nc" ? "no_nc" : "pending";
-      return { ...entry, factoryName: entry.factoryId ? factoryNames.get(entry.factoryId) ?? "Fábrica não identificada" : "Sem fábrica/linha", generatedNonconformity, treatmentStatus, nonconformityId: linked?.id ?? null, occurrenceNumber };
-    });
-  }),
+  listIncidences: qualitySessionProcedure
+    .input(
+      z
+        .object({
+          date: dateInput.optional(),
+          startDate: dateInput.optional(),
+          endDate: dateInput.optional(),
+          factoryId: z.number().int().optional(),
+        })
+        .optional()
+    )
+    .query(async ({ input }) => {
+      const db = await requireDb();
+      if (
+        input?.startDate &&
+        input.endDate &&
+        asDateRange(input.startDate).start > asDateRange(input.endDate).start
+      )
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "A data final não pode ser anterior à data inicial.",
+        });
+      const defaultRange = asDateRange(input?.date ?? new Date());
+      const start = input?.startDate
+        ? asDateRange(input.startDate).start
+        : input?.date
+          ? defaultRange.start
+          : new Date(0);
+      const end = input?.endDate
+        ? asDateRange(input.endDate).end
+        : input?.date
+          ? defaultRange.end
+          : new Date("9999-12-31T23:59:59.999Z");
+      const [entries, factoryRows, ncRows] = await Promise.all([
+        db
+          .select()
+          .from(controlEntries)
+          .orderBy(desc(controlEntries.completedAt)),
+        db.select().from(factories).orderBy(factories.name),
+        db
+          .select()
+          .from(nonconformities)
+          .orderBy(desc(nonconformities.detectedAt)),
+      ]);
+      const factoryNames = new Map(
+        factoryRows.map(factory => [factory.id, factory.name])
+      );
+      return entries
+        .filter(entry => {
+          const payload =
+            entry.payload &&
+            typeof entry.payload === "object" &&
+            !Array.isArray(entry.payload)
+              ? (entry.payload as Record<string, unknown>)
+              : {};
+          return (
+            entry.result === "NC" &&
+            !payload.deletedAt &&
+            entry.completedAt >= start &&
+            entry.completedAt < end &&
+            (!input?.factoryId || entry.factoryId === input.factoryId)
+          );
+        })
+        .map(entry => {
+          const linked = ncRows.find(nc => nc.sourceEntryId === entry.id);
+          const payload =
+            entry.payload &&
+            typeof entry.payload === "object" &&
+            !Array.isArray(entry.payload)
+              ? (entry.payload as Record<string, unknown>)
+              : {};
+          const occurrenceNumber =
+            typeof payload.nonconformityOccurrenceNumber === "string"
+              ? payload.nonconformityOccurrenceNumber
+              : null;
+          const generatedNonconformity =
+            Boolean(linked) || payload.generatedNonconformity === true;
+          const treatmentDecision = incidenceDecisionFromPayload(
+            payload,
+            generatedNonconformity
+          );
+          const treatment = incidenceTreatmentFromPayload(payload);
+          return {
+            ...entry,
+            factoryName: entry.factoryId
+              ? (factoryNames.get(entry.factoryId) ??
+                "Fábrica não identificada")
+              : "Sem fábrica/linha",
+            generatedNonconformity,
+            treatmentStatus: treatmentDecision,
+            treatmentProgress: treatment.status,
+            treatment,
+            nonconformityId: linked?.id ?? null,
+            occurrenceNumber,
+          };
+        });
+    }),
 
   incidenceRecurrenceAlerts: qualitySessionProcedure.query(async () => {
     const db = await requireDb();
     const [entries, ncs] = await Promise.all([
-      db.select().from(controlEntries).orderBy(desc(controlEntries.completedAt)),
+      db
+        .select()
+        .from(controlEntries)
+        .orderBy(desc(controlEntries.completedAt)),
       db.select().from(nonconformities),
     ]);
     const since = new Date();
     since.setMonth(since.getMonth() - 6);
-    const linkedEntryIds = new Set(ncs.map((nc) => nc.sourceEntryId).filter((id): id is number => Boolean(id)));
-    const grouped = new Map<number, { collaboratorId: number; collaboratorName: string; incidences: typeof entries }>();
-    entries.filter((entry) => {
-      const payload = entry.payload && typeof entry.payload === "object" && !Array.isArray(entry.payload) ? entry.payload as Record<string, unknown> : {};
-      const collaboratorId = Number(payload.collaboratorId);
-      const collaboratorName = typeof payload.collaboratorName === "string" ? payload.collaboratorName.trim() : "";
-      return entry.result === "NC" && entry.completedAt >= since && collaboratorId > 0 && Boolean(collaboratorName) && !linkedEntryIds.has(entry.id) && payload.generatedNonconformity !== true;
-    }).forEach((entry) => {
-      const payload = entry.payload as Record<string, unknown>;
-      const collaboratorId = Number(payload.collaboratorId);
-      const collaboratorName = String(payload.collaboratorName).trim();
-      const current = grouped.get(collaboratorId) ?? { collaboratorId, collaboratorName, incidences: [] as typeof entries };
-      current.incidences.push(entry);
-      grouped.set(collaboratorId, current);
-    });
-    return Array.from(grouped.values()).filter((item) => item.incidences.length >= 3).map((item) => ({
-      collaboratorId: item.collaboratorId,
-      collaboratorName: item.collaboratorName,
-      total: item.incidences.length,
-      mostRecentAt: item.incidences.reduce((latest, entry) => entry.completedAt > latest ? entry.completedAt : latest, item.incidences[0].completedAt),
-    })).sort((left, right) => right.total - left.total || right.mostRecentAt.getTime() - left.mostRecentAt.getTime());
+    const linkedEntryIds = new Set(
+      ncs.map(nc => nc.sourceEntryId).filter((id): id is number => Boolean(id))
+    );
+    const grouped = new Map<
+      number,
+      {
+        collaboratorId: number;
+        collaboratorName: string;
+        incidences: typeof entries;
+      }
+    >();
+    entries
+      .filter(entry => {
+        const payload =
+          entry.payload &&
+          typeof entry.payload === "object" &&
+          !Array.isArray(entry.payload)
+            ? (entry.payload as Record<string, unknown>)
+            : {};
+        const collaboratorId = Number(payload.collaboratorId);
+        const collaboratorName =
+          typeof payload.collaboratorName === "string"
+            ? payload.collaboratorName.trim()
+            : "";
+        return (
+          entry.result === "NC" &&
+          entry.completedAt >= since &&
+          collaboratorId > 0 &&
+          Boolean(collaboratorName) &&
+          !linkedEntryIds.has(entry.id) &&
+          payload.generatedNonconformity !== true
+        );
+      })
+      .forEach(entry => {
+        const payload = entry.payload as Record<string, unknown>;
+        const collaboratorId = Number(payload.collaboratorId);
+        const collaboratorName = String(payload.collaboratorName).trim();
+        const current = grouped.get(collaboratorId) ?? {
+          collaboratorId,
+          collaboratorName,
+          incidences: [] as typeof entries,
+        };
+        current.incidences.push(entry);
+        grouped.set(collaboratorId, current);
+      });
+    return Array.from(grouped.values())
+      .filter(item => item.incidences.length >= 3)
+      .map(item => ({
+        collaboratorId: item.collaboratorId,
+        collaboratorName: item.collaboratorName,
+        total: item.incidences.length,
+        mostRecentAt: item.incidences.reduce(
+          (latest, entry) =>
+            entry.completedAt > latest ? entry.completedAt : latest,
+          item.incidences[0].completedAt
+        ),
+      }))
+      .sort(
+        (left, right) =>
+          right.total - left.total ||
+          right.mostRecentAt.getTime() - left.mostRecentAt.getTime()
+      );
   }),
 
   similarIncidenceAlerts: qualitySessionProcedure.query(async () => {
     const db = await requireDb();
     const [entries, ncs, factoryRows] = await Promise.all([
-      db.select().from(controlEntries).orderBy(desc(controlEntries.completedAt)),
+      db
+        .select()
+        .from(controlEntries)
+        .orderBy(desc(controlEntries.completedAt)),
       db.select().from(nonconformities),
       db.select().from(factories),
     ]);
     const since = new Date();
     since.setMonth(since.getMonth() - 6);
-    const linkedEntryIds = new Set(ncs.map((nc) => nc.sourceEntryId).filter((id): id is number => Boolean(id)));
-    const factoryNames = new Map(factoryRows.map((factory) => [factory.id, factory.name]));
-    const grouped = new Map<string, { title: string; module: typeof qualityModuleValues[number]; factoryId: number | null; collaboratorId: number | null; collaboratorName: string | null; entries: typeof entries }>();
-    entries.forEach((entry) => {
-      const payload = entry.payload && typeof entry.payload === "object" && !Array.isArray(entry.payload) ? entry.payload as Record<string, unknown> : {};
-      if (entry.result !== "NC" || entry.completedAt < since || linkedEntryIds.has(entry.id) || payload.generatedNonconformity === true || payload.deletedAt) return;
-      const normalizedTitle = (entry.title ?? "").trim().toLocaleLowerCase("pt-PT").replace(/\s+/g, " ");
-      const collaboratorId = entry.module === "bphf" ? Number(payload.collaboratorId) : 0;
-      const collaboratorName = entry.module === "bphf" && typeof payload.collaboratorName === "string" ? payload.collaboratorName.trim() : "";
-      const hasBphfCollaborator = collaboratorId > 0 && Boolean(collaboratorName);
-      const key = hasBphfCollaborator ? `${entry.module}|${entry.factoryId ?? "none"}|collaborator:${collaboratorId}` : `${entry.module}|${entry.factoryId ?? "none"}|${normalizedTitle}`;
-      const group = grouped.get(key) ?? { title: hasBphfCollaborator ? `Colaborador: ${collaboratorName}` : entry.title, module: entry.module, factoryId: entry.factoryId, collaboratorId: hasBphfCollaborator ? collaboratorId : null, collaboratorName: hasBphfCollaborator ? collaboratorName : null, entries: [] as typeof entries };
+    const linkedEntryIds = new Set(
+      ncs.map(nc => nc.sourceEntryId).filter((id): id is number => Boolean(id))
+    );
+    const factoryNames = new Map(
+      factoryRows.map(factory => [factory.id, factory.name])
+    );
+    const grouped = new Map<
+      string,
+      {
+        title: string;
+        module: (typeof qualityModuleValues)[number];
+        factoryId: number | null;
+        collaboratorId: number | null;
+        collaboratorName: string | null;
+        factoryIds: number[];
+        entries: typeof entries;
+      }
+    >();
+    entries.forEach(entry => {
+      const payload =
+        entry.payload &&
+        typeof entry.payload === "object" &&
+        !Array.isArray(entry.payload)
+          ? (entry.payload as Record<string, unknown>)
+          : {};
+      if (
+        entry.result !== "NC" ||
+        entry.completedAt < since ||
+        linkedEntryIds.has(entry.id) ||
+        payload.generatedNonconformity === true ||
+        payload.deletedAt
+      )
+        return;
+      const normalizedTitle = (entry.title ?? "")
+        .trim()
+        .toLocaleLowerCase("pt-PT")
+        .replace(/\s+/g, " ");
+      const collaboratorId =
+        entry.module === "bphf" ? Number(payload.collaboratorId) : 0;
+      const collaboratorName =
+        entry.module === "bphf" && typeof payload.collaboratorName === "string"
+          ? payload.collaboratorName.trim()
+          : "";
+      const hasBphfCollaborator =
+        collaboratorId > 0 && Boolean(collaboratorName);
+      const key = hasBphfCollaborator
+        ? `${entry.module}|collaborator:${collaboratorId}`
+        : `${entry.module}|${entry.factoryId ?? "none"}|${normalizedTitle}`;
+      const group = grouped.get(key) ?? {
+        title: hasBphfCollaborator
+          ? `Colaborador: ${collaboratorName}`
+          : entry.title,
+        module: entry.module,
+        factoryId: hasBphfCollaborator ? null : entry.factoryId,
+        collaboratorId: hasBphfCollaborator ? collaboratorId : null,
+        collaboratorName: hasBphfCollaborator ? collaboratorName : null,
+        factoryIds: entry.factoryId ? [entry.factoryId] : [],
+        entries: [] as typeof entries,
+      };
+      if (entry.factoryId && !group.factoryIds.includes(entry.factoryId))
+        group.factoryIds.push(entry.factoryId);
       group.entries.push(entry);
       grouped.set(key, group);
     });
-    return Array.from(grouped.values()).filter((group) => group.entries.length >= 3).map((group) => ({
-      title: group.title,
-      module: group.module,
-      factoryId: group.factoryId,
-      factoryName: group.factoryId ? factoryNames.get(group.factoryId) ?? "Fábrica não identificada" : "Sem fábrica/linha",
-      collaboratorId: group.collaboratorId,
-      collaboratorName: group.collaboratorName,
-      total: group.entries.length,
-      mostRecentAt: group.entries.reduce((latest, entry) => entry.completedAt > latest ? entry.completedAt : latest, group.entries[0].completedAt),
-    })).sort((left, right) => right.total - left.total || right.mostRecentAt.getTime() - left.mostRecentAt.getTime());
+    return Array.from(grouped.values())
+      .filter(group => group.entries.length >= 3)
+      .map(group => ({
+        title: group.title,
+        module: group.module,
+        factoryId: group.factoryId,
+        factoryName: group.collaboratorId
+          ? group.factoryIds.length === 1
+            ? (factoryNames.get(group.factoryIds[0]) ??
+              "Fábrica não identificada")
+            : "Várias fábricas / linhas"
+          : group.factoryId
+            ? (factoryNames.get(group.factoryId) ?? "Fábrica não identificada")
+            : "Sem fábrica/linha",
+        collaboratorId: group.collaboratorId,
+        collaboratorName: group.collaboratorName,
+        total: group.entries.length,
+        mostRecentAt: group.entries.reduce(
+          (latest, entry) =>
+            entry.completedAt > latest ? entry.completedAt : latest,
+          group.entries[0].completedAt
+        ),
+      }))
+      .sort(
+        (left, right) =>
+          right.total - left.total ||
+          right.mostRecentAt.getTime() - left.mostRecentAt.getTime()
+      );
   }),
 
-  updateIncidence: qualityOperatorProcedure.input(z.object({
-    id: z.number().int(),
-    title: z.string().min(2).max(180).optional(),
-    area: z.string().min(2).max(120).optional(),
-    notes: z.string().max(3000).optional(),
-    generatedNonconformity: z.boolean().optional(),
-    occurrenceNumber: z.string().max(80).optional(),
-    evidencePhotos: z.array(z.object({ key: z.string().min(1), url: z.string().startsWith("/manus-storage/"), fileName: z.string().min(1).max(255), mimeType: z.enum(["image/jpeg", "image/png", "image/webp"]) })).max(8).optional(),
-  })).mutation(async ({ ctx, input }) => {
-    const db = await requireDb();
-    const entry = (await db.select().from(controlEntries).where(eq(controlEntries.id, input.id)).limit(1))[0];
-    if (!entry || entry.result !== "NC") throw new TRPCError({ code: "NOT_FOUND", message: "Incidência diária não encontrada." });
-    const isManager = ctx.operatorProfile!.role === "manager";
-    const isAuthor = entry.registeredByProfileId === ctx.operatorProfile!.id || (!entry.registeredByProfileId && entry.registeredByName === ctx.operatorProfile!.name);
-    if (!isManager && !isAuthor) throw new TRPCError({ code: "FORBIDDEN", message: "Apenas o técnico que registou a incidência ou a Responsável de Qualidade a pode editar." });
-    if (!isManager && (input.generatedNonconformity !== undefined || input.occurrenceNumber !== undefined)) throw new TRPCError({ code: "FORBIDDEN", message: "A decisão e o número de NC são geridos pela Responsável de Qualidade." });
-    const payload = entry.payload && typeof entry.payload === "object" && !Array.isArray(entry.payload) ? { ...entry.payload } as Record<string, unknown> : {};
-    if (input.generatedNonconformity !== undefined) {
-      payload.generatedNonconformity = input.generatedNonconformity;
-      payload.treatmentDecision = input.generatedNonconformity ? "nc_generated" : "no_nc";
-    }
-    if (input.occurrenceNumber !== undefined) payload.nonconformityOccurrenceNumber = input.occurrenceNumber.trim() || null;
-    if (input.evidencePhotos !== undefined) payload.evidencePhotos = input.evidencePhotos;
-    const history = Array.isArray(payload.editHistory) ? payload.editHistory : [];
-    payload.editHistory = [...history, { action: "updated_incidence", at: new Date().toISOString(), byProfileId: ctx.operatorProfile!.id, byName: ctx.operatorProfile!.name, byTitle: ctx.operatorProfile!.title }];
-    await db.update(controlEntries).set({ title: input.title ?? entry.title, area: input.area ?? entry.area, notes: input.notes === undefined ? entry.notes : input.notes.trim() || null, payload }).where(eq(controlEntries.id, input.id));
-    return { success: true };
-  }),
+  updateIncidence: qualityOperatorProcedure
+    .input(
+      z.object({
+        id: z.number().int(),
+        title: z.string().min(2).max(180).optional(),
+        area: z.string().min(2).max(120).optional(),
+        notes: z.string().max(3000).optional(),
+        generatedNonconformity: z.boolean().optional(),
+        occurrenceNumber: z.string().max(80).optional(),
+        treatment: incidenceTreatmentSchema.optional(),
+        evidencePhotos: z
+          .array(
+            z.object({
+              key: z.string().min(1),
+              url: z.string().startsWith("/manus-storage/"),
+              fileName: z.string().min(1).max(255),
+              mimeType: z.enum(["image/jpeg", "image/png", "image/webp"]),
+            })
+          )
+          .max(8)
+          .optional(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const db = await requireDb();
+      const entry = (
+        await db
+          .select()
+          .from(controlEntries)
+          .where(eq(controlEntries.id, input.id))
+          .limit(1)
+      )[0];
+      if (!entry || entry.result !== "NC")
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Incidência diária não encontrada.",
+        });
+      const isManager = ctx.operatorProfile!.role === "manager";
+      const isAuthor =
+        entry.registeredByProfileId === ctx.operatorProfile!.id ||
+        (!entry.registeredByProfileId &&
+          entry.registeredByName === ctx.operatorProfile!.name);
+      if (!isManager && !isAuthor)
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message:
+            "Apenas o técnico que registou a incidência ou a Responsável de Qualidade a pode editar.",
+        });
+      if (
+        !isManager &&
+        (input.generatedNonconformity !== undefined ||
+          input.occurrenceNumber !== undefined)
+      )
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message:
+            "A decisão e o número de NC são geridos pela Responsável de Qualidade.",
+        });
+      const payload =
+        entry.payload &&
+        typeof entry.payload === "object" &&
+        !Array.isArray(entry.payload)
+          ? ({ ...entry.payload } as Record<string, unknown>)
+          : {};
+      if (input.generatedNonconformity !== undefined) {
+        payload.generatedNonconformity = input.generatedNonconformity;
+        payload.treatmentDecision = input.generatedNonconformity
+          ? "nc_generated"
+          : "no_nc";
+      }
+      if (input.occurrenceNumber !== undefined)
+        payload.nonconformityOccurrenceNumber =
+          input.occurrenceNumber.trim() || null;
+      if (input.treatment !== undefined) {
+        const correction = input.treatment.correction?.trim() || "";
+        const responsible = input.treatment.responsible?.trim() || "";
+        if (
+          input.treatment.status === "completed" &&
+          (!correction || !responsible || !input.treatment.completedAt)
+        ) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message:
+              "Para concluir o tratamento, indique a correção, o responsável e a data de conclusão.",
+          });
+        }
+        payload.incidenceTreatment = {
+          status: input.treatment.status,
+          correction,
+          responsible,
+          dueDate: input.treatment.dueDate ?? "",
+          completedAt:
+            input.treatment.status === "completed"
+              ? input.treatment.completedAt
+              : "",
+          notes: input.treatment.notes?.trim() || "",
+          evidencePhotos:
+            input.treatment.evidencePhotos ??
+            incidenceTreatmentFromPayload(payload).evidencePhotos ??
+            [],
+          updatedAt: new Date().toISOString(),
+          updatedByProfileId: ctx.operatorProfile!.id,
+          updatedByName: ctx.operatorProfile!.name,
+        };
+      }
+      if (input.evidencePhotos !== undefined)
+        payload.evidencePhotos = input.evidencePhotos;
+      const history = Array.isArray(payload.editHistory)
+        ? payload.editHistory
+        : [];
+      payload.editHistory = [
+        ...history,
+        {
+          action: "updated_incidence",
+          at: new Date().toISOString(),
+          byProfileId: ctx.operatorProfile!.id,
+          byName: ctx.operatorProfile!.name,
+          byTitle: ctx.operatorProfile!.title,
+        },
+      ];
+      await db
+        .update(controlEntries)
+        .set({
+          title: input.title ?? entry.title,
+          area: input.area ?? entry.area,
+          notes:
+            input.notes === undefined
+              ? entry.notes
+              : input.notes.trim() || null,
+          payload,
+        })
+        .where(eq(controlEntries.id, input.id));
+      return { success: true };
+    }),
 
-  deleteIncidence: qualityManagerProcedure.input(z.object({ id: z.number().int() })).mutation(async ({ ctx, input }) => {
-    const db = await requireDb();
-    const entry = (await db.select().from(controlEntries).where(eq(controlEntries.id, input.id)).limit(1))[0];
-    if (!entry || entry.result !== "NC") throw new TRPCError({ code: "NOT_FOUND", message: "Incidência diária não encontrada." });
-    const payload = entry.payload && typeof entry.payload === "object" && !Array.isArray(entry.payload) ? { ...entry.payload } as Record<string, unknown> : {};
-    payload.deletedAt = new Date().toISOString();
-    payload.deletedByProfileId = ctx.operatorProfile!.id;
-    payload.deletedByName = ctx.operatorProfile!.name;
-    await db.update(controlEntries).set({ payload }).where(eq(controlEntries.id, input.id));
-    return { success: true };
-  }),
+  deleteIncidence: qualityManagerProcedure
+    .input(z.object({ id: z.number().int() }))
+    .mutation(async ({ ctx, input }) => {
+      const db = await requireDb();
+      const entry = (
+        await db
+          .select()
+          .from(controlEntries)
+          .where(eq(controlEntries.id, input.id))
+          .limit(1)
+      )[0];
+      if (!entry || entry.result !== "NC")
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Incidência diária não encontrada.",
+        });
+      const payload =
+        entry.payload &&
+        typeof entry.payload === "object" &&
+        !Array.isArray(entry.payload)
+          ? ({ ...entry.payload } as Record<string, unknown>)
+          : {};
+      payload.deletedAt = new Date().toISOString();
+      payload.deletedByProfileId = ctx.operatorProfile!.id;
+      payload.deletedByName = ctx.operatorProfile!.name;
+      await db
+        .update(controlEntries)
+        .set({ payload })
+        .where(eq(controlEntries.id, input.id));
+      return { success: true };
+    }),
 
-  createNonconformity: qualityOperatorProcedure.input(z.object({
-    sourceEntryId: z.number().int().optional(),
-    module: qualityModuleSchema,
-    title: z.string().min(2).max(180),
-    description: z.string().min(2).max(5000),
-    area: z.string().min(2).max(120),
-    factoryId: z.number().int().optional(),
-    severity: z.enum(["critical", "high", "medium", "low"]).default("medium"),
-  })).mutation(async ({ ctx, input }) => {
-    const db = await requireDb();
-    if (input.sourceEntryId) {
-      const source = (await db.select().from(controlEntries).where(eq(controlEntries.id, input.sourceEntryId)).limit(1))[0];
-      if (!source || source.result !== "NC") throw new TRPCError({ code: "BAD_REQUEST", message: "Selecione uma incidência diária NC válida para associar à Não Conformidade." });
-      const existing = (await db.select().from(nonconformities).where(eq(nonconformities.sourceEntryId, source.id)).limit(1))[0];
-      if (existing) throw new TRPCError({ code: "CONFLICT", message: "Esta incidência já está associada a uma Não Conformidade." });
-    }
-    await db.insert(nonconformities).values({ ...input, sourceEntryId: input.sourceEntryId ?? null, factoryId: input.factoryId ?? null, status: "open", detectedAt: new Date(), reportedByProfileId: ctx.operatorProfile!.id, reportedByName: ctx.operatorProfile!.name, reportedByTitle: ctx.operatorProfile!.title, createdBy: ctx.user!.openId });
-    return { success: true };
-  }),
+  createNonconformity: qualityOperatorProcedure
+    .input(
+      z.object({
+        sourceEntryId: z.number().int().optional(),
+        module: qualityModuleSchema,
+        title: z.string().min(2).max(180),
+        description: z.string().min(2).max(5000),
+        area: z.string().min(2).max(120),
+        factoryId: z.number().int().optional(),
+        severity: z
+          .enum(["critical", "high", "medium", "low"])
+          .default("medium"),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const db = await requireDb();
+      if (input.sourceEntryId) {
+        const source = (
+          await db
+            .select()
+            .from(controlEntries)
+            .where(eq(controlEntries.id, input.sourceEntryId))
+            .limit(1)
+        )[0];
+        if (!source || source.result !== "NC")
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message:
+              "Selecione uma incidência diária NC válida para associar à Não Conformidade.",
+          });
+        const existing = (
+          await db
+            .select()
+            .from(nonconformities)
+            .where(eq(nonconformities.sourceEntryId, source.id))
+            .limit(1)
+        )[0];
+        if (existing)
+          throw new TRPCError({
+            code: "CONFLICT",
+            message:
+              "Esta incidência já está associada a uma Não Conformidade.",
+          });
+      }
+      await db
+        .insert(nonconformities)
+        .values({
+          ...input,
+          sourceEntryId: input.sourceEntryId ?? null,
+          factoryId: input.factoryId ?? null,
+          status: "open",
+          detectedAt: new Date(),
+          reportedByProfileId: ctx.operatorProfile!.id,
+          reportedByName: ctx.operatorProfile!.name,
+          reportedByTitle: ctx.operatorProfile!.title,
+          createdBy: ctx.user!.openId,
+        });
+      return { success: true };
+    }),
 
-  listNcs: qualitySessionProcedure.input(z.object({ factoryId: z.number().int().optional(), startDate: dateInput.optional(), endDate: dateInput.optional() }).optional()).query(async ({ input }) => {
-    const db = await requireDb();
-    if (input?.startDate && input.endDate && asDateRange(input.startDate).start > asDateRange(input.endDate).start) throw new TRPCError({ code: "BAD_REQUEST", message: "A data final não pode ser anterior à data inicial." });
-    const start = input?.startDate ? asDateRange(input.startDate).start : null;
-    const end = input?.endDate ? asDateRange(input.endDate).end : null;
-    const ncs = await db.select().from(nonconformities).orderBy(desc(nonconformities.detectedAt));
-    return scopeToFactory(ncs, input?.factoryId).filter((nc) => (!start || nc.detectedAt >= start) && (!end || nc.detectedAt < end));
-  }),
+  listNcs: qualitySessionProcedure
+    .input(
+      z
+        .object({
+          factoryId: z.number().int().optional(),
+          startDate: dateInput.optional(),
+          endDate: dateInput.optional(),
+        })
+        .optional()
+    )
+    .query(async ({ input }) => {
+      const db = await requireDb();
+      if (
+        input?.startDate &&
+        input.endDate &&
+        asDateRange(input.startDate).start > asDateRange(input.endDate).start
+      )
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "A data final não pode ser anterior à data inicial.",
+        });
+      const start = input?.startDate
+        ? asDateRange(input.startDate).start
+        : null;
+      const end = input?.endDate ? asDateRange(input.endDate).end : null;
+      const ncs = await db
+        .select()
+        .from(nonconformities)
+        .orderBy(desc(nonconformities.detectedAt));
+      return scopeToFactory(ncs, input?.factoryId).filter(
+        nc =>
+          (!start || nc.detectedAt >= start) && (!end || nc.detectedAt < end)
+      );
+    }),
 
-  dailyIncidences: qualitySessionProcedure.input(z.object({
-    date: dateInput.optional(),
-    factoryId: z.number().int().optional(),
-  }).optional()).query(async ({ input }) => {
-    const db = await requireDb();
-    const referenceDate = input?.date ?? new Date();
-    const { start, end } = asDateRange(referenceDate);
-    const [entries, factoryRows, ncRows] = await Promise.all([
-      db.select().from(controlEntries).orderBy(desc(controlEntries.completedAt)),
-      db.select().from(factories).orderBy(factories.name),
-      db.select().from(nonconformities).orderBy(desc(nonconformities.detectedAt)),
-    ]);
-    const factoryNames = new Map(factoryRows.map((factory) => [factory.id, factory.name]));
-    const incidences = scopeToFactory(entries, input?.factoryId)
-      .filter((entry) => entry.result === "NC" && entry.completedAt >= start && entry.completedAt < end)
-      .map((entry) => {
-        const linked = ncRows.find((nc) => nc.sourceEntryId === entry.id);
-        const payload = entry.payload && typeof entry.payload === "object" && !Array.isArray(entry.payload) ? entry.payload as Record<string, unknown> : {};
-        const generatedNonconformity = Boolean(linked) || payload.generatedNonconformity === true;
-        const treatmentStatus = generatedNonconformity ? "nc_generated" : payload.treatmentDecision === "no_nc" ? "no_nc" : "pending";
-        return { ...entry, detectedAt: entry.completedAt, factoryName: entry.factoryId ? factoryNames.get(entry.factoryId) ?? "Fábrica não identificada" : "Sem fábrica/linha", generatedNonconformity, treatmentStatus, nonconformityId: linked?.id ?? null };
-      });
-    const grouped = new Map<string, number>();
-    incidences.forEach((incidence) => grouped.set(incidence.factoryName, (grouped.get(incidence.factoryName) ?? 0) + 1));
-    return {
-      date: start,
-      total: incidences.length,
-      byFactory: Array.from(grouped, ([factoryName, total]) => ({ factoryName, total })).sort((left, right) => right.total - left.total),
-      incidences,
-    };
-  }),
-
-  dailyIncidenceSummary: qualitySessionProcedure.input(z.object({
-    date: dateInput,
-    factoryId: z.number().int().optional(),
-  })).query(async ({ input }) => {
-    const db = await requireDb();
-    const { start, end } = asDateRange(input.date);
-    const scopeId = input.factoryId ?? 0;
-    const [entryRows, ncRows, factoryRows, savedNotes] = await Promise.all([
-      db.select().from(controlEntries).orderBy(desc(controlEntries.completedAt)),
-      db.select().from(nonconformities).orderBy(desc(nonconformities.detectedAt)),
-      db.select().from(factories).orderBy(factories.name),
-      db.select().from(dailyIncidenceSummaries).where(and(eq(dailyIncidenceSummaries.referenceDate, start), eq(dailyIncidenceSummaries.factoryId, scopeId))).limit(1),
-    ]);
-    const factoryNames = new Map(factoryRows.map((factory) => [factory.id, factory.name]));
-    const scopedEntries = entryRows.filter((entry) => (!input.factoryId || entry.factoryId === input.factoryId))
-      .filter((entry) => entry.result === "NC" && entry.completedAt >= start && entry.completedAt < end);
-    const scopedNcs = ncRows.filter((nc) => (!input.factoryId || nc.factoryId === input.factoryId))
-      .filter((nc) => nc.detectedAt >= start && nc.detectedAt < end);
-    const incidences = scopedEntries.map((entry) => {
-      const linked = scopedNcs.find((nc) => nc.sourceEntryId === entry.id) ?? scopedNcs.find((nc) => !nc.sourceEntryId && nc.module === entry.module && nc.factoryId === entry.factoryId && nc.area === entry.area);
-      const payload = entry.payload && typeof entry.payload === "object" && !Array.isArray(entry.payload) ? entry.payload as Record<string, unknown> : {};
-      const generatedNonconformity = Boolean(linked) || payload.generatedNonconformity === true;
-      const treatmentStatus = generatedNonconformity ? "nc_generated" : payload.treatmentDecision === "no_nc" ? "no_nc" : "pending";
+  dailyIncidences: qualitySessionProcedure
+    .input(
+      z
+        .object({
+          date: dateInput.optional(),
+          factoryId: z.number().int().optional(),
+        })
+        .optional()
+    )
+    .query(async ({ input }) => {
+      const db = await requireDb();
+      const referenceDate = input?.date ?? new Date();
+      const { start, end } = asDateRange(referenceDate);
+      const [entries, factoryRows, ncRows] = await Promise.all([
+        db
+          .select()
+          .from(controlEntries)
+          .orderBy(desc(controlEntries.completedAt)),
+        db.select().from(factories).orderBy(factories.name),
+        db
+          .select()
+          .from(nonconformities)
+          .orderBy(desc(nonconformities.detectedAt)),
+      ]);
+      const factoryNames = new Map(
+        factoryRows.map(factory => [factory.id, factory.name])
+      );
+      const incidences = scopeToFactory(entries, input?.factoryId)
+        .filter(
+          entry =>
+            entry.result === "NC" &&
+            entry.completedAt >= start &&
+            entry.completedAt < end
+        )
+        .map(entry => {
+          const linked = ncRows.find(nc => nc.sourceEntryId === entry.id);
+          const payload =
+            entry.payload &&
+            typeof entry.payload === "object" &&
+            !Array.isArray(entry.payload)
+              ? (entry.payload as Record<string, unknown>)
+              : {};
+          const generatedNonconformity =
+            Boolean(linked) || payload.generatedNonconformity === true;
+          const treatmentDecision = incidenceDecisionFromPayload(
+            payload,
+            generatedNonconformity
+          );
+          const treatment = incidenceTreatmentFromPayload(payload);
+          return {
+            ...entry,
+            detectedAt: entry.completedAt,
+            factoryName: entry.factoryId
+              ? (factoryNames.get(entry.factoryId) ??
+                "Fábrica não identificada")
+              : "Sem fábrica/linha",
+            generatedNonconformity,
+            treatmentStatus: treatmentDecision,
+            treatmentProgress: treatment.status,
+            treatment,
+            nonconformityId: linked?.id ?? null,
+          };
+        });
+      const grouped = new Map<string, number>();
+      incidences.forEach(incidence =>
+        grouped.set(
+          incidence.factoryName,
+          (grouped.get(incidence.factoryName) ?? 0) + 1
+        )
+      );
       return {
-        id: entry.id,
-        title: entry.title,
-        module: entry.module,
-        area: entry.area,
-        factoryId: entry.factoryId,
-        factoryName: entry.factoryId ? factoryNames.get(entry.factoryId) ?? "Fábrica não identificada" : "Sem fábrica/linha",
-        completedAt: entry.completedAt,
-        notes: entry.notes,
-        registeredByName: entry.registeredByName,
-        registeredByTitle: entry.registeredByTitle,
-        generatedNonconformity,
-        treatmentStatus,
-        nonconformityId: linked?.id ?? null,
-        nonconformitySeverity: linked?.severity ?? null,
-        nonconformityStatus: linked?.status ?? null,
+        date: start,
+        total: incidences.length,
+        byFactory: Array.from(grouped, ([factoryName, total]) => ({
+          factoryName,
+          total,
+        })).sort((left, right) => right.total - left.total),
+        incidences,
       };
-    });
-    const pendingTreatment = incidences.filter((item) => item.treatmentStatus === "pending").length;
-    return {
-      date: start,
-      total: incidences.length,
-      withNonconformity: incidences.filter((item) => item.generatedNonconformity).length,
-      withoutNonconformity: incidences.filter((item) => item.treatmentStatus === "no_nc").length,
-      pendingTreatment,
-      note: savedNotes[0]?.note ?? "",
-      noteUpdatedByName: savedNotes[0]?.updatedByName ?? null,
-      noteUpdatedAt: savedNotes[0]?.updatedAt ?? null,
-      incidences,
-    };
-  }),
+    }),
 
-  saveDailyIncidenceNote: qualityOperatorProcedure.input(z.object({
-    date: dateInput,
-    factoryId: z.number().int().optional(),
-    note: z.string().max(4000),
-  })).mutation(async ({ ctx, input }) => {
-    const db = await requireDb();
-    const factoryId = input.factoryId ?? 0;
-    await db.insert(dailyIncidenceSummaries).values({
-      referenceDate: asDateRange(input.date).start,
-      factoryId,
-      note: input.note.trim(),
-      updatedByProfileId: ctx.operatorProfile!.id,
-      updatedByName: ctx.operatorProfile!.name,
-      updatedByTitle: ctx.operatorProfile!.title,
-      createdBy: ctx.user!.openId,
-    }).onDuplicateKeyUpdate({ set: {
-      note: input.note.trim(),
-      updatedByProfileId: ctx.operatorProfile!.id,
-      updatedByName: ctx.operatorProfile!.name,
-      updatedByTitle: ctx.operatorProfile!.title,
-    } });
-    return { success: true };
-  }),
+  dailyIncidenceSummary: qualitySessionProcedure
+    .input(
+      z.object({
+        date: dateInput,
+        factoryId: z.number().int().optional(),
+      })
+    )
+    .query(async ({ input }) => {
+      const db = await requireDb();
+      const { start, end } = asDateRange(input.date);
+      const scopeId = input.factoryId ?? 0;
+      const [entryRows, ncRows, factoryRows, savedNotes] = await Promise.all([
+        db
+          .select()
+          .from(controlEntries)
+          .orderBy(desc(controlEntries.completedAt)),
+        db
+          .select()
+          .from(nonconformities)
+          .orderBy(desc(nonconformities.detectedAt)),
+        db.select().from(factories).orderBy(factories.name),
+        db
+          .select()
+          .from(dailyIncidenceSummaries)
+          .where(
+            and(
+              eq(dailyIncidenceSummaries.referenceDate, start),
+              eq(dailyIncidenceSummaries.factoryId, scopeId)
+            )
+          )
+          .limit(1),
+      ]);
+      const factoryNames = new Map(
+        factoryRows.map(factory => [factory.id, factory.name])
+      );
+      const scopedEntries = entryRows
+        .filter(
+          entry => !input.factoryId || entry.factoryId === input.factoryId
+        )
+        .filter(
+          entry =>
+            entry.result === "NC" &&
+            entry.completedAt >= start &&
+            entry.completedAt < end
+        );
+      const scopedNcs = ncRows
+        .filter(nc => !input.factoryId || nc.factoryId === input.factoryId)
+        .filter(nc => nc.detectedAt >= start && nc.detectedAt < end);
+      const incidences = scopedEntries.map(entry => {
+        const linked =
+          scopedNcs.find(nc => nc.sourceEntryId === entry.id) ??
+          scopedNcs.find(
+            nc =>
+              !nc.sourceEntryId &&
+              nc.module === entry.module &&
+              nc.factoryId === entry.factoryId &&
+              nc.area === entry.area
+          );
+        const payload =
+          entry.payload &&
+          typeof entry.payload === "object" &&
+          !Array.isArray(entry.payload)
+            ? (entry.payload as Record<string, unknown>)
+            : {};
+        const generatedNonconformity =
+          Boolean(linked) || payload.generatedNonconformity === true;
+        const treatmentDecision = incidenceDecisionFromPayload(
+          payload,
+          generatedNonconformity
+        );
+        const treatment = incidenceTreatmentFromPayload(payload);
+        return {
+          id: entry.id,
+          title: entry.title,
+          module: entry.module,
+          area: entry.area,
+          factoryId: entry.factoryId,
+          factoryName: entry.factoryId
+            ? (factoryNames.get(entry.factoryId) ?? "Fábrica não identificada")
+            : "Sem fábrica/linha",
+          completedAt: entry.completedAt,
+          notes: entry.notes,
+          registeredByName: entry.registeredByName,
+          registeredByTitle: entry.registeredByTitle,
+          generatedNonconformity,
+          treatmentStatus: treatmentDecision,
+          treatmentProgress: treatment.status,
+          treatmentDecision,
+          treatment,
+          nonconformityId: linked?.id ?? null,
+          nonconformitySeverity: linked?.severity ?? null,
+          nonconformityStatus: linked?.status ?? null,
+        };
+      });
+      const pendingTreatment = incidences.filter(
+        item => item.treatmentProgress === "pending"
+      ).length;
+      return {
+        date: start,
+        total: incidences.length,
+        withNonconformity: incidences.filter(
+          item => item.generatedNonconformity
+        ).length,
+        withoutNonconformity: incidences.filter(
+          item => item.treatmentDecision === "no_nc"
+        ).length,
+        pendingTreatment,
+        note: savedNotes[0]?.note ?? "",
+        noteUpdatedByName: savedNotes[0]?.updatedByName ?? null,
+        noteUpdatedAt: savedNotes[0]?.updatedAt ?? null,
+        incidences,
+      };
+    }),
 
-  updateNc: qualitySessionProcedure.input(z.object({
-    id: z.number().int(),
-    status: z.enum(["open", "in_progress", "awaiting_validation", "closed"]),
-    assignedTo: z.string().max(120).optional(),
-    dueAt: dateInput.optional(),
-  })).mutation(async ({ ctx, input }) => {
-    if (input.status === "closed" && ctx.operatorProfile?.role !== "manager") {
-      throw new TRPCError({ code: "FORBIDDEN", message: "Apenas a Responsável de Qualidade pode fechar não conformidades." });
-    }
-    const db = await requireDb();
-    const validatorName = ctx.user.name?.trim() || ctx.user.email?.trim() || ctx.user.openId;
-    await db.update(nonconformities).set({
-      status: input.status,
-      assignedTo: input.assignedTo,
-      dueAt: input.dueAt,
-      validatedBy: input.status === "closed" ? validatorName : null,
-      validatedByOpenId: input.status === "closed" ? ctx.user.openId : null,
-      closedAt: input.status === "closed" ? new Date() : null,
-    }).where(eq(nonconformities.id, input.id));
-    return { success: true };
-  }),
+  saveDailyIncidenceNote: qualityOperatorProcedure
+    .input(
+      z.object({
+        date: dateInput,
+        factoryId: z.number().int().optional(),
+        note: z.string().max(4000),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const db = await requireDb();
+      const factoryId = input.factoryId ?? 0;
+      await db
+        .insert(dailyIncidenceSummaries)
+        .values({
+          referenceDate: asDateRange(input.date).start,
+          factoryId,
+          note: input.note.trim(),
+          updatedByProfileId: ctx.operatorProfile!.id,
+          updatedByName: ctx.operatorProfile!.name,
+          updatedByTitle: ctx.operatorProfile!.title,
+          createdBy: ctx.user!.openId,
+        })
+        .onDuplicateKeyUpdate({
+          set: {
+            note: input.note.trim(),
+            updatedByProfileId: ctx.operatorProfile!.id,
+            updatedByName: ctx.operatorProfile!.name,
+            updatedByTitle: ctx.operatorProfile!.title,
+          },
+        });
+      return { success: true };
+    }),
 
-  addCorrectiveAction: qualitySessionProcedure.input(z.object({
-    nonconformityId: z.number().int(),
-    actionType: z.enum(["correction", "corrective"]),
-    description: z.string().min(3).max(3000),
-    responsible: z.string().min(2).max(120),
-    dueAt: dateInput.optional(),
-  })).mutation(async ({ ctx, input }) => {
-    const db = await requireDb();
-    const parentNc = (await db.select().from(nonconformities).where(eq(nonconformities.id, input.nonconformityId)).limit(1))[0];
-    if (!parentNc) throw new TRPCError({ code: "NOT_FOUND", message: "Não conformidade não encontrada." });
-    await db.insert(correctiveActions).values({ ...input, factoryId: parentNc.factoryId, createdBy: ctx.user.openId, status: "pending" });
-    await db.update(nonconformities).set({ status: "in_progress" }).where(eq(nonconformities.id, input.nonconformityId));
-    return { success: true };
-  }),
+  updateNc: qualitySessionProcedure
+    .input(
+      z.object({
+        id: z.number().int(),
+        status: z.enum([
+          "open",
+          "in_progress",
+          "awaiting_validation",
+          "closed",
+        ]),
+        assignedTo: z.string().max(120).optional(),
+        dueAt: dateInput.optional(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      if (
+        input.status === "closed" &&
+        ctx.operatorProfile?.role !== "manager"
+      ) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message:
+            "Apenas a Responsável de Qualidade pode fechar não conformidades.",
+        });
+      }
+      const db = await requireDb();
+      const validatorName =
+        ctx.user.name?.trim() || ctx.user.email?.trim() || ctx.user.openId;
+      await db
+        .update(nonconformities)
+        .set({
+          status: input.status,
+          assignedTo: input.assignedTo,
+          dueAt: input.dueAt,
+          validatedBy: input.status === "closed" ? validatorName : null,
+          validatedByOpenId: input.status === "closed" ? ctx.user.openId : null,
+          closedAt: input.status === "closed" ? new Date() : null,
+        })
+        .where(eq(nonconformities.id, input.id));
+      return { success: true };
+    }),
 
-  listActions: qualitySessionProcedure.input(z.object({ nonconformityId: z.number().int() })).query(async ({ input }) => {
-    const db = await requireDb();
-    return db.select().from(correctiveActions).where(eq(correctiveActions.nonconformityId, input.nonconformityId)).orderBy(desc(correctiveActions.createdAt));
-  }),
+  addCorrectiveAction: qualitySessionProcedure
+    .input(
+      z.object({
+        nonconformityId: z.number().int(),
+        actionType: z.enum(["correction", "corrective"]),
+        description: z.string().min(3).max(3000),
+        responsible: z.string().min(2).max(120),
+        dueAt: dateInput.optional(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const db = await requireDb();
+      const parentNc = (
+        await db
+          .select()
+          .from(nonconformities)
+          .where(eq(nonconformities.id, input.nonconformityId))
+          .limit(1)
+      )[0];
+      if (!parentNc)
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Não conformidade não encontrada.",
+        });
+      await db
+        .insert(correctiveActions)
+        .values({
+          ...input,
+          factoryId: parentNc.factoryId,
+          createdBy: ctx.user.openId,
+          status: "pending",
+        });
+      await db
+        .update(nonconformities)
+        .set({ status: "in_progress" })
+        .where(eq(nonconformities.id, input.nonconformityId));
+      return { success: true };
+    }),
 
-  completeAction: qualitySessionProcedure.input(z.object({ id: z.number().int(), notes: z.string().max(3000).optional() })).mutation(async ({ input }) => {
-    const db = await requireDb();
-    await db.update(correctiveActions).set({ status: "completed", completedAt: new Date(), completionNotes: input.notes ?? null }).where(eq(correctiveActions.id, input.id));
-    return { success: true };
-  }),
+  listActions: qualitySessionProcedure
+    .input(z.object({ nonconformityId: z.number().int() }))
+    .query(async ({ input }) => {
+      const db = await requireDb();
+      return db
+        .select()
+        .from(correctiveActions)
+        .where(eq(correctiveActions.nonconformityId, input.nonconformityId))
+        .orderBy(desc(correctiveActions.createdAt));
+    }),
 
-  uploadEvidence: qualitySessionProcedure.input(z.object({
-    nonconformityId: z.number().int().optional(),
-    correctiveActionId: z.number().int().optional(),
-    fileName: z.string().min(1).max(255),
-    mimeType: z.string().min(3).max(120),
-    dataUrl: z.string().min(20).max(7_000_000),
-  })).mutation(async ({ ctx, input }) => {
-    const db = await requireDb();
-    const base64 = input.dataUrl.split(",")[1];
-    if (!base64) throw new TRPCError({ code: "BAD_REQUEST", message: "Anexo inválido." });
-    const safeName = input.fileName.replace(/[^a-zA-Z0-9._-]/g, "_");
-    const key = `quality-evidence/${ctx.user.id}/${Date.now()}-${safeName}`;
-    const { key: fileKey, url } = await storagePut(key, Buffer.from(base64, "base64"), input.mimeType);
-    await db.insert(evidences).values({
-      nonconformityId: input.nonconformityId ?? null,
-      correctiveActionId: input.correctiveActionId ?? null,
-      fileName: input.fileName,
-      mimeType: input.mimeType,
-      fileKey,
-      url,
-      uploadedBy: ctx.user.openId,
-    });
-    return { success: true, url };
-  }),
+  completeAction: qualitySessionProcedure
+    .input(
+      z.object({ id: z.number().int(), notes: z.string().max(3000).optional() })
+    )
+    .mutation(async ({ input }) => {
+      const db = await requireDb();
+      await db
+        .update(correctiveActions)
+        .set({
+          status: "completed",
+          completedAt: new Date(),
+          completionNotes: input.notes ?? null,
+        })
+        .where(eq(correctiveActions.id, input.id));
+      return { success: true };
+    }),
 
-  listEvidences: qualitySessionProcedure.input(z.object({ nonconformityId: z.number().int() })).query(async ({ input }) => {
-    const db = await requireDb();
-    const actions = await db.select().from(correctiveActions).where(eq(correctiveActions.nonconformityId, input.nonconformityId));
-    const direct = await db.select().from(evidences).where(eq(evidences.nonconformityId, input.nonconformityId));
-    if (!actions.length) return direct;
-    const actionEvidence = await db.select().from(evidences).where(inArray(evidences.correctiveActionId, actions.map((action) => action.id)));
-    return [...direct, ...actionEvidence].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
-  }),
+  uploadEvidence: qualitySessionProcedure
+    .input(
+      z.object({
+        nonconformityId: z.number().int().optional(),
+        correctiveActionId: z.number().int().optional(),
+        fileName: z.string().min(1).max(255),
+        mimeType: z.string().min(3).max(120),
+        dataUrl: z.string().min(20).max(7_000_000),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const db = await requireDb();
+      const base64 = input.dataUrl.split(",")[1];
+      if (!base64)
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Anexo inválido.",
+        });
+      const safeName = input.fileName.replace(/[^a-zA-Z0-9._-]/g, "_");
+      const key = `quality-evidence/${ctx.user.id}/${Date.now()}-${safeName}`;
+      const { key: fileKey, url } = await storagePut(
+        key,
+        Buffer.from(base64, "base64"),
+        input.mimeType
+      );
+      await db.insert(evidences).values({
+        nonconformityId: input.nonconformityId ?? null,
+        correctiveActionId: input.correctiveActionId ?? null,
+        fileName: input.fileName,
+        mimeType: input.mimeType,
+        fileKey,
+        url,
+        uploadedBy: ctx.user.openId,
+      });
+      return { success: true, url };
+    }),
+
+  listEvidences: qualitySessionProcedure
+    .input(z.object({ nonconformityId: z.number().int() }))
+    .query(async ({ input }) => {
+      const db = await requireDb();
+      const actions = await db
+        .select()
+        .from(correctiveActions)
+        .where(eq(correctiveActions.nonconformityId, input.nonconformityId));
+      const direct = await db
+        .select()
+        .from(evidences)
+        .where(eq(evidences.nonconformityId, input.nonconformityId));
+      if (!actions.length) return direct;
+      const actionEvidence = await db
+        .select()
+        .from(evidences)
+        .where(
+          inArray(
+            evidences.correctiveActionId,
+            actions.map(action => action.id)
+          )
+        );
+      return [...direct, ...actionEvidence].sort(
+        (a, b) => b.createdAt.getTime() - a.createdAt.getTime()
+      );
+    }),
 
   listChecklistAreas: qualitySessionProcedure.query(async () => {
     const db = await requireDb();
@@ -1641,700 +4231,1854 @@ export const qualityRouter = router({
       }));
   }),
 
-  addChecklistArea: qualityManagerProcedure.input(z.object({ name: z.string().min(2).max(120) })).mutation(async ({ ctx, input }) => {
-    const db = await requireDb();
-    const name = normalizeChecklistAreaName(input.name);
-    await ensureChecklistArea(db, name, ctx.user!.openId);
-    return { success: true, name };
-  }),
+  addChecklistArea: qualityManagerProcedure
+    .input(z.object({ name: z.string().min(2).max(120) }))
+    .mutation(async ({ ctx, input }) => {
+      const db = await requireDb();
+      const name = normalizeChecklistAreaName(input.name);
+      await ensureChecklistArea(db, name, ctx.user!.openId);
+      return { success: true, name };
+    }),
 
-  updateChecklistArea: qualityManagerProcedure.input(z.object({ id: z.number().int(), name: z.string().min(2).max(120) })).mutation(async ({ input }) => {
-    const db = await requireDb();
-    const current = await db.select().from(checklistAreas).where(eq(checklistAreas.id, input.id)).limit(1);
-    if (!current[0]) throw new TRPCError({ code: "NOT_FOUND", message: "A Área/Zona selecionada não existe." });
-    const name = normalizeChecklistAreaName(input.name);
-    const duplicate = await db.select().from(checklistAreas).where(eq(checklistAreas.name, name)).limit(1);
-    if (duplicate[0] && duplicate[0].id !== input.id) throw new TRPCError({ code: "CONFLICT", message: "Já existe uma Área/Zona com esse nome." });
-    await db.update(checklistAreas).set({ name }).where(eq(checklistAreas.id, input.id));
-    await db.update(checklistItems).set({ area: name }).where(eq(checklistItems.area, current[0].name));
-    return { success: true, name };
-  }),
+  updateChecklistArea: qualityManagerProcedure
+    .input(z.object({ id: z.number().int(), name: z.string().min(2).max(120) }))
+    .mutation(async ({ input }) => {
+      const db = await requireDb();
+      const current = await db
+        .select()
+        .from(checklistAreas)
+        .where(eq(checklistAreas.id, input.id))
+        .limit(1);
+      if (!current[0])
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "A Área/Zona selecionada não existe.",
+        });
+      const name = normalizeChecklistAreaName(input.name);
+      const duplicate = await db
+        .select()
+        .from(checklistAreas)
+        .where(eq(checklistAreas.name, name))
+        .limit(1);
+      if (duplicate[0] && duplicate[0].id !== input.id)
+        throw new TRPCError({
+          code: "CONFLICT",
+          message: "Já existe uma Área/Zona com esse nome.",
+        });
+      await db
+        .update(checklistAreas)
+        .set({ name })
+        .where(eq(checklistAreas.id, input.id));
+      await db
+        .update(checklistItems)
+        .set({ area: name })
+        .where(eq(checklistItems.area, current[0].name));
+      return { success: true, name };
+    }),
 
-  removeChecklistArea: qualityManagerProcedure.input(z.object({ id: z.number().int() })).mutation(async ({ input }) => {
-    const db = await requireDb();
-    const current = await db.select().from(checklistAreas).where(eq(checklistAreas.id, input.id)).limit(1);
-    if (!current[0]) throw new TRPCError({ code: "NOT_FOUND", message: "A Área/Zona selecionada não existe." });
-    const [linkedAssignments, linkedItems] = await Promise.all([
-      db.select().from(checklistItemAreas).where(eq(checklistItemAreas.checklistAreaId, input.id)),
-      db.select().from(checklistItems),
-    ]);
-    const linkedItemIds = new Set(linkedAssignments.map(assignment => assignment.checklistItemId));
-    if (linkedItems.some(item => linkedItemIds.has(item.id) && item.active === "true")) throw new TRPCError({ code: "BAD_REQUEST", message: "Não é possível eliminar uma Área/Zona com pontos associados. Edite ou elimine primeiro os pontos dessa área." });
-    await db.update(checklistAreas).set({ active: "false" }).where(eq(checklistAreas.id, input.id));
-    return { success: true };
-  }),
+  removeChecklistArea: qualityManagerProcedure
+    .input(z.object({ id: z.number().int() }))
+    .mutation(async ({ input }) => {
+      const db = await requireDb();
+      const current = await db
+        .select()
+        .from(checklistAreas)
+        .where(eq(checklistAreas.id, input.id))
+        .limit(1);
+      if (!current[0])
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "A Área/Zona selecionada não existe.",
+        });
+      const [linkedAssignments, linkedItems] = await Promise.all([
+        db
+          .select()
+          .from(checklistItemAreas)
+          .where(eq(checklistItemAreas.checklistAreaId, input.id)),
+        db.select().from(checklistItems),
+      ]);
+      const linkedItemIds = new Set(
+        linkedAssignments.map(assignment => assignment.checklistItemId)
+      );
+      if (
+        linkedItems.some(
+          item => linkedItemIds.has(item.id) && item.active === "true"
+        )
+      )
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message:
+            "Não é possível eliminar uma Área/Zona com pontos associados. Edite ou elimine primeiro os pontos dessa área.",
+        });
+      await db
+        .update(checklistAreas)
+        .set({ active: "false" })
+        .where(eq(checklistAreas.id, input.id));
+      return { success: true };
+    }),
 
-  listChecklistItems: qualitySessionProcedure.input(z.object({ factoryId: z.number().int().min(1).max(3) }).optional()).query(async ({ input }) => {
-    const db = await requireDb();
-    const [items, factoryAssignments, areaAssignments, areaRows] = await Promise.all([
-      db.select().from(checklistItems).orderBy(checklistItems.area, checklistItems.sortOrder),
-      db.select().from(checklistItemFactories),
-      db.select().from(checklistItemAreas),
-      db.select().from(checklistAreas),
-    ]);
-    const areaNameById = new Map(areaRows.map(area => [area.id, area.name]));
-    return items
-      .map(item => {
-        const areaNames = areaAssignments
-          .filter(assignment => assignment.checklistItemId === item.id)
-          .map(assignment => areaNameById.get(assignment.checklistAreaId))
-          .filter((name): name is string => Boolean(name));
-        const resolvedAreaNames = areaNames.length ? areaNames : [item.area];
-        return {
-          ...item,
-          area: resolvedAreaNames[0],
-          areaNames: resolvedAreaNames,
-          factoryIds: factoryAssignments
+  listChecklistItems: qualitySessionProcedure
+    .input(z.object({ factoryId: z.number().int().min(1).max(3) }).optional())
+    .query(async ({ input }) => {
+      const db = await requireDb();
+      const [items, factoryAssignments, areaAssignments, areaRows] =
+        await Promise.all([
+          db
+            .select()
+            .from(checklistItems)
+            .orderBy(checklistItems.area, checklistItems.sortOrder),
+          db.select().from(checklistItemFactories),
+          db.select().from(checklistItemAreas),
+          db.select().from(checklistAreas),
+        ]);
+      const areaNameById = new Map(areaRows.map(area => [area.id, area.name]));
+      return items
+        .map(item => {
+          const areaNames = areaAssignments
             .filter(assignment => assignment.checklistItemId === item.id)
-            .map(assignment => assignment.factoryId),
-        };
+            .map(assignment => areaNameById.get(assignment.checklistAreaId))
+            .filter((name): name is string => Boolean(name));
+          const resolvedAreaNames = areaNames.length ? areaNames : [item.area];
+          return {
+            ...item,
+            area: resolvedAreaNames[0],
+            areaNames: resolvedAreaNames,
+            factoryIds: factoryAssignments
+              .filter(assignment => assignment.checklistItemId === item.id)
+              .map(assignment => assignment.factoryId),
+          };
+        })
+        .filter(
+          item =>
+            item.active === "true" &&
+            (!input?.factoryId || item.factoryIds.includes(input.factoryId))
+        );
+    }),
+
+  addChecklistItem: qualityManagerProcedure
+    .input(
+      z.object({
+        factoryIds: z.array(z.number().int().min(1).max(3)).min(1),
+        areaNames: z.array(z.string().min(2).max(120)).min(1),
+        label: z.string().min(3).max(500),
       })
-      .filter(item => item.active === "true" && (!input?.factoryId || item.factoryIds.includes(input.factoryId)));
-  }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const db = await requireDb();
+      const factoryIds = Array.from(new Set(input.factoryIds));
+      const areaNames = Array.from(
+        new Set(input.areaNames.map(normalizeChecklistAreaName))
+      );
+      const areaIds = await Promise.all(
+        areaNames.map(name => ensureChecklistArea(db, name, ctx.user!.openId))
+      );
+      const inserted = await db
+        .insert(checklistItems)
+        .values({
+          factoryId: factoryIds[0],
+          area: areaNames[0],
+          label: input.label.trim(),
+          createdBy: ctx.user!.openId,
+          sortOrder: 100,
+          active: "true",
+        })
+        .$returningId();
+      await db
+        .insert(checklistItemFactories)
+        .values(
+          factoryIds.map(factoryId => ({
+            checklistItemId: inserted[0]!.id,
+            factoryId,
+          }))
+        );
+      await db
+        .insert(checklistItemAreas)
+        .values(
+          areaIds.map(checklistAreaId => ({
+            checklistItemId: inserted[0]!.id,
+            checklistAreaId,
+          }))
+        );
+      return { success: true };
+    }),
 
-  addChecklistItem: qualityManagerProcedure.input(z.object({
-    factoryIds: z.array(z.number().int().min(1).max(3)).min(1),
-    areaNames: z.array(z.string().min(2).max(120)).min(1),
-    label: z.string().min(3).max(500),
-  })).mutation(async ({ ctx, input }) => {
-    const db = await requireDb();
-    const factoryIds = Array.from(new Set(input.factoryIds));
-    const areaNames = Array.from(new Set(input.areaNames.map(normalizeChecklistAreaName)));
-    const areaIds = await Promise.all(areaNames.map(name => ensureChecklistArea(db, name, ctx.user!.openId)));
-    const inserted = await db.insert(checklistItems).values({ factoryId: factoryIds[0], area: areaNames[0], label: input.label.trim(), createdBy: ctx.user!.openId, sortOrder: 100, active: "true" }).$returningId();
-    await db.insert(checklistItemFactories).values(factoryIds.map((factoryId) => ({ checklistItemId: inserted[0]!.id, factoryId })));
-    await db.insert(checklistItemAreas).values(areaIds.map(checklistAreaId => ({ checklistItemId: inserted[0]!.id, checklistAreaId })));
-    return { success: true };
-  }),
+  updateChecklistItem: qualityManagerProcedure
+    .input(
+      z.object({
+        id: z.number().int(),
+        factoryIds: z.array(z.number().int().min(1).max(3)).min(1),
+        areaNames: z.array(z.string().min(2).max(120)).min(1),
+        label: z.string().min(3).max(500),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const db = await requireDb();
+      const factoryIds = Array.from(new Set(input.factoryIds));
+      const areaNames = Array.from(
+        new Set(input.areaNames.map(normalizeChecklistAreaName))
+      );
+      const areaIds = await Promise.all(
+        areaNames.map(name => ensureChecklistArea(db, name, ctx.user!.openId))
+      );
+      await db
+        .update(checklistItems)
+        .set({
+          factoryId: factoryIds[0],
+          area: areaNames[0],
+          label: input.label.trim(),
+        })
+        .where(eq(checklistItems.id, input.id));
+      await db
+        .delete(checklistItemFactories)
+        .where(eq(checklistItemFactories.checklistItemId, input.id));
+      await db
+        .insert(checklistItemFactories)
+        .values(
+          factoryIds.map(factoryId => ({
+            checklistItemId: input.id,
+            factoryId,
+          }))
+        );
+      await db
+        .delete(checklistItemAreas)
+        .where(eq(checklistItemAreas.checklistItemId, input.id));
+      await db
+        .insert(checklistItemAreas)
+        .values(
+          areaIds.map(checklistAreaId => ({
+            checklistItemId: input.id,
+            checklistAreaId,
+          }))
+        );
+      return { success: true };
+    }),
 
-  updateChecklistItem: qualityManagerProcedure.input(z.object({ id: z.number().int(), factoryIds: z.array(z.number().int().min(1).max(3)).min(1), areaNames: z.array(z.string().min(2).max(120)).min(1), label: z.string().min(3).max(500) })).mutation(async ({ ctx, input }) => {
-    const db = await requireDb();
-    const factoryIds = Array.from(new Set(input.factoryIds));
-    const areaNames = Array.from(new Set(input.areaNames.map(normalizeChecklistAreaName)));
-    const areaIds = await Promise.all(areaNames.map(name => ensureChecklistArea(db, name, ctx.user!.openId)));
-    await db.update(checklistItems).set({ factoryId: factoryIds[0], area: areaNames[0], label: input.label.trim() }).where(eq(checklistItems.id, input.id));
-    await db.delete(checklistItemFactories).where(eq(checklistItemFactories.checklistItemId, input.id));
-    await db.insert(checklistItemFactories).values(factoryIds.map((factoryId) => ({ checklistItemId: input.id, factoryId })));
-    await db.delete(checklistItemAreas).where(eq(checklistItemAreas.checklistItemId, input.id));
-    await db.insert(checklistItemAreas).values(areaIds.map(checklistAreaId => ({ checklistItemId: input.id, checklistAreaId })));
-    return { success: true };
-  }),
-
-  removeChecklistItem: qualityManagerProcedure.input(z.object({ id: z.number().int() })).mutation(async ({ input }) => {
-    const db = await requireDb();
-    await db.delete(checklistItemFactories).where(eq(checklistItemFactories.checklistItemId, input.id));
-    await db.delete(checklistItems).where(eq(checklistItems.id, input.id));
-    return { success: true };
-  }),
+  removeChecklistItem: qualityManagerProcedure
+    .input(z.object({ id: z.number().int() }))
+    .mutation(async ({ input }) => {
+      const db = await requireDb();
+      await db
+        .delete(checklistItemFactories)
+        .where(eq(checklistItemFactories.checklistItemId, input.id));
+      await db.delete(checklistItems).where(eq(checklistItems.id, input.id));
+      return { success: true };
+    }),
 
   monthlyChecklistProgress: qualitySessionProcedure.query(async () => {
     const db = await requireDb();
     const now = new Date();
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
     const startOfNextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
-    const [items, factoryAssignments, areaAssignments, areaRows, entries, monthlyFactories] = await Promise.all([
+    const [
+      items,
+      factoryAssignments,
+      areaAssignments,
+      areaRows,
+      entries,
+      monthlyFactories,
+    ] = await Promise.all([
       db.select().from(checklistItems),
       db.select().from(checklistItemFactories),
       db.select().from(checklistItemAreas),
       db.select().from(checklistAreas),
-      db.select().from(controlEntries).where(eq(controlEntries.module, "monthly_checklist")),
+      db
+        .select()
+        .from(controlEntries)
+        .where(eq(controlEntries.module, "monthly_checklist")),
       db.select().from(factories),
     ]);
-    const monthEntries = entries.filter((entry) => entry.completedAt >= startOfMonth && entry.completedAt < startOfNextMonth);
+    const monthEntries = entries.filter(
+      entry =>
+        entry.completedAt >= startOfMonth &&
+        entry.completedAt < startOfNextMonth
+    );
     const areaNameById = new Map(areaRows.map(area => [area.id, area.name]));
-    return monthlyFactories.filter((factory) => [1, 2, 3].includes(factory.id)).map((factory) => {
-      const factoryItems = items.filter((item) => factoryAssignments.some((assignment) => assignment.checklistItemId === item.id && assignment.factoryId === factory.id) && item.active === "true");
-      const plannedChecks = Array.from(new Set(factoryItems.flatMap(item => {
-        const itemAreaNames = areaAssignments
-          .filter(assignment => assignment.checklistItemId === item.id)
-          .map(assignment => areaNameById.get(assignment.checklistAreaId))
-          .filter((name): name is string => Boolean(name));
-        return (itemAreaNames.length ? itemAreaNames : [item.area]).map(areaName => `${item.id}:${areaName}`);
-      })));
-      const completedChecks = new Set(monthEntries
-        .filter(entry => entry.factoryId === factory.id)
-        .map(entry => {
-          const itemId = Number((entry.payload as Record<string, unknown>)?.checklistItemId);
-          return itemId && entry.area ? `${itemId}:${entry.area}` : null;
-        })
-        .filter((key): key is string => Boolean(key)));
-      const checksByArea = new Map<string, string[]>();
-      plannedChecks.forEach(check => {
-        const areaName = check.slice(check.indexOf(":") + 1);
-        checksByArea.set(areaName, [...(checksByArea.get(areaName) ?? []), check]);
+    return monthlyFactories
+      .filter(factory => [1, 2, 3].includes(factory.id))
+      .map(factory => {
+        const factoryItems = items.filter(
+          item =>
+            factoryAssignments.some(
+              assignment =>
+                assignment.checklistItemId === item.id &&
+                assignment.factoryId === factory.id
+            ) && item.active === "true"
+        );
+        const plannedChecks = Array.from(
+          new Set(
+            factoryItems.flatMap(item => {
+              const itemAreaNames = areaAssignments
+                .filter(assignment => assignment.checklistItemId === item.id)
+                .map(assignment => areaNameById.get(assignment.checklistAreaId))
+                .filter((name): name is string => Boolean(name));
+              return (itemAreaNames.length ? itemAreaNames : [item.area]).map(
+                areaName => `${item.id}:${areaName}`
+              );
+            })
+          )
+        );
+        const completedChecks = new Set(
+          monthEntries
+            .filter(entry => entry.factoryId === factory.id)
+            .map(entry => {
+              const itemId = Number(
+                (entry.payload as Record<string, unknown>)?.checklistItemId
+              );
+              return itemId && entry.area ? `${itemId}:${entry.area}` : null;
+            })
+            .filter((key): key is string => Boolean(key))
+        );
+        const checksByArea = new Map<string, string[]>();
+        plannedChecks.forEach(check => {
+          const areaName = check.slice(check.indexOf(":") + 1);
+          checksByArea.set(areaName, [
+            ...(checksByArea.get(areaName) ?? []),
+            check,
+          ]);
+        });
+        const areaProgress = Array.from(checksByArea.entries())
+          .map(([areaName, checks]) => {
+            const completed = checks.filter(check =>
+              completedChecks.has(check)
+            ).length;
+            return {
+              areaName,
+              total: checks.length,
+              completed,
+              minimumMet: completed > 0,
+            };
+          })
+          .sort((left, right) =>
+            left.areaName.localeCompare(right.areaName, "pt-PT")
+          );
+        const completed = areaProgress.filter(area => area.minimumMet).length;
+        return {
+          factoryId: factory.id,
+          factoryName: factory.name,
+          total: areaProgress.length,
+          completed,
+          percentage: areaProgress.length
+            ? Math.round((completed / areaProgress.length) * 100)
+            : 0,
+          areas: areaProgress,
+        };
       });
-      const areaProgress = Array.from(checksByArea.entries())
-        .map(([areaName, checks]) => {
-          const completed = checks.filter(check => completedChecks.has(check)).length;
-          return { areaName, total: checks.length, completed, minimumMet: completed > 0 };
+  }),
+
+  listFragileAreas: qualitySessionProcedure
+    .input(z.object({ factoryId: z.number().int().optional() }).optional())
+    .query(async ({ input }) => {
+      const db = await requireDb();
+      const catalog = await db
+        .select()
+        .from(fragileAreas)
+        .orderBy(fragileAreas.name);
+      return catalog.filter(
+        area =>
+          area.active === "true" &&
+          (!input?.factoryId || area.factoryId === input.factoryId)
+      );
+    }),
+
+  listFragileItems: qualitySessionProcedure
+    .input(
+      z
+        .object({
+          factoryId: z.number().int().optional(),
+          periodicity: z.enum(["D", "S", "Q", "M"]).optional(),
         })
-        .sort((left, right) => left.areaName.localeCompare(right.areaName, "pt-PT"));
-      const completed = areaProgress.filter(area => area.minimumMet).length;
-      return {
-        factoryId: factory.id,
-        factoryName: factory.name,
-        total: areaProgress.length,
-        completed,
-        percentage: areaProgress.length ? Math.round((completed / areaProgress.length) * 100) : 0,
-        areas: areaProgress,
-      };
-    });
-  }),
+        .optional()
+    )
+    .query(async ({ input }) => {
+      const db = await requireDb();
+      const [items, entries] = await Promise.all([
+        db
+          .select()
+          .from(fragileItems)
+          .orderBy(
+            fragileItems.location,
+            fragileItems.sortOrder,
+            fragileItems.name
+          ),
+        db
+          .select()
+          .from(controlEntries)
+          .where(eq(controlEntries.module, "fragile_items"))
+          .orderBy(desc(controlEntries.completedAt)),
+      ]);
+      const lastInspections = new Map<number, Date>();
+      entries.forEach(entry => {
+        const payload = entry.payload;
+        const itemId =
+          payload && typeof payload === "object" && !Array.isArray(payload)
+            ? (payload as { fragileItemId?: unknown }).fragileItemId
+            : null;
+        if (typeof itemId === "number" && !lastInspections.has(itemId))
+          lastInspections.set(itemId, entry.completedAt);
+      });
+      const now = new Date();
+      return items
+        .filter(
+          item =>
+            item.status === "active" &&
+            (!input?.factoryId || item.factoryId === input.factoryId) &&
+            (!input?.periodicity || item.periodicity === input.periodicity)
+        )
+        .map(item => {
+          const lastInspectionAt = lastInspections.get(item.id) ?? null;
+          const nextReferenceDate = lastInspectionAt
+            ? businessDayAfter(lastInspectionAt)
+            : now;
+          return {
+            ...item,
+            lastInspectionAt,
+            nextInspectionAt: fragileInspectionDueDate(
+              item.periodicity,
+              lastInspectionAt,
+              nextReferenceDate
+            ),
+          };
+        });
+    }),
 
-  listFragileAreas: qualitySessionProcedure.input(z.object({ factoryId: z.number().int().optional() }).optional()).query(async ({ input }) => {
-    const db = await requireDb();
-    const catalog = await db.select().from(fragileAreas).orderBy(fragileAreas.name);
-    return catalog.filter((area) => area.active === "true" && (!input?.factoryId || area.factoryId === input.factoryId));
-  }),
+  fragilePending: qualitySessionProcedure
+    .input(
+      z
+        .object({
+          factoryId: z.number().int().optional(),
+          periodicity: z.enum(["D", "S", "Q", "M"]).optional(),
+          referenceDate: z.coerce.date().optional(),
+        })
+        .optional()
+    )
+    .query(async ({ input }) => {
+      const db = await requireDb();
+      const [items, entries] = await Promise.all([
+        db
+          .select()
+          .from(fragileItems)
+          .orderBy(
+            fragileItems.location,
+            fragileItems.sortOrder,
+            fragileItems.name
+          ),
+        db
+          .select()
+          .from(controlEntries)
+          .where(eq(controlEntries.module, "fragile_items"))
+          .orderBy(desc(controlEntries.completedAt)),
+      ]);
+      const lastInspections = new Map<number, Date>();
+      entries.forEach(entry => {
+        const payload = entry.payload;
+        const fragileItemId =
+          payload && typeof payload === "object" && !Array.isArray(payload)
+            ? (payload as { fragileItemId?: unknown }).fragileItemId
+            : null;
+        if (
+          typeof fragileItemId === "number" &&
+          !lastInspections.has(fragileItemId)
+        )
+          lastInspections.set(fragileItemId, entry.completedAt);
+      });
+      const referenceDate = input?.referenceDate ?? new Date();
+      return items
+        .filter(
+          item =>
+            item.status === "active" &&
+            (!input?.factoryId || item.factoryId === input.factoryId) &&
+            (!input?.periodicity || item.periodicity === input.periodicity)
+        )
+        .map(item => {
+          const lastInspectionAt = lastInspections.get(item.id) ?? null;
+          return {
+            ...item,
+            lastInspectionAt,
+            dueAt: fragileInspectionDueDate(
+              item.periodicity,
+              lastInspectionAt,
+              referenceDate
+            ),
+            delayDays: fragileInspectionDelayDays(
+              item.periodicity,
+              lastInspectionAt,
+              referenceDate
+            ),
+          };
+        })
+        .filter(item =>
+          isFragileInspectionPending(
+            item.periodicity,
+            item.lastInspectionAt,
+            referenceDate
+          )
+        )
+        .sort(
+          (left, right) =>
+            (left.lastInspectionAt?.getTime() ?? 0) -
+            (right.lastInspectionAt?.getTime() ?? 0)
+        );
+    }),
 
-  listFragileItems: qualitySessionProcedure.input(z.object({ factoryId: z.number().int().optional(), periodicity: z.enum(["D", "S", "Q", "M"]).optional() }).optional()).query(async ({ input }) => {
-    const db = await requireDb();
-    const [items, entries] = await Promise.all([
-      db.select().from(fragileItems).orderBy(fragileItems.location, fragileItems.sortOrder, fragileItems.name),
-      db.select().from(controlEntries).where(eq(controlEntries.module, "fragile_items")).orderBy(desc(controlEntries.completedAt)),
-    ]);
-    const lastInspections = new Map<number, Date>();
-    entries.forEach((entry) => {
-      const payload = entry.payload;
-      const itemId = payload && typeof payload === "object" && !Array.isArray(payload) ? (payload as { fragileItemId?: unknown }).fragileItemId : null;
-      if (typeof itemId === "number" && !lastInspections.has(itemId)) lastInspections.set(itemId, entry.completedAt);
-    });
-    const now = new Date();
-    return items.filter((item) => item.status === "active" && (!input?.factoryId || item.factoryId === input.factoryId) && (!input?.periodicity || item.periodicity === input.periodicity)).map((item) => {
-      const lastInspectionAt = lastInspections.get(item.id) ?? null;
-      const nextReferenceDate = lastInspectionAt ? businessDayAfter(lastInspectionAt) : now;
-      return { ...item, lastInspectionAt, nextInspectionAt: fragileInspectionDueDate(item.periodicity, lastInspectionAt, nextReferenceDate) };
-    });
-  }),
+  fragileInspectionHistory: qualitySessionProcedure
+    .input(z.object({ itemId: z.number().int() }))
+    .query(async ({ input }) => {
+      const db = await requireDb();
+      const entries = await db
+        .select()
+        .from(controlEntries)
+        .where(eq(controlEntries.module, "fragile_items"))
+        .orderBy(desc(controlEntries.completedAt));
+      return entries
+        .filter(entry => {
+          const payload =
+            entry.payload &&
+            typeof entry.payload === "object" &&
+            !Array.isArray(entry.payload)
+              ? (entry.payload as Record<string, unknown>)
+              : {};
+          return (
+            payload.deletedAt === undefined &&
+            payload.fragileItemId === input.itemId
+          );
+        })
+        .map(entry => {
+          const payload =
+            entry.payload &&
+            typeof entry.payload === "object" &&
+            !Array.isArray(entry.payload)
+              ? (entry.payload as Record<string, unknown>)
+              : {};
+          const evidencePhotos = Array.isArray(payload.evidencePhotos)
+            ? payload.evidencePhotos
+            : [];
+          return {
+            id: entry.id,
+            state:
+              typeof payload.state === "string"
+                ? payload.state
+                : entry.result === "C"
+                  ? "Íntegro"
+                  : "Não conforme",
+            result: entry.result,
+            notes: entry.notes,
+            completedAt: entry.completedAt,
+            registeredByName: entry.registeredByName,
+            registeredByTitle: entry.registeredByTitle,
+            evidencePhotos,
+          };
+        });
+    }),
 
-  fragilePending: qualitySessionProcedure.input(z.object({ factoryId: z.number().int().optional(), periodicity: z.enum(["D", "S", "Q", "M"]).optional(), referenceDate: z.coerce.date().optional() }).optional()).query(async ({ input }) => {
-    const db = await requireDb();
-    const [items, entries] = await Promise.all([
-      db.select().from(fragileItems).orderBy(fragileItems.location, fragileItems.sortOrder, fragileItems.name),
-      db.select().from(controlEntries).where(eq(controlEntries.module, "fragile_items")).orderBy(desc(controlEntries.completedAt)),
-    ]);
-    const lastInspections = new Map<number, Date>();
-    entries.forEach((entry) => {
-      const payload = entry.payload;
-      const fragileItemId = payload && typeof payload === "object" && !Array.isArray(payload) ? (payload as { fragileItemId?: unknown }).fragileItemId : null;
-      if (typeof fragileItemId === "number" && !lastInspections.has(fragileItemId)) lastInspections.set(fragileItemId, entry.completedAt);
-    });
-    const referenceDate = input?.referenceDate ?? new Date();
-    return items
-      .filter((item) => item.status === "active" && (!input?.factoryId || item.factoryId === input.factoryId) && (!input?.periodicity || item.periodicity === input.periodicity))
-      .map((item) => {
-        const lastInspectionAt = lastInspections.get(item.id) ?? null;
-        return { ...item, lastInspectionAt, dueAt: fragileInspectionDueDate(item.periodicity, lastInspectionAt, referenceDate), delayDays: fragileInspectionDelayDays(item.periodicity, lastInspectionAt, referenceDate) };
+  addFragileItem: qualityOperatorProcedure
+    .input(
+      z.object({
+        name: z.string().min(2).max(180),
+        location: z.string().min(2).max(120),
+        factoryId: z.number().int().optional(),
+        periodicity: z.enum(["D", "S", "Q", "M"]).default("M"),
+        itemType: z.enum(["Vidro", "Plástico rígido", "Outro"]),
       })
-      .filter((item) => isFragileInspectionPending(item.periodicity, item.lastInspectionAt, referenceDate))
-      .sort((left, right) => (left.lastInspectionAt?.getTime() ?? 0) - (right.lastInspectionAt?.getTime() ?? 0));
-  }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const db = await requireDb();
+      if (!input.factoryId)
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message:
+            "Selecione uma fábrica e uma área antes de criar o ponto de controlo.",
+        });
+      const area = (
+        await db
+          .select()
+          .from(fragileAreas)
+          .where(
+            and(
+              eq(fragileAreas.factoryId, input.factoryId),
+              eq(fragileAreas.name, input.location),
+              eq(fragileAreas.active, "true")
+            )
+          )
+          .limit(1)
+      )[0];
+      if (!area)
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message:
+            "Selecione uma área ativa da fábrica para criar o ponto de controlo.",
+        });
+      await db.insert(fragileItems).values({
+        ...input,
+        factoryId: input.factoryId ?? null,
+        status: "active",
+        createdBy: ctx.user!.openId,
+        createdByProfileId: ctx.operatorProfile!.id,
+        createdByName: ctx.operatorProfile!.name,
+        updatedBy: ctx.user!.openId,
+        updatedByProfileId: ctx.operatorProfile!.id,
+        updatedByName: ctx.operatorProfile!.name,
+      });
+      return { success: true };
+    }),
 
-  fragileInspectionHistory: qualitySessionProcedure.input(z.object({ itemId: z.number().int() })).query(async ({ input }) => {
-    const db = await requireDb();
-    const entries = await db.select().from(controlEntries).where(eq(controlEntries.module, "fragile_items")).orderBy(desc(controlEntries.completedAt));
-    return entries.filter((entry) => {
-      const payload = entry.payload && typeof entry.payload === "object" && !Array.isArray(entry.payload) ? entry.payload as Record<string, unknown> : {};
-      return payload.deletedAt === undefined && payload.fragileItemId === input.itemId;
-    }).map((entry) => {
-      const payload = entry.payload && typeof entry.payload === "object" && !Array.isArray(entry.payload) ? entry.payload as Record<string, unknown> : {};
-      const evidencePhotos = Array.isArray(payload.evidencePhotos) ? payload.evidencePhotos : [];
-      return { id: entry.id, state: typeof payload.state === "string" ? payload.state : (entry.result === "C" ? "Íntegro" : "Não conforme"), result: entry.result, notes: entry.notes, completedAt: entry.completedAt, registeredByName: entry.registeredByName, registeredByTitle: entry.registeredByTitle, evidencePhotos };
-    });
-  }),
+  updateFragileItem: qualityOperatorProcedure
+    .input(
+      z.object({
+        id: z.number().int(),
+        name: z.string().min(2).max(180),
+        location: z.string().min(2).max(120),
+        factoryId: z.number().int().nullable(),
+        periodicity: z.enum(["D", "S", "Q", "M"]),
+        itemType: z.enum(["Vidro", "Plástico rígido", "Outro"]),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const db = await requireDb();
+      const item = (
+        await db
+          .select()
+          .from(fragileItems)
+          .where(eq(fragileItems.id, input.id))
+          .limit(1)
+      )[0];
+      if (!item)
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Ponto de controlo não encontrado.",
+        });
+      if (!input.factoryId)
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message:
+            "Selecione a fábrica e uma área ativa para o ponto de controlo.",
+        });
+      const area = (
+        await db
+          .select()
+          .from(fragileAreas)
+          .where(
+            and(
+              eq(fragileAreas.factoryId, input.factoryId),
+              eq(fragileAreas.name, input.location),
+              eq(fragileAreas.active, "true")
+            )
+          )
+          .limit(1)
+      )[0];
+      if (!area)
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message:
+            "Selecione uma área ativa da fábrica para o ponto de controlo.",
+        });
+      await db
+        .update(fragileItems)
+        .set({
+          name: input.name,
+          location: input.location,
+          factoryId: input.factoryId,
+          periodicity: input.periodicity,
+          itemType: input.itemType,
+          updatedBy: ctx.user!.openId,
+          updatedByProfileId: ctx.operatorProfile!.id,
+          updatedByName: ctx.operatorProfile!.name,
+        })
+        .where(eq(fragileItems.id, input.id));
+      return { success: true };
+    }),
 
-  addFragileItem: qualityOperatorProcedure.input(z.object({
-    name: z.string().min(2).max(180),
-    location: z.string().min(2).max(120),
-    factoryId: z.number().int().optional(),
-    periodicity: z.enum(["D", "S", "Q", "M"]).default("M"),
-    itemType: z.enum(["Vidro", "Plástico rígido", "Outro"]),
-  })).mutation(async ({ ctx, input }) => {
-    const db = await requireDb();
-    if (!input.factoryId) throw new TRPCError({ code: "BAD_REQUEST", message: "Selecione uma fábrica e uma área antes de criar o ponto de controlo." });
-    const area = (await db.select().from(fragileAreas).where(and(eq(fragileAreas.factoryId, input.factoryId), eq(fragileAreas.name, input.location), eq(fragileAreas.active, "true"))).limit(1))[0];
-    if (!area) throw new TRPCError({ code: "BAD_REQUEST", message: "Selecione uma área ativa da fábrica para criar o ponto de controlo." });
-    await db.insert(fragileItems).values({
-      ...input,
-      factoryId: input.factoryId ?? null,
-      status: "active",
-      createdBy: ctx.user!.openId,
-      createdByProfileId: ctx.operatorProfile!.id,
-      createdByName: ctx.operatorProfile!.name,
-      updatedBy: ctx.user!.openId,
-      updatedByProfileId: ctx.operatorProfile!.id,
-      updatedByName: ctx.operatorProfile!.name,
-    });
-    return { success: true };
-  }),
+  renameFragileArea: qualityOperatorProcedure
+    .input(
+      z.object({
+        factoryId: z.number().int(),
+        currentName: z.string().trim().min(2).max(120),
+        nextName: z.string().trim().min(2).max(120),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const db = await requireDb();
+      if (input.currentName === input.nextName)
+        return { success: true, updated: 0 };
+      const [sourceArea, targetArea] = await Promise.all([
+        db
+          .select()
+          .from(fragileAreas)
+          .where(
+            and(
+              eq(fragileAreas.factoryId, input.factoryId),
+              eq(fragileAreas.name, input.currentName),
+              eq(fragileAreas.active, "true")
+            )
+          )
+          .limit(1),
+        db
+          .select()
+          .from(fragileAreas)
+          .where(
+            and(
+              eq(fragileAreas.factoryId, input.factoryId),
+              eq(fragileAreas.name, input.nextName),
+              eq(fragileAreas.active, "true")
+            )
+          )
+          .limit(1),
+      ]);
+      if (!sourceArea[0])
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Área de Quebráveis não encontrada na fábrica selecionada.",
+        });
+      if (targetArea[0])
+        throw new TRPCError({
+          code: "CONFLICT",
+          message:
+            "Já existe uma área com esta designação. Utilize Fundir áreas se pretender juntar os pontos.",
+        });
+      const matchingItems = await db
+        .select()
+        .from(fragileItems)
+        .where(
+          and(
+            eq(fragileItems.factoryId, input.factoryId),
+            eq(fragileItems.location, input.currentName),
+            eq(fragileItems.status, "active")
+          )
+        );
+      await db
+        .update(fragileAreas)
+        .set({
+          name: input.nextName,
+          updatedBy: ctx.user!.openId,
+          updatedByProfileId: ctx.operatorProfile!.id,
+          updatedByName: ctx.operatorProfile!.name,
+        })
+        .where(eq(fragileAreas.id, sourceArea[0].id));
+      await db
+        .update(fragileItems)
+        .set({
+          location: input.nextName,
+          updatedBy: ctx.user!.openId,
+          updatedByProfileId: ctx.operatorProfile!.id,
+          updatedByName: ctx.operatorProfile!.name,
+        })
+        .where(
+          and(
+            eq(fragileItems.factoryId, input.factoryId),
+            eq(fragileItems.location, input.currentName),
+            eq(fragileItems.status, "active")
+          )
+        );
+      return { success: true, updated: matchingItems.length };
+    }),
 
-  updateFragileItem: qualityOperatorProcedure.input(z.object({
-    id: z.number().int(),
-    name: z.string().min(2).max(180),
-    location: z.string().min(2).max(120),
-    factoryId: z.number().int().nullable(),
-    periodicity: z.enum(["D", "S", "Q", "M"]),
-    itemType: z.enum(["Vidro", "Plástico rígido", "Outro"]),
-  })).mutation(async ({ ctx, input }) => {
-    const db = await requireDb();
-    const item = (await db.select().from(fragileItems).where(eq(fragileItems.id, input.id)).limit(1))[0];
-    if (!item) throw new TRPCError({ code: "NOT_FOUND", message: "Ponto de controlo não encontrado." });
-    if (!input.factoryId) throw new TRPCError({ code: "BAD_REQUEST", message: "Selecione a fábrica e uma área ativa para o ponto de controlo." });
-    const area = (await db.select().from(fragileAreas).where(and(eq(fragileAreas.factoryId, input.factoryId), eq(fragileAreas.name, input.location), eq(fragileAreas.active, "true"))).limit(1))[0];
-    if (!area) throw new TRPCError({ code: "BAD_REQUEST", message: "Selecione uma área ativa da fábrica para o ponto de controlo." });
-    await db.update(fragileItems).set({
-      name: input.name,
-      location: input.location,
-      factoryId: input.factoryId,
-      periodicity: input.periodicity,
-      itemType: input.itemType,
-      updatedBy: ctx.user!.openId,
-      updatedByProfileId: ctx.operatorProfile!.id,
-      updatedByName: ctx.operatorProfile!.name,
-    }).where(eq(fragileItems.id, input.id));
-    return { success: true };
-  }),
+  createFragileArea: qualityOperatorProcedure
+    .input(
+      z.object({
+        factoryId: z.number().int(),
+        name: z.string().trim().min(2).max(120),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const db = await requireDb();
+      const existing = (
+        await db
+          .select()
+          .from(fragileAreas)
+          .where(
+            and(
+              eq(fragileAreas.factoryId, input.factoryId),
+              eq(fragileAreas.name, input.name)
+            )
+          )
+          .limit(1)
+      )[0];
+      if (existing?.active === "true")
+        throw new TRPCError({
+          code: "CONFLICT",
+          message:
+            "Já existe uma área com esta designação na fábrica selecionada.",
+        });
+      const audit = {
+        updatedBy: ctx.user!.openId,
+        updatedByProfileId: ctx.operatorProfile!.id,
+        updatedByName: ctx.operatorProfile!.name,
+      };
+      if (existing) {
+        await db
+          .update(fragileAreas)
+          .set({ active: "true", ...audit })
+          .where(eq(fragileAreas.id, existing.id));
+        return { success: true, reactivated: true };
+      }
+      await db
+        .insert(fragileAreas)
+        .values({
+          factoryId: input.factoryId,
+          name: input.name,
+          active: "true",
+          createdBy: ctx.user!.openId,
+          createdByProfileId: ctx.operatorProfile!.id,
+          createdByName: ctx.operatorProfile!.name,
+          ...audit,
+        });
+      return { success: true, reactivated: false };
+    }),
 
-  renameFragileArea: qualityOperatorProcedure.input(z.object({
-    factoryId: z.number().int(),
-    currentName: z.string().trim().min(2).max(120),
-    nextName: z.string().trim().min(2).max(120),
-  })).mutation(async ({ ctx, input }) => {
-    const db = await requireDb();
-    if (input.currentName === input.nextName) return { success: true, updated: 0 };
-    const [sourceArea, targetArea] = await Promise.all([
-      db.select().from(fragileAreas).where(and(eq(fragileAreas.factoryId, input.factoryId), eq(fragileAreas.name, input.currentName), eq(fragileAreas.active, "true"))).limit(1),
-      db.select().from(fragileAreas).where(and(eq(fragileAreas.factoryId, input.factoryId), eq(fragileAreas.name, input.nextName), eq(fragileAreas.active, "true"))).limit(1),
-    ]);
-    if (!sourceArea[0]) throw new TRPCError({ code: "NOT_FOUND", message: "Área de Quebráveis não encontrada na fábrica selecionada." });
-    if (targetArea[0]) throw new TRPCError({ code: "CONFLICT", message: "Já existe uma área com esta designação. Utilize Fundir áreas se pretender juntar os pontos." });
-    const matchingItems = await db.select().from(fragileItems).where(and(
-      eq(fragileItems.factoryId, input.factoryId),
-      eq(fragileItems.location, input.currentName),
-      eq(fragileItems.status, "active"),
-    ));
-    await db.update(fragileAreas).set({ name: input.nextName, updatedBy: ctx.user!.openId, updatedByProfileId: ctx.operatorProfile!.id, updatedByName: ctx.operatorProfile!.name }).where(eq(fragileAreas.id, sourceArea[0].id));
-    await db.update(fragileItems).set({
-      location: input.nextName,
-      updatedBy: ctx.user!.openId,
-      updatedByProfileId: ctx.operatorProfile!.id,
-      updatedByName: ctx.operatorProfile!.name,
-    }).where(and(
-      eq(fragileItems.factoryId, input.factoryId),
-      eq(fragileItems.location, input.currentName),
-      eq(fragileItems.status, "active"),
-    ));
-    return { success: true, updated: matchingItems.length };
-  }),
+  deleteFragileArea: qualityOperatorProcedure
+    .input(
+      z.object({
+        factoryId: z.number().int(),
+        name: z.string().trim().min(2).max(120),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const db = await requireDb();
+      const area = (
+        await db
+          .select()
+          .from(fragileAreas)
+          .where(
+            and(
+              eq(fragileAreas.factoryId, input.factoryId),
+              eq(fragileAreas.name, input.name),
+              eq(fragileAreas.active, "true")
+            )
+          )
+          .limit(1)
+      )[0];
+      if (!area)
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Área de Quebráveis não encontrada na fábrica selecionada.",
+        });
+      const activeItems = await db
+        .select()
+        .from(fragileItems)
+        .where(
+          and(
+            eq(fragileItems.factoryId, input.factoryId),
+            eq(fragileItems.location, input.name),
+            eq(fragileItems.status, "active")
+          )
+        );
+      if (activeItems.length)
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: `Não é possível eliminar esta área porque contém ${activeItems.length} ${activeItems.length === 1 ? "ponto ativo" : "pontos ativos"}. Transfira-os com Fundir áreas ou elimine os pontos primeiro.`,
+        });
+      await db
+        .update(fragileAreas)
+        .set({
+          active: "false",
+          updatedBy: ctx.user!.openId,
+          updatedByProfileId: ctx.operatorProfile!.id,
+          updatedByName: ctx.operatorProfile!.name,
+        })
+        .where(eq(fragileAreas.id, area.id));
+      return { success: true };
+    }),
 
-  createFragileArea: qualityOperatorProcedure.input(z.object({
-    factoryId: z.number().int(),
-    name: z.string().trim().min(2).max(120),
-  })).mutation(async ({ ctx, input }) => {
-    const db = await requireDb();
-    const existing = (await db.select().from(fragileAreas).where(and(eq(fragileAreas.factoryId, input.factoryId), eq(fragileAreas.name, input.name))).limit(1))[0];
-    if (existing?.active === "true") throw new TRPCError({ code: "CONFLICT", message: "Já existe uma área com esta designação na fábrica selecionada." });
-    const audit = { updatedBy: ctx.user!.openId, updatedByProfileId: ctx.operatorProfile!.id, updatedByName: ctx.operatorProfile!.name };
-    if (existing) {
-      await db.update(fragileAreas).set({ active: "true", ...audit }).where(eq(fragileAreas.id, existing.id));
-      return { success: true, reactivated: true };
-    }
-    await db.insert(fragileAreas).values({ factoryId: input.factoryId, name: input.name, active: "true", createdBy: ctx.user!.openId, createdByProfileId: ctx.operatorProfile!.id, createdByName: ctx.operatorProfile!.name, ...audit });
-    return { success: true, reactivated: false };
-  }),
+  mergeFragileAreas: qualityOperatorProcedure
+    .input(
+      z.object({
+        factoryId: z.number().int(),
+        sourceArea: z.string().trim().min(2).max(120),
+        targetArea: z.string().trim().min(2).max(120),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      if (input.sourceArea === input.targetArea)
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Selecione duas áreas diferentes para fundir.",
+        });
+      const db = await requireDb();
+      const [sourceItems, targetItems, sourceArea, targetArea] =
+        await Promise.all([
+          db
+            .select()
+            .from(fragileItems)
+            .where(
+              and(
+                eq(fragileItems.factoryId, input.factoryId),
+                eq(fragileItems.location, input.sourceArea),
+                eq(fragileItems.status, "active")
+              )
+            ),
+          db
+            .select()
+            .from(fragileItems)
+            .where(
+              and(
+                eq(fragileItems.factoryId, input.factoryId),
+                eq(fragileItems.location, input.targetArea),
+                eq(fragileItems.status, "active")
+              )
+            ),
+          db
+            .select()
+            .from(fragileAreas)
+            .where(
+              and(
+                eq(fragileAreas.factoryId, input.factoryId),
+                eq(fragileAreas.name, input.sourceArea),
+                eq(fragileAreas.active, "true")
+              )
+            )
+            .limit(1),
+          db
+            .select()
+            .from(fragileAreas)
+            .where(
+              and(
+                eq(fragileAreas.factoryId, input.factoryId),
+                eq(fragileAreas.name, input.targetArea),
+                eq(fragileAreas.active, "true")
+              )
+            )
+            .limit(1),
+        ]);
+      if (!sourceArea[0])
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "A área de origem não existe na fábrica selecionada.",
+        });
+      if (!targetArea[0])
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "A área de destino tem de existir na fábrica selecionada.",
+        });
+      await db
+        .update(fragileItems)
+        .set({
+          location: input.targetArea,
+          updatedBy: ctx.user!.openId,
+          updatedByProfileId: ctx.operatorProfile!.id,
+          updatedByName: ctx.operatorProfile!.name,
+        })
+        .where(
+          and(
+            eq(fragileItems.factoryId, input.factoryId),
+            eq(fragileItems.location, input.sourceArea),
+            eq(fragileItems.status, "active")
+          )
+        );
+      await db
+        .update(fragileAreas)
+        .set({
+          active: "false",
+          updatedBy: ctx.user!.openId,
+          updatedByProfileId: ctx.operatorProfile!.id,
+          updatedByName: ctx.operatorProfile!.name,
+        })
+        .where(eq(fragileAreas.id, sourceArea[0].id));
+      return { success: true, updated: sourceItems.length };
+    }),
 
-  deleteFragileArea: qualityOperatorProcedure.input(z.object({
-    factoryId: z.number().int(),
-    name: z.string().trim().min(2).max(120),
-  })).mutation(async ({ ctx, input }) => {
-    const db = await requireDb();
-    const area = (await db.select().from(fragileAreas).where(and(eq(fragileAreas.factoryId, input.factoryId), eq(fragileAreas.name, input.name), eq(fragileAreas.active, "true"))).limit(1))[0];
-    if (!area) throw new TRPCError({ code: "NOT_FOUND", message: "Área de Quebráveis não encontrada na fábrica selecionada." });
-    const activeItems = await db.select().from(fragileItems).where(and(eq(fragileItems.factoryId, input.factoryId), eq(fragileItems.location, input.name), eq(fragileItems.status, "active")));
-    if (activeItems.length) throw new TRPCError({ code: "BAD_REQUEST", message: `Não é possível eliminar esta área porque contém ${activeItems.length} ${activeItems.length === 1 ? "ponto ativo" : "pontos ativos"}. Transfira-os com Fundir áreas ou elimine os pontos primeiro.` });
-    await db.update(fragileAreas).set({ active: "false", updatedBy: ctx.user!.openId, updatedByProfileId: ctx.operatorProfile!.id, updatedByName: ctx.operatorProfile!.name }).where(eq(fragileAreas.id, area.id));
-    return { success: true };
-  }),
+  uploadFragileReferenceImage: qualityOperatorProcedure
+    .input(
+      z.object({
+        itemId: z.number().int(),
+        fileName: z.string().min(1).max(255),
+        mimeType: z.enum(["image/jpeg", "image/png", "image/webp"]),
+        dataUrl: z.string().min(20).max(7_000_000),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const db = await requireDb();
+      const item = (
+        await db
+          .select()
+          .from(fragileItems)
+          .where(eq(fragileItems.id, input.itemId))
+          .limit(1)
+      )[0];
+      if (!item)
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Ponto de controlo não encontrado.",
+        });
+      const base64 = input.dataUrl.split(",")[1];
+      if (!base64)
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Imagem inválida.",
+        });
+      const safeName = input.fileName.replace(/[^a-zA-Z0-9._-]/g, "_");
+      const key = `fragile-reference/${input.itemId}/${Date.now()}-${safeName}`;
+      const { key: referenceImageKey, url: referenceImageUrl } =
+        await storagePut(key, Buffer.from(base64, "base64"), input.mimeType);
+      await db
+        .update(fragileItems)
+        .set({
+          referenceImageKey,
+          referenceImageUrl,
+          referenceImageName: input.fileName,
+          updatedBy: ctx.user!.openId,
+          updatedByProfileId: ctx.operatorProfile!.id,
+          updatedByName: ctx.operatorProfile!.name,
+        })
+        .where(eq(fragileItems.id, input.itemId));
+      return { success: true, url: referenceImageUrl };
+    }),
 
-  mergeFragileAreas: qualityOperatorProcedure.input(z.object({
-    factoryId: z.number().int(),
-    sourceArea: z.string().trim().min(2).max(120),
-    targetArea: z.string().trim().min(2).max(120),
-  })).mutation(async ({ ctx, input }) => {
-    if (input.sourceArea === input.targetArea) throw new TRPCError({ code: "BAD_REQUEST", message: "Selecione duas áreas diferentes para fundir." });
-    const db = await requireDb();
-    const [sourceItems, targetItems, sourceArea, targetArea] = await Promise.all([
-      db.select().from(fragileItems).where(and(eq(fragileItems.factoryId, input.factoryId), eq(fragileItems.location, input.sourceArea), eq(fragileItems.status, "active"))),
-      db.select().from(fragileItems).where(and(eq(fragileItems.factoryId, input.factoryId), eq(fragileItems.location, input.targetArea), eq(fragileItems.status, "active"))),
-      db.select().from(fragileAreas).where(and(eq(fragileAreas.factoryId, input.factoryId), eq(fragileAreas.name, input.sourceArea), eq(fragileAreas.active, "true"))).limit(1),
-      db.select().from(fragileAreas).where(and(eq(fragileAreas.factoryId, input.factoryId), eq(fragileAreas.name, input.targetArea), eq(fragileAreas.active, "true"))).limit(1),
-    ]);
-    if (!sourceArea[0]) throw new TRPCError({ code: "NOT_FOUND", message: "A área de origem não existe na fábrica selecionada." });
-    if (!targetArea[0]) throw new TRPCError({ code: "NOT_FOUND", message: "A área de destino tem de existir na fábrica selecionada." });
-    await db.update(fragileItems).set({
-      location: input.targetArea,
-      updatedBy: ctx.user!.openId,
-      updatedByProfileId: ctx.operatorProfile!.id,
-      updatedByName: ctx.operatorProfile!.name,
-    }).where(and(eq(fragileItems.factoryId, input.factoryId), eq(fragileItems.location, input.sourceArea), eq(fragileItems.status, "active")));
-    await db.update(fragileAreas).set({ active: "false", updatedBy: ctx.user!.openId, updatedByProfileId: ctx.operatorProfile!.id, updatedByName: ctx.operatorProfile!.name }).where(eq(fragileAreas.id, sourceArea[0].id));
-    return { success: true, updated: sourceItems.length };
-  }),
+  uploadFragileInspectionEvidence: qualityOperatorProcedure
+    .input(
+      z.object({
+        itemId: z.number().int(),
+        fileName: z.string().min(1).max(255),
+        mimeType: z.enum(["image/jpeg", "image/png", "image/webp"]),
+        dataUrl: z.string().min(20).max(7_000_000),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const db = await requireDb();
+      const item = (
+        await db
+          .select()
+          .from(fragileItems)
+          .where(eq(fragileItems.id, input.itemId))
+          .limit(1)
+      )[0];
+      if (!item || item.status !== "active")
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Ponto de controlo não encontrado.",
+        });
+      await requireControlAuthorization(db, {
+        module: "fragile_items",
+        factoryId: item.factoryId,
+        profile: ctx.operatorProfile!,
+      });
+      const base64 = input.dataUrl.split(",")[1];
+      if (!base64)
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Imagem inválida.",
+        });
+      const safeName = input.fileName.replace(/[^a-zA-Z0-9._-]/g, "_");
+      const { key, url } = await storagePut(
+        `fragile-evidence/${input.itemId}/${ctx.operatorProfile!.id}/${Date.now()}-${safeName}`,
+        Buffer.from(base64, "base64"),
+        input.mimeType
+      );
+      return {
+        success: true,
+        key,
+        url,
+        fileName: input.fileName,
+        mimeType: input.mimeType,
+      };
+    }),
 
-  uploadFragileReferenceImage: qualityOperatorProcedure.input(z.object({
-    itemId: z.number().int(),
-    fileName: z.string().min(1).max(255),
-    mimeType: z.enum(["image/jpeg", "image/png", "image/webp"]),
-    dataUrl: z.string().min(20).max(7_000_000),
-  })).mutation(async ({ ctx, input }) => {
-    const db = await requireDb();
-    const item = (await db.select().from(fragileItems).where(eq(fragileItems.id, input.itemId)).limit(1))[0];
-    if (!item) throw new TRPCError({ code: "NOT_FOUND", message: "Ponto de controlo não encontrado." });
-    const base64 = input.dataUrl.split(",")[1];
-    if (!base64) throw new TRPCError({ code: "BAD_REQUEST", message: "Imagem inválida." });
-    const safeName = input.fileName.replace(/[^a-zA-Z0-9._-]/g, "_");
-    const key = `fragile-reference/${input.itemId}/${Date.now()}-${safeName}`;
-    const { key: referenceImageKey, url: referenceImageUrl } = await storagePut(key, Buffer.from(base64, "base64"), input.mimeType);
-    await db.update(fragileItems).set({ referenceImageKey, referenceImageUrl, referenceImageName: input.fileName, updatedBy: ctx.user!.openId, updatedByProfileId: ctx.operatorProfile!.id, updatedByName: ctx.operatorProfile!.name }).where(eq(fragileItems.id, input.itemId));
-    return { success: true, url: referenceImageUrl };
-  }),
+  uploadVerificationEvidence: qualityOperatorProcedure
+    .input(
+      z.object({
+        module: qualityModuleSchema,
+        factoryId: z.number().int().nullable().optional(),
+        fileName: z.string().min(1).max(255),
+        mimeType: z.enum(["image/jpeg", "image/png", "image/webp"]),
+        dataUrl: z.string().min(20).max(7_000_000),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const db = await requireDb();
+      await requireControlAuthorization(db, {
+        module: input.module,
+        factoryId: input.factoryId ?? null,
+        profile: ctx.operatorProfile!,
+      });
+      const base64 = input.dataUrl.split(",")[1];
+      if (!base64)
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Imagem inválida.",
+        });
+      const safeName = input.fileName.replace(/[^a-zA-Z0-9._-]/g, "_");
+      const scope = input.factoryId ?? "comum";
+      const { key, url } = await storagePut(
+        `control-evidence/${input.module}/${scope}/${ctx.operatorProfile!.id}/${Date.now()}-${safeName}`,
+        Buffer.from(base64, "base64"),
+        input.mimeType
+      );
+      return {
+        success: true,
+        key,
+        url,
+        fileName: input.fileName,
+        mimeType: input.mimeType,
+      };
+    }),
 
-  uploadFragileInspectionEvidence: qualityOperatorProcedure.input(z.object({
-    itemId: z.number().int(),
-    fileName: z.string().min(1).max(255),
-    mimeType: z.enum(["image/jpeg", "image/png", "image/webp"]),
-    dataUrl: z.string().min(20).max(7_000_000),
-  })).mutation(async ({ ctx, input }) => {
-    const db = await requireDb();
-    const item = (await db.select().from(fragileItems).where(eq(fragileItems.id, input.itemId)).limit(1))[0];
-    if (!item || item.status !== "active") throw new TRPCError({ code: "NOT_FOUND", message: "Ponto de controlo não encontrado." });
-    await requireControlAuthorization(db, { module: "fragile_items", factoryId: item.factoryId, profile: ctx.operatorProfile! });
-    const base64 = input.dataUrl.split(",")[1];
-    if (!base64) throw new TRPCError({ code: "BAD_REQUEST", message: "Imagem inválida." });
-    const safeName = input.fileName.replace(/[^a-zA-Z0-9._-]/g, "_");
-    const { key, url } = await storagePut(`fragile-evidence/${input.itemId}/${ctx.operatorProfile!.id}/${Date.now()}-${safeName}`, Buffer.from(base64, "base64"), input.mimeType);
-    return { success: true, key, url, fileName: input.fileName, mimeType: input.mimeType };
-  }),
-
-  uploadVerificationEvidence: qualityOperatorProcedure.input(z.object({
-    module: qualityModuleSchema,
-    factoryId: z.number().int().nullable().optional(),
-    fileName: z.string().min(1).max(255),
-    mimeType: z.enum(["image/jpeg", "image/png", "image/webp"]),
-    dataUrl: z.string().min(20).max(7_000_000),
-  })).mutation(async ({ ctx, input }) => {
-    const db = await requireDb();
-    await requireControlAuthorization(db, { module: input.module, factoryId: input.factoryId ?? null, profile: ctx.operatorProfile! });
-    const base64 = input.dataUrl.split(",")[1];
-    if (!base64) throw new TRPCError({ code: "BAD_REQUEST", message: "Imagem inválida." });
-    const safeName = input.fileName.replace(/[^a-zA-Z0-9._-]/g, "_");
-    const scope = input.factoryId ?? "comum";
-    const { key, url } = await storagePut(`control-evidence/${input.module}/${scope}/${ctx.operatorProfile!.id}/${Date.now()}-${safeName}`, Buffer.from(base64, "base64"), input.mimeType);
-    return { success: true, key, url, fileName: input.fileName, mimeType: input.mimeType };
-  }),
-
-  suggestFoodDefenseMeasure: qualitySessionProcedure.input(z.object({
-    itemId: z.string().min(1).max(120),
-    factoryId: z.number().int(),
-    plannedTaskId: z.number().int().optional(),
-    criterion: z.string().min(8).max(2_000),
-    section: z.string().min(2).max(180),
-    notes: z.string().max(2_000).optional(),
-    probability: z.number().int().min(1).max(3),
-    severity: z.number().int().min(1).max(3),
-    vulnerability: z.number().int().min(1).max(9),
-    riskGuidance: z.string().min(2).max(600),
-    existingMeasure: z.string().max(2_000).optional(),
-  })).mutation(async ({ ctx, input }) => {
-    const db = await requireDb();
-    await requireControlAuthorization(db, { module: "food_defense", factoryId: input.factoryId, plannedTaskId: input.plannedTaskId, profile: ctx.operatorProfile! });
-    const response = await invokeLLM({
-      model: "gpt-5-mini",
-      messages: [
-        { role: "system", content: "És especialista em Food Defense numa indústria de panificação. Propõe uma medida de controlo concreta, proporcional ao risco e verificável. Responde em português europeu, sem preâmbulos. A proposta é apenas apoio à decisão: não declares conformidade legal, não inventes factos e recorda implicitamente a necessidade de validação pela equipa." },
-        { role: "user", content: `Secção: ${input.section}\nCritério NC: ${input.criterion}\nObservações do técnico: ${input.notes?.trim() || "Não indicadas"}\nProbabilidade: ${input.probability}\nSeveridade: ${input.severity}\nVulnerabilidade: ${input.vulnerability}\nOrientação da matriz: ${input.riskGuidance}\nMedida já escrita: ${input.existingMeasure?.trim() || "Nenhuma"}\n\nPropõe uma única medida de controlo com ação imediata, responsável sugerido e forma de verificar eficácia. Máximo 120 palavras.` },
-      ],
-      response_format: {
-        type: "json_schema",
-        json_schema: {
-          name: "food_defense_control_measure",
-          strict: true,
-          schema: {
-            type: "object",
-            properties: { suggestion: { type: "string" } },
-            required: ["suggestion"],
-            additionalProperties: false,
+  suggestFoodDefenseMeasure: qualitySessionProcedure
+    .input(
+      z.object({
+        itemId: z.string().min(1).max(120),
+        factoryId: z.number().int(),
+        plannedTaskId: z.number().int().optional(),
+        criterion: z.string().min(8).max(2_000),
+        section: z.string().min(2).max(180),
+        notes: z.string().max(2_000).optional(),
+        probability: z.number().int().min(1).max(3),
+        severity: z.number().int().min(1).max(3),
+        vulnerability: z.number().int().min(1).max(9),
+        riskGuidance: z.string().min(2).max(600),
+        existingMeasure: z.string().max(2_000).optional(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const db = await requireDb();
+      await requireControlAuthorization(db, {
+        module: "food_defense",
+        factoryId: input.factoryId,
+        plannedTaskId: input.plannedTaskId,
+        profile: ctx.operatorProfile!,
+      });
+      const response = await invokeLLM({
+        model: "gpt-5-mini",
+        messages: [
+          {
+            role: "system",
+            content:
+              "És especialista em Food Defense numa indústria de panificação. Propõe uma medida de controlo concreta, proporcional ao risco e verificável. Responde em português europeu, sem preâmbulos. A proposta é apenas apoio à decisão: não declares conformidade legal, não inventes factos e recorda implicitamente a necessidade de validação pela equipa.",
+          },
+          {
+            role: "user",
+            content: `Secção: ${input.section}\nCritério NC: ${input.criterion}\nObservações do técnico: ${input.notes?.trim() || "Não indicadas"}\nProbabilidade: ${input.probability}\nSeveridade: ${input.severity}\nVulnerabilidade: ${input.vulnerability}\nOrientação da matriz: ${input.riskGuidance}\nMedida já escrita: ${input.existingMeasure?.trim() || "Nenhuma"}\n\nPropõe uma única medida de controlo com ação imediata, responsável sugerido e forma de verificar eficácia. Máximo 120 palavras.`,
+          },
+        ],
+        response_format: {
+          type: "json_schema",
+          json_schema: {
+            name: "food_defense_control_measure",
+            strict: true,
+            schema: {
+              type: "object",
+              properties: { suggestion: { type: "string" } },
+              required: ["suggestion"],
+              additionalProperties: false,
+            },
           },
         },
-      },
-      maxTokens: 400,
-    });
-    try {
-      const content = response.choices[0]?.message.content;
-      const parsed = JSON.parse(typeof content === "string" ? content : "{}");
-      const suggestion = String(parsed.suggestion ?? "").trim();
-      if (!suggestion) throw new Error("Sugestão vazia");
-      return { suggestion };
-    } catch {
-      throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "A sugestão de medida de controlo não ficou disponível. Tente novamente." });
-    }
-  }),
-
-  deleteFragileItem: qualityOperatorProcedure.input(z.object({ id: z.number().int() })).mutation(async ({ input }) => {
-    const db = await requireDb();
-    const item = (await db.select().from(fragileItems).where(eq(fragileItems.id, input.id)).limit(1))[0];
-    if (!item || item.status !== "active") throw new TRPCError({ code: "NOT_FOUND", message: "Ponto de controlo não encontrado." });
-    await db.update(fragileItems).set({ status: "inactive" }).where(eq(fragileItems.id, input.id));
-    return { success: true };
-  }),
-
-  dailyReportArchiveHistory: qualitySessionProcedure.input(z.object({ date: dateInput.optional() }).optional()).query(async ({ input }) => {
-    const db = await requireDb();
-    const archives = input?.date
-      ? await db.select().from(dailyReportArchives).where(eq(dailyReportArchives.operationalDate, input.date)).orderBy(desc(dailyReportArchives.revision))
-      : await db.select().from(dailyReportArchives).orderBy(desc(dailyReportArchives.operationalDate), desc(dailyReportArchives.revision));
-    return archives.map((archive) => {
-      const snapshot = archive.snapshot && typeof archive.snapshot === "object" && !Array.isArray(archive.snapshot) ? archive.snapshot as Record<string, unknown> : {};
-      return { id: archive.id, operationalDate: archive.operationalDate, revision: archive.revision, archiveKind: archive.archiveKind, revisionReason: archive.revisionReason, createdBy: archive.createdBy, createdAt: archive.createdAt, controls: Array.isArray(snapshot.controlEntries) ? snapshot.controlEntries.length : 0, plannedTasks: Array.isArray(snapshot.plannedTasks) ? snapshot.plannedTasks.length : 0, incidences: Array.isArray(snapshot.incidences) ? snapshot.incidences.length : 0, backupFileKey: archive.backupFileKey, backupFileUrl: archive.backupFileUrl, backupGeneratedAt: archive.backupGeneratedAt, backupSizeBytes: archive.backupSizeBytes };
-    });
-  }),
-
-  generateDailyReportArchiveBackup: qualityManagerProcedure.input(z.object({ archiveId: z.number().int() })).mutation(async ({ input }) => {
-    const db = await requireDb();
-    const archive = (await db.select().from(dailyReportArchives).where(eq(dailyReportArchives.id, input.archiveId)).limit(1))[0];
-    if (!archive) throw new TRPCError({ code: "NOT_FOUND", message: "Versão de arquivo não encontrada." });
-    return ensureDailyReportArchiveBackup(archive.id);
-  }),
-
-  createManualDailyReportArchive: qualityManagerProcedure.input(z.object({ operationalDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Indique uma data operacional válida.") })).mutation(async ({ ctx, input }) => {
-    return createManualDailyReportArchive(input.operationalDate, `Arquivo manual por ${ctx.operatorProfile!.name}`);
-  }),
-
-  generateMissingDailyReportArchiveBackups: qualityManagerProcedure.mutation(async () => {
-    const db = await requireDb();
-    const archives = await db.select().from(dailyReportArchives).orderBy(desc(dailyReportArchives.operationalDate), desc(dailyReportArchives.revision));
-    const pending = archives.filter((archive) => !archive.backupFileKey || !archive.backupFileUrl);
-    const results = [];
-    for (const archive of pending) results.push(await ensureDailyReportArchiveBackup(archive.id));
-    return {
-      requested: pending.length,
-      generated: results.filter((result) => result.created).length,
-      alreadyPresent: results.filter((result) => !result.created).length,
-    };
-  }),
-
-  dailyReportArchiveDetail: qualitySessionProcedure.input(z.object({ id: z.number().int() })).query(async ({ input }) => {
-    const db = await requireDb();
-    const archive = (await db.select().from(dailyReportArchives).where(eq(dailyReportArchives.id, input.id)).limit(1))[0];
-    if (!archive) throw new TRPCError({ code: "NOT_FOUND", message: "Versão de arquivo não encontrada." });
-    return archive;
-  }),
-
-  dailyReportArchiveAttention: qualitySessionProcedure.query(async ({ ctx }) => {
-    const db = await requireDb();
-    const [archives, views] = await Promise.all([
-      db.select().from(dailyReportArchives).orderBy(desc(dailyReportArchives.operationalDate), desc(dailyReportArchives.revision)),
-      db.select().from(dailyReportArchiveViews).where(eq(dailyReportArchiveViews.profileId, ctx.operatorProfile!.id)).orderBy(desc(dailyReportArchiveViews.viewedAt)),
-    ]);
-    const viewedArchiveIds = new Set(views.map((view) => view.archiveId));
-    const pending = archives.filter((archive) => archive.archiveKind === "retroactive_revision" && !viewedArchiveIds.has(archive.id));
-    return { count: pending.length, revisions: pending.slice(0, 3).map((archive) => ({ id: archive.id, operationalDate: archive.operationalDate, revision: archive.revision, revisionReason: archive.revisionReason, createdBy: archive.createdBy, createdAt: archive.createdAt })) };
-  }),
-
-  markDailyReportArchiveViewed: qualitySessionProcedure.input(z.object({ archiveId: z.number().int() })).mutation(async ({ ctx, input }) => {
-    const db = await requireDb();
-    const archive = (await db.select().from(dailyReportArchives).where(eq(dailyReportArchives.id, input.archiveId)).limit(1))[0];
-    if (!archive) throw new TRPCError({ code: "NOT_FOUND", message: "Versão de arquivo não encontrada." });
-    if (archive.archiveKind !== "retroactive_revision") return { success: true, tracked: false };
-    await db.insert(dailyReportArchiveViews).values({ archiveId: archive.id, profileId: ctx.operatorProfile!.id, viewedAt: new Date() }).onDuplicateKeyUpdate({ set: { viewedAt: new Date() } });
-    return { success: true, tracked: true };
-  }),
-
-  reports: qualitySessionProcedure.input(z.object({
-    factoryId: z.number().int().optional(),
-    startDate: dateInput.optional(),
-    endDate: dateInput.optional(),
-    module: qualityModuleSchema.optional(),
-    result: resultSchema.optional(),
-    ncStatus: z.enum(["open", "in_progress", "awaiting_validation", "closed"]).optional(),
-    orderNumber: z.string().trim().min(1).max(80).optional(),
-    analysisProduct: z.string().trim().min(1).max(180).optional(),
-    analysisClient: z.string().trim().min(1).max(180).optional(),
-    detailSearch: z.string().trim().min(1).max(240).optional(),
-    inspectedCollaborator: z.string().trim().min(1).max(180).optional(),
-    verificationType: z.string().trim().min(1).max(180).optional(),
-    line: z.string().trim().min(1).max(180).optional(),
-    productName: z.string().trim().min(1).max(180).optional(),
-    lot: z.string().trim().min(1).max(180).optional(),
-    validity: z.string().trim().min(1).max(40).optional(),
-    customer: z.string().trim().min(1).max(180).optional(),
-    samplePoint: z.string().trim().min(1).max(180).optional(),
-    category: z.string().trim().min(1).max(180).optional(),
-    test: z.string().trim().min(1).max(180).optional(),
-    equipment: z.string().trim().min(1).max(180).optional(),
-    location: z.string().trim().min(1).max(180).optional(),
-    state: z.string().trim().min(1).max(180).optional(),
-    periodicity: z.string().trim().min(1).max(80).optional(),
-    analyst: z.string().trim().min(1).max(180).optional(),
-    deliveryNote: z.string().trim().min(1).max(120).optional(),
-    triage: z.string().trim().min(1).max(180).optional(),
-    collaboratorProfileId: z.number().int().optional(),
-  }).optional()).query(async ({ input }) => {
-    const db = await requireDb();
-    const [entries, tasks, ncs] = await Promise.all([
-      db.select().from(controlEntries).orderBy(desc(controlEntries.completedAt)),
-      db.select().from(controlTasks),
-      db.select().from(nonconformities),
-    ]);
-    const start = input?.startDate ? asDateRange(input.startDate).start : null;
-    const end = input?.endDate ? asDateRange(input.endDate).end : null;
-    if (input?.startDate && input.endDate && asDateRange(input.startDate).start > asDateRange(input.endDate).start) throw new TRPCError({ code: "BAD_REQUEST", message: "A data final não pode ser anterior à data inicial." });
-    const withinPeriod = (date: Date) => (!start || date >= start) && (!end || date < end);
-    const payloadRecord = (payload: unknown) => payload && typeof payload === "object" && !Array.isArray(payload) ? payload as Record<string, unknown> : {};
-    const isDeletedEntry = (entry: typeof entries[number]) => {
-      const lifecycle = payloadRecord(entry.payload).recordLifecycle;
-      return Boolean(lifecycle && typeof lifecycle === "object" && !Array.isArray(lifecycle) && (lifecycle as Record<string, unknown>).status === "deleted");
-    };
-    const dispatchEntries = scopeToFactory(entries, input?.factoryId).filter((entry) => !isDeletedEntry(entry) && withinPeriod(entry.completedAt) && entry.module === "dispatch_control");
-    const dispatchOrdersByNumber = new Map<string, { orderNumber: string; customer: string | null; result: "C" | "NC" | "N/A" | null; completedAt: Date }>();
-    dispatchEntries.forEach((entry) => {
-      const payload = payloadRecord(entry.payload);
-      const orderNumber = typeof payload.orderNumber === "string" ? payload.orderNumber : null;
-      const customer = typeof payload.customer === "string" ? payload.customer : null;
-      if (orderNumber) dispatchOrdersByNumber.set(orderNumber, { orderNumber, customer, result: entry.result, completedAt: entry.completedAt });
-    });
-    const dispatchOrders = Array.from(dispatchOrdersByNumber.values());
-    const normalized = (value: string) => value.toLocaleLowerCase("pt-PT").trim();
-    const matchesInternalAnalysis = (entry: typeof entries[number]) => {
-      if (!input?.analysisProduct && !input?.analysisClient) return true;
-      if (entry.module !== "internal_analysis") return false;
-      const payload = payloadRecord(entry.payload);
-      const samples = Array.isArray(payload.samples) ? payload.samples : [];
-      const legacySample = { product: payload.product, client: payload.client ?? payload.samplePoint ?? payload.sampleId };
-      const candidates = samples.length ? samples : [legacySample];
-      return candidates.some((sample) => {
-        const values = sample && typeof sample === "object" ? sample as Record<string, unknown> : {};
-        const product = typeof values.product === "string" ? values.product : "";
-        const client = [values.client, values.samplePoint].filter((value): value is string => typeof value === "string").join(" ");
-        return (!input.analysisProduct || normalized(product).includes(normalized(input.analysisProduct))) && (!input.analysisClient || normalized(client).includes(normalized(input.analysisClient)));
+        maxTokens: 400,
       });
-    };
-    const detailText = (value: unknown): string => {
-      if (value === null || value === undefined) return "";
-      if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") return String(value);
-      if (Array.isArray(value)) return value.map(detailText).filter(Boolean).join(" ");
-      if (typeof value === "object") return Object.entries(value as Record<string, unknown>).map(([key, item]) => `${key} ${detailText(item)}`).filter(Boolean).join(" ");
-      return "";
-    };
-    const detailFieldValues = (entry: typeof entries[number], field: string): string[] => {
-      const payload = payloadRecord(entry.payload);
-      const values = (...items: unknown[]) => items.map(detailText).filter(Boolean);
-      switch (field) {
-        case "inspectedCollaborator": return values(payload.collaboratorName, payload.inspectedCollaborator, payload.employeeName);
-        case "verificationType": return values(payload.criterion, payload.test, payload.profile, payload.profileLabel, payload.observationResult, entry.title);
-        case "line": return values(payload.line, payload.lineName, payload.location, entry.area, payload.items);
-        case "productName": return values(payload.product, payload.productName, payload.samples, payload.products, payload.productChecks);
-        case "lot": return values(payload.lot, payload.lotNumber, payload.samples, payload.products, payload.productChecks);
-        case "validity": return values(payload.validity, payload.expiryDate, payload.samples, payload.products, payload.productChecks);
-        case "customer": return values(payload.customer, payload.client, payload.samples, payload.products, payload.productChecks);
-        case "samplePoint": return values(payload.samplePoint, payload.samplingPoint, payload.samples, payload.analyses);
-        case "category": return values(payload.category, payload.categories, payload.analyses, payload.criteria);
-        case "test": return values(payload.test, payload.tests, payload.analyses);
-        case "equipment": return values(payload.equipment, payload.items, payload.readings, payload.temperatures);
-        case "location": return values(payload.location, entry.area);
-        case "state": return values(payload.state, payload.inspectionState, payload.status, payload.triage);
-        case "periodicity": return values(payload.periodicity, payload.frequency);
-        case "analyst": return values(payload.analyst, payload.analystName);
-        case "deliveryNote": return values(payload.deliveryNote, payload.deliveryNoteNumber);
-        case "triage": return values(payload.triage);
-        default: return [];
+      try {
+        const content = response.choices[0]?.message.content;
+        const parsed = JSON.parse(typeof content === "string" ? content : "{}");
+        const suggestion = String(parsed.suggestion ?? "").trim();
+        if (!suggestion) throw new Error("Sugestão vazia");
+        return { suggestion };
+      } catch {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message:
+            "A sugestão de medida de controlo não ficou disponível. Tente novamente.",
+        });
       }
-    };
-    const matchesDetailFilters = (entry: typeof entries[number]) => {
-      const payload = payloadRecord(entry.payload);
-      const allText = normalized([entry.title, entry.area, entry.notes, entry.registeredByName, detailText(payload)].filter(Boolean).join(" "));
-      if (input?.detailSearch && !allText.includes(normalized(input.detailSearch))) return false;
-      const filters: Array<[string, string | undefined]> = [
-        ["inspectedCollaborator", input?.inspectedCollaborator], ["verificationType", input?.verificationType], ["line", input?.line], ["productName", input?.productName], ["lot", input?.lot], ["validity", input?.validity], ["customer", input?.customer], ["samplePoint", input?.samplePoint], ["category", input?.category], ["test", input?.test], ["equipment", input?.equipment], ["location", input?.location], ["state", input?.state], ["periodicity", input?.periodicity], ["analyst", input?.analyst], ["deliveryNote", input?.deliveryNote], ["triage", input?.triage],
-      ];
-      return filters.every(([field, query]) => !query || detailFieldValues(entry, field).some((value) => normalized(value).includes(normalized(query))));
-    };
-    const scopedEntries = scopeToFactory(entries, input?.factoryId).filter((entry) => {
-      const orderNumber = typeof payloadRecord(entry.payload).orderNumber === "string" ? payloadRecord(entry.payload).orderNumber as string : null;
-      return !isDeletedEntry(entry) && withinPeriod(entry.completedAt) && (!input?.module || entry.module === input.module) && (!input?.result || entry.result === input.result) && (!input?.orderNumber || orderNumber === input.orderNumber) && (!input?.collaboratorProfileId || entry.registeredByProfileId === input.collaboratorProfileId) && matchesInternalAnalysis(entry) && matchesDetailFilters(entry);
-    });
-    const scopedTasks = scopeToFactory(tasks, input?.factoryId).filter((task) => task.status !== "cancelled" && withinPeriod(task.dueAt) && (!input?.collaboratorProfileId || task.completedByProfileId === input.collaboratorProfileId));
-    const scopedNcs = scopeToFactory(ncs, input?.factoryId).filter((nc) => withinPeriod(nc.detectedAt) && (!input?.module || nc.module === input.module) && (!input?.ncStatus || nc.status === input.ncStatus) && (!input?.collaboratorProfileId || nc.reportedByProfileId === input.collaboratorProfileId));
-    const modules = qualityModuleValues.map((module) => {
-      const moduleEntries = scopedEntries.filter((entry) => entry.module === module);
+    }),
+
+  deleteFragileItem: qualityOperatorProcedure
+    .input(z.object({ id: z.number().int() }))
+    .mutation(async ({ input }) => {
+      const db = await requireDb();
+      const item = (
+        await db
+          .select()
+          .from(fragileItems)
+          .where(eq(fragileItems.id, input.id))
+          .limit(1)
+      )[0];
+      if (!item || item.status !== "active")
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Ponto de controlo não encontrado.",
+        });
+      await db
+        .update(fragileItems)
+        .set({ status: "inactive" })
+        .where(eq(fragileItems.id, input.id));
+      return { success: true };
+    }),
+
+  dailyReportArchiveHistory: qualitySessionProcedure
+    .input(z.object({ date: dateInput.optional() }).optional())
+    .query(async ({ input }) => {
+      const db = await requireDb();
+      const archives = input?.date
+        ? await db
+            .select()
+            .from(dailyReportArchives)
+            .where(eq(dailyReportArchives.operationalDate, input.date))
+            .orderBy(desc(dailyReportArchives.revision))
+        : await db
+            .select()
+            .from(dailyReportArchives)
+            .orderBy(
+              desc(dailyReportArchives.operationalDate),
+              desc(dailyReportArchives.revision)
+            );
+      return archives.map(archive => {
+        const snapshot =
+          archive.snapshot &&
+          typeof archive.snapshot === "object" &&
+          !Array.isArray(archive.snapshot)
+            ? (archive.snapshot as Record<string, unknown>)
+            : {};
+        return {
+          id: archive.id,
+          operationalDate: archive.operationalDate,
+          revision: archive.revision,
+          archiveKind: archive.archiveKind,
+          revisionReason: archive.revisionReason,
+          createdBy: archive.createdBy,
+          createdAt: archive.createdAt,
+          controls: Array.isArray(snapshot.controlEntries)
+            ? snapshot.controlEntries.length
+            : 0,
+          plannedTasks: Array.isArray(snapshot.plannedTasks)
+            ? snapshot.plannedTasks.length
+            : 0,
+          incidences: Array.isArray(snapshot.incidences)
+            ? snapshot.incidences.length
+            : 0,
+          backupFileKey: archive.backupFileKey,
+          backupFileUrl: archive.backupFileUrl,
+          backupGeneratedAt: archive.backupGeneratedAt,
+          backupSizeBytes: archive.backupSizeBytes,
+        };
+      });
+    }),
+
+  generateDailyReportArchiveBackup: qualityManagerProcedure
+    .input(z.object({ archiveId: z.number().int() }))
+    .mutation(async ({ input }) => {
+      const db = await requireDb();
+      const archive = (
+        await db
+          .select()
+          .from(dailyReportArchives)
+          .where(eq(dailyReportArchives.id, input.archiveId))
+          .limit(1)
+      )[0];
+      if (!archive)
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Versão de arquivo não encontrada.",
+        });
+      return ensureDailyReportArchiveBackup(archive.id);
+    }),
+
+  createManualDailyReportArchive: qualityManagerProcedure
+    .input(
+      z.object({
+        operationalDate: z
+          .string()
+          .regex(/^\d{4}-\d{2}-\d{2}$/, "Indique uma data operacional válida."),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      return createManualDailyReportArchive(
+        input.operationalDate,
+        `Arquivo manual por ${ctx.operatorProfile!.name}`
+      );
+    }),
+
+  generateMissingDailyReportArchiveBackups: qualityManagerProcedure.mutation(
+    async () => {
+      const db = await requireDb();
+      const archives = await db
+        .select()
+        .from(dailyReportArchives)
+        .orderBy(
+          desc(dailyReportArchives.operationalDate),
+          desc(dailyReportArchives.revision)
+        );
+      const pending = archives.filter(
+        archive => !archive.backupFileKey || !archive.backupFileUrl
+      );
+      const results = [];
+      for (const archive of pending)
+        results.push(await ensureDailyReportArchiveBackup(archive.id));
       return {
-        module,
-        total: moduleEntries.length,
-        conformity: calculateConformityRate(moduleEntries.map((entry) => entry.result)),
-        nc: moduleEntries.filter((entry) => entry.result === "NC").length,
+        requested: pending.length,
+        generated: results.filter(result => result.created).length,
+        alreadyPresent: results.filter(result => !result.created).length,
       };
-    });
-    const areaNames = Array.from(new Set(scopedEntries.map((entry) => entry.area)));
-    const areas = areaNames.map((area) => {
-      const areaEntries = scopedEntries.filter((entry) => entry.area === area);
-      return { area, total: areaEntries.length, conformity: calculateConformityRate(areaEntries.map((entry) => entry.result)) };
-    });
-    const defaultEnd = asDateRange(new Date()).end;
-    const periodStart = start ?? new Date(defaultEnd.getFullYear(), defaultEnd.getMonth(), defaultEnd.getDate() - 30);
-    const periodEnd = end ?? defaultEnd;
-    const periodDays = Math.max(1, Math.ceil((periodEnd.getTime() - periodStart.getTime()) / 86_400_000));
-    const bucketCount = Math.min(10, periodDays);
-    const bucketSize = Math.max(1, Math.ceil(periodDays / bucketCount));
-    const trends = Array.from({ length: bucketCount }, (_, index) => {
-      const bucketStart = new Date(periodStart);
-      bucketStart.setDate(bucketStart.getDate() + index * bucketSize);
-      const bucketEnd = new Date(bucketStart);
-      bucketEnd.setDate(bucketEnd.getDate() + bucketSize);
-      if (bucketEnd > periodEnd) bucketEnd.setTime(periodEnd.getTime());
-      const bucketEntries = scopedEntries.filter((entry) => entry.completedAt >= bucketStart && entry.completedAt < bucketEnd);
-      const labelStart = bucketStart.toLocaleDateString("pt-PT", { day: "2-digit", month: "2-digit" });
-      const labelEnd = new Date(Math.max(bucketStart.getTime(), bucketEnd.getTime() - 1)).toLocaleDateString("pt-PT", { day: "2-digit", month: "2-digit" });
-      return { label: bucketSize === 1 ? labelStart : `${labelStart}–${labelEnd}`, entries: bucketEntries.length, c: bucketEntries.filter((entry) => entry.result === "C").length, nc: bucketEntries.filter((entry) => entry.result === "NC").length };
-    });
-    const filteredSummary = { total: scopedEntries.length, conforming: scopedEntries.filter((entry) => entry.result === "C").length, nonconforming: scopedEntries.filter((entry) => entry.result === "NC").length, conformity: calculateConformityRate(scopedEntries.map((entry) => entry.result)) };
-    return {
-      modules,
-      areas,
-      trends,
-      filteredSummary,
-      recentEntries: scopedEntries.slice(0, 12),
-      filteredEntries: scopedEntries,
-      planCompliance: calculatePlanCompliance(scopedTasks),
-      openNcs: countOpenNonconformities(scopedNcs).open,
-      criticalOpen: countOpenNonconformities(scopedNcs).criticalOpen,
-      dispatchOrders,
-      filters: { startDate: start, endDate: end, module: input?.module ?? null, result: input?.result ?? null, ncStatus: input?.ncStatus ?? null, orderNumber: input?.orderNumber ?? null, analysisProduct: input?.analysisProduct ?? null, analysisClient: input?.analysisClient ?? null, detailSearch: input?.detailSearch ?? null, inspectedCollaborator: input?.inspectedCollaborator ?? null, verificationType: input?.verificationType ?? null, line: input?.line ?? null, productName: input?.productName ?? null, lot: input?.lot ?? null, validity: input?.validity ?? null, customer: input?.customer ?? null, samplePoint: input?.samplePoint ?? null, category: input?.category ?? null, test: input?.test ?? null, equipment: input?.equipment ?? null, location: input?.location ?? null, state: input?.state ?? null, periodicity: input?.periodicity ?? null, analyst: input?.analyst ?? null, deliveryNote: input?.deliveryNote ?? null, triage: input?.triage ?? null },
-    };
-  }),
+    }
+  ),
+
+  dailyReportArchiveDetail: qualitySessionProcedure
+    .input(z.object({ id: z.number().int() }))
+    .query(async ({ input }) => {
+      const db = await requireDb();
+      const archive = (
+        await db
+          .select()
+          .from(dailyReportArchives)
+          .where(eq(dailyReportArchives.id, input.id))
+          .limit(1)
+      )[0];
+      if (!archive)
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Versão de arquivo não encontrada.",
+        });
+      return archive;
+    }),
+
+  dailyReportArchiveAttention: qualitySessionProcedure.query(
+    async ({ ctx }) => {
+      const db = await requireDb();
+      const [archives, views] = await Promise.all([
+        db
+          .select()
+          .from(dailyReportArchives)
+          .orderBy(
+            desc(dailyReportArchives.operationalDate),
+            desc(dailyReportArchives.revision)
+          ),
+        db
+          .select()
+          .from(dailyReportArchiveViews)
+          .where(eq(dailyReportArchiveViews.profileId, ctx.operatorProfile!.id))
+          .orderBy(desc(dailyReportArchiveViews.viewedAt)),
+      ]);
+      const viewedArchiveIds = new Set(views.map(view => view.archiveId));
+      const pending = archives.filter(
+        archive =>
+          archive.archiveKind === "retroactive_revision" &&
+          !viewedArchiveIds.has(archive.id)
+      );
+      return {
+        count: pending.length,
+        revisions: pending
+          .slice(0, 3)
+          .map(archive => ({
+            id: archive.id,
+            operationalDate: archive.operationalDate,
+            revision: archive.revision,
+            revisionReason: archive.revisionReason,
+            createdBy: archive.createdBy,
+            createdAt: archive.createdAt,
+          })),
+      };
+    }
+  ),
+
+  markDailyReportArchiveViewed: qualitySessionProcedure
+    .input(z.object({ archiveId: z.number().int() }))
+    .mutation(async ({ ctx, input }) => {
+      const db = await requireDb();
+      const archive = (
+        await db
+          .select()
+          .from(dailyReportArchives)
+          .where(eq(dailyReportArchives.id, input.archiveId))
+          .limit(1)
+      )[0];
+      if (!archive)
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Versão de arquivo não encontrada.",
+        });
+      if (archive.archiveKind !== "retroactive_revision")
+        return { success: true, tracked: false };
+      await db
+        .insert(dailyReportArchiveViews)
+        .values({
+          archiveId: archive.id,
+          profileId: ctx.operatorProfile!.id,
+          viewedAt: new Date(),
+        })
+        .onDuplicateKeyUpdate({ set: { viewedAt: new Date() } });
+      return { success: true, tracked: true };
+    }),
+
+  reports: qualitySessionProcedure
+    .input(
+      z
+        .object({
+          factoryId: z.number().int().optional(),
+          startDate: dateInput.optional(),
+          endDate: dateInput.optional(),
+          module: qualityModuleSchema.optional(),
+          result: resultSchema.optional(),
+          ncStatus: z
+            .enum(["open", "in_progress", "awaiting_validation", "closed"])
+            .optional(),
+          orderNumber: z.string().trim().min(1).max(80).optional(),
+          analysisProduct: z.string().trim().min(1).max(180).optional(),
+          analysisClient: z.string().trim().min(1).max(180).optional(),
+          detailSearch: z.string().trim().min(1).max(240).optional(),
+          inspectedCollaborator: z.string().trim().min(1).max(180).optional(),
+          verificationType: z.string().trim().min(1).max(180).optional(),
+          line: z.string().trim().min(1).max(180).optional(),
+          productName: z.string().trim().min(1).max(180).optional(),
+          lot: z.string().trim().min(1).max(180).optional(),
+          validity: z.string().trim().min(1).max(40).optional(),
+          customer: z.string().trim().min(1).max(180).optional(),
+          samplePoint: z.string().trim().min(1).max(180).optional(),
+          category: z.string().trim().min(1).max(180).optional(),
+          test: z.string().trim().min(1).max(180).optional(),
+          equipment: z.string().trim().min(1).max(180).optional(),
+          location: z.string().trim().min(1).max(180).optional(),
+          state: z.string().trim().min(1).max(180).optional(),
+          periodicity: z.string().trim().min(1).max(80).optional(),
+          analyst: z.string().trim().min(1).max(180).optional(),
+          deliveryNote: z.string().trim().min(1).max(120).optional(),
+          triage: z.string().trim().min(1).max(180).optional(),
+          collaboratorProfileId: z.number().int().optional(),
+        })
+        .optional()
+    )
+    .query(async ({ input }) => {
+      const db = await requireDb();
+      const [entries, tasks, ncs] = await Promise.all([
+        db
+          .select()
+          .from(controlEntries)
+          .orderBy(desc(controlEntries.completedAt)),
+        db.select().from(controlTasks),
+        db.select().from(nonconformities),
+      ]);
+      const start = input?.startDate
+        ? asDateRange(input.startDate).start
+        : null;
+      const end = input?.endDate ? asDateRange(input.endDate).end : null;
+      if (
+        input?.startDate &&
+        input.endDate &&
+        asDateRange(input.startDate).start > asDateRange(input.endDate).start
+      )
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "A data final não pode ser anterior à data inicial.",
+        });
+      const withinPeriod = (date: Date) =>
+        (!start || date >= start) && (!end || date < end);
+      const payloadRecord = (payload: unknown) =>
+        payload && typeof payload === "object" && !Array.isArray(payload)
+          ? (payload as Record<string, unknown>)
+          : {};
+      const isDeletedEntry = (entry: (typeof entries)[number]) => {
+        const lifecycle = payloadRecord(entry.payload).recordLifecycle;
+        return Boolean(
+          lifecycle &&
+            typeof lifecycle === "object" &&
+            !Array.isArray(lifecycle) &&
+            (lifecycle as Record<string, unknown>).status === "deleted"
+        );
+      };
+      const dispatchEntries = scopeToFactory(entries, input?.factoryId).filter(
+        entry =>
+          !isDeletedEntry(entry) &&
+          withinPeriod(entry.completedAt) &&
+          entry.module === "dispatch_control"
+      );
+      const dispatchOrdersByNumber = new Map<
+        string,
+        {
+          orderNumber: string;
+          customer: string | null;
+          result: "C" | "NC" | "N/A" | null;
+          completedAt: Date;
+        }
+      >();
+      dispatchEntries.forEach(entry => {
+        const payload = payloadRecord(entry.payload);
+        const orderNumber =
+          typeof payload.orderNumber === "string" ? payload.orderNumber : null;
+        const customer =
+          typeof payload.customer === "string" ? payload.customer : null;
+        if (orderNumber)
+          dispatchOrdersByNumber.set(orderNumber, {
+            orderNumber,
+            customer,
+            result: entry.result,
+            completedAt: entry.completedAt,
+          });
+      });
+      const dispatchOrders = Array.from(dispatchOrdersByNumber.values());
+      const normalized = (value: string) =>
+        value.toLocaleLowerCase("pt-PT").trim();
+      const matchesInternalAnalysis = (entry: (typeof entries)[number]) => {
+        if (!input?.analysisProduct && !input?.analysisClient) return true;
+        if (entry.module !== "internal_analysis") return false;
+        const payload = payloadRecord(entry.payload);
+        const samples = Array.isArray(payload.samples) ? payload.samples : [];
+        const legacySample = {
+          product: payload.product,
+          client: payload.client ?? payload.samplePoint ?? payload.sampleId,
+        };
+        const candidates = samples.length ? samples : [legacySample];
+        return candidates.some(sample => {
+          const values =
+            sample && typeof sample === "object"
+              ? (sample as Record<string, unknown>)
+              : {};
+          const product =
+            typeof values.product === "string" ? values.product : "";
+          const client = [values.client, values.samplePoint]
+            .filter((value): value is string => typeof value === "string")
+            .join(" ");
+          return (
+            (!input.analysisProduct ||
+              normalized(product).includes(
+                normalized(input.analysisProduct)
+              )) &&
+            (!input.analysisClient ||
+              normalized(client).includes(normalized(input.analysisClient)))
+          );
+        });
+      };
+      const detailText = (value: unknown): string => {
+        if (value === null || value === undefined) return "";
+        if (
+          typeof value === "string" ||
+          typeof value === "number" ||
+          typeof value === "boolean"
+        )
+          return String(value);
+        if (Array.isArray(value))
+          return value.map(detailText).filter(Boolean).join(" ");
+        if (typeof value === "object")
+          return Object.entries(value as Record<string, unknown>)
+            .map(([key, item]) => `${key} ${detailText(item)}`)
+            .filter(Boolean)
+            .join(" ");
+        return "";
+      };
+      const detailFieldValues = (
+        entry: (typeof entries)[number],
+        field: string
+      ): string[] => {
+        const payload = payloadRecord(entry.payload);
+        const values = (...items: unknown[]) =>
+          items.map(detailText).filter(Boolean);
+        switch (field) {
+          case "inspectedCollaborator":
+            return values(
+              payload.collaboratorName,
+              payload.inspectedCollaborator,
+              payload.employeeName
+            );
+          case "verificationType":
+            return values(
+              payload.criterion,
+              payload.test,
+              payload.profile,
+              payload.profileLabel,
+              payload.observationResult,
+              entry.title
+            );
+          case "line":
+            return values(
+              payload.line,
+              payload.lineName,
+              payload.location,
+              entry.area,
+              payload.items
+            );
+          case "productName":
+            return values(
+              payload.product,
+              payload.productName,
+              payload.samples,
+              payload.products,
+              payload.productChecks
+            );
+          case "lot":
+            return values(
+              payload.lot,
+              payload.lotNumber,
+              payload.samples,
+              payload.products,
+              payload.productChecks
+            );
+          case "validity":
+            return values(
+              payload.validity,
+              payload.expiryDate,
+              payload.samples,
+              payload.products,
+              payload.productChecks
+            );
+          case "customer":
+            return values(
+              payload.customer,
+              payload.client,
+              payload.samples,
+              payload.products,
+              payload.productChecks
+            );
+          case "samplePoint":
+            return values(
+              payload.samplePoint,
+              payload.samplingPoint,
+              payload.samples,
+              payload.analyses
+            );
+          case "category":
+            return values(
+              payload.category,
+              payload.categories,
+              payload.analyses,
+              payload.criteria
+            );
+          case "test":
+            return values(payload.test, payload.tests, payload.analyses);
+          case "equipment":
+            return values(
+              payload.equipment,
+              payload.items,
+              payload.readings,
+              payload.temperatures
+            );
+          case "location":
+            return values(payload.location, entry.area);
+          case "state":
+            return values(
+              payload.state,
+              payload.inspectionState,
+              payload.status,
+              payload.triage
+            );
+          case "periodicity":
+            return values(payload.periodicity, payload.frequency);
+          case "analyst":
+            return values(payload.analyst, payload.analystName);
+          case "deliveryNote":
+            return values(payload.deliveryNote, payload.deliveryNoteNumber);
+          case "triage":
+            return values(payload.triage);
+          default:
+            return [];
+        }
+      };
+      const matchesDetailFilters = (entry: (typeof entries)[number]) => {
+        const payload = payloadRecord(entry.payload);
+        const allText = normalized(
+          [
+            entry.title,
+            entry.area,
+            entry.notes,
+            entry.registeredByName,
+            detailText(payload),
+          ]
+            .filter(Boolean)
+            .join(" ")
+        );
+        if (
+          input?.detailSearch &&
+          !allText.includes(normalized(input.detailSearch))
+        )
+          return false;
+        const filters: Array<[string, string | undefined]> = [
+          ["inspectedCollaborator", input?.inspectedCollaborator],
+          ["verificationType", input?.verificationType],
+          ["line", input?.line],
+          ["productName", input?.productName],
+          ["lot", input?.lot],
+          ["validity", input?.validity],
+          ["customer", input?.customer],
+          ["samplePoint", input?.samplePoint],
+          ["category", input?.category],
+          ["test", input?.test],
+          ["equipment", input?.equipment],
+          ["location", input?.location],
+          ["state", input?.state],
+          ["periodicity", input?.periodicity],
+          ["analyst", input?.analyst],
+          ["deliveryNote", input?.deliveryNote],
+          ["triage", input?.triage],
+        ];
+        return filters.every(
+          ([field, query]) =>
+            !query ||
+            detailFieldValues(entry, field).some(value =>
+              normalized(value).includes(normalized(query))
+            )
+        );
+      };
+      const scopedEntries = scopeToFactory(entries, input?.factoryId).filter(
+        entry => {
+          const orderNumber =
+            typeof payloadRecord(entry.payload).orderNumber === "string"
+              ? (payloadRecord(entry.payload).orderNumber as string)
+              : null;
+          return (
+            !isDeletedEntry(entry) &&
+            withinPeriod(entry.completedAt) &&
+            (!input?.module || entry.module === input.module) &&
+            (!input?.result || entry.result === input.result) &&
+            (!input?.orderNumber || orderNumber === input.orderNumber) &&
+            (!input?.collaboratorProfileId ||
+              entry.registeredByProfileId === input.collaboratorProfileId) &&
+            matchesInternalAnalysis(entry) &&
+            matchesDetailFilters(entry)
+          );
+        }
+      );
+      const scopedTasks = scopeToFactory(tasks, input?.factoryId).filter(
+        task =>
+          task.status !== "cancelled" &&
+          withinPeriod(task.dueAt) &&
+          (!input?.collaboratorProfileId ||
+            task.completedByProfileId === input.collaboratorProfileId)
+      );
+      const scopedNcs = scopeToFactory(ncs, input?.factoryId).filter(
+        nc =>
+          withinPeriod(nc.detectedAt) &&
+          (!input?.module || nc.module === input.module) &&
+          (!input?.ncStatus || nc.status === input.ncStatus) &&
+          (!input?.collaboratorProfileId ||
+            nc.reportedByProfileId === input.collaboratorProfileId)
+      );
+      const modules = qualityModuleValues.map(module => {
+        const moduleEntries = scopedEntries.filter(
+          entry => entry.module === module
+        );
+        return {
+          module,
+          total: moduleEntries.length,
+          conformity: calculateConformityRate(
+            moduleEntries.map(entry => entry.result)
+          ),
+          nc: moduleEntries.filter(entry => entry.result === "NC").length,
+        };
+      });
+      const areaNames = Array.from(
+        new Set(scopedEntries.map(entry => entry.area))
+      );
+      const areas = areaNames.map(area => {
+        const areaEntries = scopedEntries.filter(entry => entry.area === area);
+        return {
+          area,
+          total: areaEntries.length,
+          conformity: calculateConformityRate(
+            areaEntries.map(entry => entry.result)
+          ),
+        };
+      });
+      const defaultEnd = asDateRange(new Date()).end;
+      const periodStart =
+        start ??
+        new Date(
+          defaultEnd.getFullYear(),
+          defaultEnd.getMonth(),
+          defaultEnd.getDate() - 30
+        );
+      const periodEnd = end ?? defaultEnd;
+      const periodDays = Math.max(
+        1,
+        Math.ceil((periodEnd.getTime() - periodStart.getTime()) / 86_400_000)
+      );
+      const bucketCount = Math.min(10, periodDays);
+      const bucketSize = Math.max(1, Math.ceil(periodDays / bucketCount));
+      const trends = Array.from({ length: bucketCount }, (_, index) => {
+        const bucketStart = new Date(periodStart);
+        bucketStart.setDate(bucketStart.getDate() + index * bucketSize);
+        const bucketEnd = new Date(bucketStart);
+        bucketEnd.setDate(bucketEnd.getDate() + bucketSize);
+        if (bucketEnd > periodEnd) bucketEnd.setTime(periodEnd.getTime());
+        const bucketEntries = scopedEntries.filter(
+          entry =>
+            entry.completedAt >= bucketStart && entry.completedAt < bucketEnd
+        );
+        const labelStart = bucketStart.toLocaleDateString("pt-PT", {
+          day: "2-digit",
+          month: "2-digit",
+        });
+        const labelEnd = new Date(
+          Math.max(bucketStart.getTime(), bucketEnd.getTime() - 1)
+        ).toLocaleDateString("pt-PT", { day: "2-digit", month: "2-digit" });
+        return {
+          label: bucketSize === 1 ? labelStart : `${labelStart}–${labelEnd}`,
+          entries: bucketEntries.length,
+          c: bucketEntries.filter(entry => entry.result === "C").length,
+          nc: bucketEntries.filter(entry => entry.result === "NC").length,
+        };
+      });
+      const filteredSummary = {
+        total: scopedEntries.length,
+        conforming: scopedEntries.filter(entry => entry.result === "C").length,
+        nonconforming: scopedEntries.filter(entry => entry.result === "NC")
+          .length,
+        conformity: calculateConformityRate(
+          scopedEntries.map(entry => entry.result)
+        ),
+      };
+      return {
+        modules,
+        areas,
+        trends,
+        filteredSummary,
+        recentEntries: scopedEntries.slice(0, 12),
+        filteredEntries: scopedEntries,
+        planCompliance: calculatePlanCompliance(scopedTasks),
+        openNcs: countOpenNonconformities(scopedNcs).open,
+        criticalOpen: countOpenNonconformities(scopedNcs).criticalOpen,
+        dispatchOrders,
+        filters: {
+          startDate: start,
+          endDate: end,
+          module: input?.module ?? null,
+          result: input?.result ?? null,
+          ncStatus: input?.ncStatus ?? null,
+          orderNumber: input?.orderNumber ?? null,
+          analysisProduct: input?.analysisProduct ?? null,
+          analysisClient: input?.analysisClient ?? null,
+          detailSearch: input?.detailSearch ?? null,
+          inspectedCollaborator: input?.inspectedCollaborator ?? null,
+          verificationType: input?.verificationType ?? null,
+          line: input?.line ?? null,
+          productName: input?.productName ?? null,
+          lot: input?.lot ?? null,
+          validity: input?.validity ?? null,
+          customer: input?.customer ?? null,
+          samplePoint: input?.samplePoint ?? null,
+          category: input?.category ?? null,
+          test: input?.test ?? null,
+          equipment: input?.equipment ?? null,
+          location: input?.location ?? null,
+          state: input?.state ?? null,
+          periodicity: input?.periodicity ?? null,
+          analyst: input?.analyst ?? null,
+          deliveryNote: input?.deliveryNote ?? null,
+          triage: input?.triage ?? null,
+        },
+      };
+    }),
 
   initializeChecklist: qualityManagerProcedure.mutation(async ({ ctx }) => {
     const db = await requireDb();
-    const defaultAreaId = await ensureChecklistArea(db, "Geral", ctx.user!.openId);
+    const defaultAreaId = await ensureChecklistArea(
+      db,
+      "Geral",
+      ctx.user!.openId
+    );
     const existing = await db.select().from(checklistItems).limit(1);
     if (existing.length) return { success: true, created: 0 };
-    const inserted = await db.insert(checklistItems).values(MONTHLY_CHECKLIST_TEMPLATE.map((label, index) => ({
-      area: "Geral",
-      label,
-      sortOrder: index + 1,
-      active: "true" as const,
-      createdBy: ctx.user!.openId,
-    }))).$returningId();
-    await db.insert(checklistItemAreas).values(inserted.map(item => ({ checklistItemId: item.id, checklistAreaId: defaultAreaId })));
+    const inserted = await db
+      .insert(checklistItems)
+      .values(
+        MONTHLY_CHECKLIST_TEMPLATE.map((label, index) => ({
+          area: "Geral",
+          label,
+          sortOrder: index + 1,
+          active: "true" as const,
+          createdBy: ctx.user!.openId,
+        }))
+      )
+      .$returningId();
+    await db
+      .insert(checklistItemAreas)
+      .values(
+        inserted.map(item => ({
+          checklistItemId: item.id,
+          checklistAreaId: defaultAreaId,
+        }))
+      );
     return { success: true, created: MONTHLY_CHECKLIST_TEMPLATE.length };
   }),
 });

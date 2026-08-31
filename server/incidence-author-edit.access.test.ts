@@ -9,7 +9,9 @@ describe("edição de incidências pelo técnico autor", () => {
     expect(router).toContain("updateIncidence: qualityOperatorProcedure");
     expect(router).toContain("Apenas o técnico que registou a incidência ou a Responsável de Qualidade a pode editar.");
     expect(router).toContain("A decisão e o número de NC são geridos pela Responsável de Qualidade.");
-    expect(router).toContain("evidencePhotos: z.array");
+    expect(router).toContain("evidencePhotos: z");
+    expect(router).toContain("treatment: incidenceTreatmentSchema.optional()");
+    expect(router).toContain("Para concluir o tratamento, indique a correção, o responsável e a data de conclusão.");
   });
 
   it("apresenta ao técnico autor a edição e a adição de fotografias", () => {
@@ -17,5 +19,7 @@ describe("edição de incidências pelo técnico autor", () => {
     expect(page).toContain("canEditSelectedIncidence");
     expect(page).toContain("Editar a minha incidência");
     expect(page).toContain("Fotografias de evidência");
+    expect(page).toContain("Tratamento da incidência");
+    expect(page).toContain("Iniciar tratamento");
   });
 });

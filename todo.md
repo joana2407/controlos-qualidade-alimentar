@@ -541,3 +541,13 @@
 - [x] Integrar a escrita para pesquisa diretamente na caixa «Selecione o colaborador» do BPHF.
 - [x] Remover o campo de filtro separado, mantendo a seleção de vários colaboradores e o botão de adição.
 - [x] Adicionar regressões de filtragem e seleção no seletor pesquisável único.
+
+- [x] Incluir no resumo da incidência BPHF o colaborador inspecionado, Área/Zona, critério, resultado e observações.
+- [x] Calcular o alerta de três incidências BPHF em seis meses por colaborador inspecionado, e não por critério ou ponto.
+- [x] Atualizar os links de incidências similares para abrirem a lista filtrada pelo colaborador BPHF.
+- [x] Adicionar regressões de detalhe, alerta e autorização para incidências BPHF por colaborador.
+
+- [x] Permitir iniciar o tratamento de qualquer incidência, mesmo quando não gera Não Conformidade.
+- [x] Registar correção, responsável, prazo, evidências e fecho no tratamento autónomo da incidência.
+- [x] Distinguir no painel o tratamento pendente, em curso e concluído, sem confundir com a decisão de gerar NC.
+- [x] Adicionar regressões de interface, permissões e histórico para o tratamento de incidências sem NC.
