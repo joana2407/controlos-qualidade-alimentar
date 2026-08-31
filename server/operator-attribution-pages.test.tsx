@@ -17,7 +17,7 @@ vi.mock("@/lib/trpc", () => ({
   trpc: {
     useUtils: () => ({ quality: { dashboard: { invalidate: vi.fn() }, listTasks: { invalidate: vi.fn() }, listNcs: { invalidate: vi.fn() }, reports: { invalidate: vi.fn() } } }),
     quality: {
-      metadata: { useQuery: () => ({ data: { factories: [{ id: 1, name: "Fábrica 1 (Fatiado)" }, { id: 2, name: "Fábrica 2 (granel)" }], areas: [] } }) },
+      metadata: { useQuery: () => ({ data: { factories: [{ id: 1, name: "Fábrica 1 (Fatiado)" }, { id: 2, name: "Fábrica 2 (granel)" }], areas: [{ id: 41, name: "Linha 1", group: "metal", factoryId: 1 }, { id: 42, name: "Linha 2", group: "metal", factoryId: 1 }] } }) },
       accessStatus: { useQuery: () => ({ data: { profiles: [{ id: 1, name: "Sabrina Esteves", title: "Tec. Qualidade", active: true, isConfigured: true }] } }) },
       dashboard: { useQuery: () => ({ data: { metrics: { fragilePending: 1 }, plannedControls: [{ id: 77, module: "internal_analysis", factoryId: null, completed: false }], moduleProgress: { bphf: { expected: 2, completed: 1, registeredToday: 1, pending: ["BPHF — Produção"], percentage: 50, lastCompletedAt: now } }, moduleProgressByFactory: { bphf: [{ factoryId: 1, expected: 1, completed: 1, registeredToday: 1, percentage: 100 }, { factoryId: 2, expected: 1, completed: 0, registeredToday: 0, percentage: 0 }] } } }) },
       controlObservations: { useQuery: () => ({ isLoading: false, data: { entries: [{ id: 55, title: "BPHF Produção", area: "Produção", result: "C", notes: "Observação parcial registada.", completedAt: now, registeredByName: "Sabrina Esteves", registeredByTitle: "Tec. Qualidade" }] } }) },
@@ -115,6 +115,19 @@ describe("autoria operacional nas páginas", () => {
 
     expect(screen.getByLabelText("Datas selecionadas para o Plano do Dia").textContent).toMatch(/01\/09\/2026/);
     expect(screen.getByLabelText("Datas selecionadas para o Plano do Dia").textContent).toMatch(/02\/09\/2026/);
+  });
+
+  it("apresenta as linhas de Detetores da fábrica escolhida para seleção no Plano do Dia", () => {
+    render(<Controls />);
+    fireEvent.click(screen.getByRole("button", { name: "Novo plano" }));
+    fireEvent.click(screen.getByLabelText("Fábrica 1 (Fatiado)"));
+    fireEvent.click(screen.getByLabelText("Detetores"));
+
+    expect(screen.getByText("Linhas de Detetores a inspecionar")).toBeTruthy();
+    expect(screen.getByLabelText("Linha 1").getAttribute("data-state")).toBe("checked");
+    expect(screen.getByLabelText("Linha 2").getAttribute("data-state")).toBe("checked");
+    fireEvent.click(screen.getByLabelText("Linha 2"));
+    expect(screen.getByLabelText("Linha 2").getAttribute("data-state")).toBe("unchecked");
   });
 
   it("mostra quem registou os controlos nos relatórios", () => {

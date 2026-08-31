@@ -134,7 +134,6 @@ const BPHF_CRITERIA = [
   "Cumprimento geral das regras de BPHF",
   "Estado de limpeza e organização dos cacifos do pessoal e de trabalho",
 ] as const;
-const BPHF_CRITERIC_PERIODICITIES = ["daily", "weekly", "monthly", "quarterly", "annual"] as const;
 const SUGGESTION_LOCATIONS_BY_FACTORY: Record<string, readonly string[]> = {
   F1_FATIADO: ["Caixa escritório", "Caixa WC feminino", "Caixa WC masculino"],
   F2_GRANEL: ["Caixa WC feminino", "Caixa WC masculino"],
@@ -322,8 +321,30 @@ function entryMatchesPlannedTask(
   );
 }
 
+function expectedMetalDetectorLines(
+  task: { factoryId: number | null; metalDetectorLines?: string[] | null },
+  areaCatalog: Array<{
+    group: string;
+    factoryId: number | null;
+    active: string;
+    name: string;
+  }>
+) {
+  const configuredLines = areaCatalog
+    .filter(
+      area =>
+        area.group === "metal" &&
+        area.factoryId === task.factoryId &&
+        area.active === "true"
+    )
+    .map(area => area.name);
+  return Array.isArray(task.metalDetectorLines)
+    ? configuredLines.filter(line => task.metalDetectorLines!.includes(line))
+    : configuredLines;
+}
+
 function metalDetectorsTaskComplete(
-  task: { factoryId: number | null },
+  task: { factoryId: number | null; metalDetectorLines?: string[] | null },
   entries: Array<{
     area: string;
     module: string;
@@ -338,14 +359,7 @@ function metalDetectorsTaskComplete(
     name: string;
   }>
 ) {
-  const expectedAreas = areaCatalog
-    .filter(
-      area =>
-        area.group === "metal" &&
-        area.factoryId === task.factoryId &&
-        area.active === "true"
-    )
-    .map(area => area.name);
+  const expectedAreas = expectedMetalDetectorLines(task, areaCatalog);
   if (!expectedAreas.length) return false;
   const completedAreas = new Set(entries.map(entry => entry.area));
   return expectedAreas.every(area => completedAreas.has(area));
@@ -1054,7 +1068,7 @@ export const qualityRouter = router({
         assignedTo: access.task?.responsible ?? null,
         dueAt: access.task?.dueAt ?? null,
         bphfCriteria: access.task?.bphfCriteria ?? null,
-        bphfCriteriaPeriodicities: access.task?.bphfCriteriaPeriodicities ?? null,
+        metalDetectorLines: access.task?.metalDetectorLines ?? null,
         isPreviousPending: access.isPreviousPending ?? false,
         isFuturePlanned: access.isFuturePlanned ?? false,
       };
@@ -1577,14 +1591,13 @@ export const qualityRouter = router({
                 completedLocations.has(location)
               ).length;
             } else if (module === "metal_detectors") {
-              const expectedLines = areaCatalog
-                .filter(
-                  area =>
-                    area.group === "metal" &&
-                    area.factoryId === factory.id &&
-                    area.active === "true"
-                )
-                .map(area => area.name);
+              const expectedLines = expectedMetalDetectorLines(
+                {
+                  factoryId: factory.id,
+                  metalDetectorLines: factoryControls[0]?.metalDetectorLines,
+                },
+                areaCatalog
+              );
               expected = expectedLines.length;
               const completedLines = new Set(
                 factoryEntriesToday.map(entry => entry.area)
@@ -2160,7 +2173,7 @@ export const qualityRouter = router({
           assigneeProfileIds: z.array(z.number().int()).min(1).max(10),
           modules: z.array(qualityModuleSchema).min(1).max(8),
           bphfCriteria: z.array(z.enum(BPHF_CRITERIA)).min(1).max(BPHF_CRITERIA.length).optional(),
-          bphfCriteriaPeriodicities: z.partialRecord(z.enum(BPHF_CRITERIA), z.enum(BPHF_CRITERIC_PERIODICITIES)).optional(),
+          metalDetectorLinesByFactory: z.record(z.string(), z.array(z.string()).min(1).max(25)).optional(),
           priority: z.enum(["normal", "critical"]).default("normal"),
         })
         .refine(input => Boolean(input.date || input.dates?.length), {
@@ -2202,21 +2215,27 @@ export const qualityRouter = router({
         .select()
         .from(controlTasks)
         .where(eq(controlTasks.status, "pending"));
+      const areaCatalog = await db.select().from(areas).orderBy(areas.name);
       const selectedFactories = Array.from(new Set(input.factoryIds));
       const plannedBphfCriteria = input.modules.includes("bphf")
         ? Array.from(new Set(input.bphfCriteria ?? BPHF_CRITERIA))
         : null;
-      const plannedBphfCriteriaPeriodicities = plannedBphfCriteria
-        ? Object.fromEntries(
-            plannedBphfCriteria.map(criterion => [
-              criterion,
-              input.bphfCriteriaPeriodicities?.[criterion] ?? "daily",
-            ])
-          )
-        : null;
       const temperatureFactories = selectedFactories.filter(factoryId =>
         [1, 2].includes(factoryId)
       );
+      const plannedMetalDetectorLinesByFactory = input.modules.includes("metal_detectors")
+        ? Object.fromEntries(selectedFactories.map(factoryId => {
+            const configuredLines = areaCatalog
+              .filter(area => area.group === "metal" && area.factoryId === factoryId && area.active === "true")
+              .map(area => area.name);
+            const requestedLines = Array.from(new Set(input.metalDetectorLinesByFactory?.[String(factoryId)] ?? configuredLines));
+            if (requestedLines.some(line => !configuredLines.includes(line)))
+              throw new TRPCError({ code: "BAD_REQUEST", message: "Selecione apenas linhas de Detetores configuradas para cada fábrica." });
+            if (configuredLines.length && !requestedLines.length)
+              throw new TRPCError({ code: "BAD_REQUEST", message: "Selecione pelo menos uma linha de Detetores para cada fábrica incluída." });
+            return [factoryId, requestedLines];
+          }))
+        : null;
       if (
         input.modules.includes("temperature_controls") &&
         !temperatureFactories.length
@@ -2273,8 +2292,10 @@ export const qualityRouter = router({
           responsible: profiles.map(profile => profile.name).join(", "),
           assigneeProfileIds: input.assigneeProfileIds,
           bphfCriteria: module === "bphf" ? plannedBphfCriteria : null,
-          bphfCriteriaPeriodicities:
-            module === "bphf" ? plannedBphfCriteriaPeriodicities : null,
+          metalDetectorLines:
+            module === "metal_detectors"
+              ? plannedMetalDetectorLinesByFactory?.[factoryId ?? -1] ?? null
+              : null,
           createdBy: ctx.user!.openId,
         }))
       );

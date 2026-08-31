@@ -232,6 +232,13 @@
       "when": 1788189938477,
       "tag": "0033_greedy_shocker",
       "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "5",
+      "when": 1788191179748,
+      "tag": "0034_cuddly_omega_red",
+      "breakpoints": true
     }
   ]
 }

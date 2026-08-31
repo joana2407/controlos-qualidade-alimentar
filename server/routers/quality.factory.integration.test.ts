@@ -238,7 +238,6 @@ describe("procedimentos de qualidade por fábrica", () => {
       assigneeProfileIds: [1, 2, 3],
       modules: ["bphf"],
       bphfCriteria: [selectedCriterion],
-      bphfCriteriaPeriodicities: { [selectedCriterion]: "weekly" },
     });
 
     expect(dbInserts.at(-1)).toEqual(
@@ -247,10 +246,33 @@ describe("procedimentos de qualidade por fábrica", () => {
           module: "bphf",
           factoryId: 1,
           bphfCriteria: [selectedCriterion],
-          bphfCriteriaPeriodicities: { [selectedCriterion]: "weekly" },
         }),
       ])
     );
+  });
+
+  it("guarda no Plano do Dia apenas as linhas de Detetores selecionadas por fábrica", async () => {
+    const metalAreas = [
+      { id: 901, name: "Linha 1", group: "metal", factoryId: 1, active: "true" },
+      { id: 902, name: "Linha 2", group: "metal", factoryId: 1, active: "true" },
+    ];
+    areaRows.push(...metalAreas as any);
+    try {
+      const caller = qualityRouter.createCaller(createContext());
+      await caller.publishDailyPlan({
+        date: new Date(2026, 7, 20, 10, 0, 0),
+        factoryIds: [1],
+        assigneeProfileIds: [1, 2, 3],
+        modules: ["metal_detectors"],
+        metalDetectorLinesByFactory: { "1": ["Linha 1"] },
+      });
+
+      expect(dbInserts.at(-1)).toEqual(expect.arrayContaining([
+        expect.objectContaining({ module: "metal_detectors", factoryId: 1, metalDetectorLines: ["Linha 1"] }),
+      ]));
+    } finally {
+      areaRows.splice(-metalAreas.length, metalAreas.length);
+    }
   });
 
   it("considera concluído o BPHF quando todos os critérios selecionados no Plano foram preenchidos", async () => {
@@ -968,7 +990,7 @@ describe("procedimentos de qualidade por fábrica", () => {
   });
 
   it("mantém os Detetores de Metais abaixo de 100% até todas as linhas previstas terem uma verificação", async () => {
-    const metalPlan = { id: 123, factoryId: 1, status: "pending", dueAt: now, completedAt: null, module: "metal_detectors", area: "Plano do Dia", title: "Plano do Dia — Metais F1", responsible: "Ana", assigneeProfileIds: [3] };
+    const metalPlan = { id: 123, factoryId: 1, status: "pending", dueAt: now, completedAt: null, module: "metal_detectors", area: "Plano do Dia", title: "Plano do Dia — Metais F1", responsible: "Ana", assigneeProfileIds: [3], metalDetectorLines: ["Linha 1"] };
     const metalAreas = [{ id: 830, name: "Linha 1", group: "metal", factoryId: 1, active: "true" }, { id: 831, name: "Linha 2", group: "metal", factoryId: 1, active: "true" }];
     const metalEntry = { id: 832, factoryId: 1, module: "metal_detectors", area: "Linha 1", title: "Detetor de metais — Linha 1", result: "C", completedAt: now, payload: { plannedTaskId: 123, plannedDate: now.toISOString() } };
     const originalAreas = [...areaRows];
@@ -980,7 +1002,8 @@ describe("procedimentos de qualidade por fábrica", () => {
       const dashboard = await caller.dashboard({ date: now });
       const progress = dashboard.moduleProgressByFactory.metal_detectors.find((item) => item.factoryId === 1);
 
-      expect(progress).toMatchObject({ expected: 2, completed: 1, percentage: 50, pendingTaskId: 123 });
+      expect(progress).toMatchObject({ expected: 1, completed: 1, percentage: 100 });
+      expect(progress).not.toHaveProperty("pendingTaskId");
     } finally {
       tasks.splice(tasks.indexOf(metalPlan), 1);
       entries.splice(entries.length - 1, 1);

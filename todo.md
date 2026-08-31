@@ -567,3 +567,8 @@
 - [x] Preservar a abertura do formulário para controlos pendentes e usar consulta bloqueada para controlos concluídos.
 - [x] Adicionar regressões de navegação por data para consulta de resultados concluídos no painel Hoje.
 - [x] Permitir à Responsável eliminar controlos pendentes do Plano do Dia, com confirmação explícita e sem afetar controlos concluídos.
+- [x] Remover a periodicidade BPHF do Plano do Dia e respetiva apresentação no formulário.
+- [x] Manter no Plano do Dia a seleção explícita dos critérios BPHF a executar por controlo, fábrica e data.
+- [x] Permitir selecionar as linhas de Detetores de Metais a inspecionar dentro do controlo planeado.
+- [x] Calcular a completitude e o preenchimento dos Detetores apenas pelas linhas selecionadas no Plano do Dia.
+- [x] Adicionar regressões para critérios BPHF e linhas de Detetores selecionados no planeamento.

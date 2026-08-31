@@ -98,17 +98,6 @@ const BPHF_PLAN_INSPECTIONS = [
   "Cumprimento geral das regras de BPHF",
   "Estado de limpeza e organização dos cacifos do pessoal e de trabalho",
 ] as const;
-const BPHF_PERIODICITIES = [
-  { value: "daily", label: "Diária" },
-  { value: "weekly", label: "Semanal" },
-  { value: "monthly", label: "Mensal" },
-  { value: "quarterly", label: "Trimestral" },
-  { value: "annual", label: "Anual" },
-] as const;
-const defaultBphfCriteriaPeriodicities = () =>
-  Object.fromEntries(
-    BPHF_PLAN_INSPECTIONS.map(criterion => [criterion, "daily"])
-  ) as Record<(typeof BPHF_PLAN_INSPECTIONS)[number], (typeof BPHF_PERIODICITIES)[number]["value"]>;
 
 type ModuleProgress = {
   expected: number;
@@ -414,7 +403,7 @@ export default function Controls() {
   const [planBphfCriteria, setPlanBphfCriteria] = useState<string[]>([
     ...BPHF_PLAN_INSPECTIONS,
   ]);
-  const [planBphfCriteriaPeriodicities, setPlanBphfCriteriaPeriodicities] = useState(defaultBphfCriteriaPeriodicities);
+  const [planMetalDetectorLinesByFactory, setPlanMetalDetectorLinesByFactory] = useState<Record<number, string[]>>({});
   const [lastPlanPublication, setLastPlanPublication] = useState<Array<{
     date: string;
     created: number;
@@ -430,6 +419,15 @@ export default function Controls() {
   const progressDateInput = useMemo(
     () => new Date(`${progressDate}T12:00:00`),
     [progressDate]
+  );
+  const metalLinesByFactory = useMemo(
+    () => Object.fromEntries((meta.data?.factories ?? []).map(factory => [
+      factory.id,
+      (meta.data?.areas ?? [])
+        .filter(area => area.group === "metal" && area.factoryId === factory.id)
+        .map(area => area.name),
+    ])) as Record<number, string[]>,
+    [meta.data?.areas, meta.data?.factories]
   );
   const dashboard = trpc.quality.dashboard.useQuery({
     date: progressDateInput,
@@ -494,7 +492,7 @@ export default function Controls() {
       invalidateTasks();
       setPlanModules([]);
       setPlanBphfCriteria([...BPHF_PLAN_INSPECTIONS]);
-      setPlanBphfCriteriaPeriodicities(defaultBphfCriteriaPeriodicities());
+      setPlanMetalDetectorLinesByFactory({});
       setPlanDates([]);
       setLastPlanPublication(result.dates ?? null);
       setPlanOpen(false);
@@ -555,23 +553,38 @@ export default function Controls() {
     );
   }
   function togglePlanBphfCriterion(criterion: string) {
-    setPlanBphfCriteria(current => {
-      const selected = current.includes(criterion);
-      setPlanBphfCriteriaPeriodicities(periodicities => ({
-        ...periodicities,
-        [criterion]: periodicities[criterion as (typeof BPHF_PLAN_INSPECTIONS)[number]] ?? "daily",
-      }));
-      return selected
+    setPlanBphfCriteria(current =>
+      current.includes(criterion)
         ? current.filter(item => item !== criterion)
-        : [...current, criterion];
-    });
+        : [...current, criterion]
+    );
   }
   function togglePlanFactory(id: number) {
-    setPlanFactoryIds(current =>
-      current.includes(id)
-        ? current.filter(item => item !== id)
-        : [...current, id]
-    );
+    setPlanFactoryIds(current => {
+      const selected = current.includes(id);
+      setPlanMetalDetectorLinesByFactory(linesByFactory => {
+        if (selected) {
+          const { [id]: _, ...remaining } = linesByFactory;
+          return remaining;
+        }
+        return {
+          ...linesByFactory,
+          [id]: linesByFactory[id] ?? metalLinesByFactory[id] ?? [],
+        };
+      });
+      return selected ? current.filter(item => item !== id) : [...current, id];
+    });
+  }
+  function togglePlanMetalDetectorLine(factoryId: number, line: string) {
+    setPlanMetalDetectorLinesByFactory(current => {
+      const selectedLines = current[factoryId] ?? [];
+      return {
+        ...current,
+        [factoryId]: selectedLines.includes(line)
+          ? selectedLines.filter(item => item !== line)
+          : [...selectedLines, line],
+      };
+    });
   }
   function addPlanDate() {
     const date = new Date(`${planDate}T12:00:00`);
@@ -600,6 +613,13 @@ export default function Controls() {
       return toast.error("Selecione pelo menos um controlo.");
     if (planModules.includes("bphf") && !planBphfCriteria.length)
       return toast.error("Selecione pelo menos uma inspeção BPHF.");
+    if (planModules.includes("metal_detectors")) {
+      const factoriesWithDetectorLines = planFactoryIds.filter(factoryId => (metalLinesByFactory[factoryId] ?? []).length);
+      if (!factoriesWithDetectorLines.length)
+        return toast.error("Selecione uma fábrica com linhas de Detetores configuradas.");
+      if (factoriesWithDetectorLines.some(factoryId => !(planMetalDetectorLinesByFactory[factoryId] ?? []).length))
+        return toast.error("Selecione pelo menos uma linha de Detetores em cada fábrica aplicável.");
+    }
     const dates = planDates.map(value => new Date(`${value}T12:00:00`));
     if (dates.some(date => !isOperationalBusinessDay(date)))
       return toast.error(
@@ -613,8 +633,8 @@ export default function Controls() {
       bphfCriteria: planModules.includes("bphf")
         ? (planBphfCriteria as (typeof BPHF_PLAN_INSPECTIONS)[number][])
         : undefined,
-      bphfCriteriaPeriodicities: planModules.includes("bphf")
-        ? Object.fromEntries(planBphfCriteria.map(criterion => [criterion, planBphfCriteriaPeriodicities[criterion as (typeof BPHF_PLAN_INSPECTIONS)[number]] ?? "daily"]))
+      metalDetectorLinesByFactory: planModules.includes("metal_detectors")
+        ? Object.fromEntries(planFactoryIds.filter(factoryId => (metalLinesByFactory[factoryId] ?? []).length).map(factoryId => [String(factoryId), planMetalDetectorLinesByFactory[factoryId] ?? []]))
         : undefined,
     });
   }
@@ -1169,10 +1189,11 @@ export default function Controls() {
                                 type="button"
                                 variant="outline"
                                 size="sm"
-                                onClick={() => {
-                                  setPlanBphfCriteria([...BPHF_PLAN_INSPECTIONS]);
-                                  setPlanBphfCriteriaPeriodicities(current => ({ ...defaultBphfCriteriaPeriodicities(), ...current }));
-                                }}
+                                onClick={() =>
+                                  setPlanBphfCriteria([
+                                    ...BPHF_PLAN_INSPECTIONS,
+                                  ])
+                                }
                               >
                                 Todas
                               </Button>
@@ -1187,9 +1208,34 @@ export default function Controls() {
                             </div>
                           </div>
                           <div className="grid gap-2 rounded-lg border bg-white p-3 sm:grid-cols-2">
-                            {BPHF_PLAN_INSPECTIONS.map(criterion => {
-                              const selected = planBphfCriteria.includes(criterion);
-                              return <div key={criterion} className={`rounded-md border p-2.5 ${selected ? "border-teal-200 bg-teal-50/50" : "border-slate-100 bg-slate-50"}`}><label className="flex items-start gap-2 text-sm text-slate-800"><Checkbox checked={selected} onCheckedChange={() => togglePlanBphfCriterion(criterion)} /><span>{criterion}</span></label><div className="mt-2 pl-6"><Label className="text-[11px] text-slate-600" htmlFor={`bphf-periodicity-${criterion}`}>Periodicidade</Label><Select value={planBphfCriteriaPeriodicities[criterion]} onValueChange={(value) => setPlanBphfCriteriaPeriodicities(current => ({ ...current, [criterion]: value as (typeof BPHF_PERIODICITIES)[number]["value"] }))} disabled={!selected}><SelectTrigger id={`bphf-periodicity-${criterion}`} className="mt-1 h-8 bg-white text-xs"><SelectValue /></SelectTrigger><SelectContent>{BPHF_PERIODICITIES.map(periodicity => <SelectItem key={periodicity.value} value={periodicity.value}>{periodicity.label}</SelectItem>)}</SelectContent></Select></div></div>;
+                            {BPHF_PLAN_INSPECTIONS.map(criterion => (
+                              <label
+                                key={criterion}
+                                className="flex items-start gap-2 text-sm text-slate-800"
+                              >
+                                <Checkbox
+                                  checked={planBphfCriteria.includes(criterion)}
+                                  onCheckedChange={() =>
+                                    togglePlanBphfCriterion(criterion)
+                                  }
+                                />
+                                <span>{criterion}</span>
+                              </label>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      {planModules.includes("metal_detectors") && (
+                        <div className="space-y-2 lg:col-span-3">
+                          <div>
+                            <Label>Linhas de Detetores a inspecionar</Label>
+                            <p className="mt-1 text-xs text-slate-600">Selecione as linhas aplicáveis. Apenas as linhas escolhidas ficam obrigatórias no controlo planeado.</p>
+                          </div>
+                          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                            {planFactoryIds.filter(factoryId => (metalLinesByFactory[factoryId] ?? []).length).map(factoryId => {
+                              const factory = meta.data?.factories.find(item => item.id === factoryId);
+                              const selectedLines = planMetalDetectorLinesByFactory[factoryId] ?? [];
+                              return <div key={factoryId} className="rounded-lg border bg-white p-3"><p className="mb-2 text-sm font-semibold text-slate-900">{factory?.name ?? `Fábrica ${factoryId}`}</p><div className="space-y-2">{(metalLinesByFactory[factoryId] ?? []).map(line => <label key={line} className="flex items-center gap-2 text-sm text-slate-800"><Checkbox checked={selectedLines.includes(line)} onCheckedChange={() => togglePlanMetalDetectorLine(factoryId, line)} />{line}</label>)}</div></div>;
                             })}
                           </div>
                         </div>

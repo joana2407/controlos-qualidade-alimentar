@@ -47,7 +47,7 @@ vi.mock("wouter", () => ({
 import ModuleControl from "../client/src/pages/ModuleControl";
 
 describe("cabeçalho de controlo — progresso por fábrica", () => {
-  afterEach(() => { cleanup(); dashboardInputs.length = 0; authorizationInputs.length = 0; dailyResultsInputs.length = 0; bphfInspections.length = 0; uploadEvidenceMutate.mockReset(); routeModule.value = "bphf"; delete (authorizationState as any).bphfCriteria; Object.assign(authorizationState, { allowed: true, taskId: 51, dueAt: new Date("2026-08-20T12:00:00"), isPreviousPending: true, isFuturePlanned: false, reason: "Autorizado" }); window.history.pushState({}, "", "/"); });
+  afterEach(() => { cleanup(); dashboardInputs.length = 0; authorizationInputs.length = 0; dailyResultsInputs.length = 0; bphfInspections.length = 0; uploadEvidenceMutate.mockReset(); routeModule.value = "bphf"; delete (authorizationState as any).bphfCriteria; delete (authorizationState as any).metalDetectorLines; Object.assign(authorizationState, { allowed: true, taskId: 51, dueAt: new Date("2026-08-20T12:00:00"), isPreviousPending: true, isFuturePlanned: false, reason: "Autorizado" }); window.history.pushState({}, "", "/"); });
 
   it("substitui o resumo geral pelos cartões das fábricas incluídas no Plano do Dia", () => {
     render(<ModuleControl />);
@@ -111,14 +111,23 @@ describe("cabeçalho de controlo — progresso por fábrica", () => {
   });
 
   it("mostra no formulário apenas os critérios BPHF escolhidos para o Plano do Dia", () => {
-    Object.assign(authorizationState as any, { bphfCriteria: ["Higienização das mãos dos manipuladores"], bphfCriteriaPeriodicities: { "Higienização das mãos dos manipuladores": "weekly" } });
+    Object.assign(authorizationState as any, { bphfCriteria: ["Higienização das mãos dos manipuladores"] });
     window.history.pushState({}, "", "/controlos/bphf?factoryId=1&plannedTaskId=51");
     render(<ModuleControl />);
 
     expect(screen.getAllByText("Higienização das mãos dos manipuladores").length).toBeGreaterThan(0);
-    expect(screen.getByText("Semanal")).toBeTruthy();
     expect(screen.queryByText("Estado de limpeza e conservação do fardamento")).toBeNull();
     expect(screen.queryByText("Cumprimento geral das regras de BPHF")).toBeNull();
+  });
+
+  it("mostra no formulário de Detetores apenas as linhas escolhidas no Plano do Dia", () => {
+    routeModule.value = "metal_detectors";
+    Object.assign(authorizationState as any, { metalDetectorLines: ["Linha 1"] });
+    window.history.pushState({}, "", "/controlos/metal_detectors?factoryId=1&plannedTaskId=51");
+    render(<ModuleControl />);
+
+    expect(screen.getAllByText("Linha 1").length).toBeGreaterThan(0);
+    expect(screen.queryByText("Linha 2")).toBeNull();
   });
 
   it("mostra a conclusão por área nas Caixas de Sugestões e mantém as localizações pendentes", () => {

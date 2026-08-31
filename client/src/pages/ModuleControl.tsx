@@ -139,13 +139,6 @@ const BPHF_CRITERIA = [
   "Cumprimento geral das regras de BPHF",
   "Estado de limpeza e organização dos cacifos do pessoal e de trabalho",
 ] as const;
-const BPHF_PERIODICITY_LABELS: Record<string, string> = {
-  daily: "Diária",
-  weekly: "Semanal",
-  monthly: "Mensal",
-  quarterly: "Trimestral",
-  annual: "Anual",
-};
 const BPHF_CRITERIA_HELP: Record<(typeof BPHF_CRITERIA)[number], string> = {
   "Estado de limpeza e conservação do fardamento":
     "Confirme que o fardamento está limpo, íntegro e adequado à função, sem sujidade visível ou danos que possam comprometer a higiene.",
@@ -2064,7 +2057,7 @@ export default function ModuleControl() {
     plannedTaskId: authorization.data?.taskId,
     referenceDate: authorization.data?.dueAt,
     bphfCriteria: authorization.data?.bphfCriteria,
-    bphfCriteriaPeriodicities: authorization.data?.bphfCriteriaPeriodicities,
+    metalDetectorLines: authorization.data?.metalDetectorLines,
   };
   if (resultsOnly)
     return (
@@ -2646,7 +2639,6 @@ export function Bphf({
   plannedTaskId,
   referenceDate,
   bphfCriteria,
-  bphfCriteriaPeriodicities,
 }: any) {
   const { factoryId } = useControlFactory();
   const employees = trpc.quality.listBphfInspectionEmployees.useQuery();
@@ -2867,7 +2859,6 @@ export function Bphf({
                     <div>
                       <div className="flex items-start gap-1.5">
                         <p className="font-medium">{criterion}</p>
-                        {bphfCriteriaPeriodicities?.[criterion] ? <Badge variant="outline" className="border-teal-200 bg-teal-50 text-[10px] text-teal-800">{BPHF_PERIODICITY_LABELS[bphfCriteriaPeriodicities[criterion]] ?? bphfCriteriaPeriodicities[criterion]}</Badge> : null}
                         <ContextualHelpIcon
                           label={`Explicação do critério BPHF: ${criterion}`}
                           className="mt-0.5 shrink-0"
@@ -3247,13 +3238,20 @@ const newMetalProduct = (): MetalProductCheck => ({
   evidencePhotos: [],
 });
 
-function MetalDetectors({ createEntry, areas, referenceDate }: any) {
+function MetalDetectors({ createEntry, areas, referenceDate, metalDetectorLines }: any) {
   const { factoryId } = useControlFactory();
   const [area, setArea] = useState("");
   const [products, setProducts] = useState<MetalProductCheck[]>([
     newMetalProduct(),
   ]);
-  const areaSignature = areas.join("|");
+  const plannedAreas = useMemo(
+    () =>
+      Array.isArray(metalDetectorLines)
+        ? areas.filter((line: string) => metalDetectorLines.includes(line))
+        : areas,
+    [areas, metalDetectorLines]
+  );
+  const areaSignature = plannedAreas.join("|");
   const operationalDate = useMemo(
     () => (referenceDate ? new Date(referenceDate) : new Date()),
     [referenceDate]
@@ -3347,7 +3345,7 @@ function MetalDetectors({ createEntry, areas, referenceDate }: any) {
             <p className="font-semibold text-teal-950">Conclusão por linha</p>
             <p className="mt-1 text-sm leading-6 text-teal-900">
               No dia {operationalDateLabel}, o controlo só fica concluído quando
-              todas as linhas da fábrica selecionada têm pelo menos uma
+              todas as linhas selecionadas no Plano do Dia têm pelo menos uma
               verificação registada. Pode registar produtos adicionais em
               qualquer linha.
             </p>
@@ -3363,9 +3361,9 @@ function MetalDetectors({ createEntry, areas, referenceDate }: any) {
               Escolha manualmente a linha e a conformidade de cada produto.
             </span>
           </div>
-          {areas.length ? (
+          {plannedAreas.length ? (
             <div className="flex flex-wrap gap-2 md:col-span-2">
-              {areas.map((line: string) => (
+              {plannedAreas.map((line: string) => (
                 <span
                   key={line}
                   className={`rounded-full px-3 py-1.5 text-xs font-medium ${verifiedLines.has(line) ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-900"}`}
@@ -3405,19 +3403,19 @@ function MetalDetectors({ createEntry, areas, referenceDate }: any) {
               <Select
                 value={area}
                 onValueChange={setArea}
-                disabled={!areas.length}
+                disabled={!plannedAreas.length}
               >
                 <SelectTrigger>
                   <SelectValue
                     placeholder={
-                      areas.length
+                      plannedAreas.length
                         ? "Selecione a linha"
                         : "Selecione primeiro a fábrica ou linha"
                     }
                   />
                 </SelectTrigger>
                 <SelectContent>
-                  {areas.map((item: string) => (
+                  {plannedAreas.map((item: string) => (
                     <SelectItem value={item} key={item}>
                       {item}
                       {verifiedLines.has(item)
