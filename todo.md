@@ -577,3 +577,12 @@
 - [x] Auditar por fábrica a coerência entre tarefas planeadas, completitude e controlos preenchidos.
 - [x] Verificar ligações, rotas e aberturas de todos os painéis de controlo.
 - [x] Corrigir incongruências confirmadas e executar regressões integrais.
+- [ ] Permitir à Responsável editar as fábricas atribuídas a um ponto da Checklist Mensal, preservando o histórico existente.
+- [ ] Adicionar regressões de interface e servidor para a reatribuição de fábrica dos pontos mensais.
+- [ ] Corrigir a validação da data de fecho no tratamento de incidências e adicionar regressão do fluxo de conclusão.
+- [ ] Agrupar o alerta de abertura de NC por ponto de controlo reincidente e clarificar a exceção BPHF por colaborador.
+- [ ] Adicionar regressões para reincidência por ponto e por colaborador BPHF.
+- [ ] Adicionar ao painel de Incidências um filtro para mostrar apenas Não Conformidades abertas, respeitando fábrica e intervalo de datas.
+- [x] Diagnosticar por que não existem ficheiros de backup automáticos guardados e por que o backup retroativo devolve conteúdo bruto.
+- [x] Corrigir a geração e o armazenamento de backups Excel automáticos e manuais para datas anteriores.
+- [x] Validar com segurança a criação de um backup retroativo e confirmar as execuções automáticas futuras.

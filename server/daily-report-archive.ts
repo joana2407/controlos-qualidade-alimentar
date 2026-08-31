@@ -1,4 +1,4 @@
-import { desc, eq } from "drizzle-orm";
+import { desc, eq, sql } from "drizzle-orm";
 import { controlEntries, controlTasks, dailyIncidenceSummaries, dailyReportArchiveSettings, dailyReportArchives, factories, nonconformities } from "../drizzle/schema";
 import { getDb } from "./db";
 import { ensureDailyReportArchiveBackup } from "./daily-report-backup";
@@ -27,6 +27,12 @@ export function lisbonDateKey(date: Date) {
 
 function operationalDateValue(operationalDate: string) {
   return new Date(`${operationalDate}T12:00:00`);
+}
+
+function matchesOperationalDate(operationalDate: string) {
+  // A inserção da coluna `date` requer Date, mas a igualdade deve ser feita
+  // com a chave AAAA-MM-DD para não depender da serialização do driver MySQL.
+  return sql`DATE(${dailyReportArchives.operationalDate}) = ${operationalDate}`;
 }
 
 function payloadRecord(value: unknown): Record<string, unknown> {
@@ -72,7 +78,7 @@ async function archiveData(db: any, operationalDate: string) {
 }
 
 async function nextRevision(db: any, operationalDate: string) {
-  const archives = await db.select().from(dailyReportArchives).where(eq(dailyReportArchives.operationalDate, operationalDateValue(operationalDate))).orderBy(desc(dailyReportArchives.revision));
+  const archives = await db.select().from(dailyReportArchives).where(matchesOperationalDate(operationalDate)).orderBy(desc(dailyReportArchives.revision));
   return (archives[0]?.revision ?? 0) + 1;
 }
 
@@ -80,7 +86,7 @@ export async function createInitialDailyReportArchive(operationalDate: string, c
   const db = await getDb();
   if (!db) throw new Error("Base de dados indisponível para criar o arquivo diário.");
   const dateValue = operationalDateValue(operationalDate);
-  const existing = (await db.select().from(dailyReportArchives).where(eq(dailyReportArchives.operationalDate, dateValue))).find((item: any) => item.archiveKind === "initial");
+  const existing = (await db.select().from(dailyReportArchives).where(matchesOperationalDate(operationalDate))).find((item: any) => item.archiveKind === "initial");
   if (existing) {
     const backup = await ensureDailyReportArchiveBackup(existing.id);
     return { created: false, archive: existing, backup };
@@ -109,7 +115,7 @@ export async function createRetroactiveDailyReportRevision(input: { taskId: numb
     const backup = await ensureDailyReportArchiveBackup(duplicate.id);
     return { created: false, skipped: "already_archived" as const, backup };
   }
-  const archivesForDate = await db.select().from(dailyReportArchives).where(eq(dailyReportArchives.operationalDate, operationalDateValue(operationalDate))).orderBy(desc(dailyReportArchives.revision));
+  const archivesForDate = await db.select().from(dailyReportArchives).where(matchesOperationalDate(operationalDate)).orderBy(desc(dailyReportArchives.revision));
   const hasInitialArchive = archivesForDate.some((archive: any) => archive.archiveKind === "initial");
   const snapshot = await archiveData(db, operationalDate);
   if (!hasInitialArchive) {

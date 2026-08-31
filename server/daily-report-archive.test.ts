@@ -94,6 +94,7 @@ describe("arquivo diário de relatórios", () => {
     expect(repeated.created).toBe(false);
     expect(mock.archives).toHaveLength(1);
     expect(mock.archives[0]).toMatchObject({ revision: 1, archiveKind: "initial" });
+    expect(mock.archives[0].operationalDate).toBeInstanceOf(Date);
   });
 
   it("guarda manualmente o backup diário da data selecionada sem duplicar o arquivo", async () => {
