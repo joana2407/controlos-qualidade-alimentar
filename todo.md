@@ -572,3 +572,4 @@
 - [x] Permitir selecionar as linhas de Detetores de Metais a inspecionar dentro do controlo planeado.
 - [x] Calcular a completitude e o preenchimento dos Detetores apenas pelas linhas selecionadas no Plano do Dia.
 - [x] Adicionar regressões para critérios BPHF e linhas de Detetores selecionados no planeamento.
+- [x] Reorganizar a seleção de linhas de Detetores no Plano do Dia para usar o mesmo padrão simples de opções do BPHF.

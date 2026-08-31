@@ -429,6 +429,17 @@ export default function Controls() {
     ])) as Record<number, string[]>,
     [meta.data?.areas, meta.data?.factories]
   );
+  const planMetalDetectorOptions = useMemo(
+    () =>
+      planFactoryIds.flatMap(factoryId =>
+        (metalLinesByFactory[factoryId] ?? []).map(line => ({
+          factoryId,
+          line,
+          key: `${factoryId}:${line}`,
+        }))
+      ),
+    [metalLinesByFactory, planFactoryIds]
+  );
   const dashboard = trpc.quality.dashboard.useQuery({
     date: progressDateInput,
   });
@@ -615,7 +626,7 @@ export default function Controls() {
       return toast.error("Selecione pelo menos uma inspeção BPHF.");
     if (planModules.includes("metal_detectors")) {
       const factoriesWithDetectorLines = planFactoryIds.filter(factoryId => (metalLinesByFactory[factoryId] ?? []).length);
-      if (!factoriesWithDetectorLines.length)
+      if (!planMetalDetectorOptions.length)
         return toast.error("Selecione uma fábrica com linhas de Detetores configuradas.");
       if (factoriesWithDetectorLines.some(factoryId => !(planMetalDetectorLinesByFactory[factoryId] ?? []).length))
         return toast.error("Selecione pelo menos uma linha de Detetores em cada fábrica aplicável.");
@@ -1227,16 +1238,23 @@ export default function Controls() {
                       )}
                       {planModules.includes("metal_detectors") && (
                         <div className="space-y-2 lg:col-span-3">
-                          <div>
-                            <Label>Linhas de Detetores a inspecionar</Label>
-                            <p className="mt-1 text-xs text-slate-600">Selecione as linhas aplicáveis. Apenas as linhas escolhidas ficam obrigatórias no controlo planeado.</p>
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <div>
+                              <Label>Linhas de Detetores a inspecionar</Label>
+                              <p className="mt-1 text-xs text-slate-600">Apenas estas linhas serão exigidas nas fábricas selecionadas, nas datas do plano.</p>
+                            </div>
+                            <div className="flex gap-2">
+                              <Button type="button" variant="outline" size="sm" onClick={() => setPlanMetalDetectorLinesByFactory(current => Object.fromEntries(planFactoryIds.map(factoryId => [factoryId, metalLinesByFactory[factoryId] ?? current[factoryId] ?? []]))) }>Todas</Button>
+                              <Button type="button" variant="outline" size="sm" onClick={() => setPlanMetalDetectorLinesByFactory(current => ({ ...current, ...Object.fromEntries(planFactoryIds.map(factoryId => [factoryId, []])) }))}>Limpar</Button>
+                            </div>
                           </div>
-                          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-                            {planFactoryIds.filter(factoryId => (metalLinesByFactory[factoryId] ?? []).length).map(factoryId => {
-                              const factory = meta.data?.factories.find(item => item.id === factoryId);
-                              const selectedLines = planMetalDetectorLinesByFactory[factoryId] ?? [];
-                              return <div key={factoryId} className="rounded-lg border bg-white p-3"><p className="mb-2 text-sm font-semibold text-slate-900">{factory?.name ?? `Fábrica ${factoryId}`}</p><div className="space-y-2">{(metalLinesByFactory[factoryId] ?? []).map(line => <label key={line} className="flex items-center gap-2 text-sm text-slate-800"><Checkbox checked={selectedLines.includes(line)} onCheckedChange={() => togglePlanMetalDetectorLine(factoryId, line)} />{line}</label>)}</div></div>;
-                            })}
+                          <div className="grid gap-2 rounded-lg border bg-white p-3 sm:grid-cols-2">
+                            {planMetalDetectorOptions.map(({ factoryId, line, key }) => (
+                              <label key={key} className="flex items-start gap-2 text-sm text-slate-800">
+                                <Checkbox checked={(planMetalDetectorLinesByFactory[factoryId] ?? []).includes(line)} onCheckedChange={() => togglePlanMetalDetectorLine(factoryId, line)} />
+                                <span>{line}</span>
+                              </label>
+                            ))}
                           </div>
                         </div>
                       )}

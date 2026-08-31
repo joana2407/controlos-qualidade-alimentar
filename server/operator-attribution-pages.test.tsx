@@ -124,6 +124,8 @@ describe("autoria operacional nas páginas", () => {
     fireEvent.click(screen.getByLabelText("Detetores"));
 
     expect(screen.getByText("Linhas de Detetores a inspecionar")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Todas" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Limpar" })).toBeTruthy();
     expect(screen.getByLabelText("Linha 1").getAttribute("data-state")).toBe("checked");
     expect(screen.getByLabelText("Linha 2").getAttribute("data-state")).toBe("checked");
     fireEvent.click(screen.getByLabelText("Linha 2"));
