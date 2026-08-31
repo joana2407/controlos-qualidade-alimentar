@@ -868,6 +868,9 @@ describe("procedimentos de qualidade por fábrica", () => {
       expect(progress).toMatchObject({ expected: 12, completed: 11, percentage: 91.7 });
       expect(dashboard.moduleProgress.bphf.pending).toContain("Plano do Dia — BPHF F1");
 
+      bphfPlan.status = "completed";
+      await expect(caller.controlAuthorization({ module: "bphf", factoryId: 1, plannedTaskId: 122 })).resolves.toMatchObject({ allowed: true, taskId: 122 });
+
       entries.push({ id: 899, factoryId: 1, module: "bphf", area: "Limpeza", title: criteria[3], result: "C", completedAt: now, payload: { criterion: criteria[3], plannedTaskId: 122, plannedDate: now.toISOString() } });
       const completedDashboard = await caller.dashboard({ date: now });
       const completedProgress = completedDashboard.moduleProgressByFactory.bphf.find((item) => item.factoryId === 1);

@@ -243,9 +243,9 @@ async function assessControlAuthorization(db: any, input: { module: typeof quali
   const allowsSupplementaryDailyEntries = input.module === "bphf" || input.module === "temperature_controls" || input.module === "sensory" || input.module === "suggestion_boxes" || input.module === "metal_detectors";
   const eligibleTasks = tasks.filter((item: any) => {
     const isCurrentDay = localDateKey(new Date(item.dueAt)) === today;
-    const isPendingPlan = item.status === "pending" && !isHistoricalPlanTaskSatisfied(item, entries, areaCatalog, monthlyItems, monthlyAssignments, factoryCatalog);
+    const hasIncompletePlannedCoverage = item.status !== "cancelled" && !isHistoricalPlanTaskSatisfied(item, entries, areaCatalog, monthlyItems, monthlyAssignments, factoryCatalog);
     const isCompletedPlanOpenForSupplement = allowsSupplementaryDailyEntries && item.status === "completed" && isCurrentDay;
-    return (isPendingPlan || isCompletedPlanOpenForSupplement) && item.area === "Plano do Dia" && item.module === input.module && isBusinessDay(new Date(item.dueAt)) && (isShared ? item.factoryId === null : spansAllFoodDefenseFactories ? item.factoryId !== null : item.factoryId === input.factoryId);
+    return (hasIncompletePlannedCoverage || isCompletedPlanOpenForSupplement) && item.area === "Plano do Dia" && item.module === input.module && isBusinessDay(new Date(item.dueAt)) && (isShared ? item.factoryId === null : spansAllFoodDefenseFactories ? item.factoryId !== null : item.factoryId === input.factoryId);
   });
   const matchingTasks = input.plannedTaskId ? eligibleTasks : eligibleTasks.filter((item: any) => localDateKey(new Date(item.dueAt)) <= today);
   const task = input.plannedTaskId

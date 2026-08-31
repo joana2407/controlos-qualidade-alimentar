@@ -525,3 +525,11 @@
 - [x] Publicar os mesmos controlos, fábricas/linhas e responsáveis para cada data escolhida, sem duplicados.
 - [x] Mostrar um resumo claro das datas criadas, ignoradas por já existirem ou inválidas.
 - [x] Adicionar regressões de servidor e interface para planos publicados em várias datas.
+
+- [x] Auditar as tarefas e os registos BPHF de 28/08 para explicar as pendências que persistem no painel Hoje.
+- [x] Corrigir a reconciliação BPHF para remover apenas tarefas realmente concluídas, por fábrica, Área/Zona e critério.
+- [x] Adicionar regressões do cenário de 28/08 e validar os estados Concluída/Por realizar no painel Hoje.
+
+- [x] Diagnosticar porque uma tarefa BPHF parcialmente preenchida, mas marcada como concluída, bloqueia o formulário na data original.
+- [x] Permitir o preenchimento dos critérios BPHF ainda pendentes na data operacional da tarefa.
+- [x] Adicionar regressões para completar uma tarefa BPHF parcialmente registada após a primeira submissão.
