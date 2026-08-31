@@ -2581,6 +2581,9 @@ export function Bphf({
   const [collaboratorsByCriterion, setCollaboratorsByCriterion] = useState<
     Record<string, string>
   >({});
+  const [employeeSearchByCriterion, setEmployeeSearchByCriterion] = useState<
+    Record<string, string>
+  >({});
   const [results, setResults] = useState<Record<string, Result | "">>(() =>
     Object.fromEntries(BPHF_CRITERIA.map(criterion => [criterion, ""]))
   );
@@ -2637,6 +2640,11 @@ export function Bphf({
           ...current,
           [criterionForEmployee]: String(employee.id),
         }));
+      if (criterionForEmployee)
+        setEmployeeSearchByCriterion(current => ({
+          ...current,
+          [criterionForEmployee]: employee.name,
+        }));
       setNewEmployeeName("");
       setCriterionForEmployee(null);
       setEmployeeDialogOpen(false);
@@ -2652,6 +2660,7 @@ export function Bphf({
   useEffect(() => {
     setAreasByCriterion({});
     setCollaboratorsByCriterion({});
+    setEmployeeSearchByCriterion({});
     setResults(
       Object.fromEntries(BPHF_CRITERIA.map(criterion => [criterion, ""]))
     );
@@ -2697,6 +2706,7 @@ export function Bphf({
     });
     setAreasByCriterion(current => ({ ...current, [criterion]: "" }));
     setCollaboratorsByCriterion(current => ({ ...current, [criterion]: "" }));
+    setEmployeeSearchByCriterion(current => ({ ...current, [criterion]: "" }));
     setResults(current => ({ ...current, [criterion]: "" }));
     setNotes(current => ({ ...current, [criterion]: "" }));
     setEvidenceByCriterion(current => ({ ...current, [criterion]: [] }));
@@ -2744,6 +2754,18 @@ export function Bphf({
           );
           const complete = Boolean(areas.length) && pendingAreas.length === 0;
           const result = results[criterion];
+          const employeeSearch = employeeSearchByCriterion[criterion] ?? "";
+          const normalizedEmployeeSearch = employeeSearch
+            .normalize("NFD")
+            .replace(/[\u0300-\u036f]/g, "")
+            .toLocaleLowerCase("pt-PT");
+          const filteredEmployees = (employees.data ?? []).filter(employee =>
+            employee.name
+              .normalize("NFD")
+              .replace(/[\u0300-\u036f]/g, "")
+              .toLocaleLowerCase("pt-PT")
+              .startsWith(normalizedEmployeeSearch)
+          );
           return (
             <Card
               key={criterion}
@@ -2833,21 +2855,64 @@ export function Bphf({
                       </div>
                       <div className="space-y-2">
                         <Label>Colaborador inspecionado</Label>
+                        <Input
+                          id={`bphf-employee-search-${index}`}
+                          aria-label={`Pesquisar colaborador para ${criterion}`}
+                          value={employeeSearch}
+                          onChange={event => {
+                            const nextSearch = event.target.value;
+                            setEmployeeSearchByCriterion(current => ({
+                              ...current,
+                              [criterion]: nextSearch,
+                            }));
+                            const selectedEmployee = employees.data?.find(
+                              employee =>
+                                String(employee.id) ===
+                                collaboratorsByCriterion[criterion]
+                            );
+                            const normalizedNextSearch = nextSearch
+                              .normalize("NFD")
+                              .replace(/[\u0300-\u036f]/g, "")
+                              .toLocaleLowerCase("pt-PT");
+                            if (
+                              selectedEmployee &&
+                              !selectedEmployee.name
+                                .normalize("NFD")
+                                .replace(/[\u0300-\u036f]/g, "")
+                                .toLocaleLowerCase("pt-PT")
+                                .startsWith(normalizedNextSearch)
+                            ) {
+                              setCollaboratorsByCriterion(current => ({
+                                ...current,
+                                [criterion]: "",
+                              }));
+                            }
+                          }}
+                          placeholder="Escreva para filtrar, ex.: P"
+                        />
                         <div className="flex gap-2">
                           <Select
                             value={collaboratorsByCriterion[criterion] ?? ""}
-                            onValueChange={value =>
+                            onValueChange={value => {
                               setCollaboratorsByCriterion(current => ({
                                 ...current,
                                 [criterion]: value,
-                              }))
-                            }
+                              }));
+                              const selectedEmployee = employees.data?.find(
+                                employee => String(employee.id) === value
+                              );
+                              if (selectedEmployee)
+                                setEmployeeSearchByCriterion(current => ({
+                                  ...current,
+                                  [criterion]: selectedEmployee.name,
+                                }));
+                            }}
                           >
                             <SelectTrigger>
                               <SelectValue placeholder="Selecione o colaborador" />
                             </SelectTrigger>
                             <SelectContent>
-                              {employees.data?.map(employee => (
+                              {filteredEmployees.map(employee => (
                                 <SelectItem
                                   key={employee.id}
                                   value={String(employee.id)}
@@ -2855,6 +2920,11 @@ export function Bphf({
                                   {employee.name}
                                 </SelectItem>
                               ))}
+                              {!filteredEmployees.length && (
+                                <p className="px-2 py-1.5 text-sm text-muted-foreground">
+                                  Nenhum colaborador encontrado.
+                                </p>
+                              )}
                             </SelectContent>
                           </Select>
                           <Button

@@ -240,7 +240,7 @@ async function assessControlAuthorization(db: any, input: { module: typeof quali
   if (!isShared && !input.factoryId) return { allowed: false, reason: "Selecione a fábrica ou linha antes de consultar ou preencher este controlo.", task: null, isPreviousPending: false, isFuturePlanned: false };
   const today = localDateKey(new Date());
   const [tasks, entries, areaCatalog, monthlyItems, monthlyAssignments, factoryCatalog] = await Promise.all([db.select().from(controlTasks).orderBy(controlTasks.dueAt), db.select().from(controlEntries).orderBy(desc(controlEntries.completedAt)), db.select().from(areas).orderBy(areas.name), db.select().from(checklistItems).orderBy(checklistItems.sortOrder), db.select().from(checklistItemFactories).orderBy(checklistItemFactories.factoryId), db.select().from(factories).orderBy(factories.name)]);
-  const allowsSupplementaryDailyEntries = input.module === "bphf" || input.module === "temperature_controls" || input.module === "sensory" || input.module === "suggestion_boxes";
+  const allowsSupplementaryDailyEntries = input.module === "bphf" || input.module === "temperature_controls" || input.module === "sensory" || input.module === "suggestion_boxes" || input.module === "metal_detectors";
   const eligibleTasks = tasks.filter((item: any) => {
     const isCurrentDay = localDateKey(new Date(item.dueAt)) === today;
     const isPendingPlan = item.status === "pending" && !isHistoricalPlanTaskSatisfied(item, entries, areaCatalog, monthlyItems, monthlyAssignments, factoryCatalog);
@@ -825,17 +825,21 @@ export const qualityRouter = router({
   }),
 
   publishDailyPlan: qualityManagerProcedure.input(z.object({
-    date: dateInput,
+    date: dateInput.optional(),
+    dates: z.array(dateInput).min(1).max(31).optional(),
     factoryIds: z.array(z.number().int()).min(1).max(10),
     assigneeProfileIds: z.array(z.number().int()).min(1).max(10),
     modules: z.array(qualityModuleSchema).min(1).max(8),
     priority: z.enum(["normal", "critical"]).default("normal"),
+  }).refine((input) => Boolean(input.date || input.dates?.length), {
+    message: "Selecione pelo menos uma data para o Plano do Dia.",
   })).mutation(async ({ ctx, input }) => {
-    if (!isBusinessDay(input.date)) throw new TRPCError({ code: "BAD_REQUEST", message: "O Plano do Dia só pode ser publicado para um dia útil." });
+    const selectedDates = Array.from(new Map((input.dates?.length ? input.dates : input.date ? [input.date] : []).map((date) => [localDateKey(date), date])).values());
+    if (selectedDates.some((date) => !isBusinessDay(date))) throw new TRPCError({ code: "BAD_REQUEST", message: "Todos os Planos do Dia têm de ser publicados para dias úteis." });
     const db = await requireDb();
     const profiles = await db.select().from(qualityPinProfiles).where(inArray(qualityPinProfiles.id, input.assigneeProfileIds)).orderBy(qualityPinProfiles.id);
     if (profiles.length !== input.assigneeProfileIds.length || profiles.some((profile) => profile.active !== "true")) throw new TRPCError({ code: "BAD_REQUEST", message: "Selecione responsáveis ativos para o Plano do Dia." });
-    const existing = await db.select().from(controlTasks).where(and(eq(controlTasks.dueAt, input.date), eq(controlTasks.status, "pending")));
+    const existing = await db.select().from(controlTasks).where(eq(controlTasks.status, "pending"));
     const selectedFactories = Array.from(new Set(input.factoryIds));
     const temperatureFactories = selectedFactories.filter((factoryId) => [1, 2].includes(factoryId));
     if (input.modules.includes("temperature_controls") && !temperatureFactories.length) throw new TRPCError({ code: "BAD_REQUEST", message: "Selecione a Fábrica 1 ou a Fábrica 2 para publicar os Controlos de Temperatura." });
@@ -844,19 +848,26 @@ export const qualityRouter = router({
       if (sharedPlanModules.has(module)) plannedControls.push({ module, factoryId: null });
       else (module === "temperature_controls" ? temperatureFactories : selectedFactories).forEach((factoryId) => plannedControls.push({ module, factoryId }));
     }
-    const controls = plannedControls.filter(({ module, factoryId }) => !existing.some((task) => task.module === module && task.factoryId === factoryId));
-    if (controls.length) await db.insert(controlTasks).values(controls.map(({ module, factoryId }) => ({
+    const plannedDateKeys = new Set(selectedDates.map(localDateKey));
+    const existingPlans = existing.filter((task) => task.area === "Plano do Dia" && plannedDateKeys.has(localDateKey(new Date(task.dueAt))));
+    const controlsByDate = selectedDates.map((date) => {
+      const controls = plannedControls.filter(({ module, factoryId }) => !existingPlans.some((task) => localDateKey(new Date(task.dueAt)) === localDateKey(date) && task.module === module && task.factoryId === factoryId));
+      return { date, controls };
+    });
+    const controlsToCreate = controlsByDate.flatMap(({ date, controls }) => controls.map(({ module, factoryId }) => ({
       title: `Plano do Dia — ${module.replace(/_/g, " ")}`,
       description: input.priority === "critical" ? "Controlo prioritário publicado pela Responsável de Qualidade." : "Controlo publicado no Plano do Dia.",
       module,
       area: "Plano do Dia",
       factoryId,
-      dueAt: input.date,
+      dueAt: date,
       responsible: profiles.map((profile) => profile.name).join(", "),
       assigneeProfileIds: input.assigneeProfileIds,
       createdBy: ctx.user!.openId,
     })));
-    return { success: true, created: controls.length };
+    if (controlsToCreate.length) await db.insert(controlTasks).values(controlsToCreate);
+    const dateSummary = controlsByDate.map(({ date, controls }) => ({ date: localDateKey(date), created: controls.length, alreadyPresent: plannedControls.length - controls.length }));
+    return { success: true, created: controlsToCreate.length, alreadyPresent: dateSummary.reduce((total, item) => total + item.alreadyPresent, 0), dates: dateSummary };
   }),
 
   updateTask: qualityManagerProcedure.input(z.object({

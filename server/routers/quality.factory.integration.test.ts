@@ -227,6 +227,23 @@ describe("procedimentos de qualidade por fábrica", () => {
     expect(notifyOwner).not.toHaveBeenCalled();
   });
 
+  it("publica o mesmo Plano do Dia em várias datas úteis e devolve o resumo por data", async () => {
+    const caller = qualityRouter.createCaller(createContext());
+    const nextDate = new Date(now);
+    nextDate.setDate(nextDate.getDate() + 3);
+
+    const result = await caller.publishDailyPlan({ dates: [now, nextDate], factoryIds: [1], assigneeProfileIds: [1, 2, 3], modules: ["internal_analysis"] });
+
+    expect(result).toMatchObject({ success: true, created: 2, alreadyPresent: 0, dates: [
+      { date: now.toISOString().slice(0, 10), created: 1, alreadyPresent: 0 },
+      { date: nextDate.toISOString().slice(0, 10), created: 1, alreadyPresent: 0 },
+    ] });
+    expect(dbInserts.at(-1)).toEqual(expect.arrayContaining([
+      expect.objectContaining({ module: "internal_analysis", factoryId: null, dueAt: now }),
+      expect.objectContaining({ module: "internal_analysis", factoryId: null, dueAt: nextDate }),
+    ]));
+  });
+
   it("mantém o BPHF do dia acessível para verificações adicionais depois de cumprir o mínimo", async () => {
     tasks.push({ id: 513, factoryId: 1, status: "completed", dueAt: now, completedAt: now, module: "bphf", area: "Plano do Dia", title: "Plano do Dia — BPHF F1", responsible: "Sabrina Esteves", assigneeProfileIds: [1] });
     try {
@@ -297,6 +314,18 @@ describe("procedimentos de qualidade por fábrica", () => {
       expect(result).toMatchObject({ success: true });
       expect(dbInserts).toEqual(expect.arrayContaining([expect.objectContaining({ module: "sensory", title: "Controlo sensorial — Produto 2", factoryId: 1 })]));
       expect(dbUpdates).toEqual(expect.arrayContaining([expect.objectContaining({ status: "completed", completedByProfileId: 1 })]));
+    } finally {
+      tasks.pop();
+    }
+  });
+
+  it("mantém os Detetores de Metais do dia acessíveis para registar produtos adicionais depois do mínimo", async () => {
+    tasks.push({ id: 518, factoryId: 2, status: "completed", dueAt: now, completedAt: now, module: "metal_detectors", area: "Plano do Dia", title: "Plano do Dia — Detetores de metais F2", responsible: "Sabrina Esteves", assigneeProfileIds: [1] });
+    try {
+      const caller = qualityRouter.createCaller(createContext({ id: 1, name: "Sabrina Esteves", title: "Tec. Qualidade", role: "technician" }));
+
+      await expect(caller.controlAuthorization({ module: "metal_detectors", factoryId: 2, plannedTaskId: 518 })).resolves.toMatchObject({ allowed: true, taskId: 518, isPreviousPending: false });
+      await expect(caller.createEntry({ module: "metal_detectors", title: "Detetor de metais — Linha principal · Produto adicional", area: "Linha principal", factoryId: 2, result: "C", plannedTaskId: 518, payload: { product: "Produto adicional", lot: "L-2", productValidation: "C" }, createNonconformity: false, severity: "critical" })).resolves.toMatchObject({ success: true });
     } finally {
       tasks.pop();
     }

@@ -1,15 +1,18 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-const { inspectionData } = vi.hoisted(() => ({ inspectionData: [] as any[] }));
+const { inspectionData, employeeData } = vi.hoisted(() => ({
+  inspectionData: [] as any[],
+  employeeData: [{ id: 1, name: "Colaborador de teste" }] as Array<{ id: number; name: string }>,
+}));
 
 vi.mock("@/lib/trpc", () => ({
   trpc: {
     useUtils: () => ({ quality: { listBphfInspectionEmployees: { invalidate: vi.fn() }, listBphfCollaboratorInspections: { invalidate: vi.fn() } } }),
     quality: {
-      listBphfInspectionEmployees: { useQuery: () => ({ data: [{ id: 1, name: "Colaborador de teste" }] }) },
+      listBphfInspectionEmployees: { useQuery: () => ({ data: employeeData }) },
       listBphfCollaboratorInspections: { useQuery: () => ({ isLoading: false, data: inspectionData }) },
       addBphfInspectionEmployee: { useMutation: () => ({ isPending: false, mutate: vi.fn() }) },
     },
@@ -22,9 +25,23 @@ vi.mock("@/components/ui/tooltip", () => ({
   TooltipContent: ({ children }: { children: React.ReactNode }) => <div role="tooltip">{children}</div>,
 }));
 
+vi.mock("@/components/ui/select", () => ({
+  Select: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  SelectTrigger: ({ children }: { children: React.ReactNode }) => <button type="button">{children}</button>,
+  SelectValue: ({ placeholder }: { placeholder?: string }) => <span>{placeholder}</span>,
+  SelectContent: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  SelectItem: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  SelectGroup: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  SelectLabel: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+}));
+
 import { Bphf, ControlFactoryContext } from "../client/src/pages/ModuleControl";
 
-afterEach(() => { inspectionData.splice(0, inspectionData.length); cleanup(); });
+afterEach(() => {
+  inspectionData.splice(0, inspectionData.length);
+  employeeData.splice(0, employeeData.length, { id: 1, name: "Colaborador de teste" });
+  cleanup();
+});
 
 describe("ajuda contextual de BPHF", () => {
   it("mostra um ícone e explicação contextual própria para cada critério", () => {
@@ -65,5 +82,23 @@ describe("ajuda contextual de BPHF", () => {
     expect(screen.getAllByText("Mínimo concluído")).toHaveLength(1);
     expect(screen.getAllByText(/Pode adicionar mais verificações/).length).toBeGreaterThan(0);
     expect(screen.queryAllByRole("button", { name: "Registar verificação adicional" })).toHaveLength(0);
+  });
+
+  it("filtra imediatamente os colaboradores pelo início do nome digitado", () => {
+    employeeData.splice(0, employeeData.length,
+      { id: 1, name: "Paulo Ferreira" },
+      { id: 2, name: "Patrícia Gomes" },
+      { id: 3, name: "Maria Silva" },
+    );
+    render(<ControlFactoryContext.Provider value={{ factories: [{ id: 1, name: "Fábrica 1 (Fatiado)" }], factoryId: "1", setFactoryId: vi.fn() }}><Bphf createEntry={{ isPending: false, mutate: vi.fn(), mutateAsync: vi.fn() }} areas={["Produção"]} /></ControlFactoryContext.Provider>);
+
+    const searchInput = screen.getAllByRole("textbox", { name: /Pesquisar colaborador para/i })[0]!;
+    const criterionCard = searchInput.closest(".panel-shadow") as HTMLElement | null;
+    if (!criterionCard) throw new Error("Não foi encontrado o cartão do critério BPHF.");
+    fireEvent.change(searchInput, { target: { value: "P" } });
+
+    expect(within(criterionCard).getByText("Paulo Ferreira")).toBeTruthy();
+    expect(within(criterionCard).getByText("Patrícia Gomes")).toBeTruthy();
+    expect(within(criterionCard).queryByText("Maria Silva")).toBeNull();
   });
 });

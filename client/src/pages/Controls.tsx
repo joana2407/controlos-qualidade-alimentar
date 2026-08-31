@@ -1,42 +1,169 @@
 import { OperatorAttribution } from "@/components/quality/OperatorAttribution";
 import { StatusBadge } from "@/components/quality/QualityUi";
 import { Badge } from "@/components/ui/badge";
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { useQualityAccess } from "@/contexts/QualityAccessContext";
 import { dateFormat, moduleLabel, MODULES } from "@/lib/quality";
 import { groupControlTasks } from "@/lib/taskGrouping";
-import { isOperationalBusinessDay, nextOperationalBusinessDay, operationalBusinessDayAfter } from "@/lib/businessCalendar";
+import {
+  isOperationalBusinessDay,
+  nextOperationalBusinessDay,
+  operationalBusinessDayAfter,
+} from "@/lib/businessCalendar";
 import { trpc } from "@/lib/trpc";
-import { AlertTriangle, Boxes, CheckCircle2, ChevronRight, CircleDotDashed, ClipboardCheck, ClipboardPlus, Clock3, Eye, FilePenLine, FlaskConical, Gauge, HeartPulse, ImagePlus, ListChecks, ListTodo, MessageSquareText, Microscope, Pencil, ShieldCheck, ThermometerSnowflake, Trash2, Truck, X } from "lucide-react";
+import {
+  AlertTriangle,
+  Boxes,
+  CheckCircle2,
+  ChevronRight,
+  CircleDotDashed,
+  ClipboardCheck,
+  ClipboardPlus,
+  Clock3,
+  Eye,
+  FilePenLine,
+  FlaskConical,
+  Gauge,
+  HeartPulse,
+  ImagePlus,
+  ListChecks,
+  ListTodo,
+  MessageSquareText,
+  Microscope,
+  Pencil,
+  ShieldCheck,
+  ThermometerSnowflake,
+  Trash2,
+  Truck,
+  X,
+} from "lucide-react";
 import React, { FormEvent, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Link, useLocation } from "wouter";
 
-const icons = { bphf: ShieldCheck, metal_detectors: Gauge, sensory: FlaskConical, shelf_life: HeartPulse, monthly_checklist: ListChecks, suggestion_boxes: MessageSquareText, fragile_items: Boxes, dispatch_control: Truck, internal_analysis: Microscope, temperature_controls: ThermometerSnowflake, food_defense: ShieldCheck } as const;
+const icons = {
+  bphf: ShieldCheck,
+  metal_detectors: Gauge,
+  sensory: FlaskConical,
+  shelf_life: HeartPulse,
+  monthly_checklist: ListChecks,
+  suggestion_boxes: MessageSquareText,
+  fragile_items: Boxes,
+  dispatch_control: Truck,
+  internal_analysis: Microscope,
+  temperature_controls: ThermometerSnowflake,
+  food_defense: ShieldCheck,
+} as const;
 const sharedModules = new Set(["dispatch_control", "internal_analysis"]);
 
-type ModuleProgress = { expected: number; completed: number; registeredToday: number; pending: string[]; percentage: number; lastCompletedAt?: Date | null };
-type FactoryModuleProgress = { factoryId: number; expected: number; completed: number; registeredToday: number; percentage: number; pendingTaskId?: number };
-type TaskEditor = { id: number; title: string; description: string; factoryId: number | null; dueAt: Date; assigneeProfileIds: number[] };
-type TaskEvidencePhoto = { url: string; fileName: string; mimeType: "image/jpeg" | "image/png" | "image/webp" };
-type TaskReport = { id: number; title: string; result: "" | "C" | "NC"; notes: string; evidencePhotos: TaskEvidencePhoto[] };
-type EditableTask = { id: number; title: string; description: string | null; factoryId: number | null; dueAt: Date; assigneeProfileIds: number[] | null };
+type ModuleProgress = {
+  expected: number;
+  completed: number;
+  registeredToday: number;
+  pending: string[];
+  percentage: number;
+  lastCompletedAt?: Date | null;
+};
+type FactoryModuleProgress = {
+  factoryId: number;
+  expected: number;
+  completed: number;
+  registeredToday: number;
+  percentage: number;
+  pendingTaskId?: number;
+};
+type TaskEditor = {
+  id: number;
+  title: string;
+  description: string;
+  factoryId: number | null;
+  dueAt: Date;
+  assigneeProfileIds: number[];
+};
+type TaskEvidencePhoto = {
+  url: string;
+  fileName: string;
+  mimeType: "image/jpeg" | "image/png" | "image/webp";
+};
+type TaskReport = {
+  id: number;
+  title: string;
+  result: "" | "C" | "NC";
+  notes: string;
+  evidencePhotos: TaskEvidencePhoto[];
+};
+type EditableTask = {
+  id: number;
+  title: string;
+  description: string | null;
+  factoryId: number | null;
+  dueAt: Date;
+  assigneeProfileIds: number[] | null;
+};
 
-const dayStart = (value: Date) => { const result = new Date(value); result.setHours(0, 0, 0, 0); return result; };
-const nextWorkDate = () => nextOperationalBusinessDay(new Date()).toISOString().slice(0, 10);
-const currentCalendarDate = () => { const date = new Date(); return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`; };
+const dayStart = (value: Date) => {
+  const result = new Date(value);
+  result.setHours(0, 0, 0, 0);
+  return result;
+};
+const nextWorkDate = () =>
+  nextOperationalBusinessDay(new Date()).toISOString().slice(0, 10);
+const currentCalendarDate = () => {
+  const date = new Date();
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+};
 const nextBusinessDate = (value: Date) => operationalBusinessDayAfter(value);
 
-function ModuleCompletionTimeline({ label, progress, analysisDate, completionUnit = "verificações", pendingUnit = "verificação" }: { label: string; progress?: ModuleProgress; analysisDate: Date; completionUnit?: string; pendingUnit?: string }) {
+function ModuleCompletionTimeline({
+  label,
+  progress,
+  analysisDate,
+  completionUnit = "verificações",
+  pendingUnit = "verificação",
+}: {
+  label: string;
+  progress?: ModuleProgress;
+  analysisDate: Date;
+  completionUnit?: string;
+  pendingUnit?: string;
+}) {
   const expected = progress?.expected ?? 0;
   const completed = progress?.completed ?? 0;
   const registeredToday = progress?.registeredToday ?? 0;
@@ -45,25 +172,194 @@ function ModuleCompletionTimeline({ label, progress, analysisDate, completionUni
   const isComplete = hasActivity && percentage >= 100;
   const isInProgress = hasActivity && !isComplete && completed > 0;
   const isDelayed = expected > completed;
-  const stateLabel = !hasActivity ? "Sem verificação prevista" : isComplete ? "Concluído" : isInProgress ? "Em preenchimento" : "Por iniciar";
-  const stateClass = isComplete ? "text-emerald-700" : isInProgress ? "text-teal-700" : hasActivity ? "text-slate-600" : "text-slate-500";
-  const lastCompletedLabel = progress?.lastCompletedAt ? new Date(progress.lastCompletedAt).toLocaleTimeString("pt-PT", { hour: "2-digit", minute: "2-digit" }) : null;
+  const stateLabel = !hasActivity
+    ? "Sem verificação prevista"
+    : isComplete
+      ? "Concluído"
+      : isInProgress
+        ? "Em preenchimento"
+        : "Por iniciar";
+  const stateClass = isComplete
+    ? "text-emerald-700"
+    : isInProgress
+      ? "text-teal-700"
+      : hasActivity
+        ? "text-slate-600"
+        : "text-slate-500";
+  const lastCompletedLabel = progress?.lastCompletedAt
+    ? new Date(progress.lastCompletedAt).toLocaleTimeString("pt-PT", {
+        hour: "2-digit",
+        minute: "2-digit",
+      })
+    : null;
 
-  return <div className={`mt-5 rounded-xl p-3 ${isDelayed ? "border border-red-200 bg-red-50/60" : "bg-slate-50"}`} aria-label={`Linha temporal de conclusão de ${label}: ${stateLabel}`}>
-    <div className="flex items-center justify-between gap-3"><p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Estado de preenchimento</p><span className={`text-xs font-semibold ${stateClass}`}>{stateLabel}</span></div>
-    {isDelayed && <div className="mt-2 flex items-center gap-1.5 text-xs font-semibold text-red-700" role="status"><AlertTriangle className="h-3.5 w-3.5" aria-hidden="true" />Pendente em {dateFormat(analysisDate, false)}: {expected - completed} {pendingUnit}{expected - completed === 1 ? "" : pendingUnit === "verificação" ? "ões" : "s"} por concluir</div>}
-    <div className="mt-3 flex items-center" aria-hidden="true"><span className={`grid h-6 w-6 shrink-0 place-items-center rounded-full ${hasActivity ? "bg-teal-700 text-white" : "bg-slate-200 text-slate-500"}`}><Clock3 className="h-3.5 w-3.5" /></span><span className={`h-0.5 flex-1 ${isInProgress || isComplete ? "bg-teal-600" : "bg-slate-200"}`} /><span className={`grid h-6 w-6 shrink-0 place-items-center rounded-full ${isInProgress || isComplete ? "bg-teal-700 text-white" : "bg-slate-200 text-slate-500"}`}><CircleDotDashed className="h-3.5 w-3.5" /></span><span className={`h-0.5 flex-1 ${isComplete ? "bg-emerald-600" : "bg-slate-200"}`} /><span className={`grid h-6 w-6 shrink-0 place-items-center rounded-full ${isComplete ? "bg-emerald-600 text-white" : "bg-slate-200 text-slate-500"}`}><CheckCircle2 className="h-3.5 w-3.5" /></span></div>
-    <div className="mt-1 grid grid-cols-3 text-[10px] font-medium text-slate-500"><span>Previsto</span><span className="text-center">Em curso</span><span className="text-right">Concluído</span></div>
-    <div className="mt-3 flex items-center justify-between gap-3 text-xs text-slate-600"><span>{hasActivity ? `${completed} de ${expected || registeredToday} ${completionUnit}` : "Sem plano diário associado"}</span><span>{lastCompletedLabel ? `Último registo às ${lastCompletedLabel}` : `${percentage}%`}</span></div>
-    <Progress className="mt-2 h-1.5 bg-slate-200" value={percentage} aria-label={`Conclusão de ${label}: ${percentage}%`} />
-  </div>;
+  return (
+    <div
+      className={`mt-5 rounded-xl p-3 ${isDelayed ? "border border-red-200 bg-red-50/60" : "bg-slate-50"}`}
+      aria-label={`Linha temporal de conclusão de ${label}: ${stateLabel}`}
+    >
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">
+          Estado de preenchimento
+        </p>
+        <span className={`text-xs font-semibold ${stateClass}`}>
+          {stateLabel}
+        </span>
+      </div>
+      {isDelayed && (
+        <div
+          className="mt-2 flex items-center gap-1.5 text-xs font-semibold text-red-700"
+          role="status"
+        >
+          <AlertTriangle className="h-3.5 w-3.5" aria-hidden="true" />
+          Pendente em {dateFormat(analysisDate, false)}: {expected - completed}{" "}
+          {pendingUnit}
+          {expected - completed === 1
+            ? ""
+            : pendingUnit === "verificação"
+              ? "ões"
+              : "s"}{" "}
+          por concluir
+        </div>
+      )}
+      <div className="mt-3 flex items-center" aria-hidden="true">
+        <span
+          className={`grid h-6 w-6 shrink-0 place-items-center rounded-full ${hasActivity ? "bg-teal-700 text-white" : "bg-slate-200 text-slate-500"}`}
+        >
+          <Clock3 className="h-3.5 w-3.5" />
+        </span>
+        <span
+          className={`h-0.5 flex-1 ${isInProgress || isComplete ? "bg-teal-600" : "bg-slate-200"}`}
+        />
+        <span
+          className={`grid h-6 w-6 shrink-0 place-items-center rounded-full ${isInProgress || isComplete ? "bg-teal-700 text-white" : "bg-slate-200 text-slate-500"}`}
+        >
+          <CircleDotDashed className="h-3.5 w-3.5" />
+        </span>
+        <span
+          className={`h-0.5 flex-1 ${isComplete ? "bg-emerald-600" : "bg-slate-200"}`}
+        />
+        <span
+          className={`grid h-6 w-6 shrink-0 place-items-center rounded-full ${isComplete ? "bg-emerald-600 text-white" : "bg-slate-200 text-slate-500"}`}
+        >
+          <CheckCircle2 className="h-3.5 w-3.5" />
+        </span>
+      </div>
+      <div className="mt-1 grid grid-cols-3 text-[10px] font-medium text-slate-500">
+        <span>Previsto</span>
+        <span className="text-center">Em curso</span>
+        <span className="text-right">Concluído</span>
+      </div>
+      <div className="mt-3 flex items-center justify-between gap-3 text-xs text-slate-600">
+        <span>
+          {hasActivity
+            ? `${completed} de ${expected || registeredToday} ${completionUnit}`
+            : "Sem plano diário associado"}
+        </span>
+        <span>
+          {lastCompletedLabel
+            ? `Último registo às ${lastCompletedLabel}`
+            : `${percentage}%`}
+        </span>
+      </div>
+      <Progress
+        className="mt-2 h-1.5 bg-slate-200"
+        value={percentage}
+        aria-label={`Conclusão de ${label}: ${percentage}%`}
+      />
+    </div>
+  );
 }
 
-function FactoryProgressSummary({ module, factories, progress, analysisDate, onOpenObservations }: { module: string; factories: Array<{ id: number; name: string }>; progress?: FactoryModuleProgress[]; analysisDate: Date; onOpenObservations: (module: string, factory: { id: number; name: string }) => void }) {
-  if (module === "dispatch_control") return <div className="mt-4 border-t border-slate-100 pt-3"><p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-500">Âmbito operacional</p><p className="mt-2 text-xs text-slate-600">Verificação única e comum a todas as fábricas e linhas.</p></div>;
-  const scheduledFactories = factories.filter((factory) => (progress?.find((entry) => entry.factoryId === factory.id)?.expected ?? 0) > 0);
+function FactoryProgressSummary({
+  module,
+  factories,
+  progress,
+  analysisDate,
+  onOpenObservations,
+}: {
+  module: string;
+  factories: Array<{ id: number; name: string }>;
+  progress?: FactoryModuleProgress[];
+  analysisDate: Date;
+  onOpenObservations: (
+    module: string,
+    factory: { id: number; name: string }
+  ) => void;
+}) {
+  if (module === "dispatch_control")
+    return (
+      <div className="mt-4 border-t border-slate-100 pt-3">
+        <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-500">
+          Âmbito operacional
+        </p>
+        <p className="mt-2 text-xs text-slate-600">
+          Verificação única e comum a todas as fábricas e linhas.
+        </p>
+      </div>
+    );
+  const scheduledFactories = factories.filter(
+    factory =>
+      (progress?.find(entry => entry.factoryId === factory.id)?.expected ?? 0) >
+      0
+  );
   if (!scheduledFactories.length) return null;
-  return <div className="mt-4 border-t border-slate-100 pt-3"><p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-500">Por fábrica / linha em {dateFormat(analysisDate, false)}</p><div className="mt-2 space-y-1.5">{scheduledFactories.map((factory) => { const item = progress?.find((entry) => entry.factoryId === factory.id); const percentage = item?.percentage ?? 0; const completed = percentage >= 100; const inProgress = percentage > 0 && percentage < 100; const query = new URLSearchParams({ factoryId: String(factory.id), pending: "1" }); if (item?.pendingTaskId) query.set("plannedTaskId", String(item.pendingTaskId)); const target = `/controlos/${module}?${query.toString()}`; return <div key={factory.id} className="flex items-center justify-between gap-3 text-xs"><span className="truncate text-slate-600" title={factory.name}>{factory.name}</span><div className="flex items-center gap-1.5">{completed ? <span className="shrink-0 rounded-md bg-emerald-100 px-1.5 py-0.5 font-mono-ui font-semibold text-emerald-800">{percentage}%</span> : <Link href={target} className={`shrink-0 rounded-md px-1.5 py-0.5 font-mono-ui font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-700 ${inProgress ? "bg-amber-100 text-amber-800 hover:bg-amber-200" : "bg-red-100 text-red-800 hover:bg-red-200"}`} aria-label={`Abrir registos pendentes de ${module} para ${factory.name}: ${percentage}%`}>{percentage}%</Link>}<Button size="icon" variant="ghost" className="h-6 w-6 text-slate-500 hover:text-teal-700" aria-label={`Abrir observações de ${module} para ${factory.name}`} onClick={() => onOpenObservations(module, factory)}><Eye className="h-3.5 w-3.5" /></Button></div></div>; })}</div></div>;
+  return (
+    <div className="mt-4 border-t border-slate-100 pt-3">
+      <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-500">
+        Por fábrica / linha em {dateFormat(analysisDate, false)}
+      </p>
+      <div className="mt-2 space-y-1.5">
+        {scheduledFactories.map(factory => {
+          const item = progress?.find(entry => entry.factoryId === factory.id);
+          const percentage = item?.percentage ?? 0;
+          const completed = percentage >= 100;
+          const inProgress = percentage > 0 && percentage < 100;
+          const query = new URLSearchParams({
+            factoryId: String(factory.id),
+            pending: "1",
+          });
+          if (item?.pendingTaskId)
+            query.set("plannedTaskId", String(item.pendingTaskId));
+          const target = `/controlos/${module}?${query.toString()}`;
+          return (
+            <div
+              key={factory.id}
+              className="flex items-center justify-between gap-3 text-xs"
+            >
+              <span className="truncate text-slate-600" title={factory.name}>
+                {factory.name}
+              </span>
+              <div className="flex items-center gap-1.5">
+                {completed ? (
+                  <span className="shrink-0 rounded-md bg-emerald-100 px-1.5 py-0.5 font-mono-ui font-semibold text-emerald-800">
+                    {percentage}%
+                  </span>
+                ) : (
+                  <Link
+                    href={target}
+                    className={`shrink-0 rounded-md px-1.5 py-0.5 font-mono-ui font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-700 ${inProgress ? "bg-amber-100 text-amber-800 hover:bg-amber-200" : "bg-red-100 text-red-800 hover:bg-red-200"}`}
+                    aria-label={`Abrir registos pendentes de ${module} para ${factory.name}: ${percentage}%`}
+                  >
+                    {percentage}%
+                  </Link>
+                )}
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="h-6 w-6 text-slate-500 hover:text-teal-700"
+                  aria-label={`Abrir observações de ${module} para ${factory.name}`}
+                  onClick={() => onOpenObservations(module, factory)}
+                >
+                  <Eye className="h-3.5 w-3.5" />
+                </Button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
 }
 
 export default function Controls() {
@@ -81,75 +377,1423 @@ export default function Controls() {
   const [assigneeIds, setAssigneeIds] = useState<number[]>([]);
   const [dueAt, setDueAt] = useState(nextWorkDate);
   const [editingTask, setEditingTask] = useState<TaskEditor | null>(null);
-  const [deletingTask, setDeletingTask] = useState<{ id: number; title: string } | null>(null);
+  const [deletingTask, setDeletingTask] = useState<{
+    id: number;
+    title: string;
+  } | null>(null);
   const [reportTask, setReportTask] = useState<TaskReport | null>(null);
   const [reportPhotoUploading, setReportPhotoUploading] = useState(false);
-  const [observationScope, setObservationScope] = useState<{ module: string; factoryId: number; factoryName: string } | null>(null);
+  const [observationScope, setObservationScope] = useState<{
+    module: string;
+    factoryId: number;
+    factoryName: string;
+  } | null>(null);
   const [planDate, setPlanDate] = useState(nextWorkDate);
+  const [planDates, setPlanDates] = useState<string[]>([]);
   const [planFactoryIds, setPlanFactoryIds] = useState<number[]>([]);
   const [planAssigneeIds, setPlanAssigneeIds] = useState<number[]>([]);
   const [planModules, setPlanModules] = useState<string[]>([]);
+  const [lastPlanPublication, setLastPlanPublication] = useState<Array<{
+    date: string;
+    created: number;
+    alreadyPresent: number;
+  }> | null>(null);
   const [progressDate, setProgressDate] = useState(currentCalendarDate);
 
-  const taskFilterInput = useMemo(() => taskFactoryFilter ? { factoryId: Number(taskFactoryFilter) } : undefined, [taskFactoryFilter]);
-  const progressDateInput = useMemo(() => new Date(`${progressDate}T12:00:00`), [progressDate]);
-  const dashboard = trpc.quality.dashboard.useQuery({ date: progressDateInput });
-  const observationInput = useMemo(() => ({ module: (observationScope?.module ?? "bphf") as (typeof MODULES)[number]["id"], factoryId: observationScope?.factoryId ?? 0 }), [observationScope]);
-  const observations = trpc.quality.controlObservations.useQuery(observationInput, { enabled: Boolean(observationScope) });
+  const taskFilterInput = useMemo(
+    () =>
+      taskFactoryFilter ? { factoryId: Number(taskFactoryFilter) } : undefined,
+    [taskFactoryFilter]
+  );
+  const progressDateInput = useMemo(
+    () => new Date(`${progressDate}T12:00:00`),
+    [progressDate]
+  );
+  const dashboard = trpc.quality.dashboard.useQuery({
+    date: progressDateInput,
+  });
+  const observationInput = useMemo(
+    () => ({
+      module: (observationScope?.module ??
+        "bphf") as (typeof MODULES)[number]["id"],
+      factoryId: observationScope?.factoryId ?? 0,
+    }),
+    [observationScope]
+  );
+  const observations = trpc.quality.controlObservations.useQuery(
+    observationInput,
+    { enabled: Boolean(observationScope) }
+  );
   const tasks = trpc.quality.listTasks.useQuery(taskFilterInput);
 
-  const invalidateTasks = () => { utils.quality.dashboard.invalidate(); utils.quality.listTasks.invalidate(); };
-  const createTask = trpc.quality.createTask.useMutation({ onSuccess: () => { invalidateTasks(); setOpen(false); setTitle(""); setDescription(""); setAssigneeIds([]); toast.success("Tarefa criada e atribuída."); }, onError: (error) => toast.error(error.message) });
-  const completeTask = trpc.quality.completeTask.useMutation({ onSuccess: () => { invalidateTasks(); setReportTask(null); toast.success("Relatório registado e tarefa concluída."); }, onError: (error) => toast.error(error.message) });
-  const uploadTaskReportPhoto = trpc.quality.uploadTaskReportPhoto.useMutation();
-  const updateTask = trpc.quality.updateTask.useMutation({ onSuccess: () => { invalidateTasks(); setEditingTask(null); toast.success("Tarefa atualizada."); }, onError: (error) => toast.error(error.message) });
-  const deleteTask = trpc.quality.deleteTask.useMutation({ onSuccess: () => { invalidateTasks(); setDeletingTask(null); toast.success("Tarefa eliminada."); }, onError: (error) => toast.error(error.message) });
-  const publishDailyPlan = trpc.quality.publishDailyPlan.useMutation({ onSuccess: (result) => { invalidateTasks(); setPlanModules([]); setPlanOpen(false); toast.success(`Plano do Dia publicado: ${result.created} controlo(s) criado(s).`); }, onError: (error) => toast.error(error.message) });
+  const invalidateTasks = () => {
+    utils.quality.dashboard.invalidate();
+    utils.quality.listTasks.invalidate();
+  };
+  const createTask = trpc.quality.createTask.useMutation({
+    onSuccess: () => {
+      invalidateTasks();
+      setOpen(false);
+      setTitle("");
+      setDescription("");
+      setAssigneeIds([]);
+      toast.success("Tarefa criada e atribuída.");
+    },
+    onError: error => toast.error(error.message),
+  });
+  const completeTask = trpc.quality.completeTask.useMutation({
+    onSuccess: () => {
+      invalidateTasks();
+      setReportTask(null);
+      toast.success("Relatório registado e tarefa concluída.");
+    },
+    onError: error => toast.error(error.message),
+  });
+  const uploadTaskReportPhoto =
+    trpc.quality.uploadTaskReportPhoto.useMutation();
+  const updateTask = trpc.quality.updateTask.useMutation({
+    onSuccess: () => {
+      invalidateTasks();
+      setEditingTask(null);
+      toast.success("Tarefa atualizada.");
+    },
+    onError: error => toast.error(error.message),
+  });
+  const deleteTask = trpc.quality.deleteTask.useMutation({
+    onSuccess: () => {
+      invalidateTasks();
+      setDeletingTask(null);
+      toast.success("Tarefa eliminada.");
+    },
+    onError: error => toast.error(error.message),
+  });
+  const publishDailyPlan = trpc.quality.publishDailyPlan.useMutation({
+    onSuccess: result => {
+      invalidateTasks();
+      setPlanModules([]);
+      setPlanDates([]);
+      setLastPlanPublication(result.dates ?? null);
+      setPlanOpen(false);
+      toast.success(
+        `Planos do Dia publicados: ${result.created} controlo(s) criado(s)${result.alreadyPresent ? ` · ${result.alreadyPresent} já existente(s)` : ""}.`
+      );
+    },
+    onError: error => toast.error(error.message),
+  });
 
-  const groupedTasks = useMemo(() => groupControlTasks(tasks.data ?? []), [tasks.data]);
+  const groupedTasks = useMemo(
+    () => groupControlTasks(tasks.data ?? []),
+    [tasks.data]
+  );
 
-  function submit(event: FormEvent) { event.preventDefault(); if (!factoryId) return toast.error("Selecione a fábrica ou linha."); if (!assigneeIds.length) return toast.error("Selecione pelo menos um responsável."); const date = new Date(`${dueAt}T12:00:00`); if (!isOperationalBusinessDay(date)) return toast.error("Selecione um dia útil, excluindo sábados, domingos e feriados."); createTask.mutate({ title, description, factoryId: Number(factoryId), dueAt: date, assigneeProfileIds: assigneeIds }); }
-  function toggleAssignee(id: number) { setAssigneeIds((current) => current.includes(id) ? current.filter((entry) => entry !== id) : [...current, id]); }
-  function toggleEditorAssignee(id: number) { setEditingTask((current) => current ? { ...current, assigneeProfileIds: current.assigneeProfileIds.includes(id) ? current.assigneeProfileIds.filter((entry) => entry !== id) : [...current.assigneeProfileIds, id] } : current); }
-  function togglePlanModule(id: string) { setPlanModules((current) => current.includes(id) ? current.filter((item) => item !== id) : [...current, id]); }
-  function togglePlanFactory(id: number) { setPlanFactoryIds((current) => current.includes(id) ? current.filter((item) => item !== id) : [...current, id]); }
-  function publishPlan(event: FormEvent) { event.preventDefault(); if (!planFactoryIds.length) return toast.error("Selecione pelo menos uma fábrica ou linha para o Plano do Dia."); if (!planAssigneeIds.length) return toast.error("Selecione pelo menos um responsável."); if (!planModules.length) return toast.error("Selecione pelo menos um controlo."); const date = new Date(`${planDate}T12:00:00`); if (!isOperationalBusinessDay(date)) return toast.error("Seleciona um dia útil para publicar o Plano do Dia."); publishDailyPlan.mutate({ date, factoryIds: planFactoryIds, assigneeProfileIds: planAssigneeIds, modules: planModules as (typeof MODULES)[number]["id"][] }); }
-  function openTaskEditor(task: EditableTask) { setEditingTask({ id: task.id, title: task.title, description: task.description ?? "", factoryId: task.factoryId, dueAt: new Date(task.dueAt), assigneeProfileIds: task.assigneeProfileIds ?? [] }); }
-  function submitTaskEdit(event: FormEvent) { event.preventDefault(); if (!editingTask) return; if (!editingTask.assigneeProfileIds.length) return toast.error("Selecione pelo menos um responsável."); const date = new Date(`${editingTask.dueAt.toISOString().slice(0, 10)}T12:00:00`); if (!isOperationalBusinessDay(date)) return toast.error("Selecione um dia útil, excluindo sábados, domingos e feriados."); updateTask.mutate({ id: editingTask.id, title: editingTask.title, description: editingTask.description, factoryId: editingTask.factoryId ?? undefined, dueAt: date, assigneeProfileIds: editingTask.assigneeProfileIds }); }
-  async function uploadReportPhotos(event: React.ChangeEvent<HTMLInputElement>) { const files = Array.from(event.currentTarget.files ?? []); if (!reportTask || !files.length) return; const available = 5 - reportTask.evidencePhotos.length; if (available <= 0) return toast.error("Pode anexar no máximo 5 fotografias por relatório."); const selected = files.slice(0, available); if (selected.some((file) => !["image/jpeg", "image/png", "image/webp"].includes(file.type))) return toast.error("Utilize apenas imagens JPEG, PNG ou WebP."); if (selected.some((file) => file.size > 5_000_000)) return toast.error("Cada fotografia pode ter até 5 MB."); setReportPhotoUploading(true); try { const photos: TaskEvidencePhoto[] = []; for (const file of selected) { const dataUrl = await new Promise<string>((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(String(reader.result)); reader.onerror = () => reject(new Error("Não foi possível ler a fotografia.")); reader.readAsDataURL(file); }); const uploaded = await uploadTaskReportPhoto.mutateAsync({ taskId: reportTask.id, fileName: file.name, mimeType: file.type as TaskEvidencePhoto["mimeType"], dataUrl }); photos.push({ url: uploaded.url, fileName: uploaded.fileName, mimeType: uploaded.mimeType }); } setReportTask((current) => current ? { ...current, evidencePhotos: [...current.evidencePhotos, ...photos] } : current); toast.success(`${photos.length} fotografia(s) anexada(s).`); } catch (error) { toast.error(error instanceof Error ? error.message : "Não foi possível carregar a fotografia."); } finally { setReportPhotoUploading(false); event.currentTarget.value = ""; } }
-  function submitTaskReport(event: FormEvent) { event.preventDefault(); if (!reportTask) return; if (!reportTask.result) return toast.error("Escolha explicitamente C ou NC antes de concluir a tarefa."); if (reportTask.notes.trim().length < 3) return toast.error("Descreva a execução da tarefa no relatório."); completeTask.mutate({ id: reportTask.id, result: reportTask.result as "C" | "NC", notes: reportTask.notes.trim(), evidencePhotos: reportTask.evidencePhotos }); }
-  function executeTask(task: { id: number; title: string; factoryId: number | null; qualityModule: string | null }) { if (task.qualityModule) { const query = new URLSearchParams(); if (task.factoryId) query.set("factoryId", String(task.factoryId)); query.set("plannedTaskId", String(task.id)); setLocation(`/controlos/${task.qualityModule}?${query.toString()}`); return; } setReportTask({ id: task.id, title: task.title, result: "", notes: "", evidencePhotos: [] }); }
+  function submit(event: FormEvent) {
+    event.preventDefault();
+    if (!factoryId) return toast.error("Selecione a fábrica ou linha.");
+    if (!assigneeIds.length)
+      return toast.error("Selecione pelo menos um responsável.");
+    const date = new Date(`${dueAt}T12:00:00`);
+    if (!isOperationalBusinessDay(date))
+      return toast.error(
+        "Selecione um dia útil, excluindo sábados, domingos e feriados."
+      );
+    createTask.mutate({
+      title,
+      description,
+      factoryId: Number(factoryId),
+      dueAt: date,
+      assigneeProfileIds: assigneeIds,
+    });
+  }
+  function toggleAssignee(id: number) {
+    setAssigneeIds(current =>
+      current.includes(id)
+        ? current.filter(entry => entry !== id)
+        : [...current, id]
+    );
+  }
+  function toggleEditorAssignee(id: number) {
+    setEditingTask(current =>
+      current
+        ? {
+            ...current,
+            assigneeProfileIds: current.assigneeProfileIds.includes(id)
+              ? current.assigneeProfileIds.filter(entry => entry !== id)
+              : [...current.assigneeProfileIds, id],
+          }
+        : current
+    );
+  }
+  function togglePlanModule(id: string) {
+    setPlanModules(current =>
+      current.includes(id)
+        ? current.filter(item => item !== id)
+        : [...current, id]
+    );
+  }
+  function togglePlanFactory(id: number) {
+    setPlanFactoryIds(current =>
+      current.includes(id)
+        ? current.filter(item => item !== id)
+        : [...current, id]
+    );
+  }
+  function addPlanDate() {
+    const date = new Date(`${planDate}T12:00:00`);
+    if (!isOperationalBusinessDay(date))
+      return toast.error(
+        "Selecione um dia útil, excluindo sábados, domingos e feriados."
+      );
+    setPlanDates(current =>
+      current.includes(planDate) ? current : [...current, planDate].sort()
+    );
+  }
+  function removePlanDate(date: string) {
+    setPlanDates(current => current.filter(item => item !== date));
+  }
+  function publishPlan(event: FormEvent) {
+    event.preventDefault();
+    if (!planDates.length)
+      return toast.error("Adicione pelo menos uma data útil ao Plano do Dia.");
+    if (!planFactoryIds.length)
+      return toast.error(
+        "Selecione pelo menos uma fábrica ou linha para o Plano do Dia."
+      );
+    if (!planAssigneeIds.length)
+      return toast.error("Selecione pelo menos um responsável.");
+    if (!planModules.length)
+      return toast.error("Selecione pelo menos um controlo.");
+    const dates = planDates.map(value => new Date(`${value}T12:00:00`));
+    if (dates.some(date => !isOperationalBusinessDay(date)))
+      return toast.error(
+        "Todas as datas do Plano do Dia têm de ser dias úteis."
+      );
+    publishDailyPlan.mutate({
+      dates,
+      factoryIds: planFactoryIds,
+      assigneeProfileIds: planAssigneeIds,
+      modules: planModules as (typeof MODULES)[number]["id"][],
+    });
+  }
+  function openTaskEditor(task: EditableTask) {
+    setEditingTask({
+      id: task.id,
+      title: task.title,
+      description: task.description ?? "",
+      factoryId: task.factoryId,
+      dueAt: new Date(task.dueAt),
+      assigneeProfileIds: task.assigneeProfileIds ?? [],
+    });
+  }
+  function submitTaskEdit(event: FormEvent) {
+    event.preventDefault();
+    if (!editingTask) return;
+    if (!editingTask.assigneeProfileIds.length)
+      return toast.error("Selecione pelo menos um responsável.");
+    const date = new Date(
+      `${editingTask.dueAt.toISOString().slice(0, 10)}T12:00:00`
+    );
+    if (!isOperationalBusinessDay(date))
+      return toast.error(
+        "Selecione um dia útil, excluindo sábados, domingos e feriados."
+      );
+    updateTask.mutate({
+      id: editingTask.id,
+      title: editingTask.title,
+      description: editingTask.description,
+      factoryId: editingTask.factoryId ?? undefined,
+      dueAt: date,
+      assigneeProfileIds: editingTask.assigneeProfileIds,
+    });
+  }
+  async function uploadReportPhotos(
+    event: React.ChangeEvent<HTMLInputElement>
+  ) {
+    const files = Array.from(event.currentTarget.files ?? []);
+    if (!reportTask || !files.length) return;
+    const available = 5 - reportTask.evidencePhotos.length;
+    if (available <= 0)
+      return toast.error("Pode anexar no máximo 5 fotografias por relatório.");
+    const selected = files.slice(0, available);
+    if (
+      selected.some(
+        file => !["image/jpeg", "image/png", "image/webp"].includes(file.type)
+      )
+    )
+      return toast.error("Utilize apenas imagens JPEG, PNG ou WebP.");
+    if (selected.some(file => file.size > 5_000_000))
+      return toast.error("Cada fotografia pode ter até 5 MB.");
+    setReportPhotoUploading(true);
+    try {
+      const photos: TaskEvidencePhoto[] = [];
+      for (const file of selected) {
+        const dataUrl = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(String(reader.result));
+          reader.onerror = () =>
+            reject(new Error("Não foi possível ler a fotografia."));
+          reader.readAsDataURL(file);
+        });
+        const uploaded = await uploadTaskReportPhoto.mutateAsync({
+          taskId: reportTask.id,
+          fileName: file.name,
+          mimeType: file.type as TaskEvidencePhoto["mimeType"],
+          dataUrl,
+        });
+        photos.push({
+          url: uploaded.url,
+          fileName: uploaded.fileName,
+          mimeType: uploaded.mimeType,
+        });
+      }
+      setReportTask(current =>
+        current
+          ? {
+              ...current,
+              evidencePhotos: [...current.evidencePhotos, ...photos],
+            }
+          : current
+      );
+      toast.success(`${photos.length} fotografia(s) anexada(s).`);
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Não foi possível carregar a fotografia."
+      );
+    } finally {
+      setReportPhotoUploading(false);
+      event.currentTarget.value = "";
+    }
+  }
+  function submitTaskReport(event: FormEvent) {
+    event.preventDefault();
+    if (!reportTask) return;
+    if (!reportTask.result)
+      return toast.error(
+        "Escolha explicitamente C ou NC antes de concluir a tarefa."
+      );
+    if (reportTask.notes.trim().length < 3)
+      return toast.error("Descreva a execução da tarefa no relatório.");
+    completeTask.mutate({
+      id: reportTask.id,
+      result: reportTask.result as "C" | "NC",
+      notes: reportTask.notes.trim(),
+      evidencePhotos: reportTask.evidencePhotos,
+    });
+  }
+  function executeTask(task: {
+    id: number;
+    title: string;
+    factoryId: number | null;
+    qualityModule: string | null;
+  }) {
+    if (task.qualityModule) {
+      const query = new URLSearchParams();
+      if (task.factoryId) query.set("factoryId", String(task.factoryId));
+      query.set("plannedTaskId", String(task.id));
+      setLocation(`/controlos/${task.qualityModule}?${query.toString()}`);
+      return;
+    }
+    setReportTask({
+      id: task.id,
+      title: task.title,
+      result: "",
+      notes: "",
+      evidencePhotos: [],
+    });
+  }
 
-  const factoryName = (id: number | null) => meta.data?.factories.find((factory) => factory.id === id)?.name ?? "Sem fábrica";
-  const hasPublishedPlanToday = (tasks.data ?? []).some((task) => task.area === "Plano do Dia" && +dayStart(task.dueAt) === +nextOperationalBusinessDay(new Date()));
+  const factoryName = (id: number | null) =>
+    meta.data?.factories.find(factory => factory.id === id)?.name ??
+    "Sem fábrica";
+  const hasPublishedPlanToday = (tasks.data ?? []).some(
+    task =>
+      task.area === "Plano do Dia" &&
+      +dayStart(task.dueAt) === +nextOperationalBusinessDay(new Date())
+  );
   const taskGroups = [
-    { label: "Em atraso", items: groupedTasks.overdue, tone: "border-l-red-500 bg-red-50 text-red-900", dot: "bg-red-500" },
-    { label: "Hoje", items: groupedTasks.today, tone: "border-l-amber-500 bg-amber-50 text-amber-900", dot: "bg-amber-500" },
-    { label: "Amanhã", items: groupedTasks.tomorrow, tone: "border-l-sky-500 bg-sky-50 text-sky-900", dot: "bg-sky-500" },
-    { label: "Esta semana", items: groupedTasks.thisWeek, tone: "border-l-violet-500 bg-violet-50 text-violet-900", dot: "bg-violet-500" },
-    { label: "Próximos dias", items: groupedTasks.later, tone: "border-l-slate-400 bg-slate-50 text-slate-800", dot: "bg-slate-400" },
-    { label: "Concluídas", items: groupedTasks.completed, tone: "border-l-emerald-500 bg-emerald-50 text-emerald-900", dot: "bg-emerald-500" },
+    {
+      label: "Em atraso",
+      items: groupedTasks.overdue,
+      tone: "border-l-red-500 bg-red-50 text-red-900",
+      dot: "bg-red-500",
+    },
+    {
+      label: "Hoje",
+      items: groupedTasks.today,
+      tone: "border-l-amber-500 bg-amber-50 text-amber-900",
+      dot: "bg-amber-500",
+    },
+    {
+      label: "Amanhã",
+      items: groupedTasks.tomorrow,
+      tone: "border-l-sky-500 bg-sky-50 text-sky-900",
+      dot: "bg-sky-500",
+    },
+    {
+      label: "Esta semana",
+      items: groupedTasks.thisWeek,
+      tone: "border-l-violet-500 bg-violet-50 text-violet-900",
+      dot: "bg-violet-500",
+    },
+    {
+      label: "Próximos dias",
+      items: groupedTasks.later,
+      tone: "border-l-slate-400 bg-slate-50 text-slate-800",
+      dot: "bg-slate-400",
+    },
+    {
+      label: "Concluídas",
+      items: groupedTasks.completed,
+      tone: "border-l-emerald-500 bg-emerald-50 text-emerald-900",
+      dot: "bg-emerald-500",
+    },
   ];
 
-  return <div className="app-grid min-h-full -m-4 p-4 md:-m-6 md:p-6"><section className="mx-auto max-w-7xl space-y-6">
-    <header className="flex flex-col justify-between gap-4 md:flex-row md:items-end"><div><p className="font-mono-ui text-xs uppercase tracking-[0.18em] text-teal-700">Execução de controlos</p><h1 className="mt-2 text-3xl font-semibold tracking-tight">Controlos</h1><p className="mt-1 max-w-2xl text-sm text-muted-foreground">Acompanhe todos os registos previstos e as tarefas às quais foi atribuído.</p></div>{canManage && <Dialog open={open} onOpenChange={setOpen}><DialogTrigger asChild><Button><ClipboardPlus className="mr-2 h-4 w-4" />Nova tarefa</Button></DialogTrigger><DialogContent><DialogHeader><DialogTitle>Criar tarefa pontual</DialogTitle><DialogDescription>A tarefa será visível apenas aos responsáveis atribuídos e à Responsável de Qualidade.</DialogDescription></DialogHeader><form className="space-y-4" onSubmit={submit}><div className="space-y-2"><Label>Fábrica / linha</Label><Select value={factoryId} onValueChange={setFactoryId}><SelectTrigger><SelectValue placeholder="Selecione a fábrica" /></SelectTrigger><SelectContent>{(meta.data?.factories ?? []).map((item) => <SelectItem key={item.id} value={String(item.id)}>{item.name}</SelectItem>)}</SelectContent></Select></div><div className="space-y-2"><Label>Título da tarefa</Label><Input required value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Ex.: Verificar condição da área" /></div><div className="space-y-2"><Label>Descrição da tarefa</Label><Textarea value={description} onChange={(event) => setDescription(event.target.value)} placeholder="Descreva o que deve ser realizado e os critérios a observar." /></div><div className="space-y-2"><Label>Responsáveis</Label><div className="max-h-40 space-y-2 overflow-auto rounded-xl border p-3">{(team.data?.profiles ?? []).filter((profile) => profile.active && profile.isConfigured).map((profile) => <label key={profile.id} className="flex cursor-pointer items-center gap-3 text-sm"><Checkbox checked={assigneeIds.includes(profile.id)} onCheckedChange={() => toggleAssignee(profile.id)} /><span>{profile.name} <span className="text-muted-foreground">· {profile.title}</span></span></label>)}</div></div><div className="space-y-2"><Label>Dia da tarefa</Label><Input required type="date" value={dueAt} onChange={(event) => setDueAt(event.target.value)} /></div><Button className="w-full" disabled={createTask.isPending || !factoryId || !assigneeIds.length}>{createTask.isPending ? "A criar…" : "Criar tarefa"}</Button></form></DialogContent></Dialog>}</header>
-    {canManage && dashboard.data?.monthlyChecklistReminder && <div className="flex flex-col gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 text-amber-950 md:flex-row md:items-center md:justify-between" role="status"><div><p className="font-semibold">Checklist mensal por planear</p><p className="mt-1 text-sm text-amber-900">Ainda não foi publicado um Checklist Mensal para este mês. Inclua-o no Plano do Dia quando estiver preparado.</p></div><Button size="sm" variant="outline" className="border-amber-300 bg-white text-amber-950 hover:bg-amber-100" onClick={() => setPlanOpen(true)}>Preparar plano</Button></div>}
-    {canManage && dashboard.data?.foodDefenseReminder && <div className="flex flex-col gap-3 rounded-2xl border border-red-200 bg-red-50 px-5 py-4 text-red-950 md:flex-row md:items-center md:justify-between" role="status"><div><p className="font-semibold">Food Defense anual por planear</p><p className="mt-1 text-sm text-red-900">Ainda não foi publicado o controlo Food Defense para este ano. Inclua-o no Plano do Dia para as Fábricas 1, 2 e 3.</p></div><Button size="sm" variant="outline" className="border-red-300 bg-white text-red-950 hover:bg-red-100" onClick={() => setPlanOpen(true)}>Preparar plano</Button></div>}
+  return (
+    <div className="app-grid min-h-full -m-4 p-4 md:-m-6 md:p-6">
+      <section className="mx-auto max-w-7xl space-y-6">
+        <header className="flex flex-col justify-between gap-4 md:flex-row md:items-end">
+          <div>
+            <p className="font-mono-ui text-xs uppercase tracking-[0.18em] text-teal-700">
+              Execução de controlos
+            </p>
+            <h1 className="mt-2 text-3xl font-semibold tracking-tight">
+              Controlos
+            </h1>
+            <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
+              Acompanhe todos os registos previstos e as tarefas às quais foi
+              atribuído.
+            </p>
+          </div>
+          {canManage && (
+            <Dialog open={open} onOpenChange={setOpen}>
+              <DialogTrigger asChild>
+                <Button>
+                  <ClipboardPlus className="mr-2 h-4 w-4" />
+                  Nova tarefa
+                </Button>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Criar tarefa pontual</DialogTitle>
+                  <DialogDescription>
+                    A tarefa será visível apenas aos responsáveis atribuídos e à
+                    Responsável de Qualidade.
+                  </DialogDescription>
+                </DialogHeader>
+                <form className="space-y-4" onSubmit={submit}>
+                  <div className="space-y-2">
+                    <Label>Fábrica / linha</Label>
+                    <Select value={factoryId} onValueChange={setFactoryId}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Selecione a fábrica" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {(meta.data?.factories ?? []).map(item => (
+                          <SelectItem key={item.id} value={String(item.id)}>
+                            {item.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Título da tarefa</Label>
+                    <Input
+                      required
+                      value={title}
+                      onChange={event => setTitle(event.target.value)}
+                      placeholder="Ex.: Verificar condição da área"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Descrição da tarefa</Label>
+                    <Textarea
+                      value={description}
+                      onChange={event => setDescription(event.target.value)}
+                      placeholder="Descreva o que deve ser realizado e os critérios a observar."
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Responsáveis</Label>
+                    <div className="max-h-40 space-y-2 overflow-auto rounded-xl border p-3">
+                      {(team.data?.profiles ?? [])
+                        .filter(
+                          profile => profile.active && profile.isConfigured
+                        )
+                        .map(profile => (
+                          <label
+                            key={profile.id}
+                            className="flex cursor-pointer items-center gap-3 text-sm"
+                          >
+                            <Checkbox
+                              checked={assigneeIds.includes(profile.id)}
+                              onCheckedChange={() => toggleAssignee(profile.id)}
+                            />
+                            <span>
+                              {profile.name}{" "}
+                              <span className="text-muted-foreground">
+                                · {profile.title}
+                              </span>
+                            </span>
+                          </label>
+                        ))}
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Dia da tarefa</Label>
+                    <Input
+                      required
+                      type="date"
+                      value={dueAt}
+                      onChange={event => setDueAt(event.target.value)}
+                    />
+                  </div>
+                  <Button
+                    className="w-full"
+                    disabled={
+                      createTask.isPending || !factoryId || !assigneeIds.length
+                    }
+                  >
+                    {createTask.isPending ? "A criar…" : "Criar tarefa"}
+                  </Button>
+                </form>
+              </DialogContent>
+            </Dialog>
+          )}
+        </header>
+        {canManage && dashboard.data?.monthlyChecklistReminder && (
+          <div
+            className="flex flex-col gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 text-amber-950 md:flex-row md:items-center md:justify-between"
+            role="status"
+          >
+            <div>
+              <p className="font-semibold">Checklist mensal por planear</p>
+              <p className="mt-1 text-sm text-amber-900">
+                Ainda não foi publicado um Checklist Mensal para este mês.
+                Inclua-o no Plano do Dia quando estiver preparado.
+              </p>
+            </div>
+            <Button
+              size="sm"
+              variant="outline"
+              className="border-amber-300 bg-white text-amber-950 hover:bg-amber-100"
+              onClick={() => setPlanOpen(true)}
+            >
+              Preparar plano
+            </Button>
+          </div>
+        )}
+        {canManage && dashboard.data?.foodDefenseReminder && (
+          <div
+            className="flex flex-col gap-3 rounded-2xl border border-red-200 bg-red-50 px-5 py-4 text-red-950 md:flex-row md:items-center md:justify-between"
+            role="status"
+          >
+            <div>
+              <p className="font-semibold">Food Defense anual por planear</p>
+              <p className="mt-1 text-sm text-red-900">
+                Ainda não foi publicado o controlo Food Defense para este ano.
+                Inclua-o no Plano do Dia para as Fábricas 1, 2 e 3.
+              </p>
+            </div>
+            <Button
+              size="sm"
+              variant="outline"
+              className="border-red-300 bg-white text-red-950 hover:bg-red-100"
+              onClick={() => setPlanOpen(true)}
+            >
+              Preparar plano
+            </Button>
+          </div>
+        )}
 
-    {canManage && <div className="flex justify-end"><Button variant={planOpen ? "outline" : "default"} onClick={() => setPlanOpen((current) => !current)}><ClipboardPlus className="mr-2 h-4 w-4" />{planOpen ? "Fechar plano" : "Novo plano"}</Button></div>}
+        {canManage && (
+          <div className="flex justify-end">
+            <Button
+              variant={planOpen ? "outline" : "default"}
+              onClick={() => setPlanOpen(current => !current)}
+            >
+              <ClipboardPlus className="mr-2 h-4 w-4" />
+              {planOpen ? "Fechar plano" : "Novo plano"}
+            </Button>
+          </div>
+        )}
+        {canManage && planOpen && (
+          <Card className="border border-sky-200 bg-sky-50/60 shadow-sm">
+            <CardContent className="space-y-3 p-4">
+              <div>
+                <p className="font-semibold text-sky-950">
+                  Datas do Plano do Dia
+                </p>
+                <p className="mt-1 text-sm text-sky-900">
+                  Selecione uma data útil, carregue em «Adicionar data» e repita
+                  para publicar os mesmos controlos em vários dias.
+                </p>
+              </div>
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
+                <div className="w-full space-y-1.5 sm:max-w-64">
+                  <Label
+                    htmlFor="plan-multiple-date"
+                    className="text-xs text-sky-950"
+                  >
+                    Data a adicionar
+                  </Label>
+                  <Input
+                    id="plan-multiple-date"
+                    type="date"
+                    value={planDate}
+                    onChange={event => setPlanDate(event.target.value)}
+                    className="bg-white"
+                  />
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="border-sky-300 bg-white text-sky-950 hover:bg-sky-100"
+                  onClick={addPlanDate}
+                >
+                  Adicionar data
+                </Button>
+              </div>
+              {planDates.length ? (
+                <div
+                  className="flex flex-wrap gap-2"
+                  aria-label="Datas selecionadas para o Plano do Dia"
+                >
+                  {planDates.map(date => (
+                    <Badge
+                      key={date}
+                      className="gap-1 bg-sky-200 text-sky-950 hover:bg-sky-200"
+                    >
+                      {new Date(`${date}T12:00:00`).toLocaleDateString("pt-PT")}
+                      <button
+                        type="button"
+                        className="ml-1 rounded-sm font-bold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-700"
+                        aria-label={`Remover data ${new Date(`${date}T12:00:00`).toLocaleDateString("pt-PT")}`}
+                        onClick={() => removePlanDate(date)}
+                      >
+                        ×
+                      </button>
+                    </Badge>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm text-sky-900">
+                  Ainda não foi adicionada nenhuma data.
+                </p>
+              )}
+            </CardContent>
+          </Card>
+        )}
+        {canManage && lastPlanPublication && (
+          <Card
+            className="border border-emerald-200 bg-emerald-50/70 shadow-sm"
+            role="status"
+          >
+            <CardContent className="p-4">
+              <p className="font-semibold text-emerald-950">
+                Resumo da publicação de Planos do Dia
+              </p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {lastPlanPublication.map(item => (
+                  <Badge
+                    key={item.date}
+                    className="bg-emerald-100 text-emerald-900 hover:bg-emerald-100"
+                  >
+                    {new Date(`${item.date}T12:00:00`).toLocaleDateString(
+                      "pt-PT"
+                    )}{" "}
+                    · {item.created} criado(s)
+                    {item.alreadyPresent
+                      ? ` · ${item.alreadyPresent} já existente(s)`
+                      : ""}
+                  </Badge>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
-    {canManage && planOpen && <div>{canManage && (team.data?.profiles ?? []).some((profile) => profile.active && profile.isConfigured) && <Card className="border border-teal-100 bg-teal-50/50 shadow-sm"><CardHeader><CardTitle>Plano do Dia</CardTitle><CardDescription>Selecione a data, as fábricas ou linhas, os responsáveis e os controlos a executar. Após publicar, a equipa verá estas tarefas na respetiva agenda.</CardDescription></CardHeader><CardContent><form className="grid gap-4 lg:grid-cols-4" onSubmit={publishPlan}><div className="space-y-2"><Label>Data</Label><Input required type="date" value={planDate} onChange={(event) => setPlanDate(event.target.value)} /></div><div className="space-y-2 lg:col-span-3"><Label>Fábricas / linhas</Label><div className="flex flex-wrap gap-3 rounded-lg border bg-white p-3">{(meta.data?.factories ?? []).map((factory) => <label key={factory.id} className="flex items-center gap-2 text-sm"><Checkbox checked={planFactoryIds.includes(factory.id)} onCheckedChange={() => togglePlanFactory(factory.id)} />{factory.name}</label>)}</div></div><div className="space-y-2 lg:col-span-2"><Label>Responsáveis</Label><div className="flex flex-wrap gap-3 rounded-lg border bg-white p-3">{(team.data?.profiles ?? []).filter((profile) => profile.active && profile.isConfigured).map((profile) => <label key={profile.id} className="flex items-center gap-2 text-sm"><Checkbox checked={planAssigneeIds.includes(profile.id)} onCheckedChange={() => setPlanAssigneeIds((current) => current.includes(profile.id) ? current.filter((id) => id !== profile.id) : [...current, profile.id])} />{profile.name}</label>)}</div></div><div className="space-y-2 lg:col-span-3"><Label>Controlos a publicar</Label><div className="grid gap-2 rounded-lg border bg-white p-3 sm:grid-cols-2 lg:grid-cols-4">{MODULES.map((module) => <label key={module.id} className="flex items-center gap-2 text-sm"><Checkbox checked={planModules.includes(module.id)} onCheckedChange={() => togglePlanModule(module.id)} />{module.shortLabel}</label>)}</div></div><div className="flex items-end"><Button className="w-full" disabled={publishDailyPlan.isPending}>{publishDailyPlan.isPending ? "A publicar…" : "Publicar plano"}</Button></div></form></CardContent></Card>}</div>}
+        {canManage && planOpen && (
+          <div>
+            {canManage &&
+              (team.data?.profiles ?? []).some(
+                profile => profile.active && profile.isConfigured
+              ) && (
+                <Card className="border border-teal-100 bg-teal-50/50 shadow-sm">
+                  <CardHeader>
+                    <CardTitle>Plano do Dia</CardTitle>
+                    <CardDescription>
+                      Selecione a data, as fábricas ou linhas, os responsáveis e
+                      os controlos a executar. Após publicar, a equipa verá
+                      estas tarefas na respetiva agenda.
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <form
+                      className="grid gap-4 lg:grid-cols-4"
+                      onSubmit={publishPlan}
+                    >
+                      <div className="space-y-2">
+                        <Label>Data</Label>
+                        <Input
+                          required
+                          type="date"
+                          value={planDate}
+                          onChange={event => setPlanDate(event.target.value)}
+                        />
+                      </div>
+                      <div className="space-y-2 lg:col-span-3">
+                        <Label>Fábricas / linhas</Label>
+                        <div className="flex flex-wrap gap-3 rounded-lg border bg-white p-3">
+                          {(meta.data?.factories ?? []).map(factory => (
+                            <label
+                              key={factory.id}
+                              className="flex items-center gap-2 text-sm"
+                            >
+                              <Checkbox
+                                checked={planFactoryIds.includes(factory.id)}
+                                onCheckedChange={() =>
+                                  togglePlanFactory(factory.id)
+                                }
+                              />
+                              {factory.name}
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+                      <div className="space-y-2 lg:col-span-2">
+                        <Label>Responsáveis</Label>
+                        <div className="flex flex-wrap gap-3 rounded-lg border bg-white p-3">
+                          {(team.data?.profiles ?? [])
+                            .filter(
+                              profile => profile.active && profile.isConfigured
+                            )
+                            .map(profile => (
+                              <label
+                                key={profile.id}
+                                className="flex items-center gap-2 text-sm"
+                              >
+                                <Checkbox
+                                  checked={planAssigneeIds.includes(profile.id)}
+                                  onCheckedChange={() =>
+                                    setPlanAssigneeIds(current =>
+                                      current.includes(profile.id)
+                                        ? current.filter(
+                                            id => id !== profile.id
+                                          )
+                                        : [...current, profile.id]
+                                    )
+                                  }
+                                />
+                                {profile.name}
+                              </label>
+                            ))}
+                        </div>
+                      </div>
+                      <div className="space-y-2 lg:col-span-3">
+                        <Label>Controlos a publicar</Label>
+                        <div className="grid gap-2 rounded-lg border bg-white p-3 sm:grid-cols-2 lg:grid-cols-4">
+                          {MODULES.map(module => (
+                            <label
+                              key={module.id}
+                              className="flex items-center gap-2 text-sm"
+                            >
+                              <Checkbox
+                                checked={planModules.includes(module.id)}
+                                onCheckedChange={() =>
+                                  togglePlanModule(module.id)
+                                }
+                              />
+                              {module.shortLabel}
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+                      <div className="flex items-end">
+                        <Button
+                          className="w-full"
+                          disabled={publishDailyPlan.isPending}
+                        >
+                          {publishDailyPlan.isPending
+                            ? "A publicar…"
+                            : "Publicar plano"}
+                        </Button>
+                      </div>
+                    </form>
+                  </CardContent>
+                </Card>
+              )}
+          </div>
+        )}
 
-    <Card className="border border-teal-100 bg-teal-50/60 shadow-sm"><CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-end sm:justify-between"><div><p className="font-mono-ui text-xs font-semibold uppercase tracking-[0.14em] text-teal-800">Análise de completude</p><p className="mt-1 text-sm text-teal-950">Consulte o estado de cada controlo e fábrica na data selecionada.</p></div><div className="w-full space-y-1.5 sm:w-56"><Label htmlFor="controls-progress-date" className="text-xs text-teal-900">Data de análise de completude</Label><Input id="controls-progress-date" type="date" value={progressDate} onChange={(event) => setProgressDate(event.target.value)} className="bg-white" /></div></CardContent></Card>
-    <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">{MODULES.map((item) => { const Icon = icons[item.id]; const progress = dashboard.data?.moduleProgress[item.id] as ModuleProgress | undefined; const factoryProgress = dashboard.data?.moduleProgressByFactory?.[item.id] as FactoryModuleProgress[] | undefined; const scheduledFactoryProgress = (factoryProgress ?? []).filter((entry) => entry.expected > 0); const completedFactories = scheduledFactoryProgress.filter((entry) => entry.percentage >= 100).length; const isSharedModule = sharedModules.has(item.id); const globalProgress = isSharedModule ? progress : scheduledFactoryProgress.length ? { ...progress, expected: scheduledFactoryProgress.length, completed: completedFactories, registeredToday: scheduledFactoryProgress.reduce((total, entry) => total + entry.registeredToday, 0), percentage: Number(((completedFactories / scheduledFactoryProgress.length) * 100).toFixed(1)) } as ModuleProgress : progress; return <Card key={item.id} className="group h-full border-0 panel-shadow transition-all hover:-translate-y-0.5 hover:shadow-xl"><Link href={`/controlos/${item.id}`} className="block cursor-pointer"><CardHeader><div className="flex items-start justify-between"><div className="rounded-xl bg-slate-100 p-3 text-slate-700"><Icon className="h-5 w-5" /></div><ChevronRight className="h-5 w-5 text-slate-300" /></div><CardTitle className="mt-5 text-lg">{item.label}</CardTitle><CardDescription>{item.description}</CardDescription></CardHeader></Link><CardContent><Link href={`/controlos/${item.id}`} className="block"><ModuleCompletionTimeline label={item.label} progress={globalProgress} analysisDate={progressDateInput} completionUnit={isSharedModule ? "verificações" : "fábricas/linhas"} pendingUnit={isSharedModule ? "verificação" : "fábrica/linha"} /></Link><FactoryProgressSummary module={item.id} factories={meta.data?.factories ?? []} progress={factoryProgress} analysisDate={progressDateInput} onOpenObservations={(module, factory) => setObservationScope({ module, factoryId: factory.id, factoryName: factory.name })} /><Link href={`/controlos/${item.id}`} className="mt-4 block font-mono-ui text-xs font-semibold uppercase tracking-[0.12em] text-teal-700">Abrir controlo</Link></CardContent></Card>; })}</div>
-    <Dialog open={Boolean(observationScope)} onOpenChange={(open) => !open && setObservationScope(null)}><DialogContent className="max-h-[80vh] overflow-y-auto sm:max-w-xl"><DialogHeader><DialogTitle>Observações de {observationScope?.factoryName}</DialogTitle><DialogDescription>{observationScope ? `${moduleLabel(observationScope.module)} · dia operacional em curso.` : ""}</DialogDescription></DialogHeader>{observations.isLoading ? <p className="text-sm text-muted-foreground">A carregar observações…</p> : observations.data?.entries.length ? <div className="space-y-3">{observations.data.entries.map((entry) => <div key={entry.id} className="rounded-xl border border-slate-100 p-4"><div className="flex items-start justify-between gap-3"><div><p className="font-medium">{entry.title}</p><p className="mt-1 text-xs text-muted-foreground">{entry.area} · {dateFormat(entry.completedAt)}</p></div><Badge variant="outline">{entry.result ?? "—"}</Badge></div><p className="mt-3 whitespace-pre-wrap text-sm text-slate-800">{entry.notes?.trim() || "Sem observações registadas."}</p><OperatorAttribution verb="Registado por" name={entry.registeredByName} title={entry.registeredByTitle} /></div>)}</div> : <div className="rounded-xl bg-slate-50 p-5 text-sm text-slate-600">Ainda não existem observações registadas para este controlo e fábrica ou linha no dia operacional.</div>}</DialogContent></Dialog>
+        <Card className="border border-teal-100 bg-teal-50/60 shadow-sm">
+          <CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <p className="font-mono-ui text-xs font-semibold uppercase tracking-[0.14em] text-teal-800">
+                Análise de completude
+              </p>
+              <p className="mt-1 text-sm text-teal-950">
+                Consulte o estado de cada controlo e fábrica na data
+                selecionada.
+              </p>
+            </div>
+            <div className="w-full space-y-1.5 sm:w-56">
+              <Label
+                htmlFor="controls-progress-date"
+                className="text-xs text-teal-900"
+              >
+                Data de análise de completude
+              </Label>
+              <Input
+                id="controls-progress-date"
+                type="date"
+                value={progressDate}
+                onChange={event => setProgressDate(event.target.value)}
+                className="bg-white"
+              />
+            </div>
+          </CardContent>
+        </Card>
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          {MODULES.map(item => {
+            const Icon = icons[item.id];
+            const progress = dashboard.data?.moduleProgress[item.id] as
+              | ModuleProgress
+              | undefined;
+            const factoryProgress = dashboard.data?.moduleProgressByFactory?.[
+              item.id
+            ] as FactoryModuleProgress[] | undefined;
+            const scheduledFactoryProgress = (factoryProgress ?? []).filter(
+              entry => entry.expected > 0
+            );
+            const completedFactories = scheduledFactoryProgress.filter(
+              entry => entry.percentage >= 100
+            ).length;
+            const isSharedModule = sharedModules.has(item.id);
+            const globalProgress = isSharedModule
+              ? progress
+              : scheduledFactoryProgress.length
+                ? ({
+                    ...progress,
+                    expected: scheduledFactoryProgress.length,
+                    completed: completedFactories,
+                    registeredToday: scheduledFactoryProgress.reduce(
+                      (total, entry) => total + entry.registeredToday,
+                      0
+                    ),
+                    percentage: Number(
+                      (
+                        (completedFactories / scheduledFactoryProgress.length) *
+                        100
+                      ).toFixed(1)
+                    ),
+                  } as ModuleProgress)
+                : progress;
+            const matchingPlannedControls = (
+              dashboard.data?.plannedControls ?? []
+            ).filter(
+              control => control.module === item.id && !control.completed
+            );
+            const directPlannedControl =
+              matchingPlannedControls.length === 1
+                ? matchingPlannedControls[0]
+                : null;
+            const controlQuery = new URLSearchParams();
+            if (directPlannedControl) {
+              controlQuery.set(
+                "plannedTaskId",
+                String(directPlannedControl.id)
+              );
+              if (directPlannedControl.factoryId)
+                controlQuery.set(
+                  "factoryId",
+                  String(directPlannedControl.factoryId)
+                );
+            }
+            const controlTarget = `/controlos/${item.id}${controlQuery.size ? `?${controlQuery.toString()}` : ""}`;
+            return (
+              <Card
+                key={item.id}
+                className="group h-full border-0 panel-shadow transition-all hover:-translate-y-0.5 hover:shadow-xl"
+              >
+                <Link
+                  href={controlTarget}
+                  className="block cursor-pointer"
+                >
+                  <CardHeader>
+                    <div className="flex items-start justify-between">
+                      <div className="rounded-xl bg-slate-100 p-3 text-slate-700">
+                        <Icon className="h-5 w-5" />
+                      </div>
+                      <ChevronRight className="h-5 w-5 text-slate-300" />
+                    </div>
+                    <CardTitle className="mt-5 text-lg">{item.label}</CardTitle>
+                    <CardDescription>{item.description}</CardDescription>
+                  </CardHeader>
+                </Link>
+                <CardContent>
+                  <Link href={controlTarget} className="block">
+                    <ModuleCompletionTimeline
+                      label={item.label}
+                      progress={globalProgress}
+                      analysisDate={progressDateInput}
+                      completionUnit={
+                        isSharedModule ? "verificações" : "fábricas/linhas"
+                      }
+                      pendingUnit={
+                        isSharedModule ? "verificação" : "fábrica/linha"
+                      }
+                    />
+                  </Link>
+                  <FactoryProgressSummary
+                    module={item.id}
+                    factories={meta.data?.factories ?? []}
+                    progress={factoryProgress}
+                    analysisDate={progressDateInput}
+                    onOpenObservations={(module, factory) =>
+                      setObservationScope({
+                        module,
+                        factoryId: factory.id,
+                        factoryName: factory.name,
+                      })
+                    }
+                  />
+                  <Link
+                    href={controlTarget}
+                    className="mt-4 block font-mono-ui text-xs font-semibold uppercase tracking-[0.12em] text-teal-700"
+                  >
+                    Abrir controlo
+                  </Link>
+                </CardContent>
+              </Card>
+            );
+          })}
+        </div>
+        <Dialog
+          open={Boolean(observationScope)}
+          onOpenChange={open => !open && setObservationScope(null)}
+        >
+          <DialogContent className="max-h-[80vh] overflow-y-auto sm:max-w-xl">
+            <DialogHeader>
+              <DialogTitle>
+                Observações de {observationScope?.factoryName}
+              </DialogTitle>
+              <DialogDescription>
+                {observationScope
+                  ? `${moduleLabel(observationScope.module)} · dia operacional em curso.`
+                  : ""}
+              </DialogDescription>
+            </DialogHeader>
+            {observations.isLoading ? (
+              <p className="text-sm text-muted-foreground">
+                A carregar observações…
+              </p>
+            ) : observations.data?.entries.length ? (
+              <div className="space-y-3">
+                {observations.data.entries.map(entry => (
+                  <div
+                    key={entry.id}
+                    className="rounded-xl border border-slate-100 p-4"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="font-medium">{entry.title}</p>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          {entry.area} · {dateFormat(entry.completedAt)}
+                        </p>
+                      </div>
+                      <Badge variant="outline">{entry.result ?? "—"}</Badge>
+                    </div>
+                    <p className="mt-3 whitespace-pre-wrap text-sm text-slate-800">
+                      {entry.notes?.trim() || "Sem observações registadas."}
+                    </p>
+                    <OperatorAttribution
+                      verb="Registado por"
+                      name={entry.registeredByName}
+                      title={entry.registeredByTitle}
+                    />
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="rounded-xl bg-slate-50 p-5 text-sm text-slate-600">
+                Ainda não existem observações registadas para este controlo e
+                fábrica ou linha no dia operacional.
+              </div>
+            )}
+          </DialogContent>
+        </Dialog>
 
-    <Card className="border-0 panel-shadow"><CardHeader className="flex flex-col gap-4 border-b md:flex-row md:items-center md:justify-between"><div><CardTitle className="flex items-center gap-2"><ListTodo className="h-5 w-5 text-teal-700" />As minhas tarefas</CardTitle><CardDescription>Visíveis exclusivamente para os responsáveis atribuídos e para a Responsável de Qualidade.</CardDescription></div><Select value={taskFactoryFilter || "all"} onValueChange={(value) => setTaskFactoryFilter(value === "all" ? "" : value)}><SelectTrigger className="w-full md:w-72" aria-label="Filtrar tarefas por fábrica ou linha"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">Todas as fábricas e linhas</SelectItem>{(meta.data?.factories ?? []).map((factory) => <SelectItem key={factory.id} value={String(factory.id)}>{factory.name}</SelectItem>)}</SelectContent></Select></CardHeader><CardContent className="p-0">{hasPublishedPlanToday && <div className="border-b border-teal-100 bg-teal-50 px-5 py-3 text-sm text-teal-950" role="status"><span className="font-semibold">Novo Plano do Dia publicado.</span> Consulte e execute os controlos atribuídos abaixo.</div>}{tasks.data?.length ? taskGroups.map((group) => group.items.length ? <div key={group.label}><div className={`border-y border-l-4 px-5 py-2 text-xs font-semibold uppercase tracking-[0.14em] ${group.tone}`}><span className={`mr-2 inline-block h-2 w-2 rounded-full ${group.dot}`} />{group.label}</div><div className="divide-y">{group.items.map((task) => <div className="flex flex-col gap-3 p-5 md:flex-row md:items-center md:justify-between" key={task.id}><div className="min-w-0"><p className="font-medium">{task.title}</p>{task.description && <p className="mt-1 text-sm text-slate-700">{task.description}</p>}<p className="mt-1 text-sm text-muted-foreground">{factoryName(task.factoryId)} · {task.responsible} · {dateFormat(task.dueAt, false)}</p>{task.status === "completed" && task.executionReport && <div className="mt-3 rounded-lg bg-emerald-50 p-3 text-sm text-emerald-950"><p className="font-semibold">Relatório de execução · {task.executionReport.result}</p><p className="mt-1">{task.executionReport.notes}</p>{task.executionReport.evidencePhotos?.length ? <div className="mt-3 flex flex-wrap gap-2">{task.executionReport.evidencePhotos.map((photo) => <a key={photo.url} href={photo.url} target="_blank" rel="noreferrer" className="overflow-hidden rounded-lg border border-emerald-200 focus:outline-none focus:ring-2 focus:ring-emerald-700"><img src={photo.url} alt={`Evidência fotográfica: ${photo.fileName}`} className="h-16 w-16 object-cover" /></a>)}</div> : null}<OperatorAttribution verb="Preenchido por" name={task.executionReport.registeredByName} title={task.executionReport.registeredByTitle} /></div>}{task.completedByName && !task.executionReport && <OperatorAttribution verb="Concluído por" name={task.completedByName} title={task.completedByTitle} />}</div><div className="flex shrink-0 flex-wrap items-center gap-2">{task.status === "completed" ? <StatusBadge value="completed" /> : <Button size="sm" onClick={() => executeTask(task)}>{task.qualityModule ? <ClipboardCheck className="mr-1 h-4 w-4" /> : <FilePenLine className="mr-1 h-4 w-4" />}{task.qualityModule ? new Date(task.dueAt).getTime() > new Date().setHours(23, 59, 59, 999) ? "Antecipar controlo" : "Abrir controlo" : "Preencher relatório"}</Button>}{canManage && task.status === "pending" && <><Button size="icon" variant="outline" aria-label={`Editar ${task.title}`} onClick={() => openTaskEditor(task)}><Pencil className="h-4 w-4" /></Button><Button size="icon" variant="outline" className="border-red-200 text-red-700 hover:bg-red-50" aria-label={`Eliminar ${task.title}`} onClick={() => setDeletingTask({ id: task.id, title: task.title })}><Trash2 className="h-4 w-4" /></Button></>}</div></div>)}</div></div> : null) : <div className="p-8 text-center text-sm text-muted-foreground">Não existem tarefas atribuídas em dias úteis.</div>}</CardContent></Card>
+        <Card className="border-0 panel-shadow">
+          <CardHeader className="flex flex-col gap-4 border-b md:flex-row md:items-center md:justify-between">
+            <div>
+              <CardTitle className="flex items-center gap-2">
+                <ListTodo className="h-5 w-5 text-teal-700" />
+                As minhas tarefas
+              </CardTitle>
+              <CardDescription>
+                Visíveis exclusivamente para os responsáveis atribuídos e para a
+                Responsável de Qualidade.
+              </CardDescription>
+            </div>
+            <Select
+              value={taskFactoryFilter || "all"}
+              onValueChange={value =>
+                setTaskFactoryFilter(value === "all" ? "" : value)
+              }
+            >
+              <SelectTrigger
+                className="w-full md:w-72"
+                aria-label="Filtrar tarefas por fábrica ou linha"
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todas as fábricas e linhas</SelectItem>
+                {(meta.data?.factories ?? []).map(factory => (
+                  <SelectItem key={factory.id} value={String(factory.id)}>
+                    {factory.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </CardHeader>
+          <CardContent className="p-0">
+            {hasPublishedPlanToday && (
+              <div
+                className="border-b border-teal-100 bg-teal-50 px-5 py-3 text-sm text-teal-950"
+                role="status"
+              >
+                <span className="font-semibold">
+                  Novo Plano do Dia publicado.
+                </span>{" "}
+                Consulte e execute os controlos atribuídos abaixo.
+              </div>
+            )}
+            {tasks.data?.length ? (
+              taskGroups.map(group =>
+                group.items.length ? (
+                  <div key={group.label}>
+                    <div
+                      className={`border-y border-l-4 px-5 py-2 text-xs font-semibold uppercase tracking-[0.14em] ${group.tone}`}
+                    >
+                      <span
+                        className={`mr-2 inline-block h-2 w-2 rounded-full ${group.dot}`}
+                      />
+                      {group.label}
+                    </div>
+                    <div className="divide-y">
+                      {group.items.map(task => (
+                        <div
+                          className="flex flex-col gap-3 p-5 md:flex-row md:items-center md:justify-between"
+                          key={task.id}
+                        >
+                          <div className="min-w-0">
+                            <p className="font-medium">{task.title}</p>
+                            {task.description && (
+                              <p className="mt-1 text-sm text-slate-700">
+                                {task.description}
+                              </p>
+                            )}
+                            <p className="mt-1 text-sm text-muted-foreground">
+                              {factoryName(task.factoryId)} · {task.responsible}{" "}
+                              · {dateFormat(task.dueAt, false)}
+                            </p>
+                            {task.status === "completed" &&
+                              task.executionReport && (
+                                <div className="mt-3 rounded-lg bg-emerald-50 p-3 text-sm text-emerald-950">
+                                  <p className="font-semibold">
+                                    Relatório de execução ·{" "}
+                                    {task.executionReport.result}
+                                  </p>
+                                  <p className="mt-1">
+                                    {task.executionReport.notes}
+                                  </p>
+                                  {task.executionReport.evidencePhotos
+                                    ?.length ? (
+                                    <div className="mt-3 flex flex-wrap gap-2">
+                                      {task.executionReport.evidencePhotos.map(
+                                        photo => (
+                                          <a
+                                            key={photo.url}
+                                            href={photo.url}
+                                            target="_blank"
+                                            rel="noreferrer"
+                                            className="overflow-hidden rounded-lg border border-emerald-200 focus:outline-none focus:ring-2 focus:ring-emerald-700"
+                                          >
+                                            <img
+                                              src={photo.url}
+                                              alt={`Evidência fotográfica: ${photo.fileName}`}
+                                              className="h-16 w-16 object-cover"
+                                            />
+                                          </a>
+                                        )
+                                      )}
+                                    </div>
+                                  ) : null}
+                                  <OperatorAttribution
+                                    verb="Preenchido por"
+                                    name={task.executionReport.registeredByName}
+                                    title={
+                                      task.executionReport.registeredByTitle
+                                    }
+                                  />
+                                </div>
+                              )}
+                            {task.completedByName && !task.executionReport && (
+                              <OperatorAttribution
+                                verb="Concluído por"
+                                name={task.completedByName}
+                                title={task.completedByTitle}
+                              />
+                            )}
+                          </div>
+                          <div className="flex shrink-0 flex-wrap items-center gap-2">
+                            {task.status === "completed" ? (
+                              <StatusBadge value="completed" />
+                            ) : (
+                              <Button
+                                size="sm"
+                                onClick={() => executeTask(task)}
+                              >
+                                {task.qualityModule ? (
+                                  <ClipboardCheck className="mr-1 h-4 w-4" />
+                                ) : (
+                                  <FilePenLine className="mr-1 h-4 w-4" />
+                                )}
+                                {task.qualityModule
+                                  ? new Date(task.dueAt).getTime() >
+                                    new Date().setHours(23, 59, 59, 999)
+                                    ? "Antecipar controlo"
+                                    : "Abrir controlo"
+                                  : "Preencher relatório"}
+                              </Button>
+                            )}
+                            {canManage && task.status === "pending" && (
+                              <>
+                                <Button
+                                  size="icon"
+                                  variant="outline"
+                                  aria-label={`Editar ${task.title}`}
+                                  onClick={() => openTaskEditor(task)}
+                                >
+                                  <Pencil className="h-4 w-4" />
+                                </Button>
+                                <Button
+                                  size="icon"
+                                  variant="outline"
+                                  className="border-red-200 text-red-700 hover:bg-red-50"
+                                  aria-label={`Eliminar ${task.title}`}
+                                  onClick={() =>
+                                    setDeletingTask({
+                                      id: task.id,
+                                      title: task.title,
+                                    })
+                                  }
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              </>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : null
+              )
+            ) : (
+              <div className="p-8 text-center text-sm text-muted-foreground">
+                Não existem tarefas atribuídas em dias úteis.
+              </div>
+            )}
+          </CardContent>
+        </Card>
 
-    <Dialog open={Boolean(reportTask)} onOpenChange={(nextOpen) => !nextOpen && setReportTask(null)}><DialogContent><DialogHeader><DialogTitle>Relatório de execução</DialogTitle><DialogDescription>Registe a execução de «{reportTask?.title}». Ao submeter, a tarefa fica concluída e o relatório fica disponível à Responsável de Qualidade.</DialogDescription></DialogHeader><form className="space-y-4" onSubmit={submitTaskReport}><div className="space-y-2"><Label>Resultado</Label><Select value={reportTask?.result ?? ""} onValueChange={(value) => setReportTask((current) => current ? { ...current, result: value as "C" | "NC" } : current)}><SelectTrigger><SelectValue placeholder="Selecione C ou NC" /></SelectTrigger><SelectContent><SelectItem value="C">Conforme (C)</SelectItem><SelectItem value="NC">Não conforme (NC)</SelectItem></SelectContent></Select></div><div className="space-y-2"><Label>Relatório de execução</Label><Textarea required value={reportTask?.notes ?? ""} onChange={(event) => setReportTask((current) => current ? { ...current, notes: event.target.value } : current)} placeholder="Descreva o que foi realizado, as verificações efetuadas e quaisquer desvios identificados." /></div><div className="space-y-2"><Label htmlFor="task-report-photos">Evidências fotográficas</Label><Input id="task-report-photos" type="file" accept="image/jpeg,image/png,image/webp" multiple onChange={uploadReportPhotos} disabled={reportPhotoUploading || (reportTask?.evidencePhotos.length ?? 0) >= 5} /><p className="text-xs text-muted-foreground">Pode anexar até 5 fotografias JPEG, PNG ou WebP, com um máximo de 5 MB cada.</p>{reportPhotoUploading && <p className="text-sm text-teal-700">A carregar fotografia…</p>}{reportTask?.evidencePhotos.length ? <div className="flex flex-wrap gap-2">{reportTask.evidencePhotos.map((photo) => <div key={photo.url} className="relative"><img src={photo.url} alt={`Pré-visualização: ${photo.fileName}`} className="h-16 w-16 rounded-lg border object-cover" /><Button type="button" size="icon" variant="secondary" className="absolute -right-2 -top-2 h-5 w-5 rounded-full" aria-label={`Remover ${photo.fileName}`} onClick={() => setReportTask((current) => current ? { ...current, evidencePhotos: current.evidencePhotos.filter((item) => item.url !== photo.url) } : current)}><X className="h-3 w-3" /></Button></div>)}</div> : null}</div><Button className="w-full" disabled={completeTask.isPending || reportPhotoUploading || !reportTask?.result}>{completeTask.isPending ? "A guardar…" : "Registar relatório e concluir tarefa"}</Button></form></DialogContent></Dialog>
+        <Dialog
+          open={Boolean(reportTask)}
+          onOpenChange={nextOpen => !nextOpen && setReportTask(null)}
+        >
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Relatório de execução</DialogTitle>
+              <DialogDescription>
+                Registe a execução de «{reportTask?.title}». Ao submeter, a
+                tarefa fica concluída e o relatório fica disponível à
+                Responsável de Qualidade.
+              </DialogDescription>
+            </DialogHeader>
+            <form className="space-y-4" onSubmit={submitTaskReport}>
+              <div className="space-y-2">
+                <Label>Resultado</Label>
+                <Select
+                  value={reportTask?.result ?? ""}
+                  onValueChange={value =>
+                    setReportTask(current =>
+                      current
+                        ? { ...current, result: value as "C" | "NC" }
+                        : current
+                    )
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecione C ou NC" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="C">Conforme (C)</SelectItem>
+                    <SelectItem value="NC">Não conforme (NC)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Relatório de execução</Label>
+                <Textarea
+                  required
+                  value={reportTask?.notes ?? ""}
+                  onChange={event =>
+                    setReportTask(current =>
+                      current
+                        ? { ...current, notes: event.target.value }
+                        : current
+                    )
+                  }
+                  placeholder="Descreva o que foi realizado, as verificações efetuadas e quaisquer desvios identificados."
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="task-report-photos">
+                  Evidências fotográficas
+                </Label>
+                <Input
+                  id="task-report-photos"
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  multiple
+                  onChange={uploadReportPhotos}
+                  disabled={
+                    reportPhotoUploading ||
+                    (reportTask?.evidencePhotos.length ?? 0) >= 5
+                  }
+                />
+                <p className="text-xs text-muted-foreground">
+                  Pode anexar até 5 fotografias JPEG, PNG ou WebP, com um máximo
+                  de 5 MB cada.
+                </p>
+                {reportPhotoUploading && (
+                  <p className="text-sm text-teal-700">
+                    A carregar fotografia…
+                  </p>
+                )}
+                {reportTask?.evidencePhotos.length ? (
+                  <div className="flex flex-wrap gap-2">
+                    {reportTask.evidencePhotos.map(photo => (
+                      <div key={photo.url} className="relative">
+                        <img
+                          src={photo.url}
+                          alt={`Pré-visualização: ${photo.fileName}`}
+                          className="h-16 w-16 rounded-lg border object-cover"
+                        />
+                        <Button
+                          type="button"
+                          size="icon"
+                          variant="secondary"
+                          className="absolute -right-2 -top-2 h-5 w-5 rounded-full"
+                          aria-label={`Remover ${photo.fileName}`}
+                          onClick={() =>
+                            setReportTask(current =>
+                              current
+                                ? {
+                                    ...current,
+                                    evidencePhotos:
+                                      current.evidencePhotos.filter(
+                                        item => item.url !== photo.url
+                                      ),
+                                  }
+                                : current
+                            )
+                          }
+                        >
+                          <X className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+              <Button
+                className="w-full"
+                disabled={
+                  completeTask.isPending ||
+                  reportPhotoUploading ||
+                  !reportTask?.result
+                }
+              >
+                {completeTask.isPending
+                  ? "A guardar…"
+                  : "Registar relatório e concluir tarefa"}
+              </Button>
+            </form>
+          </DialogContent>
+        </Dialog>
 
-    <Dialog open={Boolean(editingTask)} onOpenChange={(nextOpen) => !nextOpen && setEditingTask(null)}><DialogContent><DialogHeader><DialogTitle>Editar tarefa</DialogTitle><DialogDescription>Atualize os dados antes da execução. As alterações ficam disponíveis apenas aos novos responsáveis atribuídos e à Responsável de Qualidade.</DialogDescription></DialogHeader><form className="space-y-4" onSubmit={submitTaskEdit}><div className="space-y-2"><Label>Fábrica / linha</Label><Select value={String(editingTask?.factoryId ?? "none")} onValueChange={(value) => setEditingTask((current) => current ? { ...current, factoryId: value === "none" ? null : Number(value) } : current)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="none">Sem fábrica ou linha</SelectItem>{(meta.data?.factories ?? []).map((factory) => <SelectItem key={factory.id} value={String(factory.id)}>{factory.name}</SelectItem>)}</SelectContent></Select></div><div className="space-y-2"><Label>Título</Label><Input required value={editingTask?.title ?? ""} onChange={(event) => setEditingTask((current) => current ? { ...current, title: event.target.value } : current)} /></div><div className="space-y-2"><Label>Descrição</Label><Textarea value={editingTask?.description ?? ""} onChange={(event) => setEditingTask((current) => current ? { ...current, description: event.target.value } : current)} /></div><div className="space-y-2"><Label>Responsáveis</Label><div className="max-h-40 space-y-2 overflow-auto rounded-xl border p-3">{(team.data?.profiles ?? []).filter((profile) => profile.active && profile.isConfigured).map((profile) => <label key={profile.id} className="flex cursor-pointer items-center gap-3 text-sm"><Checkbox checked={editingTask?.assigneeProfileIds.includes(profile.id) ?? false} onCheckedChange={() => toggleEditorAssignee(profile.id)} /><span>{profile.name} <span className="text-muted-foreground">· {profile.title}</span></span></label>)}</div></div><div className="space-y-2"><Label>Dia da tarefa</Label><Input required type="date" value={editingTask ? new Date(editingTask.dueAt).toISOString().slice(0, 10) : ""} onChange={(event) => setEditingTask((current) => current ? { ...current, dueAt: new Date(`${event.target.value}T12:00:00`) } : current)} /></div><Button className="w-full" disabled={updateTask.isPending}>{updateTask.isPending ? "A guardar…" : "Guardar alterações"}</Button></form></DialogContent></Dialog>
+        <Dialog
+          open={Boolean(editingTask)}
+          onOpenChange={nextOpen => !nextOpen && setEditingTask(null)}
+        >
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Editar tarefa</DialogTitle>
+              <DialogDescription>
+                Atualize os dados antes da execução. As alterações ficam
+                disponíveis apenas aos novos responsáveis atribuídos e à
+                Responsável de Qualidade.
+              </DialogDescription>
+            </DialogHeader>
+            <form className="space-y-4" onSubmit={submitTaskEdit}>
+              <div className="space-y-2">
+                <Label>Fábrica / linha</Label>
+                <Select
+                  value={String(editingTask?.factoryId ?? "none")}
+                  onValueChange={value =>
+                    setEditingTask(current =>
+                      current
+                        ? {
+                            ...current,
+                            factoryId: value === "none" ? null : Number(value),
+                          }
+                        : current
+                    )
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Sem fábrica ou linha</SelectItem>
+                    {(meta.data?.factories ?? []).map(factory => (
+                      <SelectItem key={factory.id} value={String(factory.id)}>
+                        {factory.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Título</Label>
+                <Input
+                  required
+                  value={editingTask?.title ?? ""}
+                  onChange={event =>
+                    setEditingTask(current =>
+                      current
+                        ? { ...current, title: event.target.value }
+                        : current
+                    )
+                  }
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Descrição</Label>
+                <Textarea
+                  value={editingTask?.description ?? ""}
+                  onChange={event =>
+                    setEditingTask(current =>
+                      current
+                        ? { ...current, description: event.target.value }
+                        : current
+                    )
+                  }
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Responsáveis</Label>
+                <div className="max-h-40 space-y-2 overflow-auto rounded-xl border p-3">
+                  {(team.data?.profiles ?? [])
+                    .filter(profile => profile.active && profile.isConfigured)
+                    .map(profile => (
+                      <label
+                        key={profile.id}
+                        className="flex cursor-pointer items-center gap-3 text-sm"
+                      >
+                        <Checkbox
+                          checked={
+                            editingTask?.assigneeProfileIds.includes(
+                              profile.id
+                            ) ?? false
+                          }
+                          onCheckedChange={() =>
+                            toggleEditorAssignee(profile.id)
+                          }
+                        />
+                        <span>
+                          {profile.name}{" "}
+                          <span className="text-muted-foreground">
+                            · {profile.title}
+                          </span>
+                        </span>
+                      </label>
+                    ))}
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label>Dia da tarefa</Label>
+                <Input
+                  required
+                  type="date"
+                  value={
+                    editingTask
+                      ? new Date(editingTask.dueAt).toISOString().slice(0, 10)
+                      : ""
+                  }
+                  onChange={event =>
+                    setEditingTask(current =>
+                      current
+                        ? {
+                            ...current,
+                            dueAt: new Date(`${event.target.value}T12:00:00`),
+                          }
+                        : current
+                    )
+                  }
+                />
+              </div>
+              <Button className="w-full" disabled={updateTask.isPending}>
+                {updateTask.isPending ? "A guardar…" : "Guardar alterações"}
+              </Button>
+            </form>
+          </DialogContent>
+        </Dialog>
 
-    <AlertDialog open={Boolean(deletingTask)} onOpenChange={(nextOpen) => !nextOpen && setDeletingTask(null)}><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Eliminar tarefa pendente?</AlertDialogTitle><AlertDialogDescription>A tarefa «{deletingTask?.title}» deixará de ser visível na agenda. Os relatórios de tarefas já concluídas não podem ser eliminados.</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>Cancelar</AlertDialogCancel><AlertDialogAction className="bg-red-700 hover:bg-red-800" onClick={() => deletingTask && deleteTask.mutate({ id: deletingTask.id })} disabled={deleteTask.isPending}>{deleteTask.isPending ? "A eliminar…" : "Eliminar tarefa"}</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog>
-  </section></div>;
+        <AlertDialog
+          open={Boolean(deletingTask)}
+          onOpenChange={nextOpen => !nextOpen && setDeletingTask(null)}
+        >
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Eliminar tarefa pendente?</AlertDialogTitle>
+              <AlertDialogDescription>
+                A tarefa «{deletingTask?.title}» deixará de ser visível na
+                agenda. Os relatórios de tarefas já concluídas não podem ser
+                eliminados.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancelar</AlertDialogCancel>
+              <AlertDialogAction
+                className="bg-red-700 hover:bg-red-800"
+                onClick={() =>
+                  deletingTask && deleteTask.mutate({ id: deletingTask.id })
+                }
+                disabled={deleteTask.isPending}
+              >
+                {deleteTask.isPending ? "A eliminar…" : "Eliminar tarefa"}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      </section>
+    </div>
+  );
 }

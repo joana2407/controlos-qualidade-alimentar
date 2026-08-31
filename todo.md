@@ -507,3 +507,21 @@
 - [x] Exigir na Checklist Mensal pelo menos uma verificação em cada Área/Zona aplicável antes de indicar 100% por fábrica.
 - [x] Mostrar na Checklist Mensal o estado de cada Área/Zona com cores de concluída e pendente, alinhado com BPHF.
 - [x] Adicionar regressões para a completitude mensal por Área/Zona e para os respetivos indicadores visuais.
+
+- [x] Adicionar pesquisa por texto à seleção de colaboradores inspecionados no controlo BPHF.
+- [x] Manter a seleção de um ou vários colaboradores após filtrar pelo nome.
+- [x] Adicionar regressões de interface para pesquisa e seleção de colaboradores BPHF.
+
+- [x] Permitir registos suplementares de produtos nos Detetores de Metais após o mínimo por linha estar concluído.
+- [x] Manter a autorização da tarefa original para registos suplementares no mesmo dia, sem requerer novo agendamento.
+- [x] Preservar a completitude por linha e apresentar cada produto adicional no histórico diário.
+- [x] Adicionar regressões de autorização, submissão e progresso para verificações suplementares de Detetores de Metais.
+
+- [x] Fazer os links «Abrir controlo» da vista geral preservarem a tarefa e data futura selecionadas.
+- [x] Abrir tarefas futuras em modo de preenchimento antecipado, incluindo Análises internas, sem as tratar como tarefas de hoje.
+- [x] Adicionar regressões de URL, autorização e aviso de antecipação para controlos futuros abertos na vista geral.
+
+- [x] Permitir à Responsável selecionar várias datas úteis ao criar um Plano do Dia.
+- [x] Publicar os mesmos controlos, fábricas/linhas e responsáveis para cada data escolhida, sem duplicados.
+- [x] Mostrar um resumo claro das datas criadas, ignoradas por já existirem ou inválidas.
+- [x] Adicionar regressões de servidor e interface para planos publicados em várias datas.

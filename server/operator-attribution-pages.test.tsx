@@ -5,6 +5,12 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 const now = new Date("2026-08-13T10:00:00Z");
 
+vi.stubGlobal("ResizeObserver", class {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+});
+
 vi.mock("@/contexts/QualityAccessContext", () => ({ useQualityAccess: () => ({ canManage: true }) }));
 vi.mock("wouter", () => ({ Link: ({ children, href, ...props }: { children: React.ReactNode; href: string }) => <a href={href} {...props}>{children}</a>, useLocation: () => ["/controlos", vi.fn()] }));
 vi.mock("@/lib/trpc", () => ({
@@ -12,8 +18,8 @@ vi.mock("@/lib/trpc", () => ({
     useUtils: () => ({ quality: { dashboard: { invalidate: vi.fn() }, listTasks: { invalidate: vi.fn() }, listNcs: { invalidate: vi.fn() }, reports: { invalidate: vi.fn() } } }),
     quality: {
       metadata: { useQuery: () => ({ data: { factories: [{ id: 1, name: "Fábrica 1 (Fatiado)" }, { id: 2, name: "Fábrica 2 (granel)" }], areas: [] } }) },
-      accessStatus: { useQuery: () => ({ data: { profiles: [] } }) },
-      dashboard: { useQuery: () => ({ data: { metrics: { fragilePending: 1 }, moduleProgress: { bphf: { expected: 2, completed: 1, registeredToday: 1, pending: ["BPHF — Produção"], percentage: 50, lastCompletedAt: now } }, moduleProgressByFactory: { bphf: [{ factoryId: 1, expected: 1, completed: 1, registeredToday: 1, percentage: 100 }, { factoryId: 2, expected: 1, completed: 0, registeredToday: 0, percentage: 0 }] } } }) },
+      accessStatus: { useQuery: () => ({ data: { profiles: [{ id: 1, name: "Sabrina Esteves", title: "Tec. Qualidade", active: true, isConfigured: true }] } }) },
+      dashboard: { useQuery: () => ({ data: { metrics: { fragilePending: 1 }, plannedControls: [{ id: 77, module: "internal_analysis", factoryId: null, completed: false }], moduleProgress: { bphf: { expected: 2, completed: 1, registeredToday: 1, pending: ["BPHF — Produção"], percentage: 50, lastCompletedAt: now } }, moduleProgressByFactory: { bphf: [{ factoryId: 1, expected: 1, completed: 1, registeredToday: 1, percentage: 100 }, { factoryId: 2, expected: 1, completed: 0, registeredToday: 0, percentage: 0 }] } } }) },
       controlObservations: { useQuery: () => ({ isLoading: false, data: { entries: [{ id: 55, title: "BPHF Produção", area: "Produção", result: "C", notes: "Observação parcial registada.", completedAt: now, registeredByName: "Sabrina Esteves", registeredByTitle: "Tec. Qualidade" }] } }) },
       listTasks: { useQuery: () => ({ data: [{ id: 1, title: "Verificação diária", module: "bphf", area: "Produção", factoryId: 1, responsible: "Equipa", dueAt: now, status: "completed", completedByName: "Neuza Antunes", completedByTitle: "Tec. Qualidade" }, { id: 2, title: "Tarefa pendente", description: "Confirmar o registo operacional.", module: "bphf", area: "Produção", factoryId: 1, responsible: "Sabrina Esteves", assigneeProfileIds: [1], dueAt: now, status: "pending" }] }) },
       createTask: { useMutation: () => ({ mutate: vi.fn(), isPending: false }) },
@@ -73,6 +79,27 @@ describe("autoria operacional nas páginas", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("abre uma tarefa futura de Análises internas em modo de preenchimento antecipado", () => {
+    render(<Controls />);
+    const card = screen.getByText("Análises internas").closest(".group");
+
+    expect(card?.querySelector('a[href="/controlos/internal_analysis?plannedTaskId=77"]')).toBeTruthy();
+  });
+
+  it("permite adicionar várias datas úteis antes de publicar o Plano do Dia", () => {
+    render(<Controls />);
+    fireEvent.click(screen.getByRole("button", { name: "Novo plano" }));
+    const dateInput = screen.getByLabelText("Data a adicionar") as HTMLInputElement;
+
+    fireEvent.change(dateInput, { target: { value: "2026-09-01" } });
+    fireEvent.click(screen.getByRole("button", { name: "Adicionar data" }));
+    fireEvent.change(dateInput, { target: { value: "2026-09-02" } });
+    fireEvent.click(screen.getByRole("button", { name: "Adicionar data" }));
+
+    expect(screen.getByLabelText("Datas selecionadas para o Plano do Dia").textContent).toMatch(/01\/09\/2026/);
+    expect(screen.getByLabelText("Datas selecionadas para o Plano do Dia").textContent).toMatch(/02\/09\/2026/);
   });
 
   it("mostra quem registou os controlos nos relatórios", () => {
