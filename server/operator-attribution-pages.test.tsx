@@ -61,7 +61,7 @@ describe("autoria operacional nas páginas", () => {
     expect(screen.getByText(/Pendente em \d{2}\/\d{2}\/2026: 1 fábrica\/linha por concluir/)).toBeTruthy();
     expect(screen.getAllByText(/Por fábrica \/ linha em \d{2}\/\d{2}\/2026/).length).toBeGreaterThanOrEqual(1);
     expect(screen.getByLabelText("Data de análise de completude")).toBeTruthy();
-    expect(screen.getByRole("link", { name: /abrir registos pendentes de bphf para fábrica 2/i }).getAttribute("href")).toBe("/controlos/bphf?factoryId=2&pending=1");
+    expect(screen.getByRole("link", { name: /abrir registos pendentes de bphf para fábrica 2/i }).getAttribute("href")).toContain("plannedDate=");
     expect(screen.getByRole("button", { name: /preencher relatório/i })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Editar Tarefa pendente" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Eliminar Tarefa pendente" })).toBeTruthy();
@@ -82,10 +82,25 @@ describe("autoria operacional nas páginas", () => {
   });
 
   it("abre uma tarefa futura de Análises internas em modo de preenchimento antecipado", () => {
-    render(<Controls />);
-    const card = screen.getByText("Análises internas").closest(".group");
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-13T10:00:00Z"));
+    try {
+      render(<Controls />);
+      const card = screen.getByText("Análises internas").closest(".group");
 
-    expect(card?.querySelector('a[href="/controlos/internal_analysis?plannedTaskId=77"]')).toBeTruthy();
+      expect(card?.querySelector('a[href="/controlos/internal_analysis?plannedDate=2026-08-13&plannedTaskId=77"]')).toBeTruthy();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("transporta a data de completitude escolhida para os cartões e os acessos por fábrica", () => {
+    render(<Controls />);
+    fireEvent.change(screen.getByLabelText("Data de análise de completude"), { target: { value: "2026-08-12" } });
+
+    expect(screen.getByRole("link", { name: /abrir registos pendentes de bphf para fábrica 2/i }).getAttribute("href")).toBe("/controlos/bphf?factoryId=2&pending=1&plannedDate=2026-08-12");
+    const bphfCard = screen.getByText("Verificação de BPHF").closest(".group");
+    expect(bphfCard?.querySelector('a[href="/controlos/bphf?plannedDate=2026-08-12"]')).toBeTruthy();
   });
 
   it("permite adicionar várias datas úteis antes de publicar o Plano do Dia", () => {

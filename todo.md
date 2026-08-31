@@ -533,3 +533,7 @@
 - [x] Diagnosticar porque uma tarefa BPHF parcialmente preenchida, mas marcada como concluída, bloqueia o formulário na data original.
 - [x] Permitir o preenchimento dos critérios BPHF ainda pendentes na data operacional da tarefa.
 - [x] Adicionar regressões para completar uma tarefa BPHF parcialmente registada após a primeira submissão.
+
+- [x] Fazer os cartões e acessos por fábrica/linha da vista geral transportarem a data de completitude selecionada.
+- [x] Abrir o formulário na data selecionada em modo retroativo ou antecipado, conforme seja anterior ou posterior a hoje.
+- [x] Adicionar regressões para a navegação por data selecionada em BPHF, Detetores, Sensorial e restantes controlos.

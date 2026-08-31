@@ -1868,6 +1868,16 @@ export default function ModuleControl() {
   const isSharedControl =
     module === "dispatch_control" || module === "internal_analysis";
   const plannedTaskId = Number(queryParams.get("plannedTaskId")) || undefined;
+  const plannedDateKey = queryParams.get("plannedDate");
+  const plannedDate = useMemo(() => {
+    if (!plannedDateKey || !/^\d{4}-\d{2}-\d{2}$/.test(plannedDateKey)) return undefined;
+    const date = new Date(`${plannedDateKey}T12:00:00`);
+    return Number.isNaN(date.getTime()) ? undefined : date;
+  }, [plannedDateKey]);
+  useEffect(() => {
+    const factoryFromQuery = queryParams.get("factoryId");
+    if (factoryFromQuery) setFactoryId(factoryFromQuery);
+  }, [queryParams]);
   const authorization = trpc.quality.controlAuthorization?.useQuery?.({
     module: (config?.id ?? "bphf") as (typeof MODULES)[number]["id"],
     factoryId: isSharedControl
@@ -1876,6 +1886,7 @@ export default function ModuleControl() {
         ? Number(factoryId)
         : undefined,
     plannedTaskId,
+    plannedDate,
   }) ?? { data: undefined, isLoading: false };
   const progressDateInput = useMemo(() => {
     const dueAt =
@@ -1892,12 +1903,14 @@ export default function ModuleControl() {
         12
       );
     }
+    if (plannedDate) return plannedDate;
     const today = new Date();
     return new Date(today.getFullYear(), today.getMonth(), today.getDate(), 12);
   }, [
     authorization.data?.dueAt,
     authorization.data?.isFuturePlanned,
     authorization.data?.isPreviousPending,
+    plannedDate,
   ]);
   const dashboard = trpc.quality.dashboard.useQuery({
     date: progressDateInput,

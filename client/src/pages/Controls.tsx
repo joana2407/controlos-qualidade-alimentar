@@ -318,6 +318,7 @@ function FactoryProgressSummary({
           const query = new URLSearchParams({
             factoryId: String(factory.id),
             pending: "1",
+            plannedDate: analysisDate.toISOString().slice(0, 10),
           });
           if (item?.pendingTaskId)
             query.set("plannedTaskId", String(item.pendingTaskId));
@@ -1201,6 +1202,7 @@ export default function Controls() {
                 ? matchingPlannedControls[0]
                 : null;
             const controlQuery = new URLSearchParams();
+            controlQuery.set("plannedDate", progressDate);
             if (directPlannedControl) {
               controlQuery.set(
                 "plannedTaskId",

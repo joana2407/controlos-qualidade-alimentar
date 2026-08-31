@@ -658,6 +658,18 @@ describe("procedimentos de qualidade por fábrica", () => {
     expect(dbUpdates.at(-1)).toMatchObject({ status: "completed", completedByProfileId: 1, completedByName: "Sabrina Esteves" });
   });
 
+  it("resolve uma tarefa planeada pela data selecionada, sem exigir o identificador da tarefa", async () => {
+    const futureDueAt = new Date(2026, 7, 18, 10, 0, 0);
+    tasks.push({ id: 91, factoryId: 1, status: "pending", dueAt: futureDueAt, completedAt: null, module: "temperature_controls", area: "Plano do Dia", title: "Plano do Dia — Temperaturas pela data", responsible: "Sabrina Esteves", assigneeProfileIds: [1] });
+    try {
+      const caller = qualityRouter.createCaller(createContext({ id: 1, name: "Sabrina Esteves", title: "Tec. Qualidade", role: "technician" }));
+
+      await expect(caller.controlAuthorization({ module: "temperature_controls", factoryId: 1, plannedDate: futureDueAt })).resolves.toMatchObject({ allowed: true, taskId: 91, dueAt: futureDueAt, isFuturePlanned: true });
+    } finally {
+      tasks.splice(tasks.findIndex(task => task.id === 91), 1);
+    }
+  });
+
   it("cria uma tarefa pontual com descrição e responsáveis atribuídos", async () => {
     const caller = qualityRouter.createCaller(createContext());
     await caller.createTask({ title: "Verificação geral", description: "Confirmar a condição da área.", factoryId: 1, dueAt: now, assigneeProfileIds: [1, 2] });

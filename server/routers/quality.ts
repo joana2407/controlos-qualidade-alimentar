@@ -234,7 +234,7 @@ function isHistoricalPlanTaskSatisfied(task: { id: number; module: typeof qualit
   return oneSubmissionPlanModules.has(task.module) && taskEntries.length > 0;
 }
 
-async function assessControlAuthorization(db: any, input: { module: typeof qualityModuleValues[number]; factoryId?: number | null; plannedTaskId?: number; profile: OperationalProfile }) {
+async function assessControlAuthorization(db: any, input: { module: typeof qualityModuleValues[number]; factoryId?: number | null; plannedTaskId?: number; plannedDate?: Date; profile: OperationalProfile }) {
   const isShared = sharedPlanModules.has(input.module);
   const spansAllFoodDefenseFactories = input.module === "food_defense";
   if (!isShared && !input.factoryId) return { allowed: false, reason: "Selecione a fábrica ou linha antes de consultar ou preencher este controlo.", task: null, isPreviousPending: false, isFuturePlanned: false };
@@ -247,7 +247,11 @@ async function assessControlAuthorization(db: any, input: { module: typeof quali
     const isCompletedPlanOpenForSupplement = allowsSupplementaryDailyEntries && item.status === "completed" && isCurrentDay;
     return (hasIncompletePlannedCoverage || isCompletedPlanOpenForSupplement) && item.area === "Plano do Dia" && item.module === input.module && isBusinessDay(new Date(item.dueAt)) && (isShared ? item.factoryId === null : spansAllFoodDefenseFactories ? item.factoryId !== null : item.factoryId === input.factoryId);
   });
-  const matchingTasks = input.plannedTaskId ? eligibleTasks : eligibleTasks.filter((item: any) => localDateKey(new Date(item.dueAt)) <= today);
+  const matchingTasks = input.plannedTaskId
+    ? eligibleTasks
+    : input.plannedDate
+      ? eligibleTasks.filter((item: any) => localDateKey(new Date(item.dueAt)) === localDateKey(input.plannedDate!))
+      : eligibleTasks.filter((item: any) => localDateKey(new Date(item.dueAt)) <= today);
   const task = input.plannedTaskId
     ? matchingTasks.find((item: any) => item.id === input.plannedTaskId)
     : [...matchingTasks].sort((left: any, right: any) => Number(localDateKey(new Date(right.dueAt)) === today) - Number(localDateKey(new Date(left.dueAt)) === today) || new Date(right.dueAt).getTime() - new Date(left.dueAt).getTime())[0];
@@ -426,9 +430,10 @@ export const qualityRouter = router({
     module: qualityModuleSchema,
     factoryId: z.number().int().optional(),
     plannedTaskId: z.number().int().optional(),
+    plannedDate: z.date().optional(),
   })).query(async ({ ctx, input }) => {
     const db = await requireDb();
-    const access = await assessControlAuthorization(db, { module: input.module, factoryId: input.factoryId ?? null, plannedTaskId: input.plannedTaskId, profile: ctx.operatorProfile! });
+    const access = await assessControlAuthorization(db, { module: input.module, factoryId: input.factoryId ?? null, plannedTaskId: input.plannedTaskId, plannedDate: input.plannedDate, profile: ctx.operatorProfile! });
     return {
       allowed: access.allowed,
       reason: access.reason,
