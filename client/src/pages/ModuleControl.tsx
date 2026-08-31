@@ -32,6 +32,18 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { Progress } from "@/components/ui/progress";
 import {
   Select,
@@ -2597,6 +2609,8 @@ export function Bphf({
   const [employeeSearchByCriterion, setEmployeeSearchByCriterion] = useState<
     Record<string, string>
   >({});
+  const [openEmployeeSearchCriterion, setOpenEmployeeSearchCriterion] =
+    useState<string | null>(null);
   const [results, setResults] = useState<Record<string, Result | "">>(() =>
     Object.fromEntries(BPHF_CRITERIA.map(criterion => [criterion, ""]))
   );
@@ -2868,78 +2882,96 @@ export function Bphf({
                       </div>
                       <div className="space-y-2">
                         <Label>Colaborador inspecionado</Label>
-                        <Input
-                          id={`bphf-employee-search-${index}`}
-                          aria-label={`Pesquisar colaborador para ${criterion}`}
-                          value={employeeSearch}
-                          onChange={event => {
-                            const nextSearch = event.target.value;
-                            setEmployeeSearchByCriterion(current => ({
-                              ...current,
-                              [criterion]: nextSearch,
-                            }));
-                            const selectedEmployee = employees.data?.find(
-                              employee =>
-                                String(employee.id) ===
-                                collaboratorsByCriterion[criterion]
-                            );
-                            const normalizedNextSearch = nextSearch
-                              .normalize("NFD")
-                              .replace(/[\u0300-\u036f]/g, "")
-                              .toLocaleLowerCase("pt-PT");
-                            if (
-                              selectedEmployee &&
-                              !selectedEmployee.name
-                                .normalize("NFD")
-                                .replace(/[\u0300-\u036f]/g, "")
-                                .toLocaleLowerCase("pt-PT")
-                                .startsWith(normalizedNextSearch)
-                            ) {
-                              setCollaboratorsByCriterion(current => ({
-                                ...current,
-                                [criterion]: "",
-                              }));
-                            }
-                          }}
-                          placeholder="Escreva para filtrar, ex.: P"
-                        />
                         <div className="flex gap-2">
-                          <Select
-                            value={collaboratorsByCriterion[criterion] ?? ""}
-                            onValueChange={value => {
-                              setCollaboratorsByCriterion(current => ({
-                                ...current,
-                                [criterion]: value,
-                              }));
-                              const selectedEmployee = employees.data?.find(
-                                employee => String(employee.id) === value
-                              );
-                              if (selectedEmployee)
-                                setEmployeeSearchByCriterion(current => ({
-                                  ...current,
-                                  [criterion]: selectedEmployee.name,
-                                }));
-                            }}
+                          <Popover
+                            open={openEmployeeSearchCriterion === criterion}
+                            onOpenChange={open =>
+                              setOpenEmployeeSearchCriterion(
+                                open ? criterion : null
+                              )
+                            }
                           >
-                            <SelectTrigger>
-                              <SelectValue placeholder="Selecione o colaborador" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {filteredEmployees.map(employee => (
-                                <SelectItem
-                                  key={employee.id}
-                                  value={String(employee.id)}
-                                >
-                                  {employee.name}
-                                </SelectItem>
-                              ))}
-                              {!filteredEmployees.length && (
-                                <p className="px-2 py-1.5 text-sm text-muted-foreground">
-                                  Nenhum colaborador encontrado.
-                                </p>
-                              )}
-                            </SelectContent>
-                          </Select>
+                            <PopoverTrigger asChild>
+                              <Input
+                                id={`bphf-employee-search-${index}`}
+                                role="combobox"
+                                aria-expanded={
+                                  openEmployeeSearchCriterion === criterion
+                                }
+                                aria-controls={`bphf-employee-options-${index}`}
+                                aria-label={`Selecione o colaborador para ${criterion}`}
+                                value={employeeSearch}
+                                onFocus={() =>
+                                  setOpenEmployeeSearchCriterion(criterion)
+                                }
+                                onChange={event => {
+                                  const nextSearch = event.target.value;
+                                  setEmployeeSearchByCriterion(current => ({
+                                    ...current,
+                                    [criterion]: nextSearch,
+                                  }));
+                                  setOpenEmployeeSearchCriterion(criterion);
+                                  const selectedEmployee = employees.data?.find(
+                                    employee =>
+                                      String(employee.id) ===
+                                      collaboratorsByCriterion[criterion]
+                                  );
+                                  const normalizedNextSearch = nextSearch
+                                    .normalize("NFD")
+                                    .replace(/[\u0300-\u036f]/g, "")
+                                    .toLocaleLowerCase("pt-PT");
+                                  if (
+                                    selectedEmployee &&
+                                    !selectedEmployee.name
+                                      .normalize("NFD")
+                                      .replace(/[\u0300-\u036f]/g, "")
+                                      .toLocaleLowerCase("pt-PT")
+                                      .startsWith(normalizedNextSearch)
+                                  ) {
+                                    setCollaboratorsByCriterion(current => ({
+                                      ...current,
+                                      [criterion]: "",
+                                    }));
+                                  }
+                                }}
+                                placeholder="Selecione o colaborador"
+                              />
+                            </PopoverTrigger>
+                            <PopoverContent
+                              align="start"
+                              className="w-[--radix-popover-trigger-width] p-0"
+                              onOpenAutoFocus={event => event.preventDefault()}
+                            >
+                              <Command shouldFilter={false}>
+                                <CommandList id={`bphf-employee-options-${index}`}>
+                                  <CommandEmpty>
+                                    Nenhum colaborador encontrado.
+                                  </CommandEmpty>
+                                  <CommandGroup>
+                                    {filteredEmployees.map(employee => (
+                                      <CommandItem
+                                        key={employee.id}
+                                        value={employee.name}
+                                        onSelect={() => {
+                                          setCollaboratorsByCriterion(current => ({
+                                            ...current,
+                                            [criterion]: String(employee.id),
+                                          }));
+                                          setEmployeeSearchByCriterion(current => ({
+                                            ...current,
+                                            [criterion]: employee.name,
+                                          }));
+                                          setOpenEmployeeSearchCriterion(null);
+                                        }}
+                                      >
+                                        {employee.name}
+                                      </CommandItem>
+                                    ))}
+                                  </CommandGroup>
+                                </CommandList>
+                              </Command>
+                            </PopoverContent>
+                          </Popover>
                           <Button
                             type="button"
                             variant="outline"

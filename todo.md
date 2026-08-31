@@ -537,3 +537,7 @@
 - [x] Fazer os cartões e acessos por fábrica/linha da vista geral transportarem a data de completitude selecionada.
 - [x] Abrir o formulário na data selecionada em modo retroativo ou antecipado, conforme seja anterior ou posterior a hoje.
 - [x] Adicionar regressões para a navegação por data selecionada em BPHF, Detetores, Sensorial e restantes controlos.
+
+- [x] Integrar a escrita para pesquisa diretamente na caixa «Selecione o colaborador» do BPHF.
+- [x] Remover o campo de filtro separado, mantendo a seleção de vários colaboradores e o botão de adição.
+- [x] Adicionar regressões de filtragem e seleção no seletor pesquisável único.

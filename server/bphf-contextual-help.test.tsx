@@ -35,6 +35,20 @@ vi.mock("@/components/ui/select", () => ({
   SelectLabel: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
 }));
 
+vi.mock("@/components/ui/popover", () => ({
+  Popover: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  PopoverTrigger: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+  PopoverContent: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+}));
+
+vi.mock("@/components/ui/command", () => ({
+  Command: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  CommandList: ({ children, ...props }: { children: React.ReactNode }) => <div {...props}>{children}</div>,
+  CommandEmpty: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  CommandGroup: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  CommandItem: ({ children, onSelect }: { children: React.ReactNode; onSelect?: () => void }) => <button type="button" onClick={onSelect}>{children}</button>,
+}));
+
 import { Bphf, ControlFactoryContext } from "../client/src/pages/ModuleControl";
 
 afterEach(() => {
@@ -92,7 +106,7 @@ describe("ajuda contextual de BPHF", () => {
     );
     render(<ControlFactoryContext.Provider value={{ factories: [{ id: 1, name: "Fábrica 1 (Fatiado)" }], factoryId: "1", setFactoryId: vi.fn() }}><Bphf createEntry={{ isPending: false, mutate: vi.fn(), mutateAsync: vi.fn() }} areas={["Produção"]} /></ControlFactoryContext.Provider>);
 
-    const searchInput = screen.getAllByRole("textbox", { name: /Pesquisar colaborador para/i })[0]!;
+    const searchInput = screen.getAllByRole("combobox", { name: /Selecione o colaborador para/i })[0]!;
     const criterionCard = searchInput.closest(".panel-shadow") as HTMLElement | null;
     if (!criterionCard) throw new Error("Não foi encontrado o cartão do critério BPHF.");
     fireEvent.change(searchInput, { target: { value: "P" } });
@@ -100,5 +114,8 @@ describe("ajuda contextual de BPHF", () => {
     expect(within(criterionCard).getByText("Paulo Ferreira")).toBeTruthy();
     expect(within(criterionCard).getByText("Patrícia Gomes")).toBeTruthy();
     expect(within(criterionCard).queryByText("Maria Silva")).toBeNull();
+    fireEvent.click(within(criterionCard).getByRole("button", { name: "Paulo Ferreira" }));
+    expect((searchInput as HTMLInputElement).value).toBe("Paulo Ferreira");
+    expect(screen.queryByPlaceholderText("Escreva para filtrar, ex.: P")).toBeNull();
   });
 });
