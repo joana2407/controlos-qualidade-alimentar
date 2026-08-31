@@ -35,4 +35,12 @@ describe("filtros contextuais dos Relatórios", () => {
   it("limpa a pesquisa detalhada quando o controlo selecionado muda", () => {
     expect(reportsPage).toContain("setModule(value === \"all\" ? \"\" : value); setDetailFilters({}); setDetailSearch(\"\");");
   });
+
+  it("mantém todos os filtros legíveis numa grelha responsiva e conserva as ações principais", () => {
+    expect(reportsPage).toContain("flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between");
+    expect(reportsPage).toContain("grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-7");
+    expect(reportsPage).toContain("<div className=\"min-w-0 space-y-1\"><label className=\"text-xs font-medium\">Fábrica / linha");
+    expect(reportsPage).toContain("<RotateCcw className=\"mr-1 h-3.5 w-3.5\" />Limpar");
+    expect(reportsPage).toContain("Exportar Excel completo");
+  });
 });

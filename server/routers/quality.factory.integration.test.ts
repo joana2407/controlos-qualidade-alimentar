@@ -227,6 +227,47 @@ describe("procedimentos de qualidade por fábrica", () => {
     expect(notifyOwner).not.toHaveBeenCalled();
   });
 
+  it("guarda no Plano do Dia apenas as inspeções BPHF selecionadas", async () => {
+    const caller = qualityRouter.createCaller(createContext());
+    const planDate = new Date(2026, 7, 19, 10, 0, 0);
+    const selectedCriterion = "Higienização das mãos dos manipuladores";
+
+    await caller.publishDailyPlan({
+      date: planDate,
+      factoryIds: [1],
+      assigneeProfileIds: [1, 2, 3],
+      modules: ["bphf"],
+      bphfCriteria: [selectedCriterion],
+    });
+
+    expect(dbInserts.at(-1)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          module: "bphf",
+          factoryId: 1,
+          bphfCriteria: [selectedCriterion],
+        }),
+      ])
+    );
+  });
+
+  it("considera concluído o BPHF quando todos os critérios selecionados no Plano foram preenchidos", async () => {
+    const plannedTaskId = 519;
+    const selectedCriterion = "Higienização das mãos dos manipuladores";
+    tasks.push({ id: plannedTaskId, factoryId: 1, status: "pending", dueAt: now, completedAt: null, module: "bphf", area: "Plano do Dia", title: "Plano do Dia — BPHF F1", responsible: "Sabrina Esteves", assigneeProfileIds: [1], bphfCriteria: [selectedCriterion] } as any);
+    entries.push(...["Produção", "Embalagem", "Limpeza"].map((area, index) => ({ id: 519 + index, factoryId: 1, module: "bphf", area, title: selectedCriterion, result: "C", completedAt: now, payload: { plannedTaskId, plannedDate: now.toISOString() } } as any)));
+    try {
+      const caller = qualityRouter.createCaller(createContext({ id: 1, name: "Sabrina Esteves", title: "Tec. Qualidade", role: "technician" }));
+
+      const dashboard = await caller.dashboard({ date: now });
+
+      expect(dashboard.moduleProgressByFactory.bphf[0]).toMatchObject({ factoryId: 1, expected: 3, completed: 3, percentage: 100 });
+    } finally {
+      entries.splice(-3, 3);
+      tasks.pop();
+    }
+  });
+
   it("publica o mesmo Plano do Dia em várias datas úteis e devolve o resumo por data", async () => {
     const caller = qualityRouter.createCaller(createContext());
     const nextDate = new Date(now);
@@ -376,7 +417,7 @@ describe("procedimentos de qualidade por fábrica", () => {
   it("não mantém Checklist Mensal como pendência quando todos os itens aplicáveis foram registados", async () => {
     const previousDate = new Date(2026, 7, 13, 10, 0, 0);
     tasks.push({ id: 512, factoryId: 1, status: "pending", dueAt: previousDate, completedAt: null, module: "monthly_checklist", area: "Plano do Dia", title: "Plano do Dia — Checklist F1", responsible: "Sabrina Esteves", assigneeProfileIds: [1] });
-    entries.push({ id: 512, factoryId: 1, module: "monthly_checklist", area: "Produção", result: "C", completedAt: now, payload: { plannedTaskId: 512, plannedDate: previousDate.toISOString(), checklistItemId: 301 } } as any, { id: 513, factoryId: 1, module: "monthly_checklist", area: "Produção", result: "C", completedAt: now, payload: { plannedTaskId: 512, plannedDate: previousDate.toISOString(), checklistItemId: 302 } } as any);
+    entries.push({ id: 512, factoryId: 1, module: "monthly_checklist", area: "Geral", result: "C", completedAt: now, payload: { plannedTaskId: 512, plannedDate: previousDate.toISOString(), checklistItemId: 301 } } as any, { id: 513, factoryId: 1, module: "monthly_checklist", area: "Geral", result: "C", completedAt: now, payload: { plannedTaskId: 512, plannedDate: previousDate.toISOString(), checklistItemId: 302 } } as any);
     try {
       const caller = qualityRouter.createCaller(createContext({ id: 1, name: "Sabrina Esteves", title: "Tec. Qualidade", role: "technician" }));
 
@@ -391,6 +432,34 @@ describe("procedimentos de qualidade por fábrica", () => {
       expect(access).toMatchObject({ allowed: false, isPreviousPending: false });
     } finally {
       entries.splice(-2, 2);
+    }
+  });
+
+  it("mantém a Checklist Mensal pendente até todas as Áreas/Zonas de cada ponto serem preenchidas", async () => {
+    const previousDate = new Date(2026, 7, 13, 10, 0, 0);
+    const plannedTaskId = 520;
+    tasks.push({ id: plannedTaskId, factoryId: 1, status: "pending", dueAt: previousDate, completedAt: null, module: "monthly_checklist", area: "Plano do Dia", title: "Plano do Dia — Checklist F1", responsible: "Sabrina Esteves", assigneeProfileIds: [1] });
+    monthlyAreaRows.push({ id: 202, name: "Embalamento", active: "true" });
+    monthlyAreaAssignments.push({ checklistItemId: 301, checklistAreaId: 202 });
+    entries.push(
+      { id: 520, factoryId: 1, module: "monthly_checklist", area: "Geral", result: "C", completedAt: now, payload: { plannedTaskId, plannedDate: previousDate.toISOString(), checklistItemId: 301 } } as any,
+      { id: 521, factoryId: 1, module: "monthly_checklist", area: "Geral", result: "C", completedAt: now, payload: { plannedTaskId, plannedDate: previousDate.toISOString(), checklistItemId: 302 } } as any
+    );
+    try {
+      const caller = qualityRouter.createCaller(createContext({ id: 1, name: "Sabrina Esteves", title: "Tec. Qualidade", role: "technician" }));
+
+      const dashboard = await caller.dashboard({ date: previousDate });
+      const access = await caller.controlAuthorization({ module: "monthly_checklist", factoryId: 1, plannedTaskId });
+      const pendingControls = await caller.pendingControlTasks({ module: "monthly_checklist", factoryId: 1 });
+
+      expect(dashboard.moduleProgressByFactory.monthly_checklist[0]).toMatchObject({ factoryId: 1, expected: 3, completed: 2, percentage: 66.7, pendingTaskId: plannedTaskId });
+      expect(access).toMatchObject({ allowed: true, taskId: plannedTaskId, isPreviousPending: true });
+      expect(pendingControls.map(task => task.id)).toContain(plannedTaskId);
+    } finally {
+      entries.splice(-2, 2);
+      monthlyAreaAssignments.pop();
+      monthlyAreaRows.pop();
+      tasks.pop();
     }
   });
 

@@ -372,7 +372,7 @@ function expectedBphfAreas(
 }
 
 function bphfTaskComplete(
-  task: { factoryId: number | null },
+  task: { factoryId: number | null; bphfCriteria?: string[] | null },
   entries: Array<{ area: string; title?: string }>,
   areaCatalog: Array<{
     group: string;
@@ -382,11 +382,15 @@ function bphfTaskComplete(
   }>
 ) {
   const expectedAreas = expectedBphfAreas(task, areaCatalog);
+  const expectedCriteria = Array.isArray(task.bphfCriteria)
+    ? BPHF_CRITERIA.filter(criterion => task.bphfCriteria!.includes(criterion))
+    : BPHF_CRITERIA;
+  if (!expectedCriteria.length) return false;
   const completedSlots = new Set(
     entries.map(entry => `${entry.area}::${entry.title ?? ""}`)
   );
   return expectedAreas.every(area =>
-    BPHF_CRITERIA.every(criterion =>
+    expectedCriteria.every(criterion =>
       completedSlots.has(`${area}::${criterion}`)
     )
   );
@@ -412,11 +416,18 @@ function suggestionBoxesTaskComplete(
 
 function monthlyChecklistTaskComplete(
   task: { factoryId: number | null },
-  entries: Array<{ payload?: unknown }>,
-  items: Array<{ id: number; active: string }>,
-  assignments: Array<{ checklistItemId: number; factoryId: number }>
+  entries: Array<{ payload?: unknown; area?: string }>,
+  items: Array<{ id: number; active: string; area?: string }>,
+  assignments: Array<{ checklistItemId: number; factoryId: number }>,
+  areaAssignments: Array<{ checklistItemId: number; checklistAreaId: number }> = [],
+  areaRows: Array<{ id: number; name: string; active?: string }> = []
 ) {
-  const expectedIds = items
+  const areaNameById = new Map(
+    areaRows
+      .filter(area => area.active !== "false")
+      .map(area => [area.id, area.name])
+  );
+  const expectedChecks = items
     .filter(
       item =>
         item.active === "true" &&
@@ -428,14 +439,27 @@ function monthlyChecklistTaskComplete(
             )
           : true)
     )
-    .map(item => item.id);
-  if (!expectedIds.length) return false;
-  const completedIds = new Set(
+    .flatMap(item => {
+      const areaNames = areaAssignments
+        .filter(assignment => assignment.checklistItemId === item.id)
+        .map(assignment => areaNameById.get(assignment.checklistAreaId))
+        .filter((area): area is string => Boolean(area));
+      return (areaNames.length ? areaNames : [item.area ?? "Geral"]).map(
+        area => `${item.id}:${area}`
+      );
+    });
+  if (!expectedChecks.length) return false;
+  const completedChecks = new Set(
     entries
-      .map(entry => entryPayload(entry).checklistItemId)
-      .filter((id): id is number => typeof id === "number")
+      .map(entry => {
+        const itemId = entryPayload(entry).checklistItemId;
+        return typeof itemId === "number" && entry.area
+          ? `${itemId}:${entry.area}`
+          : null;
+      })
+      .filter((check): check is string => Boolean(check))
   );
-  return expectedIds.every(id => completedIds.has(id));
+  return expectedChecks.every(check => completedChecks.has(check));
 }
 
 function foodDefenseTaskComplete(entries: Array<{ payload?: unknown }>) {
@@ -454,6 +478,7 @@ function isHistoricalPlanTaskSatisfied(
     module: (typeof qualityModuleValues)[number];
     factoryId: number | null;
     dueAt: Date;
+    bphfCriteria?: string[] | null;
   },
   entries: Array<{
     area: string;
@@ -473,7 +498,12 @@ function isHistoricalPlanTaskSatisfied(
     checklistItemId: number;
     factoryId: number;
   }> = [],
-  factoryCatalog: Array<{ id: number; code: string }> = []
+  factoryCatalog: Array<{ id: number; code: string }> = [],
+  monthlyAreaAssignments: Array<{
+    checklistItemId: number;
+    checklistAreaId: number;
+  }> = [],
+  monthlyAreaRows: Array<{ id: number; name: string; active?: string }> = []
 ) {
   const taskEntries = entries.filter(entry =>
     entryMatchesPlannedTask(entry, task)
@@ -487,7 +517,9 @@ function isHistoricalPlanTaskSatisfied(
       task,
       taskEntries,
       monthlyItems,
-      monthlyAssignments
+      monthlyAssignments,
+      monthlyAreaAssignments,
+      monthlyAreaRows
     );
   if (task.module === "food_defense")
     return foodDefenseTaskComplete(taskEntries);
@@ -524,6 +556,8 @@ async function assessControlAuthorization(
     areaCatalog,
     monthlyItems,
     monthlyAssignments,
+    monthlyAreaAssignments,
+    monthlyAreaRows,
     factoryCatalog,
   ] = await Promise.all([
     db.select().from(controlTasks).orderBy(controlTasks.dueAt),
@@ -534,6 +568,8 @@ async function assessControlAuthorization(
       .select()
       .from(checklistItemFactories)
       .orderBy(checklistItemFactories.factoryId),
+    db.select().from(checklistItemAreas),
+    db.select().from(checklistAreas),
     db.select().from(factories).orderBy(factories.name),
   ]);
   const allowsSupplementaryDailyEntries =
@@ -552,7 +588,9 @@ async function assessControlAuthorization(
         areaCatalog,
         monthlyItems,
         monthlyAssignments,
-        factoryCatalog
+        factoryCatalog,
+        monthlyAreaAssignments,
+        monthlyAreaRows
       );
     const isCompletedPlanOpenForSupplement =
       allowsSupplementaryDailyEntries &&
@@ -1014,6 +1052,7 @@ export const qualityRouter = router({
         taskId: access.task?.id ?? null,
         assignedTo: access.task?.responsible ?? null,
         dueAt: access.task?.dueAt ?? null,
+        bphfCriteria: access.task?.bphfCriteria ?? null,
         isPreviousPending: access.isPreviousPending ?? false,
         isFuturePlanned: access.isFuturePlanned ?? false,
       };
@@ -1038,6 +1077,8 @@ export const qualityRouter = router({
         monthlyItems,
         monthlyAssignments,
         factoryCatalog,
+        monthlyAreaAssignments,
+        monthlyAreaRows,
       ] = await Promise.all([
         db.select().from(controlTasks).orderBy(controlTasks.dueAt),
         db
@@ -1051,6 +1092,8 @@ export const qualityRouter = router({
           .from(checklistItemFactories)
           .orderBy(checklistItemFactories.factoryId),
         db.select().from(factories).orderBy(factories.name),
+        db.select().from(checklistItemAreas),
+        db.select().from(checklistAreas),
       ]);
       return tasks
         .filter(task => {
@@ -1074,7 +1117,9 @@ export const qualityRouter = router({
               areaCatalog,
               monthlyItems,
               monthlyAssignments,
-              factoryCatalog
+              factoryCatalog,
+              monthlyAreaAssignments,
+              monthlyAreaRows
             ) &&
             (ctx.operatorProfile!.role === "manager" ||
               assignedProfiles.includes(ctx.operatorProfile!.id))
@@ -1282,6 +1327,8 @@ export const qualityRouter = router({
         areaCatalog,
         monthlyItems,
         monthlyAssignments,
+        monthlyAreaAssignments,
+        monthlyAreaRows,
       ] = await Promise.all([
         db.select().from(controlTasks).orderBy(controlTasks.dueAt),
         db
@@ -1308,6 +1355,8 @@ export const qualityRouter = router({
           .select()
           .from(checklistItemFactories)
           .orderBy(checklistItemFactories.factoryId),
+        db.select().from(checklistItemAreas),
+        db.select().from(checklistAreas),
       ]);
       const scopedTasks = scopeToFactory(tasks, input?.factoryId);
       const scopedNcs = scopeToFactory(ncs, input?.factoryId);
@@ -1417,7 +1466,9 @@ export const qualityRouter = router({
             task,
             taskEntries,
             monthlyItems,
-            monthlyAssignments
+            monthlyAssignments,
+            monthlyAreaAssignments,
+            monthlyAreaRows
           );
         if (task.module === "food_defense")
           return foodDefenseTaskComplete(taskEntries);
@@ -1494,7 +1545,11 @@ export const qualityRouter = router({
                 { factoryId: factory.id },
                 areaCatalog
               );
-              expected = expectedAreas.length * BPHF_CRITERIA.length;
+              const plannedCriteria = factoryControls[0]?.bphfCriteria;
+              const expectedCriteria = Array.isArray(plannedCriteria)
+                ? BPHF_CRITERIA.filter(criterion => plannedCriteria.includes(criterion))
+                : BPHF_CRITERIA;
+              expected = expectedAreas.length * expectedCriteria.length;
               const completedSlots = new Set(
                 factoryEntriesToday.map(
                   entry => `${entry.area}::${entry.title}`
@@ -1503,7 +1558,7 @@ export const qualityRouter = router({
               completed = expectedAreas.reduce(
                 (total, area) =>
                   total +
-                  BPHF_CRITERIA.filter(criterion =>
+                  expectedCriteria.filter(criterion =>
                     completedSlots.has(`${area}::${criterion}`)
                   ).length,
                 0
@@ -1549,7 +1604,6 @@ export const qualityRouter = router({
                       )
                     : true)
               );
-              expected = activeItems.length;
               const currentMonthStart = new Date(
                 operationalDate.getFullYear(),
                 operationalDate.getMonth(),
@@ -1560,7 +1614,22 @@ export const qualityRouter = router({
                 operationalDate.getMonth() + 1,
                 1
               );
-              const completedItemIds = new Set(
+              const activeAreaNames = new Map(
+                monthlyAreaRows
+                  .filter(area => area.active !== "false")
+                  .map(area => [area.id, area.name])
+              );
+              const expectedChecks = activeItems.flatMap(item => {
+                const areaNames = monthlyAreaAssignments
+                  .filter(assignment => assignment.checklistItemId === item.id)
+                  .map(assignment => activeAreaNames.get(assignment.checklistAreaId))
+                  .filter((area): area is string => Boolean(area));
+                return (areaNames.length ? areaNames : [item.area ?? "Geral"]).map(
+                  area => `${item.id}:${area}`
+                );
+              });
+              expected = expectedChecks.length;
+              const completedChecks = new Set(
                 scopedEntries
                   .filter(
                     entry =>
@@ -1569,11 +1638,16 @@ export const qualityRouter = router({
                       entry.completedAt >= currentMonthStart &&
                       entry.completedAt < currentMonthEnd
                   )
-                  .map(entry => payloadFor(entry).checklistItemId)
-                  .filter((id): id is number => typeof id === "number")
+                  .map(entry => {
+                    const itemId = payloadFor(entry).checklistItemId;
+                    return typeof itemId === "number" && entry.area
+                      ? `${itemId}:${entry.area}`
+                      : null;
+                  })
+                  .filter((check): check is string => Boolean(check))
               );
-              completed = activeItems.filter(item =>
-                completedItemIds.has(item.id)
+              completed = expectedChecks.filter(check =>
+                completedChecks.has(check)
               ).length;
             } else if (module === "temperature_controls") {
               expected = factory.id === 1 ? 2 : factory.id === 2 ? 1 : 0;
@@ -2083,6 +2157,7 @@ export const qualityRouter = router({
           factoryIds: z.array(z.number().int()).min(1).max(10),
           assigneeProfileIds: z.array(z.number().int()).min(1).max(10),
           modules: z.array(qualityModuleSchema).min(1).max(8),
+          bphfCriteria: z.array(z.enum(BPHF_CRITERIA)).min(1).max(BPHF_CRITERIA.length).optional(),
           priority: z.enum(["normal", "critical"]).default("normal"),
         })
         .refine(input => Boolean(input.date || input.dates?.length), {
@@ -2125,6 +2200,9 @@ export const qualityRouter = router({
         .from(controlTasks)
         .where(eq(controlTasks.status, "pending"));
       const selectedFactories = Array.from(new Set(input.factoryIds));
+      const plannedBphfCriteria = input.modules.includes("bphf")
+        ? Array.from(new Set(input.bphfCriteria ?? BPHF_CRITERIA))
+        : null;
       const temperatureFactories = selectedFactories.filter(factoryId =>
         [1, 2].includes(factoryId)
       );
@@ -2145,7 +2223,9 @@ export const qualityRouter = router({
         if (sharedPlanModules.has(module))
           plannedControls.push({ module, factoryId: null });
         else
-          (module === "temperature_controls"
+          (module === "monthly_checklist"
+            ? [1, 2, 3]
+            : module === "temperature_controls"
             ? temperatureFactories
             : selectedFactories
           ).forEach(factoryId => plannedControls.push({ module, factoryId }));
@@ -2181,6 +2261,7 @@ export const qualityRouter = router({
           dueAt: date,
           responsible: profiles.map(profile => profile.name).join(", "),
           assigneeProfileIds: input.assigneeProfileIds,
+          bphfCriteria: module === "bphf" ? plannedBphfCriteria : null,
           createdBy: ctx.user!.openId,
         }))
       );
@@ -2754,6 +2835,8 @@ export const qualityRouter = router({
           progressFragileItems,
           progressChecklistItems,
           progressChecklistAssignments,
+          progressChecklistAreaAssignments,
+          progressChecklistAreas,
           progressFactories,
         ] = await Promise.all([
           db
@@ -2767,6 +2850,8 @@ export const qualityRouter = router({
             .select()
             .from(checklistItemFactories)
             .orderBy(checklistItemFactories.factoryId),
+          db.select().from(checklistItemAreas),
+          db.select().from(checklistAreas),
           db.select().from(factories).orderBy(factories.name),
         ]);
         const taskPayload = (entry: (typeof taskEntries)[number]) =>
@@ -2809,29 +2894,14 @@ export const qualityRouter = router({
             expectedAreas.length > 0 &&
             expectedAreas.every(area => completedAreas.has(area));
         } else if (input.module === "monthly_checklist") {
-          const expectedItemIds = progressChecklistItems
-            .filter(
-              item =>
-                item.active === "true" &&
-                (progressChecklistAssignments.some(
-                  assignment => assignment.checklistItemId === item.id
-                )
-                  ? progressChecklistAssignments.some(
-                      assignment =>
-                        assignment.checklistItemId === item.id &&
-                        assignment.factoryId === authorization.task!.factoryId
-                    )
-                  : true)
-            )
-            .map(item => item.id);
-          const completedItemIds = new Set(
-            taskEntriesForPlan
-              .map(entry => taskPayload(entry).checklistItemId)
-              .filter((id): id is number => typeof id === "number")
+          plannedControlComplete = monthlyChecklistTaskComplete(
+            authorization.task!,
+            taskEntriesForPlan,
+            progressChecklistItems,
+            progressChecklistAssignments,
+            progressChecklistAreaAssignments,
+            progressChecklistAreas
           );
-          plannedControlComplete =
-            expectedItemIds.length > 0 &&
-            expectedItemIds.every(id => completedItemIds.has(id));
         } else if (input.module === "food_defense") {
           const criteria = Array.isArray(input.payload.criteria)
             ? input.payload.criteria

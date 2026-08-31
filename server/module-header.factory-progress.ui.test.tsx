@@ -47,7 +47,7 @@ vi.mock("wouter", () => ({
 import ModuleControl from "../client/src/pages/ModuleControl";
 
 describe("cabeçalho de controlo — progresso por fábrica", () => {
-  afterEach(() => { cleanup(); dashboardInputs.length = 0; authorizationInputs.length = 0; dailyResultsInputs.length = 0; bphfInspections.length = 0; uploadEvidenceMutate.mockReset(); routeModule.value = "bphf"; Object.assign(authorizationState, { allowed: true, taskId: 51, dueAt: new Date("2026-08-20T12:00:00"), isPreviousPending: true, isFuturePlanned: false, reason: "Autorizado" }); window.history.pushState({}, "", "/"); });
+  afterEach(() => { cleanup(); dashboardInputs.length = 0; authorizationInputs.length = 0; dailyResultsInputs.length = 0; bphfInspections.length = 0; uploadEvidenceMutate.mockReset(); routeModule.value = "bphf"; delete (authorizationState as any).bphfCriteria; Object.assign(authorizationState, { allowed: true, taskId: 51, dueAt: new Date("2026-08-20T12:00:00"), isPreviousPending: true, isFuturePlanned: false, reason: "Autorizado" }); window.history.pushState({}, "", "/"); });
 
   it("substitui o resumo geral pelos cartões das fábricas incluídas no Plano do Dia", () => {
     render(<ModuleControl />);
@@ -108,6 +108,16 @@ describe("cabeçalho de controlo — progresso por fábrica", () => {
     expect(screen.getByText("Estado de limpeza e organização dos cacifos do pessoal e de trabalho")).toBeTruthy();
     expect(screen.getByText("3 de 3 área(s) ainda por verificar.")).toBeTruthy();
     expect(screen.getAllByText("Em preenchimento").length).toBeGreaterThan(0);
+  });
+
+  it("mostra no formulário apenas os critérios BPHF escolhidos para o Plano do Dia", () => {
+    Object.assign(authorizationState as any, { bphfCriteria: ["Higienização das mãos dos manipuladores"] });
+    window.history.pushState({}, "", "/controlos/bphf?factoryId=1&plannedTaskId=51");
+    render(<ModuleControl />);
+
+    expect(screen.getAllByText("Higienização das mãos dos manipuladores").length).toBeGreaterThan(0);
+    expect(screen.queryByText("Estado de limpeza e conservação do fardamento")).toBeNull();
+    expect(screen.queryByText("Cumprimento geral das regras de BPHF")).toBeNull();
   });
 
   it("mostra a conclusão por área nas Caixas de Sugestões e mantém as localizações pendentes", () => {

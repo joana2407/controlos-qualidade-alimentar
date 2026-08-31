@@ -92,6 +92,12 @@ const icons = {
   food_defense: ShieldCheck,
 } as const;
 const sharedModules = new Set(["dispatch_control", "internal_analysis"]);
+const BPHF_PLAN_INSPECTIONS = [
+  "Estado de limpeza e conservação do fardamento",
+  "Higienização das mãos dos manipuladores",
+  "Cumprimento geral das regras de BPHF",
+  "Estado de limpeza e organização dos cacifos do pessoal e de trabalho",
+] as const;
 
 type ModuleProgress = {
   expected: number;
@@ -394,6 +400,9 @@ export default function Controls() {
   const [planFactoryIds, setPlanFactoryIds] = useState<number[]>([]);
   const [planAssigneeIds, setPlanAssigneeIds] = useState<number[]>([]);
   const [planModules, setPlanModules] = useState<string[]>([]);
+  const [planBphfCriteria, setPlanBphfCriteria] = useState<string[]>([
+    ...BPHF_PLAN_INSPECTIONS,
+  ]);
   const [lastPlanPublication, setLastPlanPublication] = useState<Array<{
     date: string;
     created: number;
@@ -472,6 +481,7 @@ export default function Controls() {
     onSuccess: result => {
       invalidateTasks();
       setPlanModules([]);
+      setPlanBphfCriteria([...BPHF_PLAN_INSPECTIONS]);
       setPlanDates([]);
       setLastPlanPublication(result.dates ?? null);
       setPlanOpen(false);
@@ -531,6 +541,13 @@ export default function Controls() {
         : [...current, id]
     );
   }
+  function togglePlanBphfCriterion(criterion: string) {
+    setPlanBphfCriteria(current =>
+      current.includes(criterion)
+        ? current.filter(item => item !== criterion)
+        : [...current, criterion]
+    );
+  }
   function togglePlanFactory(id: number) {
     setPlanFactoryIds(current =>
       current.includes(id)
@@ -563,6 +580,8 @@ export default function Controls() {
       return toast.error("Selecione pelo menos um responsável.");
     if (!planModules.length)
       return toast.error("Selecione pelo menos um controlo.");
+    if (planModules.includes("bphf") && !planBphfCriteria.length)
+      return toast.error("Selecione pelo menos uma inspeção BPHF.");
     const dates = planDates.map(value => new Date(`${value}T12:00:00`));
     if (dates.some(date => !isOperationalBusinessDay(date)))
       return toast.error(
@@ -573,6 +592,9 @@ export default function Controls() {
       factoryIds: planFactoryIds,
       assigneeProfileIds: planAssigneeIds,
       modules: planModules as (typeof MODULES)[number]["id"][],
+      bphfCriteria: planModules.includes("bphf")
+        ? (planBphfCriteria as (typeof BPHF_PLAN_INSPECTIONS)[number][])
+        : undefined,
     });
   }
   function openTaskEditor(task: EditableTask) {
@@ -1112,6 +1134,56 @@ export default function Controls() {
                           ))}
                         </div>
                       </div>
+                      {planModules.includes("bphf") && (
+                        <div className="space-y-2 lg:col-span-3">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <div>
+                              <Label>Inspeções BPHF a realizar</Label>
+                              <p className="mt-1 text-xs text-slate-600">
+                                Apenas estas inspeções serão exigidas, em cada Área/Zona aplicável, nas datas do plano.
+                              </p>
+                            </div>
+                            <div className="flex gap-2">
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={() =>
+                                  setPlanBphfCriteria([
+                                    ...BPHF_PLAN_INSPECTIONS,
+                                  ])
+                                }
+                              >
+                                Todas
+                              </Button>
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={() => setPlanBphfCriteria([])}
+                              >
+                                Limpar
+                              </Button>
+                            </div>
+                          </div>
+                          <div className="grid gap-2 rounded-lg border bg-white p-3 sm:grid-cols-2">
+                            {BPHF_PLAN_INSPECTIONS.map(criterion => (
+                              <label
+                                key={criterion}
+                                className="flex items-start gap-2 text-sm text-slate-800"
+                              >
+                                <Checkbox
+                                  checked={planBphfCriteria.includes(criterion)}
+                                  onCheckedChange={() =>
+                                    togglePlanBphfCriterion(criterion)
+                                  }
+                                />
+                                <span>{criterion}</span>
+                              </label>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                       <div className="flex items-end">
                         <Button
                           className="w-full"

@@ -5,17 +5,20 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/lib/trpc", () => ({
   trpc: {
+    useUtils: () => ({ quality: { dashboard: { invalidate: vi.fn() }, listTasks: { invalidate: vi.fn() } } }),
     quality: {
       metadata: { useQuery: () => ({ data: { factories: [{ id: 1, name: "Fábrica 1 (Fatiado)" }] } }) },
       dashboard: { useQuery: () => ({ isLoading: false, data: { operationalDate: new Date("2026-08-18T10:00:00Z"), metrics: { pending: 1, overdue: 0, criticalOpen: 0, fragilePending: 7, completedToday: 2, dailyExecutionRate: 50 }, tasks: [], criticalNcs: [] } }) },
       dailyIncidenceSummary: { useQuery: () => ({ data: { total: 3, withNonconformity: 1, withoutNonconformity: 2, note: "Confirmar fecho do turno.", incidences: [] } }) },
       dailyReportArchiveAttention: { useQuery: () => ({ isLoading: false, data: { count: 1, revisions: [{ id: 41, operationalDate: new Date("2026-08-14T12:00:00Z"), revision: 2, revisionReason: "Registo retroativo concluído." }] } }) },
+      deleteTask: { useMutation: () => ({ mutate: vi.fn(), isPending: false }) },
     },
   },
 }));
 
+vi.mock("@/contexts/QualityAccessContext", () => ({ useQualityAccess: () => ({ canManage: true }) }));
 vi.mock("@/components/quality/QualityUi", () => ({ SeverityBadge: () => <span>Severidade</span>, StatusBadge: () => <span>Estado</span> }));
-vi.mock("wouter", () => ({ Link: ({ children, href, ...props }: { children: React.ReactNode; href: string }) => <a href={href} {...props}>{children}</a> }));
+vi.mock("wouter", () => ({ Link: ({ children, href, ...props }: { children: React.ReactNode; href: string }) => <a href={href} {...props}>{children}</a>, useLocation: () => ["/", vi.fn()] }));
 
 import QualityDashboard from "../client/src/pages/QualityDashboard";
 

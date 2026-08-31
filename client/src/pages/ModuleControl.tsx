@@ -1881,6 +1881,7 @@ export default function ModuleControl() {
     module === "dispatch_control" || module === "internal_analysis";
   const plannedTaskId = Number(queryParams.get("plannedTaskId")) || undefined;
   const plannedDateKey = queryParams.get("plannedDate");
+  const resultsOnly = queryParams.get("view") === "results";
   const plannedDate = useMemo(() => {
     if (!plannedDateKey || !/^\d{4}-\d{2}-\d{2}$/.test(plannedDateKey)) return undefined;
     const date = new Date(`${plannedDateKey}T12:00:00`);
@@ -2055,7 +2056,47 @@ export default function ModuleControl() {
     createEntry: scopedCreateEntry,
     plannedTaskId: authorization.data?.taskId,
     referenceDate: authorization.data?.dueAt,
+    bphfCriteria: authorization.data?.bphfCriteria,
   };
+  if (resultsOnly)
+    return (
+      <ControlFactoryContext.Provider
+        value={{ factories, factoryId, setFactoryId }}
+      >
+        <ModuleProgressContext.Provider
+          value={{
+            items:
+              (dashboard.data?.moduleProgress as
+                | Record<string, ModuleProgress>
+                | undefined) ?? {},
+            byFactory:
+              (dashboard.data?.moduleProgressByFactory as
+                | Record<string, FactoryModuleProgress[]>
+                | undefined) ?? {},
+            isLoading: dashboard.isLoading,
+          }}
+        >
+          <div className="app-grid min-h-full -m-4 p-4 md:-m-6 md:p-6">
+            <section className="mx-auto max-w-5xl space-y-6">
+              <ModuleHeader
+                label={config.label}
+                description="Consulta dos resultados registados na data selecionada."
+                icon={CONTROL_ICONS[config.id as keyof typeof CONTROL_ICONS]}
+              />
+              <DailyControlResults
+                results={
+                  (dailyResults.data?.entries ?? []) as DailyControlEntry[]
+                }
+                operationalDate={progressDateInput}
+                isLoading={dailyResults.isLoading}
+                requiresFactory={!isSharedControl && !factoryId}
+                module={module}
+              />
+            </section>
+          </div>
+        </ModuleProgressContext.Provider>
+      </ControlFactoryContext.Provider>
+    );
   if (
     authorization.isLoading ||
     (authorization.data && !authorization.data.allowed)
@@ -2596,6 +2637,7 @@ export function Bphf({
   areas,
   plannedTaskId,
   referenceDate,
+  bphfCriteria,
 }: any) {
   const { factoryId } = useControlFactory();
   const employees = trpc.quality.listBphfInspectionEmployees.useQuery();
@@ -2630,6 +2672,13 @@ export function Bphf({
     [referenceDate]
   );
   const operationalDateLabel = operationalDate.toLocaleDateString("pt-PT");
+  const plannedCriteria = useMemo(
+    () =>
+      Array.isArray(bphfCriteria)
+        ? BPHF_CRITERIA.filter(criterion => bphfCriteria.includes(criterion))
+        : [...BPHF_CRITERIA],
+    [bphfCriteria]
+  );
   const inspectionInput = useMemo(
     () => ({
       collaboratorId:
@@ -2648,7 +2697,7 @@ export function Bphf({
   const completedAreasByCriterion = useMemo(
     () =>
       new Map(
-        BPHF_CRITERIA.map(criterion => [
+        plannedCriteria.map(criterion => [
           criterion,
           new Set(
             (inspections.data ?? [])
@@ -2657,7 +2706,7 @@ export function Bphf({
           ),
         ])
       ),
-    [inspections.data]
+    [inspections.data, plannedCriteria]
   );
   const addEmployee = trpc.quality.addBphfInspectionEmployee.useMutation({
     onSuccess: employee => {
@@ -2689,11 +2738,11 @@ export function Bphf({
     setCollaboratorsByCriterion({});
     setEmployeeSearchByCriterion({});
     setResults(
-      Object.fromEntries(BPHF_CRITERIA.map(criterion => [criterion, ""]))
+      Object.fromEntries(plannedCriteria.map(criterion => [criterion, ""]))
     );
     setNotes({});
     setEvidenceByCriterion({});
-  }, [factoryId, areas.join("|")]);
+  }, [factoryId, areas.join("|"), plannedCriteria]);
 
   const openEmployeeDialog = (criterion: string) => {
     setCriterionForEmployee(criterion);
@@ -2745,7 +2794,7 @@ export function Bphf({
     <>
       <ModuleHeader
         label="Verificação de BPHF"
-        description="Registe cada ponto por área e colaborador. É obrigatória uma verificação mínima por área, podendo registar verificações adicionais."
+        description="Registe as inspeções BPHF previstas no Plano do Dia por Área/Zona e colaborador. Pode acrescentar verificações adicionais às inspeções planeadas."
         icon={ShieldCheck}
       />
       <Card className="border border-teal-100 bg-teal-50/70 shadow-sm">
@@ -2753,10 +2802,10 @@ export function Bphf({
           <div>
             <p className="font-semibold text-teal-950">Conclusão por área</p>
             <p className="mt-1 text-sm leading-6 text-teal-900">
-              No dia {operationalDateLabel}, o mínimo fica cumprido quando todas
-              as áreas da fábrica selecionada têm pelo menos uma verificação
-              BPHF registada. Pode continuar a registar outras verificações nas
-              mesmas áreas.
+              No dia {operationalDateLabel}, o mínimo fica cumprido quando cada
+              inspeção prevista tem pelo menos uma verificação em todas as
+              Áreas/Zonas da fábrica selecionada. Pode continuar a registar
+              outras verificações nas mesmas áreas.
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2 text-xs">
@@ -2773,7 +2822,7 @@ export function Bphf({
         </CardContent>
       </Card>
       <div className="space-y-5">
-        {BPHF_CRITERIA.map((criterion, index) => {
+        {plannedCriteria.map((criterion, index) => {
           const completedAreas =
             completedAreasByCriterion.get(criterion) ?? new Set<string>();
           const pendingAreas = areas.filter(
