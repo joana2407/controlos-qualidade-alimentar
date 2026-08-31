@@ -586,3 +586,4 @@
 - [x] Diagnosticar por que não existem ficheiros de backup automáticos guardados e por que o backup retroativo devolve conteúdo bruto.
 - [x] Corrigir a geração e o armazenamento de backups Excel automáticos e manuais para datas anteriores.
 - [x] Validar com segurança a criação de um backup retroativo e confirmar as execuções automáticas futuras.
+- [x] Reavaliar e corrigir o fluxo de backup manual retroativo e a persistência efetiva dos backups automáticos.

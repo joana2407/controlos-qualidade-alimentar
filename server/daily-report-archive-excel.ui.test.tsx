@@ -3,7 +3,17 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-const { writeFile, createManualArchive } = vi.hoisted(() => ({ writeFile: vi.fn(), createManualArchive: vi.fn() }));
+const { writeFile, createManualArchive } = vi.hoisted(() => ({
+  writeFile: vi.fn(),
+  createManualArchive: vi.fn(),
+}));
+const manualArchiveResult = {
+  created: true,
+  backup: {
+    url: "/manus-storage/qualicontrol/backups-diarios/2026-08-21/relatorio-diario-2026-08-21-V2.xlsx",
+    key: "qualicontrol/backups-diarios/2026-08-21/relatorio-diario-2026-08-21-V2.xlsx",
+  },
+};
 
 vi.mock("xlsx", async (importOriginal) => {
   const actual = await importOriginal<typeof import("xlsx")>();
@@ -30,7 +40,7 @@ vi.mock("@/lib/trpc", () => ({
       dailyReportArchiveHistory: { useQuery: () => ({ data: [{ ...archive, controls: 1, incidences: 0 }], isLoading: false }) },
       dailyReportArchiveDetail: { useQuery: (input: { id: number }) => ({ data: input.id ? archive : null, isLoading: false }) },
       markDailyReportArchiveViewed: { useMutation: () => ({ mutate: vi.fn() }) },
-      createManualDailyReportArchive: { useMutation: () => ({ isPending: false, mutate: createManualArchive }) },
+      createManualDailyReportArchive: { useMutation: (options?: { onSuccess?: (result: typeof manualArchiveResult) => void }) => ({ isPending: false, mutate: (input: unknown) => { createManualArchive(input); options?.onSuccess?.(manualArchiveResult); } }) },
       updateControlEntry: { useMutation: () => ({ isPending: false, mutate: vi.fn() }) },
       deleteControlEntry: { useMutation: () => ({ isPending: false, mutate: vi.fn() }) },
     },
@@ -41,7 +51,7 @@ vi.mock("@/contexts/QualityAccessContext", () => ({ useQualityAccess: () => ({ a
 
 import Reports from "../client/src/pages/Reports";
 
-afterEach(() => { cleanup(); vi.restoreAllMocks(); });
+afterEach(() => { cleanup(); vi.restoreAllMocks(); createManualArchive.mockClear(); });
 
 describe("exportação Excel do arquivo diário", () => {
   it("permite selecionar uma versão arquivada e descarregá-la em Excel", () => {
@@ -63,5 +73,6 @@ describe("exportação Excel do arquivo diário", () => {
     fireEvent.click(screen.getByRole("button", { name: /guardar backup diário/i }));
 
     expect(createManualArchive).toHaveBeenCalledWith({ operationalDate: "2026-08-21" });
+    expect(screen.getByRole("link", { name: "Descarregar backup" }).getAttribute("href")).toContain("relatorio-diario-2026-08-21-V2.xlsx");
   });
 });

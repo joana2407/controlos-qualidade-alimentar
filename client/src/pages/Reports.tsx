@@ -15,6 +15,7 @@ import { Archive, BarChart3, Download, Eye, FileWarning, History, Pencil, Rotate
 import React, { useMemo, useState } from "react";
 import * as XLSX from "xlsx";
 import { toast } from "sonner";
+import { Link } from "wouter";
 import "./reports-redesign.css";
 
 type DetailRow = { label: string; value: string };
@@ -229,6 +230,28 @@ function downloadArchivedWorkbook(archive: any) {
   XLSX.writeFile(workbook, `arquivo-diario-${dateForFile}-V${archive.revision}.xlsx`, { compression: true });
 }
 
+function backupDownloadFrom(result: unknown, operationalDate: string) {
+  const response = asRecord(result);
+  const backup = asRecord(response.backup);
+  const archive = asRecord(response.archive);
+  const backupArchive = asRecord(backup.archive);
+  const url = [backup.url, backupArchive.backupFileUrl, archive.backupFileUrl].find(
+    value => typeof value === "string" && value.trim()
+  ) as string | undefined;
+  const key = [backup.key, backupArchive.backupFileKey, archive.backupFileKey].find(
+    value => typeof value === "string" && value.trim()
+  ) as string | undefined;
+  return url
+    ? {
+        url,
+        fileName:
+          key?.split("/").at(-1) ??
+          `relatorio-diario-${operationalDate}.xlsx`,
+        operationalDate,
+      }
+    : null;
+}
+
 function ArchiveExcelExport({ archives, selectedId, onSelected, detail }: { archives: any[]; selectedId: number | null; onSelected: (id: number) => void; detail: any }) {
   if (!archives.length) return null;
   return <Card className="border border-teal-200 bg-teal-50/60"><CardContent className="flex flex-col gap-4 p-5 lg:flex-row lg:items-end lg:justify-between"><div><p className="font-medium text-teal-950">Exportar uma versão arquivada</p><p className="mt-1 text-sm text-teal-800">Gere um ficheiro Excel com o snapshot imutável da versão selecionada.</p></div><div className="flex flex-col gap-2 sm:flex-row sm:items-end"><div className="min-w-64 space-y-1"><label className="text-xs font-medium text-teal-950">Versão a exportar</label><Select value={selectedId ? String(selectedId) : ""} onValueChange={(value) => onSelected(Number(value))}><SelectTrigger aria-label="Versão arquivada a exportar para Excel"><SelectValue placeholder="Selecione uma versão" /></SelectTrigger><SelectContent>{archives.map((archive) => <SelectItem key={archive.id} value={String(archive.id)}>{dateFormat(archive.operationalDate, false)} · V{archive.revision}</SelectItem>)}</SelectContent></Select></div><Button type="button" onClick={() => detail.data && downloadArchivedWorkbook(detail.data)} disabled={!detail.data || detail.isLoading}><Download className="mr-2 h-4 w-4" />{detail.isLoading ? "A preparar…" : "Exportar versão Excel"}</Button></div></CardContent></Card>;
@@ -241,6 +264,11 @@ export default function Reports() {
   const [selectedArchiveId, setSelectedArchiveId] = useState<number | null>(() => Number(new URLSearchParams(window.location.search).get("archiveId")) || null);
   const archiveDetail = trpc.quality.dailyReportArchiveDetail?.useQuery?.({ id: selectedArchiveId ?? 0 }, { enabled: Boolean(selectedArchiveId) }) ?? { data: null, isLoading: false };
   const [archiveExportId, setArchiveExportId] = useState<number | null>(null);
+  const [manualBackupDownload, setManualBackupDownload] = useState<{
+    url: string;
+    fileName: string;
+    operationalDate: string;
+  } | null>(null);
   const archiveExportDetail = trpc.quality.dailyReportArchiveDetail?.useQuery?.({ id: archiveExportId ?? 0 }, { enabled: Boolean(archiveExportId) }) ?? { data: null, isLoading: false };
   const markArchiveViewed = trpc.quality.markDailyReportArchiveViewed?.useMutation?.({ onSuccess: () => { utils.quality.dailyReportArchiveAttention?.invalidate(); } }) ?? { mutate: () => undefined };
   const today = new Date().toISOString().slice(0, 10);
@@ -269,7 +297,15 @@ export default function Reports() {
   const createManualArchive = trpc.quality.createManualDailyReportArchive?.useMutation?.({
     onSuccess: (archive) => {
       utils.quality.dailyReportArchiveHistory?.invalidate();
-      toast.success(archive.created ? "Backup diário guardado." : "O backup diário já existia; o ficheiro foi confirmado.");
+      const download = backupDownloadFrom(archive, startDate);
+      setManualBackupDownload(download);
+      toast.success(
+        download
+          ? archive.created
+            ? "Backup diário guardado e pronto a descarregar."
+            : "O backup diário já existia e está pronto a descarregar."
+          : "Arquivo diário guardado. O ficheiro Excel será disponibilizado no histórico."
+      );
     },
     onError: (error) => toast.error(error.message),
   }) ?? { mutate: () => undefined, isPending: false };
@@ -303,7 +339,8 @@ export default function Reports() {
   const filterLabels = { "Data inicial": startDate, "Data final": endDate, "Fábrica / linha": selectedFactory, Colaborador: selectedCollaborator, Controlo: module ? moduleLabel(module) : "Todos os controlos", Resultado: result || "Todos os resultados", "Estado da NC": ncStatus || "Todos os estados", Encomenda: orderNumber, "Pesquisa detalhada": detailSearch, ...Object.fromEntries(Object.entries(detailFilters).map(([key, value]) => [REPORT_DETAIL_FILTERS[module]?.find((field) => field.key === key)?.label ?? key, value])) };
 
   return <div className="reports-redesign app-grid min-h-full -m-4 p-4 md:-m-6 md:p-6"><section className="mx-auto max-w-7xl space-y-8"><ArchiveExcelExport archives={archiveHistory.data ?? []} selectedId={archiveExportId} onSelected={setArchiveExportId} detail={archiveExportDetail} />
-    <header className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between"><div><p className="font-mono-ui text-xs uppercase tracking-[0.18em] text-teal-700">Consulta operacional</p><h1 className="mt-2 text-3xl font-semibold tracking-tight">Relatórios</h1><p className="mt-1 max-w-2xl text-sm text-muted-foreground">Um único conjunto de filtros controla controlos, incidências, indicadores e a exportação Excel.</p></div><div className="flex flex-wrap gap-2">{canManage && <Button variant="outline" onClick={saveManualDailyBackup} disabled={!startDate || startDate !== endDate || createManualArchive.isPending} title={startDate !== endDate ? "Selecione apenas uma data para guardar um backup diário." : undefined}><Archive className="mr-2 h-4 w-4" />{createManualArchive.isPending ? "A guardar…" : "Guardar backup diário"}</Button>}<Button onClick={() => downloadFullWorkbook(entries, incidences, factoryName, filterLabels)} disabled={!entries.length}><Download className="mr-2 h-4 w-4" />Exportar Excel completo</Button></div></header>
+    <header className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between"><div><p className="font-mono-ui text-xs uppercase tracking-[0.18em] text-teal-700">Consulta operacional</p><h1 className="mt-2 text-3xl font-semibold tracking-tight">Relatórios</h1><p className="mt-1 max-w-2xl text-sm text-muted-foreground">Um único conjunto de filtros controla controlos, incidências, indicadores e a exportação Excel.</p></div><div className="flex flex-wrap gap-2">{canManage && <Button variant="outline" onClick={saveManualDailyBackup} disabled={!startDate || startDate !== endDate || createManualArchive.isPending} title={startDate !== endDate ? "Selecione apenas uma data para guardar um backup diário." : undefined}><Archive className="mr-2 h-4 w-4" />{createManualArchive.isPending ? "A guardar…" : "Guardar backup diário"}</Button>}<Button asChild variant="outline"><Link href="/backups-diarios"><Archive className="mr-2 h-4 w-4" />Ver backups guardados</Link></Button><Button onClick={() => downloadFullWorkbook(entries, incidences, factoryName, filterLabels)} disabled={!entries.length}><Download className="mr-2 h-4 w-4" />Exportar Excel completo</Button></div></header>
+    {manualBackupDownload ? <div className="flex flex-col gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-emerald-950 sm:flex-row sm:items-center sm:justify-between"><div><p className="font-medium">Backup diário pronto</p><p className="mt-1 text-sm">{dateFormat(`${manualBackupDownload.operationalDate}T12:00:00`, false)} · {manualBackupDownload.fileName}</p></div><Button asChild size="sm"><a href={manualBackupDownload.url} download={manualBackupDownload.fileName}><Download className="mr-2 h-4 w-4" />Descarregar backup</a></Button></div> : null}
 
     <Card className="border-0 panel-shadow"><CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div><CardTitle className="flex items-center gap-2"><Search className="h-4 w-4 text-teal-700" />Filtros do relatório</CardTitle><CardDescription>Aplicados a todos os dados e à exportação.</CardDescription></div><Button size="sm" variant="ghost" onClick={resetFilters}><RotateCcw className="mr-1 h-3.5 w-3.5" />Limpar</Button></CardHeader><CardContent className="space-y-3"><div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-7"><div className="min-w-0 space-y-1"><label className="text-xs font-medium">Fábrica / linha</label><Select value={factoryId || "all"} onValueChange={(value) => setFactoryId(value === "all" ? "" : value)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">Todas as fábricas e linhas</SelectItem>{(metadata.data?.factories ?? []).map((factory) => <SelectItem key={factory.id} value={String(factory.id)}>{factory.name}</SelectItem>)}</SelectContent></Select></div><div className="min-w-0 space-y-1"><label className="text-xs font-medium">Data inicial</label><Input aria-label="Data inicial da análise" type="date" value={startDate} onChange={(event) => { setStartDate(event.target.value); if (event.target.value > endDate) setEndDate(event.target.value); }} /></div><div className="min-w-0 space-y-1"><label className="text-xs font-medium">Data final</label><Input aria-label="Data final da análise" type="date" min={startDate} value={endDate} onChange={(event) => setEndDate(event.target.value)} /></div><div className="min-w-0 space-y-1"><label className="text-xs font-medium">Colaborador</label><Select value={collaboratorProfileId || "all"} onValueChange={(value) => setCollaboratorProfileId(value === "all" ? "" : value)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">Todos os colaboradores</SelectItem>{(metadata.data?.collaborators ?? []).map((collaborator) => <SelectItem key={collaborator.id} value={String(collaborator.id)}>{collaborator.name}</SelectItem>)}</SelectContent></Select></div><div className="min-w-0 space-y-1"><label className="text-xs font-medium">Controlo</label><Select value={module || "all"} onValueChange={(value) => { setModule(value === "all" ? "" : value); setDetailFilters({}); setDetailSearch(""); }}><SelectTrigger aria-label="Filtrar análise por controlo"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">Todos os controlos</SelectItem>{MODULES.map((item) => <SelectItem key={item.id} value={item.id}>{item.label}</SelectItem>)}</SelectContent></Select></div><div className="min-w-0 space-y-1"><label className="text-xs font-medium">Resultado</label><Select value={result || "all"} onValueChange={(value) => setResult(value === "all" ? "" : value)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">Todos os resultados</SelectItem><SelectItem value="C">Conforme (C)</SelectItem><SelectItem value="NC">Não conforme (NC)</SelectItem><SelectItem value="N/A">Não aplicável (N/A)</SelectItem></SelectContent></Select></div><div className="min-w-0 space-y-1"><label className="text-xs font-medium">Estado da NC</label><Select value={ncStatus || "all"} onValueChange={(value) => setNcStatus(value === "all" ? "" : value)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">Todos os estados</SelectItem><SelectItem value="open">Aberta</SelectItem><SelectItem value="in_progress">Em tratamento</SelectItem><SelectItem value="awaiting_validation">A aguardar validação</SelectItem><SelectItem value="closed">Fechada</SelectItem></SelectContent></Select></div>{module === "dispatch_control" ? <div className="min-w-0 space-y-1"><label className="text-xs font-medium">N.º encomenda</label><Select value={orderNumber || "all"} onValueChange={(value) => setOrderNumber(value === "all" ? "" : value)}><SelectTrigger><SelectValue placeholder="Todas as encomendas" /></SelectTrigger><SelectContent><SelectItem value="all">Todas as encomendas</SelectItem>{(data?.dispatchOrders ?? []).map((order) => <SelectItem key={order.orderNumber} value={order.orderNumber}>{order.orderNumber} · {order.customer ?? "Sem cliente"}</SelectItem>)}</SelectContent></Select></div> : null}</div><div className="space-y-3 rounded-xl border border-teal-100 bg-teal-50/40 p-4"><div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between"><div><p className="text-sm font-semibold text-teal-950">Filtros específicos do controlo</p><p className="text-xs text-teal-800">Pesquise pelas variáveis registadas no controlo selecionado. Pode combinar vários campos.</p></div>{(module ? REPORT_DETAIL_FILTERS[module]?.length : 0) ? <Badge variant="outline" className="w-fit border-teal-200 bg-white text-teal-800">{REPORT_DETAIL_FILTERS[module]?.length} campos disponíveis</Badge> : null}</div><div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3"><div className="space-y-1"><label className="text-xs font-medium text-teal-950">Pesquisa livre</label><Input aria-label="Pesquisa livre nos detalhes do relatório" value={detailSearch} onChange={(event) => setDetailSearch(event.target.value)} placeholder="Produto, lote, linha, equipamento…" /></div>{module && REPORT_DETAIL_FILTERS[module]?.map((field) => <div key={field.key} className="space-y-1"><label className="text-xs font-medium text-teal-950" htmlFor={`report-detail-${field.key}`}>{field.label}</label><Input id={`report-detail-${field.key}`} aria-label={`Filtrar por ${field.label.toLocaleLowerCase("pt-PT")}`} value={detailFilters[field.key] ?? ""} onChange={(event) => updateDetailFilter(field.key, event.target.value)} placeholder={field.placeholder} /></div>)}</div>{module ? <p className="text-xs text-teal-800">Os campos apresentados correspondem ao controlo escolhido. A pesquisa livre inclui também observações, título, área e dados detalhados do registo.</p> : <p className="text-xs text-teal-800">Selecione um controlo para ver filtros específicos; a pesquisa livre pode ser usada em todos os registos.</p>}</div></CardContent></Card>
 
