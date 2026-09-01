@@ -220,6 +220,18 @@ const treatmentLabel = (status: IncidenceTreatment["status"]) =>
     : status === "in_progress"
       ? "Em tratamento"
       : "Tratamento pendente";
+const treatmentTone = (status: IncidenceTreatment["status"]) =>
+  status === "completed"
+    ? "bg-emerald-100 text-emerald-900 hover:bg-emerald-100"
+    : status === "in_progress"
+      ? "bg-sky-100 text-sky-900 hover:bg-sky-100"
+      : "bg-amber-100 text-amber-900 hover:bg-amber-100";
+const treatmentSummaryLabel = (status: IncidenceTreatment["status"]) =>
+  status === "completed"
+    ? "Concluídos"
+    : status === "in_progress"
+      ? "Em curso"
+      : "Pendentes";
 
 export default function Nonconformities() {
   const utils = trpc.useUtils();
@@ -425,6 +437,22 @@ export default function Nonconformities() {
     item => item.generatedNonconformity && !item.nonconformityId
   ).length;
   const openNcCount = localOpenNcCount + generatedExternalOpenNcCount;
+  const treatmentSummary = useMemo(() => {
+    const summary: Record<IncidenceTreatment["status"], number> = {
+      pending: 0,
+      in_progress: 0,
+      completed: 0,
+    };
+    occurrences
+      .filter(item => item.type === "incidence")
+      .forEach(item => {
+        summary[item.treatment.status] += 1;
+      });
+    return {
+      ...summary,
+      total: summary.pending + summary.in_progress + summary.completed,
+    };
+  }, [occurrences]);
 
   useEffect(() => {
     setOccurrenceNumberDraft(selected?.occurrenceNumber ?? "");
@@ -477,7 +505,7 @@ export default function Nonconformities() {
         : "NC gerada · n.º por registar"
       : item.treatmentStatus === "no_nc"
         ? "Não gerou NC"
-        : "Tratamento pendente";
+        : "Decisão pendente";
   const canEditSelectedIncidence = Boolean(
     selected?.type === "incidence" &&
       (canManage || selected.registeredByProfileId === activeProfile?.id)
@@ -670,6 +698,59 @@ export default function Nonconformities() {
                 <SelectItem value="completed">Tratamento concluído</SelectItem>
               </SelectContent>
             </Select>
+          </CardContent>
+        </Card>
+        <Card className="border border-slate-200 bg-white">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base">Resumo dos tratamentos</CardTitle>
+            <CardDescription>
+              Distribuição das incidências visíveis pelos estados de tratamento.
+            </CardDescription>
+          </CardHeader>
+          <CardContent aria-label="Resumo gráfico dos tratamentos" className="space-y-4">
+            <div className="grid gap-3 sm:grid-cols-3">
+              {(["pending", "in_progress", "completed"] as const).map(status => (
+                <div
+                  key={status}
+                  className={`rounded-xl border p-3 ${
+                    status === "completed"
+                      ? "border-emerald-200 bg-emerald-50"
+                      : status === "in_progress"
+                        ? "border-sky-200 bg-sky-50"
+                        : "border-amber-200 bg-amber-50"
+                  }`}
+                >
+                  <p className="text-xs font-medium uppercase tracking-wide text-slate-600">
+                    {treatmentSummaryLabel(status)}
+                  </p>
+                  <p className="mt-1 text-2xl font-semibold text-slate-950">
+                    {treatmentSummary[status]}
+                  </p>
+                </div>
+              ))}
+            </div>
+            <div
+              className="flex h-3 overflow-hidden rounded-full bg-slate-100"
+              role="img"
+              aria-label={`Gráfico de tratamentos: ${treatmentSummary.pending} pendentes, ${treatmentSummary.in_progress} em curso e ${treatmentSummary.completed} concluídos`}
+            >
+              {treatmentSummary.total ? (
+                <>
+                  <span
+                    className="bg-amber-400"
+                    style={{ width: `${(treatmentSummary.pending / treatmentSummary.total) * 100}%` }}
+                  />
+                  <span
+                    className="bg-sky-500"
+                    style={{ width: `${(treatmentSummary.in_progress / treatmentSummary.total) * 100}%` }}
+                  />
+                  <span
+                    className="bg-emerald-500"
+                    style={{ width: `${(treatmentSummary.completed / treatmentSummary.total) * 100}%` }}
+                  />
+                </>
+              ) : null}
+            </div>
           </CardContent>
         </Card>
         <OfflineIncidencePanel />
@@ -950,11 +1031,12 @@ export default function Nonconformities() {
                         </p>
                         {item.type === "incidence" ? (
                           <>
-                            <p
-                              className={`mt-2 text-xs font-medium ${item.generatedNonconformity ? "text-emerald-700" : "text-slate-600"}`}
-                            >
-                              {ncStateLabel(item)}
+                            <p className="mt-2 text-xs text-slate-600">
+                              Decisão de NC: {ncStateLabel(item)}
                             </p>
+                            <Badge className={`mt-2 ${treatmentTone(item.treatment.status)}`}>
+                              {treatmentLabel(item.treatment.status)}
+                            </Badge>
                             <p className="mt-2 text-xs text-slate-600">
                               Registada por:{" "}
                               <span className="font-medium">
@@ -1215,13 +1297,7 @@ export default function Nonconformities() {
                             </p>
                           </div>
                           <Badge
-                            className={
-                              selected.treatment.status === "completed"
-                                ? "bg-emerald-100 text-emerald-900 hover:bg-emerald-100"
-                                : selected.treatment.status === "in_progress"
-                                  ? "bg-blue-100 text-blue-900 hover:bg-blue-100"
-                                  : "bg-amber-100 text-amber-900 hover:bg-amber-100"
-                            }
+                            className={treatmentTone(selected.treatment.status)}
                           >
                             {treatmentLabel(selected.treatment.status)}
                           </Badge>

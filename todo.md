@@ -595,3 +595,12 @@
 - [x] Adicionar regressões transversais para manter os painéis de Controlos e Hoje coerentes por tarefa e data.
 - [x] Adicionar as análises de ovo e mostarda ao controlo de Análises.
 - [x] Permitir validar e registar cada análise individualmente, mantendo o progresso das restantes análises previstas.
+- [x] Permitir escrever e filtrar diretamente na caixa de seleção do colaborador inspecionado no BPHF.
+- [x] Validar a pesquisa e seleção de colaboradores BPHF sem alterar o registo escolhido.
+- [x] Mostrar nos resultados diários de Análises o produto, lote, validade e identificação operacional registados.
+- [x] Mostrar os mesmos dados de produto nas linhas de Análises dos Relatórios, mantendo o detalhe completo.
+- [x] Adicionar regressões para a identificação de produto nos dois painéis.
+- [x] Corrigir a lista de Incidências para refletir o tratamento concluído em vez de manter «Tratamento pendente».
+- [x] Validar filtros e indicadores de tratamento após o fecho de uma incidência.
+- [x] Adicionar cores consistentes para os estados de tratamento pendente, em curso e concluído.
+- [x] Adicionar um dashboard gráfico de incidências por estado de tratamento, respeitando os filtros selecionados.

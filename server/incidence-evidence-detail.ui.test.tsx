@@ -24,7 +24,7 @@ vi.mock("@/lib/trpc", () => ({
     useUtils: () => ({ quality: { listIncidences: { invalidate: vi.fn() } } }),
     quality: {
       metadata: { useQuery: () => ({ data: { factories: [{ id: 1, name: "Fábrica 1 (Fatiado)" }] } }) },
-      listIncidences: { useQuery: () => ({ data: [{ id: 9, title: "Incidência com foto", notes: "Evidência registada.", area: "Produção", factoryId: 1, module: "bphf", completedAt: new Date("2026-08-21T10:00:00"), generatedNonconformity: false, nonconformityId: null, occurrenceNumber: null, registeredByProfileId: 3, registeredByName: "Joana Pina", registeredByTitle: "Resp. Qualidade", payload: { collaboratorId: 71, collaboratorName: "Maria Silva", criterion: "Higienização das mãos dos manipuladores", evidencePhotos: [{ key: "incidences/9/foto.png", url: "/manus-storage/incidences/9/foto.png", fileName: "foto-incidencia.png", mimeType: "image/png" }] } }] }) },
+      listIncidences: { useQuery: () => ({ data: [{ id: 9, title: "Incidência com foto", notes: "Evidência registada.", area: "Produção", factoryId: 1, module: "bphf", completedAt: new Date("2026-08-21T10:00:00"), generatedNonconformity: false, nonconformityId: null, occurrenceNumber: null, registeredByProfileId: 3, registeredByName: "Joana Pina", registeredByTitle: "Resp. Qualidade", payload: { collaboratorId: 71, collaboratorName: "Maria Silva", criterion: "Higienização das mãos dos manipuladores", incidenceTreatment: { status: "completed", correction: "Correção concluída.", responsible: "Joana Pina", completedAt: "2026-08-21" }, evidencePhotos: [{ key: "incidences/9/foto.png", url: "/manus-storage/incidences/9/foto.png", fileName: "foto-incidencia.png", mimeType: "image/png" }] } }, { id: 10, title: "Incidência pendente", notes: "Aguardar tratamento.", area: "Embalagem", factoryId: 1, module: "bphf", completedAt: new Date("2026-08-20T10:00:00"), generatedNonconformity: false, nonconformityId: null, occurrenceNumber: null, registeredByProfileId: 3, registeredByName: "Joana Pina", registeredByTitle: "Resp. Qualidade", payload: {} }] }) },
       listNcs: { useQuery: () => ({ data: [] }) },
       incidenceRecurrenceAlerts: { useQuery: () => ({ data: [] }) },
       similarIncidenceAlerts: { useQuery: () => ({ data: similarAlerts }) },
@@ -51,7 +51,7 @@ describe("detalhe de incidência com evidências", () => {
 
   it("mostra o tratamento autónomo mesmo antes da decisão sobre NC", () => {
     render(<Nonconformities />);
-    fireEvent.click(screen.getByRole("button", { name: /Incidência com foto/i }));
+    fireEvent.click(screen.getByRole("button", { name: /Incidência pendente/i }));
 
     expect(screen.getByText("Tratamento da incidência")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Iniciar tratamento" })).toBeTruthy();
@@ -69,7 +69,7 @@ describe("detalhe de incidência com evidências", () => {
 
   it("permite iniciar o tratamento sem gerar uma Não Conformidade", () => {
     render(<Nonconformities />);
-    fireEvent.click(screen.getByRole("button", { name: /Incidência com foto/i }));
+    fireEvent.click(screen.getByRole("button", { name: /Incidência pendente/i }));
     fireEvent.click(screen.getByRole("button", { name: "Iniciar tratamento" }));
 
     fireEvent.change(screen.getByLabelText("Responsável pelo tratamento"), { target: { value: "Neuza Antunes" } });
@@ -87,7 +87,17 @@ describe("detalhe de incidência com evidências", () => {
     fireEvent.click(screen.getByRole("option", { name: "Tratamento pendente" }));
 
     expect(screen.getByRole("combobox", { name: "Filtrar incidências por estado de tratamento" }).textContent).toMatch(/tratamento pendente/i);
-    expect(screen.getByRole("button", { name: /Incidência com foto/i })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /Incidência pendente/i })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /Incidência com foto/i })).toBeNull();
+  });
+
+  it("mostra na lista o tratamento concluído e o resumo gráfico coerente", () => {
+    render(<Nonconformities />);
+
+    expect(screen.getByRole("button", { name: /Incidência com foto/i }).textContent).toMatch(/tratamento concluído/i);
+    expect(screen.getByRole("button", { name: /Incidência com foto/i }).textContent).toMatch(/decisão de nc: decisão pendente/i);
+    expect(screen.getByLabelText("Resumo gráfico dos tratamentos")).toBeTruthy();
+    expect(screen.getByRole("img", { name: /1 pendentes, 0 em curso e 1 concluídos/i })).toBeTruthy();
   });
 
   it("oferece um filtro próprio para mostrar apenas NC abertas", () => {
@@ -100,7 +110,7 @@ describe("detalhe de incidência com evidências", () => {
 
   it("normaliza a data de conclusão antes de guardar o tratamento", () => {
     render(<Nonconformities />);
-    fireEvent.click(screen.getByRole("button", { name: /Incidência com foto/i }));
+    fireEvent.click(screen.getByRole("button", { name: /Incidência pendente/i }));
     fireEvent.click(screen.getByRole("button", { name: "Iniciar tratamento" }));
     fireEvent.click(screen.getByRole("combobox", { name: "Estado do tratamento" }));
     fireEvent.click(screen.getByRole("option", { name: "Tratamento concluído" }));
@@ -111,7 +121,7 @@ describe("detalhe de incidência com evidências", () => {
 
     expect(updateIncidence).toHaveBeenCalledWith(
       expect.objectContaining({
-        id: 9,
+        id: 10,
         treatment: expect.objectContaining({ completedAt: "2026-08-21" }),
       }),
       expect.any(Object)

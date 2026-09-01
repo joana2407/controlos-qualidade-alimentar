@@ -133,6 +133,33 @@ function DetailList({ payload }: { payload: unknown }) {
   return <dl className="grid gap-x-5 gap-y-2 text-sm md:grid-cols-2">{details.map((item, index) => <div key={`${item.label}-${index}`} className="grid grid-cols-[minmax(8rem,auto)_1fr] gap-2 border-b border-slate-100 py-2"><dt className="font-medium text-slate-600">{item.label}</dt><dd className="break-words text-slate-900">{item.value}</dd></div>)}</dl>;
 }
 
+function internalAnalysisProductSummary(entry: any) {
+  if (entry.module !== "internal_analysis") return [];
+  const payload = asRecord(entry.payload);
+  const samples = Array.isArray(payload.samples) ? payload.samples : [];
+  return samples
+    .map(sample => {
+      const record = asRecord(sample);
+      const parts = [
+        typeof record.product === "string" && record.product.trim()
+          ? `Produto: ${record.product}`
+          : null,
+        typeof record.lot === "string" && record.lot.trim()
+          ? `Lote: ${record.lot}`
+          : null,
+        typeof record.client === "string" && record.client.trim()
+          ? `Cliente: ${record.client}`
+          : null,
+        (typeof record.ppm === "number" ||
+          (typeof record.ppm === "string" && record.ppm.trim()))
+          ? `Resultado: ${record.ppm}`
+          : null,
+      ].filter((part): part is string => Boolean(part));
+      return parts.length ? parts.join(" · ") : null;
+    })
+    .filter((summary): summary is string => Boolean(summary));
+}
+
 function RetroactiveTraceability({ payload }: { payload: unknown }) {
   const record = asRecord(payload);
   const justification = asRecord(record.retroactiveJustification);
@@ -155,7 +182,8 @@ function EvidenceGallery({ payload }: { payload: unknown }) {
 }
 
 function EntryCard({ entry, factoryName, onDetail, canModify, onEdit, onDelete }: { entry: any; factoryName: (id: number | null | undefined) => string; onDetail: (entry: any) => void; canModify: boolean; onEdit: (entry: any) => void; onDelete: (entry: any) => void }) {
-  return <article className="px-6 py-5"><div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between"><div><p className="font-semibold text-slate-950">{entry.title}</p><p className="mt-1 text-sm text-muted-foreground">{moduleLabel(entry.module)} · {factoryName(entry.factoryId)} · {entry.area} · {dateFormat(entry.completedAt)}</p><OperatorAttribution name={entry.registeredByName} title={entry.registeredByTitle} /></div><div className="flex flex-wrap items-center gap-2"><ResultBadge value={entry.result} /><Button size="sm" variant="outline" onClick={() => onDetail(entry)}><Eye className="mr-1 h-3.5 w-3.5" />Abrir detalhe</Button>{canModify && <><Button size="icon" variant="outline" aria-label={`Editar registo ${entry.title}`} onClick={() => onEdit(entry)}><Pencil className="h-3.5 w-3.5" /></Button><Button size="icon" variant="outline" className="border-red-200 text-red-700 hover:bg-red-50" aria-label={`Eliminar registo ${entry.title}`} onClick={() => onDelete(entry)}><Trash2 className="h-3.5 w-3.5" /></Button></>}</div></div></article>;
+  const productSummaries = internalAnalysisProductSummary(entry);
+  return <article className="px-6 py-5"><div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between"><div><p className="font-semibold text-slate-950">{entry.title}</p><p className="mt-1 text-sm text-muted-foreground">{moduleLabel(entry.module)} · {factoryName(entry.factoryId)} · {entry.area} · {dateFormat(entry.completedAt)}</p>{productSummaries.length ? <div className="mt-2 space-y-1">{productSummaries.map((summary, index) => <p key={`${entry.id}-product-${index}`} className="text-sm text-slate-700">{summary}</p>)}</div> : null}<OperatorAttribution name={entry.registeredByName} title={entry.registeredByTitle} /></div><div className="flex flex-wrap items-center gap-2"><ResultBadge value={entry.result} /><Button size="sm" variant="outline" onClick={() => onDetail(entry)}><Eye className="mr-1 h-3.5 w-3.5" />Abrir detalhe</Button>{canModify && <><Button size="icon" variant="outline" aria-label={`Editar registo ${entry.title}`} onClick={() => onEdit(entry)}><Pencil className="h-3.5 w-3.5" /></Button><Button size="icon" variant="outline" className="border-red-200 text-red-700 hover:bg-red-50" aria-label={`Eliminar registo ${entry.title}`} onClick={() => onDelete(entry)}><Trash2 className="h-3.5 w-3.5" /></Button></>}</div></div></article>;
 }
 
 function downloadFullWorkbook(entries: any[], incidences: any[], factoryName: (id: number | null | undefined) => string, filters: Record<string, string>) {

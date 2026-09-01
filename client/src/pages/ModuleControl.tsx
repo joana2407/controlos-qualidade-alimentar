@@ -41,8 +41,8 @@ import {
 } from "@/components/ui/command";
 import {
   Popover,
+  PopoverAnchor,
   PopoverContent,
-  PopoverTrigger,
 } from "@/components/ui/popover";
 import { Progress } from "@/components/ui/progress";
 import {
@@ -262,6 +262,35 @@ function dailyResultContext(entry: DailyControlEntry) {
   return values.join(" · ");
 }
 
+function internalAnalysisSampleSummary(entry: DailyControlEntry) {
+  const samples = Array.isArray(entry.payload?.samples)
+    ? entry.payload.samples
+    : [];
+  return samples
+    .map(sample => {
+      if (!sample || typeof sample !== "object" || Array.isArray(sample))
+        return null;
+      const record = sample as Record<string, unknown>;
+      const parts = [
+        typeof record.product === "string" && record.product.trim()
+          ? `Produto: ${record.product}`
+          : null,
+        typeof record.lot === "string" && record.lot.trim()
+          ? `Lote: ${record.lot}`
+          : null,
+        typeof record.client === "string" && record.client.trim()
+          ? `Cliente: ${record.client}`
+          : null,
+        (typeof record.ppm === "number" ||
+          (typeof record.ppm === "string" && record.ppm.trim()))
+          ? `Resultado: ${record.ppm}`
+          : null,
+      ].filter((part): part is string => Boolean(part));
+      return parts.length ? parts.join(" · ") : null;
+    })
+    .filter((summary): summary is string => Boolean(summary));
+}
+
 function DailyControlResults({
   results,
   operationalDate,
@@ -278,6 +307,7 @@ function DailyControlResults({
   const dateLabel = operationalDate.toLocaleDateString("pt-PT");
   const isSensory = module === "sensory";
   const isBphf = module === "bphf";
+  const isInternalAnalysis = module === "internal_analysis";
   const [productFilter, setProductFilter] = useState("");
   const [lotFilter, setLotFilter] = useState("");
   const [criterionFilter, setCriterionFilter] = useState("all");
@@ -600,6 +630,9 @@ function DailyControlResults({
             <div className="divide-y overflow-hidden rounded-xl border border-slate-100">
               {visibleResults.map(entry => {
                 const context = dailyResultContext(entry);
+                const sampleSummaries = isInternalAnalysis
+                  ? internalAnalysisSampleSummary(entry)
+                  : [];
                 const resultLabel =
                   entry.result === "C"
                     ? "Conforme"
@@ -621,6 +654,18 @@ function DailyControlResults({
                         {entry.area}
                         {context ? ` · ${context}` : ""}
                       </p>
+                      {sampleSummaries.length ? (
+                        <div className="mt-2 space-y-1.5">
+                          {sampleSummaries.map((summary, index) => (
+                            <p
+                              key={`${entry.id}-sample-${index}`}
+                              className="rounded-lg bg-sky-50 px-3 py-2 text-sm text-slate-700"
+                            >
+                              {summary}
+                            </p>
+                          ))}
+                        </div>
+                      ) : null}
                       {entry.notes && (
                         <p className="mt-2 rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-700">
                           {entry.notes}
@@ -2941,7 +2986,7 @@ export function Bphf({
                               )
                             }
                           >
-                            <PopoverTrigger asChild>
+                            <PopoverAnchor asChild>
                               <Input
                                 id={`bphf-employee-search-${index}`}
                                 role="combobox"
@@ -2986,7 +3031,7 @@ export function Bphf({
                                 }}
                                 placeholder="Selecione o colaborador"
                               />
-                            </PopoverTrigger>
+                            </PopoverAnchor>
                             <PopoverContent
                               align="start"
                               className="w-[--radix-popover-trigger-width] p-0"

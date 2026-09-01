@@ -10,7 +10,7 @@ vi.mock("@/lib/trpc", () => ({
     useUtils: () => ({ quality: { reports: { invalidate: vi.fn() } } }),
     quality: {
       metadata: { useQuery: () => ({ data: { factories: [] } }) },
-      reports: { useQuery: () => ({ data: { modules: [], areas: [], trends: [], recentEntries: [], filteredEntries: [{ id: 44, title: "Verificação de higiene", module: "bphf", area: "Produção", completedAt: day, result: "C", notes: "Superfície limpa e desinfetada.", payload: { collaboratorId: 99992, collaboratorName: "Marco Monteiro", criterioLimpeza: "C", observacao: "Verificação visual concluída.", editHistory: [{ action: "updated" }], offlineManualIncidence: true, offlineQueuedAt: "2026-08-26T14:46:44.496Z", offlineSyncId: "client-id" }, registeredByName: "Sabrina Esteves", registeredByTitle: "Tec. Qualidade" }], planCompliance: 0, openNcs: 0, criticalOpen: 0 }, isLoading: false }) },
+      reports: { useQuery: () => ({ data: { modules: [], areas: [], trends: [], recentEntries: [], filteredEntries: [{ id: 44, title: "Verificação de higiene", module: "bphf", area: "Produção", completedAt: day, result: "C", notes: "Superfície limpa e desinfetada.", payload: { collaboratorId: 99992, collaboratorName: "Marco Monteiro", criterioLimpeza: "C", observacao: "Verificação visual concluída.", editHistory: [{ action: "updated" }], offlineManualIncidence: true, offlineQueuedAt: "2026-08-26T14:46:44.496Z", offlineSyncId: "client-id" }, registeredByName: "Sabrina Esteves", registeredByTitle: "Tec. Qualidade" }, { id: 45, title: "Teste rápido ovo", module: "internal_analysis", area: "Ovo", completedAt: day, result: "C", notes: null, payload: { samples: [{ product: "Pão de forma", lot: "L-20260901", client: "Cliente Norte", result: "negative" }] }, registeredByName: "Sabrina Esteves", registeredByTitle: "Tec. Qualidade" }], planCompliance: 0, openNcs: 0, criticalOpen: 0 }, isLoading: false }) },
       listNcs: { useQuery: () => ({ data: [] }) },
       dailyIncidences: { useQuery: () => ({ data: { incidences: [], total: 0, byFactory: [] } }) },
       dailyIncidenceSummary: { useQuery: () => ({ data: { date: day, total: 1, withNonconformity: 1, withoutNonconformity: 0, note: "Aguardar confirmação do fornecedor.", noteUpdatedByName: "Sabrina Esteves", incidences: [{ id: 12, title: "Embalagem danificada", module: "bphf", area: "Embalagem", factoryName: "Fábrica 1", generatedNonconformity: true, registeredByName: "Sabrina Esteves", registeredByTitle: "Tec. Qualidade" }] }, isLoading: false, refetch: vi.fn() }) },
@@ -42,7 +42,7 @@ describe("relatório operacional unificado", () => {
     expect(screen.queryByText("Superfície limpa e desinfetada.")).toBeNull();
     expect(screen.queryByText("Dados registados")).toBeNull();
 
-    fireEvent.click(screen.getByRole("button", { name: /detalhe/i }));
+    fireEvent.click(screen.getAllByRole("button", { name: /detalhe/i })[0]!);
 
     expect(screen.getAllByText("Dados registados").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Superfície limpa e desinfetada.").length).toBeGreaterThan(0);
@@ -53,5 +53,11 @@ describe("relatório operacional unificado", () => {
     expect(screen.queryByText(/edit history/i)).toBeNull();
     expect(screen.queryByText(/offline sync id/i)).toBeNull();
     expect(screen.queryByText(/offline queued at/i)).toBeNull();
+  });
+
+  it("mostra a identificação da amostra de Análises diretamente na linha do relatório", () => {
+    render(<Reports />);
+
+    expect(screen.getByText("Produto: Pão de forma · Lote: L-20260901 · Cliente: Cliente Norte")).toBeTruthy();
   });
 });
