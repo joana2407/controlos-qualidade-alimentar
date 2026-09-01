@@ -587,3 +587,11 @@
 - [x] Corrigir a geração e o armazenamento de backups Excel automáticos e manuais para datas anteriores.
 - [x] Validar com segurança a criação de um backup retroativo e confirmar as execuções automáticas futuras.
 - [x] Reavaliar e corrigir o fluxo de backup manual retroativo e a persistência efetiva dos backups automáticos.
+- [x] Adicionar os tipos «Teste rápido ovo» e «Teste rápido mostarda» ao controlo de Análises.
+- [x] Permitir validar e registar cada análise individualmente, mantendo o progresso das restantes análises previstas.
+- [x] Permitir vários registos diários por análise, exigindo pelo menos um registo por análise planeada para a completitude do controlo.
+- [x] Auditar divergências entre tarefas concluídas, pendências visíveis, completitude por fábrica e painel Hoje.
+- [x] Corrigir regras de pendência que apresentem controlos preenchidos como abertos ou omitam pendências reais no painel Hoje.
+- [x] Adicionar regressões transversais para manter os painéis de Controlos e Hoje coerentes por tarefa e data.
+- [x] Adicionar as análises de ovo e mostarda ao controlo de Análises.
+- [x] Permitir validar e registar cada análise individualmente, mantendo o progresso das restantes análises previstas.

@@ -5915,6 +5915,8 @@ const ALLERGEN_ANALYSIS_CATEGORIES = [
   },
   { label: "Soja", tests: ["Teste rápido soja"] },
   { label: "Leite", tests: ["Teste rápido leite"] },
+  { label: "Ovo", tests: ["Teste rápido ovo"] },
+  { label: "Mostarda", tests: ["Teste rápido mostarda"] },
   { label: "Sésamo", tests: ["Teste rápido sementes de sésamo"] },
   {
     label: "Frutos de Casca Rija",
@@ -5978,12 +5980,8 @@ export function InternalAnalysis({ createEntry }: any) {
   const isElisa = selectedAnalyses.some(item =>
     item.test.toLocaleLowerCase("pt-PT").includes("elisa")
   );
-  const toggleTest = (test: string) =>
-    setTests(current =>
-      current.includes(test)
-        ? current.filter(item => item !== test)
-        : [...current, test]
-    );
+  const selectTest = (test: string) =>
+    setTests(current => (current[0] === test ? [] : [test]));
   const updateSample = (
     index: number,
     update: (sample: (typeof samples)[number]) => (typeof samples)[number]
@@ -6123,8 +6121,8 @@ export function InternalAnalysis({ createEntry }: any) {
           <CardHeader>
             <CardTitle>Identificação da análise</CardTitle>
             <CardDescription>
-              Selecione uma ou mais análises. As amostras, observações e
-              fotografias ficam associadas ao mesmo registo.
+              Selecione uma análise para validar. Cada validação fica registada
+              individualmente e pode adicionar novas análises no mesmo dia.
             </CardDescription>
           </CardHeader>
           <CardContent className="grid gap-4 md:grid-cols-[1.5fr_.75fr]">
@@ -6142,8 +6140,8 @@ export function InternalAnalysis({ createEntry }: any) {
                           key={test}
                           type="button"
                           size="sm"
-                          variant={tests.includes(test) ? "default" : "outline"}
-                          onClick={() => toggleTest(test)}
+                          variant={tests[0] === test ? "default" : "outline"}
+                          onClick={() => selectTest(test)}
                         >
                           {test}
                         </Button>
@@ -6154,8 +6152,8 @@ export function InternalAnalysis({ createEntry }: any) {
               </div>
               <p className="text-xs text-muted-foreground">
                 {tests.length
-                  ? `${tests.length} análise${tests.length === 1 ? "" : "s"} selecionada${tests.length === 1 ? "" : "s"}.`
-                  : "Selecione as análises que partilham o mesmo resultado e evidência."}
+                  ? `Análise selecionada: ${tests[0]}.`
+                  : "Selecione uma análise para iniciar a respetiva validação."}
               </p>
             </div>
             <div className="space-y-2">
@@ -6311,7 +6309,7 @@ export function InternalAnalysis({ createEntry }: any) {
             <CardTitle>Observações e evidências</CardTitle>
             <CardDescription>
               As observações são obrigatórias; as fotografias selecionadas ficam
-              associadas a todas as análises escolhidas.
+              associadas à análise que está a validar.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-5">
@@ -6382,7 +6380,7 @@ export function InternalAnalysis({ createEntry }: any) {
             >
               {createEntry.isPending
                 ? "A registar…"
-                : "Registar análises internas"}
+                : "Validar análise"}
             </Button>
           </CardContent>
         </Card>

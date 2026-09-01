@@ -363,6 +363,30 @@ describe("procedimentos de qualidade por fábrica", () => {
     }
   });
 
+  it("remove Quebráveis preenchidos das pendências, da autorização e do painel Hoje na data original", async () => {
+    const previousDate = new Date(2026, 7, 13, 10, 0, 0);
+    const plannedTaskId = 520;
+    tasks.push({ id: plannedTaskId, factoryId: 1, status: "pending", dueAt: previousDate, completedAt: null, module: "fragile_items", area: "Plano do Dia", title: "Plano do Dia — Quebráveis F1", responsible: "Sabrina Esteves", assigneeProfileIds: [1] });
+    entries.push({ id: plannedTaskId, factoryId: 1, module: "fragile_items", area: "Zona Tratamento Térmico", result: "C", completedAt: now, payload: { plannedTaskId, plannedDate: previousDate.toISOString(), fragileItemId: 1 } } as any);
+    try {
+      const caller = qualityRouter.createCaller(createContext({ id: 1, name: "Sabrina Esteves", title: "Tec. Qualidade", role: "technician" }));
+
+      const dashboard = await caller.dashboard({ date: previousDate });
+      const listedTasks = await caller.listTasks({ factoryId: 1 });
+      const pendingTasks = await caller.pendingControlTasks({ module: "fragile_items", factoryId: 1 });
+      const authorization = await caller.controlAuthorization({ module: "fragile_items", factoryId: 1, plannedTaskId });
+
+      expect(dashboard.plannedControls).toEqual(expect.arrayContaining([expect.objectContaining({ id: plannedTaskId, completed: true })]));
+      expect(dashboard.moduleProgressByFactory.fragile_items[0]).toMatchObject({ factoryId: 1, expected: 1, completed: 1, percentage: 100 });
+      expect(listedTasks.map((task) => task.id)).not.toContain(plannedTaskId);
+      expect(pendingTasks.map((task) => task.id)).not.toContain(plannedTaskId);
+      expect(authorization).toMatchObject({ allowed: false, isPreviousPending: false });
+    } finally {
+      entries.pop();
+      tasks.pop();
+    }
+  });
+
   it("mantém o Controlo sensorial do dia acessível para validar produtos adicionais", async () => {
     tasks.push({ id: 514, factoryId: 1, status: "completed", dueAt: now, completedAt: now, module: "sensory", area: "Plano do Dia", title: "Plano do Dia — Controlo sensorial F1", responsible: "Sabrina Esteves", assigneeProfileIds: [1] });
     try {
@@ -371,6 +395,19 @@ describe("procedimentos de qualidade por fábrica", () => {
       const authorization = await caller.controlAuthorization({ module: "sensory", factoryId: 1, plannedTaskId: 514 });
 
       expect(authorization).toMatchObject({ allowed: true, taskId: 514, isPreviousPending: false });
+    } finally {
+      tasks.pop();
+    }
+  });
+
+  it("mantém as Análises internas do dia acessíveis para validar outra análise após a primeira", async () => {
+    tasks.push({ id: 517, factoryId: null, status: "completed", dueAt: now, completedAt: now, module: "internal_analysis", area: "Plano do Dia", title: "Plano do Dia — Análises internas", responsible: "Sabrina Esteves", assigneeProfileIds: [1] });
+    try {
+      const caller = qualityRouter.createCaller(createContext({ id: 1, name: "Sabrina Esteves", title: "Tec. Qualidade", role: "technician" }));
+
+      await expect(caller.controlAuthorization({ module: "internal_analysis", plannedTaskId: 517 })).resolves.toMatchObject({ allowed: true, taskId: 517, isPreviousPending: false });
+      await expect(caller.createEntry({ module: "internal_analysis", title: "Teste rápido mostarda", area: "Mostarda", result: "C", plannedTaskId: 517, payload: { category: "Mostarda", test: "Teste rápido mostarda", tests: ["Teste rápido mostarda"], analyses: [{ category: "Mostarda", test: "Teste rápido mostarda" }], samples: [{ product: "Produto 2", client: "Cliente", lot: "L-2", result: "negative", controlResult: "C" }] }, createNonconformity: false, severity: "medium" })).resolves.toMatchObject({ success: true });
+      expect(dbInserts).toEqual(expect.arrayContaining([expect.objectContaining({ module: "internal_analysis", title: "Teste rápido mostarda", factoryId: null })]));
     } finally {
       tasks.pop();
     }

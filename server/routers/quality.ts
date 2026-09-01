@@ -38,6 +38,7 @@ import {
   calculateSensoryScore,
   fragileInspectionDelayDays,
   fragileInspectionDueDate,
+  type FragilePeriodicity,
   isBusinessDay,
   isFragileInspectionPending,
   nextBusinessDay,
@@ -537,6 +538,54 @@ function foodDefenseTaskComplete(entries: Array<{ payload?: unknown }>) {
   });
 }
 
+function fragileItemsTaskComplete(
+  task: { id: number; factoryId: number | null; dueAt: Date },
+  taskEntries: Array<{ payload?: unknown }>,
+  entries: Array<{ module: string; factoryId: number | null; completedAt: Date; payload?: unknown }>,
+  items: Array<{
+    id: number;
+    factoryId: number | null;
+    periodicity: FragilePeriodicity;
+    status: string;
+  }>
+) {
+  if (!task.factoryId) return false;
+  const dueDate = new Date(task.dueAt);
+  const dueDateKey = localDateKey(dueDate);
+  const lastInspectionsBeforePlan = new Map<number, Date>();
+  entries
+    .filter(
+      entry =>
+        entry.module === "fragile_items" &&
+        entry.factoryId === task.factoryId &&
+        entryOperationalDate(entry) < dueDateKey
+    )
+    .forEach(entry => {
+      const itemId = entryPayload(entry).fragileItemId;
+      if (typeof itemId === "number" && !lastInspectionsBeforePlan.has(itemId))
+        lastInspectionsBeforePlan.set(itemId, entry.completedAt);
+    });
+  const expectedItemIds = items
+    .filter(
+      item =>
+        item.factoryId === task.factoryId &&
+        item.status === "active" &&
+        isFragileInspectionPending(
+          item.periodicity,
+          lastInspectionsBeforePlan.get(item.id),
+          dueDate
+        )
+    )
+    .map(item => item.id);
+  if (!expectedItemIds.length) return false;
+  const completedItemIds = new Set(
+    taskEntries
+      .map(entry => entryPayload(entry).fragileItemId)
+      .filter((itemId): itemId is number => typeof itemId === "number")
+  );
+  return expectedItemIds.every(itemId => completedItemIds.has(itemId));
+}
+
 function isHistoricalPlanTaskSatisfied(
   task: {
     id: number;
@@ -544,6 +593,7 @@ function isHistoricalPlanTaskSatisfied(
     factoryId: number | null;
     dueAt: Date;
     bphfCriteria?: string[] | null;
+    metalDetectorLines?: string[] | null;
   },
   entries: Array<{
     area: string;
@@ -568,7 +618,13 @@ function isHistoricalPlanTaskSatisfied(
     checklistItemId: number;
     checklistAreaId: number;
   }> = [],
-  monthlyAreaRows: Array<{ id: number; name: string; active?: string }> = []
+  monthlyAreaRows: Array<{ id: number; name: string; active?: string }> = [],
+  fragileCatalog: Array<{
+    id: number;
+    factoryId: number | null;
+    periodicity: FragilePeriodicity;
+    status: string;
+  }> = []
 ) {
   const taskEntries = entries.filter(entry =>
     entryMatchesPlannedTask(entry, task)
@@ -588,6 +644,8 @@ function isHistoricalPlanTaskSatisfied(
     );
   if (task.module === "food_defense")
     return foodDefenseTaskComplete(taskEntries);
+  if (task.module === "fragile_items")
+    return fragileItemsTaskComplete(task, taskEntries, entries, fragileCatalog);
   if (task.module === "suggestion_boxes")
     return suggestionBoxesTaskComplete(task, taskEntries, factoryCatalog);
   return oneSubmissionPlanModules.has(task.module) && taskEntries.length > 0;
@@ -624,6 +682,7 @@ async function assessControlAuthorization(
     monthlyAreaAssignments,
     monthlyAreaRows,
     factoryCatalog,
+    fragileCatalog,
   ] = await Promise.all([
     db.select().from(controlTasks).orderBy(controlTasks.dueAt),
     db.select().from(controlEntries).orderBy(desc(controlEntries.completedAt)),
@@ -636,9 +695,11 @@ async function assessControlAuthorization(
     db.select().from(checklistItemAreas),
     db.select().from(checklistAreas),
     db.select().from(factories).orderBy(factories.name),
+    db.select().from(fragileItems).orderBy(fragileItems.sortOrder),
   ]);
   const allowsSupplementaryDailyEntries =
     input.module === "bphf" ||
+    input.module === "internal_analysis" ||
     input.module === "temperature_controls" ||
     input.module === "sensory" ||
     input.module === "suggestion_boxes" ||
@@ -655,7 +716,8 @@ async function assessControlAuthorization(
         monthlyAssignments,
         factoryCatalog,
         monthlyAreaAssignments,
-        monthlyAreaRows
+        monthlyAreaRows,
+        fragileCatalog
       );
     const isCompletedPlanOpenForSupplement =
       allowsSupplementaryDailyEntries &&
@@ -1145,6 +1207,7 @@ export const qualityRouter = router({
         factoryCatalog,
         monthlyAreaAssignments,
         monthlyAreaRows,
+        fragileCatalog,
       ] = await Promise.all([
         db.select().from(controlTasks).orderBy(controlTasks.dueAt),
         db
@@ -1160,6 +1223,7 @@ export const qualityRouter = router({
         db.select().from(factories).orderBy(factories.name),
         db.select().from(checklistItemAreas),
         db.select().from(checklistAreas),
+        db.select().from(fragileItems).orderBy(fragileItems.sortOrder),
       ]);
       return tasks
         .filter(task => {
@@ -1185,7 +1249,8 @@ export const qualityRouter = router({
               monthlyAssignments,
               factoryCatalog,
               monthlyAreaAssignments,
-              monthlyAreaRows
+              monthlyAreaRows,
+              fragileCatalog
             ) &&
             (ctx.operatorProfile!.role === "manager" ||
               assignedProfiles.includes(ctx.operatorProfile!.id))
@@ -1450,8 +1515,9 @@ export const qualityRouter = router({
       const businessTasks = scopedTasks.filter(
         task => isBusinessDay(task.dueAt) && task.status !== "cancelled"
       );
-      const pending = businessTasks.filter(task => task.status === "pending");
-      const overdue = pending.filter(task => task.dueAt < start);
+      const pendingByStatus = businessTasks.filter(
+        task => task.status === "pending"
+      );
       const completedToday = scopedEntries.filter(
         entry => entryOperationalDate(entry) === localDateKey(operationalDate)
       );
@@ -1468,8 +1534,6 @@ export const qualityRouter = router({
       const visibleAdHocTasks = hasScheduleForSelectedDate
         ? adHocTasks.filter(task => task.dueAt >= start && task.dueAt < end)
         : [];
-      const visiblePending = hasScheduleForSelectedDate ? pending : [];
-      const visibleOverdue = hasScheduleForSelectedDate ? overdue : [];
       const completedTasksToday = todayTasks.filter(
         task => task.area !== "Plano do Dia" && task.status === "completed"
       );
@@ -1538,11 +1602,25 @@ export const qualityRouter = router({
           );
         if (task.module === "food_defense")
           return foodDefenseTaskComplete(taskEntries);
+        if (task.module === "fragile_items")
+          return fragileItemsTaskComplete(
+            task,
+            taskEntries,
+            scopedEntries,
+            scopedFragileCatalog
+          );
         return task.status === "completed" || taskEntries.length > 0;
       };
       const completedPlannedControls = plannedControls.filter(
         isPlannedControlCompleted
       );
+      const resolvedPending = pendingByStatus.filter(
+        task =>
+          task.area !== "Plano do Dia" || !isPlannedControlCompleted(task)
+      );
+      const resolvedOverdue = resolvedPending.filter(task => task.dueAt < start);
+      const visiblePending = hasScheduleForSelectedDate ? resolvedPending : [];
+      const visibleOverdue = hasScheduleForSelectedDate ? resolvedOverdue : [];
       const dailyExpectedCount = todayTasks.length;
       const dailyCompletedCount =
         completedTasksToday.length + completedPlannedControls.length;
@@ -2076,6 +2154,7 @@ export const qualityRouter = router({
         monthlyAreaAssignments,
         monthlyAreaRows,
         factoryCatalog,
+        fragileCatalog,
       ] = await Promise.all([
         db.select().from(controlTasks).orderBy(controlTasks.dueAt),
         db
@@ -2091,6 +2170,7 @@ export const qualityRouter = router({
         db.select().from(checklistItemAreas),
         db.select().from(checklistAreas),
         db.select().from(factories).orderBy(factories.name),
+        db.select().from(fragileItems).orderBy(fragileItems.sortOrder),
       ]);
       const profile = ctx.operatorProfile!;
       return scopeToFactory(tasks, input?.factoryId)
@@ -2109,7 +2189,8 @@ export const qualityRouter = router({
               monthlyAssignments,
               factoryCatalog,
               monthlyAreaAssignments,
-              monthlyAreaRows
+              monthlyAreaRows,
+              fragileCatalog
             );
           return (
             isBusinessDay(task.dueAt) &&
