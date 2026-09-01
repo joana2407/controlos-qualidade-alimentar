@@ -95,6 +95,12 @@ const incidenceTreatmentStatusSchema = z.enum([
   "in_progress",
   "completed",
 ]);
+const fragileRiskLevelSchema = z.enum(["1", "2", "3"]);
+const fragileTreatmentReviewSchema = z.object({
+  periodicity: z.enum(["D", "S", "Q", "M"]),
+  riskLevel: fragileRiskLevelSchema,
+  rationale: z.string().trim().max(1200).optional(),
+});
 const normaliseIncidenceIsoDate = (value: unknown) => {
   if (typeof value !== "string") return value;
   const trimmed = value.trim();
@@ -529,13 +535,25 @@ function monthlyChecklistTaskComplete(
 }
 
 function foodDefenseTaskComplete(entries: Array<{ payload?: unknown }>) {
-  return entries.some(entry => {
-    const criteria = entryPayload(entry).criteria;
-    return (
-      Array.isArray(criteria) &&
-      criteria.length >= FOOD_DEFENSE_EXPECTED_CRITERIA
-    );
+  const completedCriterionIds = new Set<string>();
+  entries.forEach(entry => {
+    const payload = entryPayload(entry);
+    if (typeof payload.foodDefenseCriterionId === "string")
+      completedCriterionIds.add(payload.foodDefenseCriterionId);
+    if (Array.isArray(payload.criteria))
+      payload.criteria.forEach(criterion => {
+        if (
+          criterion &&
+          typeof criterion === "object" &&
+          !Array.isArray(criterion) &&
+          typeof (criterion as Record<string, unknown>).id === "string"
+        )
+          completedCriterionIds.add(
+            (criterion as Record<string, string>).id
+          );
+      });
   });
+  return completedCriterionIds.size >= FOOD_DEFENSE_EXPECTED_CRITERIA;
 }
 
 function fragileItemsTaskComplete(
@@ -1811,13 +1829,26 @@ export const qualityRouter = router({
               completed = completedEquipmentIds.size;
             } else if (module === "food_defense") {
               expected = FOOD_DEFENSE_EXPECTED_CRITERIA;
-              const latestAssessment = factoryEntriesToday[0];
-              const criteria: unknown[] =
-                latestAssessment &&
-                Array.isArray(payloadFor(latestAssessment).criteria)
-                  ? (payloadFor(latestAssessment).criteria as unknown[])
-                  : [];
-              completed = criteria.length;
+              const completedCriterionIds = new Set<string>();
+              factoryEntriesToday.forEach(entry => {
+                const payload = payloadFor(entry);
+                if (typeof payload.foodDefenseCriterionId === "string")
+                  completedCriterionIds.add(payload.foodDefenseCriterionId);
+                if (Array.isArray(payload.criteria))
+                  payload.criteria.forEach(criterion => {
+                    if (
+                      criterion &&
+                      typeof criterion === "object" &&
+                      !Array.isArray(criterion) &&
+                      typeof (criterion as Record<string, unknown>).id ===
+                        "string"
+                    )
+                      completedCriterionIds.add(
+                        (criterion as Record<string, string>).id
+                      );
+                  });
+              });
+              completed = completedCriterionIds.size;
             }
             completed = Math.min(completed, expected);
             return {
@@ -2723,6 +2754,9 @@ export const qualityRouter = router({
         productName: z.string().trim().max(180).optional(),
         lot: z.string().trim().max(120).optional(),
         validity: z.string().trim().max(40).optional(),
+        dispatchProductChecks: z.array(dispatchProductCheckSchema).min(1).max(30).optional(),
+        dispatchVehicleTemperature: z.number().min(-100).max(100).optional(),
+        dispatchVehicleObservations: z.string().trim().max(3000).optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -2774,6 +2808,143 @@ export const qualityRouter = router({
         if (input.validity.trim()) nextPayload.validity = input.validity.trim();
         else delete nextPayload.validity;
       }
+      let recalculatedDispatchResult: "C" | "NC" | "N/A" | undefined;
+      if (input.dispatchProductChecks !== undefined) {
+        if (entry.module !== "dispatch_control")
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "As referências só podem ser editadas em registos de Expedição.",
+          });
+        if (input.dispatchVehicleTemperature === undefined)
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "Indique a temperatura do veículo ao editar a Expedição.",
+          });
+        const profileId =
+          nextPayload.profile === "congelado" ? "congelado" : "ambiente";
+        const profile = getDispatchProfile(profileId);
+        const limits = {
+          product: profile.productTemperatureLimit,
+          vehicle: profile.vehicleTemperatureLimit,
+        };
+        const productValidations = input.dispatchProductChecks.map(check => {
+          if (check.verificationStatus === "not_verified")
+            return {
+              ...check,
+              dispatchedQuantity: 0,
+              conformity: {
+                result: "N/A" as const,
+                quantityResult: "N/A" as const,
+                productTemperatureResult: "N/A" as const,
+                vehicleTemperatureResult: "N/A" as const,
+              },
+            };
+          const dispatchedQuantity = check.lots.reduce(
+            (total, lot) => total + lot.dispatchedQuantity,
+            0
+          );
+          const conformity = calculateDispatchConformity({
+            orderedBoxes: check.orderedQuantity,
+            dispatchedBoxes: dispatchedQuantity,
+            productLabelResult: check.productLabelResult,
+            boxLabelResult: check.boxLabelResult,
+            productTemperature: check.productTemperature,
+            vehicleTemperature: input.dispatchVehicleTemperature!,
+            productTemperatureLimit: limits.product,
+            vehicleTemperatureLimit: limits.vehicle,
+          });
+          if (conformity.result === "NC" && !check.observations?.trim())
+            throw new TRPCError({
+              code: "BAD_REQUEST",
+              message: `As observações são obrigatórias no produto ${check.name} quando a validação não está conforme.`,
+            });
+          return {
+            ...check,
+            verificationStatus: "verified" as const,
+            dispatchedQuantity,
+            conformity,
+          };
+        });
+        const vehicleTemperatureResult =
+          input.dispatchVehicleTemperature <= limits.vehicle ? "C" : "NC";
+        if (
+          vehicleTemperatureResult === "NC" &&
+          !input.dispatchVehicleObservations?.trim()
+        )
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message:
+              "A observação geral é obrigatória quando a temperatura do veículo não está conforme.",
+          });
+        const hasNonconformity =
+          productValidations.some(check => check.conformity.result === "NC") ||
+          vehicleTemperatureResult === "NC";
+        const hasNotVerified = productValidations.some(
+          check => check.verificationStatus === "not_verified"
+        );
+        recalculatedDispatchResult = hasNonconformity
+          ? "NC"
+          : hasNotVerified
+            ? "N/A"
+            : "C";
+        const reasons = [
+          ...productValidations
+            .filter(check => check.verificationStatus !== "not_verified")
+            .flatMap(check => [
+              ...(check.conformity.quantityResult === "NC"
+                ? [`${check.name}: quantidade expedida diferente da quantidade pedida.`]
+                : []),
+              ...(check.conformity.productTemperatureResult === "NC"
+                ? [`${check.name}: temperatura do produto fora do limite.`]
+                : []),
+              ...(check.productLabelResult === "NC"
+                ? [`${check.name}: rotulagem do produto não conforme.`]
+                : []),
+              ...(check.boxLabelResult === "NC"
+                ? [`${check.name}: rotulagem da caixa não conforme.`]
+                : []),
+            ]),
+          ...productValidations
+            .filter(check => check.verificationStatus === "not_verified")
+            .map(
+              check =>
+                `${check.name}: referência não verificada — ${check.notVerifiedReason}.`
+            ),
+          ...(vehicleTemperatureResult === "NC"
+            ? [
+                `Temperatura do veículo fora do limite (${input.dispatchVehicleTemperature} °C; máximo ${limits.vehicle} °C).`,
+              ]
+            : []),
+        ];
+        const first =
+          productValidations.find(
+            check => check.verificationStatus !== "not_verified"
+          ) ?? productValidations[0]!;
+        nextPayload.productChecks = productValidations;
+        nextPayload.productValidations = productValidations;
+        nextPayload.orderItems = productValidations.map(check => ({
+          name: check.name,
+          orderedQuantity: check.orderedQuantity,
+        }));
+        nextPayload.verificationSummary = {
+          verified: productValidations.filter(
+            check => check.verificationStatus !== "not_verified"
+          ).length,
+          notVerified: productValidations.filter(
+            check => check.verificationStatus === "not_verified"
+          ).length,
+        };
+        nextPayload.reasons = reasons;
+        nextPayload.vehicleTemperature = input.dispatchVehicleTemperature;
+        nextPayload.vehicleTemperatureResult = vehicleTemperatureResult;
+        nextPayload.temperatureLimits = limits;
+        nextPayload.observations = input.dispatchVehicleObservations?.trim() || "";
+        nextPayload.product = first.name;
+        nextPayload.lot =
+          first.verificationStatus === "not_verified"
+            ? "NÃO VERIFICADO"
+            : first.lots[0]?.lot ?? "";
+      }
       await db
         .update(controlEntries)
         .set({
@@ -2782,7 +2953,7 @@ export const qualityRouter = router({
           ...(input.factoryId !== undefined
             ? { factoryId: input.factoryId }
             : {}),
-          result: input.result,
+          result: recalculatedDispatchResult ?? input.result,
           notes: input.notes?.trim() || null,
           payload: {
             ...nextPayload,
@@ -3065,11 +3236,10 @@ export const qualityRouter = router({
             progressChecklistAreas
           );
         } else if (input.module === "food_defense") {
-          const criteria = Array.isArray(input.payload.criteria)
-            ? input.payload.criteria
-            : [];
-          plannedControlComplete =
-            criteria.length >= FOOD_DEFENSE_EXPECTED_CRITERIA;
+          plannedControlComplete = foodDefenseTaskComplete([
+            ...taskEntriesForPlan,
+            { payload: input.payload },
+          ]);
         } else if (input.module === "fragile_items") {
           const priorInspections = new Map<number, Date>();
           taskEntries
@@ -3786,6 +3956,7 @@ export const qualityRouter = router({
         generatedNonconformity: z.boolean().optional(),
         occurrenceNumber: z.string().max(80).optional(),
         treatment: incidenceTreatmentSchema.optional(),
+        fragileTreatmentReview: fragileTreatmentReviewSchema.optional(),
         evidencePhotos: z
           .array(
             z.object({
@@ -3827,7 +3998,8 @@ export const qualityRouter = router({
       if (
         !isManager &&
         (input.generatedNonconformity !== undefined ||
-          input.occurrenceNumber !== undefined)
+          input.occurrenceNumber !== undefined ||
+          input.fragileTreatmentReview !== undefined)
       )
         throw new TRPCError({
           code: "FORBIDDEN",
@@ -3849,6 +4021,54 @@ export const qualityRouter = router({
       if (input.occurrenceNumber !== undefined)
         payload.nonconformityOccurrenceNumber =
           input.occurrenceNumber.trim() || null;
+      if (input.fragileTreatmentReview !== undefined) {
+        if (entry.module !== "fragile_items")
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message:
+              "A revisão de periodicidade e risco só está disponível para incidências de Quebráveis.",
+          });
+        const fragileItemId = Number(payload.fragileItemId);
+        if (!Number.isInteger(fragileItemId) || fragileItemId <= 0)
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "O ponto de Quebráveis associado à incidência não foi identificado.",
+          });
+        const fragileItem = (
+          await db
+            .select()
+            .from(fragileItems)
+            .where(eq(fragileItems.id, fragileItemId))
+            .limit(1)
+        )[0];
+        if (!fragileItem)
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "O ponto de Quebráveis associado já não existe.",
+          });
+        const review = input.fragileTreatmentReview;
+        payload.fragileTreatmentReview = {
+          itemId: fragileItem.id,
+          previousPeriodicity: fragileItem.periodicity,
+          previousRiskLevel: fragileItem.riskLevel,
+          periodicity: review.periodicity,
+          riskLevel: review.riskLevel,
+          rationale: review.rationale?.trim() || "",
+          reviewedAt: new Date().toISOString(),
+          reviewedByProfileId: ctx.operatorProfile!.id,
+          reviewedByName: ctx.operatorProfile!.name,
+        };
+        await db
+          .update(fragileItems)
+          .set({
+            periodicity: review.periodicity,
+            riskLevel: review.riskLevel,
+            updatedBy: ctx.user!.openId,
+            updatedByProfileId: ctx.operatorProfile!.id,
+            updatedByName: ctx.operatorProfile!.name,
+          })
+          .where(eq(fragileItems.id, fragileItem.id));
+      }
       if (input.treatment !== undefined) {
         const correction = input.treatment.correction?.trim() || "";
         const responsible = input.treatment.responsible?.trim() || "";

@@ -604,3 +604,13 @@
 - [x] Validar filtros e indicadores de tratamento após o fecho de uma incidência.
 - [x] Adicionar cores consistentes para os estados de tratamento pendente, em curso e concluído.
 - [x] Adicionar um dashboard gráfico de incidências por estado de tratamento, respeitando os filtros selecionados.
+- [x] Manter apenas o botão «Nova incidência» no canto superior direito do painel de Incidências.
+- [x] Mover o filtro de estado de tratamento para o quadro gráfico e simplificar a área de filtros.
+- [x] Incluir no quadro gráfico as métricas de incidências abertas e de NC geradas.
+- [x] Permitir à Responsável rever periodicidade e risco de contaminação física ao tratar uma incidência NC de Quebráveis.
+- [x] Persistir a decisão aprovada no respetivo ponto de Quebráveis com rastreabilidade da incidência que a originou.
+- [x] Ampliar o detalhe de Expedição com referências verificadas, não verificadas, resultados, motivos e observações.
+- [x] Abrir na edição de Expedição o painel completo de referências, permitindo rever e alterar cada resultado, motivo e observação.
+- [x] Permitir validar cada ponto da checklist Food Defense de forma independente e repetível.
+- [x] Alinhar o progresso, pendências e resultados Food Defense à conclusão mínima por ponto aplicável.
+- [x] Incluir na secção Segurança Geral um link para consultar a classificação anual de Portugal no Global Peace Index.

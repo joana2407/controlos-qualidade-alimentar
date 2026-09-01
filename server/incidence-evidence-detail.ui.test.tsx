@@ -17,7 +17,10 @@ const { similarAlerts, updateIncidence } = vi.hoisted(() => ({
   updateIncidence: vi.fn(),
 }));
 
-vi.mock("@/components/OfflineIncidencePanel", () => ({ OfflineIncidencePanel: () => null }));
+vi.mock("@/components/OfflineIncidencePanel", () => ({
+  OfflineIncidencePanel: ({ variant }: { variant?: string }) =>
+    variant === "header" ? <button type="button">Nova incidência</button> : null,
+}));
 vi.mock("@/contexts/QualityAccessContext", () => ({ useQualityAccess: () => ({ canManage: true, activeProfile: { id: 3, name: "Joana Pina" } }) }));
 vi.mock("@/lib/trpc", () => ({
   trpc: {
@@ -84,9 +87,9 @@ describe("detalhe de incidência com evidências", () => {
     render(<Nonconformities />);
 
     fireEvent.click(screen.getByRole("combobox", { name: "Filtrar incidências por estado de tratamento" }));
-    fireEvent.click(screen.getByRole("option", { name: "Tratamento pendente" }));
+    fireEvent.click(screen.getByRole("option", { name: "Pendentes" }));
 
-    expect(screen.getByRole("combobox", { name: "Filtrar incidências por estado de tratamento" }).textContent).toMatch(/tratamento pendente/i);
+    expect(screen.getByRole("combobox", { name: "Filtrar incidências por estado de tratamento" }).textContent).toMatch(/pendentes/i);
     expect(screen.getByRole("button", { name: /Incidência pendente/i })).toBeTruthy();
     expect(screen.queryByRole("button", { name: /Incidência com foto/i })).toBeNull();
   });
@@ -98,6 +101,15 @@ describe("detalhe de incidência com evidências", () => {
     expect(screen.getByRole("button", { name: /Incidência com foto/i }).textContent).toMatch(/decisão de nc: decisão pendente/i);
     expect(screen.getByLabelText("Resumo gráfico dos tratamentos")).toBeTruthy();
     expect(screen.getByRole("img", { name: /1 pendentes, 0 em curso e 1 concluídos/i })).toBeTruthy();
+  });
+
+  it("mantém a criação de incidência no cabeçalho e mostra incidências abertas e NC geradas no resumo", () => {
+    render(<Nonconformities />);
+
+    expect(screen.getByRole("button", { name: "Nova incidência" })).toBeTruthy();
+    expect(screen.getByText("Incidências abertas")).toBeTruthy();
+    expect(screen.getByText("NC geradas")).toBeTruthy();
+    expect(screen.queryByText("Registo de incidências sem internet")).toBeNull();
   });
 
   it("oferece um filtro próprio para mostrar apenas NC abertas", () => {

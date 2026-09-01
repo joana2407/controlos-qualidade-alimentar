@@ -9,9 +9,12 @@ describe("checklist anual Food Defense", () => {
     expect(FOOD_DEFENSE_RISK_GUIDANCE.map((item) => item.min)).toEqual([6, 3, 0]);
   });
 
-  it("pede avaliação individual e risco para cada critério NC", () => {
+  it("permite registar cada ponto individualmente e pede risco para cada critério NC", () => {
     const page = readFileSync(new URL("../client/src/pages/ModuleControl.tsx", import.meta.url), "utf8");
-    expect(page).toContain("Conclua todos os critérios da checklist Food Defense");
+    expect(page).toContain("Registar este ponto");
+    expect(page).toContain("Registar nova validação deste ponto");
+    expect(page).toContain("foodDefenseCriterionId: item.id");
+    expect(page).toContain("Ponto por registar");
     expect(page).toContain("Vulnerabilidade (V)");
     expect(page).toContain("Ação indicada:");
     expect(page).not.toContain("Referência 2025:");
@@ -31,5 +34,12 @@ describe("checklist anual Food Defense", () => {
     const guides = readFileSync(new URL("../client/src/lib/helpGuides.ts", import.meta.url), "utf8");
     expect(guides).toContain('id: "food_defense"');
     expect(guides).toContain("Avaliação anual de vulnerabilidades");
+  });
+
+  it("inclui na Segurança Geral o acesso à classificação anual de Portugal", () => {
+    const page = readFileSync(new URL("../client/src/pages/ModuleControl.tsx", import.meta.url), "utf8");
+    expect(page).toContain("visionofhumanity.org/indexes/global-peace-index");
+    expect(page).toContain("Classificação anual de Portugal");
+    expect(page).toContain("segurança geral");
   });
 });

@@ -1,0 +1,1 @@
+ALTER TABLE `fragile_items` ADD `fragile_risk_level` enum('1','2','3') DEFAULT '2' NOT NULL;

@@ -84,6 +84,7 @@ import {
   CircleHelp,
   ClipboardCheck,
   Eye,
+  ExternalLink,
   Factory,
   FilePlus2,
   FlaskConical,
@@ -208,6 +209,17 @@ type DailyControlEntry = {
   registeredByName?: string | null;
   registeredByTitle?: string | null;
 };
+type DispatchReferenceEdit = {
+  name: string;
+  orderedQuantity: number;
+  verificationStatus: "verified" | "not_verified";
+  notVerifiedReason: string;
+  lots: Array<{ lot: string; dispatchedQuantity: number }>;
+  productLabelResult: "C" | "NC";
+  boxLabelResult: "C" | "NC";
+  productTemperature: string;
+  observations: string;
+};
 type PendingControlTask = {
   id: number;
   dueAt: Date | string;
@@ -262,6 +274,60 @@ function dailyResultContext(entry: DailyControlEntry) {
   return values.join(" · ");
 }
 
+function dispatchReferencesFromPayload(
+  payload: Record<string, unknown>
+): DispatchReferenceEdit[] {
+  const source = Array.isArray(payload.productChecks)
+    ? payload.productChecks
+    : Array.isArray(payload.productValidations)
+      ? payload.productValidations
+      : [];
+  return source.flatMap(item => {
+    if (!item || typeof item !== "object" || Array.isArray(item)) return [];
+    const reference = item as Record<string, unknown>;
+    if (typeof reference.name !== "string" || !reference.name.trim()) return [];
+    const notVerified = reference.verificationStatus === "not_verified";
+    const lots = Array.isArray(reference.lots)
+      ? reference.lots.flatMap(lot => {
+          if (!lot || typeof lot !== "object" || Array.isArray(lot)) return [];
+          const value = lot as Record<string, unknown>;
+          return typeof value.lot === "string"
+            ? [{ lot: value.lot, dispatchedQuantity: Number(value.dispatchedQuantity ?? 0) }]
+            : [];
+        })
+      : [];
+    return [{
+      name: reference.name,
+      orderedQuantity: Number(reference.orderedQuantity ?? 0),
+      verificationStatus: notVerified ? "not_verified" : "verified",
+      notVerifiedReason:
+        typeof reference.notVerifiedReason === "string"
+          ? reference.notVerifiedReason
+          : "",
+      lots: lots.length ? lots : [{ lot: "", dispatchedQuantity: 0 }],
+      productLabelResult: reference.productLabelResult === "NC" ? "NC" : "C",
+      boxLabelResult: reference.boxLabelResult === "NC" ? "NC" : "C",
+      productTemperature:
+        reference.productTemperature === undefined || reference.productTemperature === null
+          ? ""
+          : String(reference.productTemperature),
+      observations:
+        typeof reference.observations === "string" ? reference.observations : "",
+    }];
+  });
+}
+
+function dispatchVehicleFromPayload(payload: Record<string, unknown>) {
+  return {
+    temperature:
+      payload.vehicleTemperature === undefined || payload.vehicleTemperature === null
+        ? ""
+        : String(payload.vehicleTemperature),
+    observations:
+      typeof payload.observations === "string" ? payload.observations : "",
+  };
+}
+
 function internalAnalysisSampleSummary(entry: DailyControlEntry) {
   const samples = Array.isArray(entry.payload?.samples)
     ? entry.payload.samples
@@ -308,6 +374,7 @@ function DailyControlResults({
   const isSensory = module === "sensory";
   const isBphf = module === "bphf";
   const isInternalAnalysis = module === "internal_analysis";
+  const isDispatch = module === "dispatch_control";
   const [productFilter, setProductFilter] = useState("");
   const [lotFilter, setLotFilter] = useState("");
   const [criterionFilter, setCriterionFilter] = useState("all");
@@ -394,6 +461,13 @@ function DailyControlResults({
       })
     | null
   >(null);
+  const [dispatchReferences, setDispatchReferences] = useState<
+    DispatchReferenceEdit[]
+  >([]);
+  const [dispatchVehicle, setDispatchVehicle] = useState({
+    temperature: "",
+    observations: "",
+  });
   const [deletingEntry, setDeletingEntry] = useState<DailyControlEntry | null>(
     null
   );
@@ -402,7 +476,9 @@ function DailyControlResults({
     entry.registeredByProfileId === activeProfile?.id ||
     (!entry.registeredByProfileId &&
       entry.registeredByName === activeProfile?.name);
-  const beginEdit = (entry: DailyControlEntry) =>
+  const beginEdit = (entry: DailyControlEntry) => {
+    setDispatchReferences(dispatchReferencesFromPayload(entry.payload));
+    setDispatchVehicle(dispatchVehicleFromPayload(entry.payload));
     setEditingEntry({
       ...entry,
       productName:
@@ -413,6 +489,7 @@ function DailyControlResults({
           ? entry.payload.validity
           : "",
     });
+  };
   const updateControlEntry = trpc.quality.updateControlEntry.useMutation({
     onSuccess: () => {
       utils.quality.dashboard.invalidate();
@@ -442,9 +519,64 @@ function DailyControlResults({
         editingEntry?.payload?.lot ||
         editingEntry?.payload?.validity
     );
+  const updateDispatchReference = (
+    index: number,
+    changes: Partial<DispatchReferenceEdit>
+  ) =>
+    setDispatchReferences(current =>
+      current.map((reference, referenceIndex) =>
+        referenceIndex === index ? { ...reference, ...changes } : reference
+      )
+    );
+  const updateDispatchLot = (
+    referenceIndex: number,
+    lotIndex: number,
+    changes: Partial<DispatchReferenceEdit["lots"][number]>
+  ) =>
+    setDispatchReferences(current =>
+      current.map((reference, index) =>
+        index === referenceIndex
+          ? {
+              ...reference,
+              lots: reference.lots.map((lot, currentLotIndex) =>
+                currentLotIndex === lotIndex ? { ...lot, ...changes } : lot
+              ),
+            }
+          : reference
+      )
+    );
+  const addDispatchLot = (referenceIndex: number) =>
+    setDispatchReferences(current =>
+      current.map((reference, index) =>
+        index === referenceIndex
+          ? {
+              ...reference,
+              lots: [...reference.lots, { lot: "", dispatchedQuantity: 0 }],
+            }
+          : reference
+      )
+    );
+  const removeDispatchLot = (referenceIndex: number, lotIndex: number) =>
+    setDispatchReferences(current =>
+      current.map((reference, index) =>
+        index === referenceIndex
+          ? {
+              ...reference,
+              lots:
+                reference.lots.length <= 1
+                  ? reference.lots
+                  : reference.lots.filter((_, currentLotIndex) => currentLotIndex !== lotIndex),
+            }
+          : reference
+      )
+    );
   const submitEdit = (event: React.FormEvent) => {
     event.preventDefault();
     if (!editingEntry) return;
+    if (isDispatch && !dispatchReferences.length)
+      return toast.error("Este registo de Expedição não tem referências para atualizar.");
+    if (isDispatch && !dispatchVehicle.temperature.trim())
+      return toast.error("Indique a temperatura do veículo antes de guardar a Expedição.");
     updateControlEntry.mutate({
       id: editingEntry.id,
       title: editingEntry.title,
@@ -457,6 +589,33 @@ function DailyControlResults({
         : undefined,
       lot: supportsProductDetails ? editingEntry.lot : undefined,
       validity: supportsProductDetails ? editingEntry.validity : undefined,
+      dispatchProductChecks: isDispatch
+        ? dispatchReferences.map(reference =>
+            reference.verificationStatus === "not_verified"
+              ? {
+                  verificationStatus: "not_verified" as const,
+                  name: reference.name,
+                  orderedQuantity: reference.orderedQuantity,
+                  notVerifiedReason: reference.notVerifiedReason,
+                }
+              : {
+                  verificationStatus: "verified" as const,
+                  name: reference.name,
+                  orderedQuantity: reference.orderedQuantity,
+                  lots: reference.lots,
+                  productLabelResult: reference.productLabelResult,
+                  boxLabelResult: reference.boxLabelResult,
+                  productTemperature: Number(reference.productTemperature),
+                  observations: reference.observations || undefined,
+                }
+          )
+        : undefined,
+      dispatchVehicleTemperature: isDispatch
+        ? Number(dispatchVehicle.temperature)
+        : undefined,
+      dispatchVehicleObservations: isDispatch
+        ? dispatchVehicle.observations
+        : undefined,
     });
   };
   return (
@@ -813,6 +972,27 @@ function DailyControlResults({
                   </p>
                 )}
               </div>
+              {module === "dispatch_control" ? (
+                <section className="space-y-3 rounded-lg border border-teal-200 bg-teal-50/40 p-3" aria-label="Detalhe completo das referências de expedição">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <p className="font-semibold text-teal-950">Referências da encomenda</p>
+                      <p className="mt-1 text-xs text-teal-800">Estado, lotes, quantidades, rotulagem, temperatura e observações de cada referência.</p>
+                    </div>
+                    <Badge variant="outline" className="border-teal-200 bg-white text-teal-800">{dispatchReferencesFromPayload(selectedEntry.payload).length} referências</Badge>
+                  </div>
+                  <div className="space-y-3">
+                    {dispatchReferencesFromPayload(selectedEntry.payload).map((reference, index) => (
+                      <div key={`${reference.name}-${index}`} className="rounded-lg border border-teal-100 bg-white p-3">
+                        <div className="flex flex-wrap items-start justify-between gap-2"><div><p className="font-medium text-slate-950">{reference.name}</p><p className="mt-1 text-xs text-slate-600">Quantidade pedida: {reference.orderedQuantity}</p></div><Badge className={reference.verificationStatus === "not_verified" ? "bg-slate-100 text-slate-700 hover:bg-slate-100" : reference.productLabelResult === "NC" || reference.boxLabelResult === "NC" ? "bg-red-100 text-red-800 hover:bg-red-100" : "bg-emerald-100 text-emerald-800 hover:bg-emerald-100"}>{reference.verificationStatus === "not_verified" ? "Não verificada" : "Verificada"}</Badge></div>
+                        {reference.verificationStatus === "not_verified" ? <p className="mt-3 rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-950"><span className="font-semibold">Motivo:</span> {reference.notVerifiedReason || "Não indicado"}</p> : <><div className="mt-3 grid gap-2 text-xs sm:grid-cols-3"><p className="rounded-md bg-slate-50 p-2"><span className="font-medium text-slate-700">Rótulo produto:</span> {reference.productLabelResult === "C" ? "Conforme" : "Não conforme"}</p><p className="rounded-md bg-slate-50 p-2"><span className="font-medium text-slate-700">Rótulo caixa:</span> {reference.boxLabelResult === "C" ? "Conforme" : "Não conforme"}</p><p className="rounded-md bg-slate-50 p-2"><span className="font-medium text-slate-700">Temperatura:</span> {reference.productTemperature || "—"} °C</p></div><div className="mt-3"><p className="text-xs font-medium text-slate-700">Lotes expedidos</p><div className="mt-1 flex flex-wrap gap-2">{reference.lots.map((lot, lotIndex) => <Badge key={`${lot.lot}-${lotIndex}`} variant="outline">{lot.lot || "Lote não indicado"} · {lot.dispatchedQuantity}</Badge>)}</div></div>{reference.observations ? <p className="mt-3 rounded-md bg-slate-50 px-3 py-2 text-xs text-slate-700">{reference.observations}</p> : null}</>}
+                      </div>
+                    ))}
+                  </div>
+                  <div className="grid gap-2 rounded-lg border border-slate-200 bg-white p-3 text-xs sm:grid-cols-2"><p><span className="font-medium text-slate-700">Temperatura do veículo:</span> {dispatchVehicleFromPayload(selectedEntry.payload).temperature || "—"} °C</p><p><span className="font-medium text-slate-700">Observações do veículo:</span> {dispatchVehicleFromPayload(selectedEntry.payload).observations || "Sem observações"}</p></div>
+                  {Array.isArray(selectedEntry.payload.reasons) && selectedEntry.payload.reasons.length ? <div className="rounded-lg border border-red-100 bg-red-50 p-3"><p className="text-xs font-semibold uppercase tracking-wide text-red-800">Motivos e desvios identificados</p><ul className="mt-2 space-y-1 text-xs text-red-900">{selectedEntry.payload.reasons.filter((reason): reason is string => typeof reason === "string").map((reason, index) => <li key={`${reason}-${index}`}>• {reason}</li>)}</ul></div> : null}
+                </section>
+              ) : null}
               {module === "fragile_items" && selectedFragileItemId ? (
                 <section
                   className="space-y-3 rounded-lg border border-slate-200 bg-slate-50/80 p-3"
@@ -934,6 +1114,45 @@ function DailyControlResults({
             </DialogDescription>
           </DialogHeader>
           <form className="space-y-4" onSubmit={submitEdit}>
+            {isDispatch && (
+              <section className="space-y-4 rounded-xl border border-teal-200 bg-teal-50/50 p-4" aria-label="Referências da encomenda">
+                <div>
+                  <p className="font-semibold text-teal-950">Referências da encomenda</p>
+                  <p className="mt-1 text-sm text-teal-800">Atualize cada referência, incluindo lotes, quantidade expedida, rotulagem, temperatura, motivo de não verificação e observações.</p>
+                </div>
+                {dispatchReferences.length ? dispatchReferences.map((reference, referenceIndex) => (
+                  <div key={`${reference.name}-${referenceIndex}`} className="space-y-4 rounded-xl border border-teal-100 bg-white p-4">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+                      <div className="min-w-0 flex-1 space-y-2">
+                        <Label htmlFor={`dispatch-reference-name-${referenceIndex}`}>Referência {referenceIndex + 1}</Label>
+                        <Input id={`dispatch-reference-name-${referenceIndex}`} value={reference.name} onChange={event => updateDispatchReference(referenceIndex, { name: event.target.value })} />
+                      </div>
+                      <div className="w-full space-y-2 sm:w-48">
+                        <Label>Estado da referência</Label>
+                        <Select value={reference.verificationStatus} onValueChange={value => updateDispatchReference(referenceIndex, { verificationStatus: value as DispatchReferenceEdit["verificationStatus"] })}>
+                          <SelectTrigger aria-label={`Estado da referência ${reference.name || referenceIndex + 1}`}><SelectValue /></SelectTrigger>
+                          <SelectContent><SelectItem value="verified">Verificada</SelectItem><SelectItem value="not_verified">Não verificada</SelectItem></SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <div className="space-y-2"><Label htmlFor={`dispatch-ordered-${referenceIndex}`}>Quantidade pedida</Label><Input id={`dispatch-ordered-${referenceIndex}`} type="number" min="0" value={reference.orderedQuantity} onChange={event => updateDispatchReference(referenceIndex, { orderedQuantity: Number(event.target.value) })} /></div>
+                      <div className="rounded-lg bg-slate-50 px-3 py-2 text-sm"><p className="text-xs font-medium text-slate-500">Quantidade expedida</p><p className="mt-1 font-semibold text-slate-950">{reference.verificationStatus === "not_verified" ? "Não aplicável" : reference.lots.reduce((total, lot) => total + Number(lot.dispatchedQuantity || 0), 0)}</p></div>
+                    </div>
+                    {reference.verificationStatus === "not_verified" ? (
+                      <div className="space-y-2"><Label htmlFor={`dispatch-not-verified-${referenceIndex}`}>Motivo de não verificação</Label><Textarea id={`dispatch-not-verified-${referenceIndex}`} required value={reference.notVerifiedReason} onChange={event => updateDispatchReference(referenceIndex, { notVerifiedReason: event.target.value })} placeholder="Indique o motivo pelo qual esta referência não foi verificada." /></div>
+                    ) : (
+                      <>
+                        <div className="space-y-2"><div className="flex items-center justify-between"><Label>Lotes expedidos</Label><Button type="button" size="sm" variant="outline" onClick={() => addDispatchLot(referenceIndex)}><Plus className="mr-2 h-4 w-4" />Adicionar lote</Button></div><div className="space-y-2">{reference.lots.map((lot, lotIndex) => <div key={`${referenceIndex}-lot-${lotIndex}`} className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_180px_auto]"><Input aria-label={`Lote ${lotIndex + 1} da referência ${reference.name || referenceIndex + 1}`} value={lot.lot} onChange={event => updateDispatchLot(referenceIndex, lotIndex, { lot: event.target.value })} placeholder="Lote" /><Input aria-label={`Quantidade do lote ${lotIndex + 1} da referência ${reference.name || referenceIndex + 1}`} type="number" min="0" value={lot.dispatchedQuantity} onChange={event => updateDispatchLot(referenceIndex, lotIndex, { dispatchedQuantity: Number(event.target.value) })} placeholder="Quantidade" /><Button type="button" variant="ghost" size="icon" aria-label={`Remover lote ${lotIndex + 1}`} disabled={reference.lots.length <= 1} onClick={() => removeDispatchLot(referenceIndex, lotIndex)}><Trash2 className="h-4 w-4" /></Button></div>)}</div></div>
+                        <div className="grid gap-3 sm:grid-cols-3"><div className="space-y-2"><Label>Rótulo do produto</Label><Select value={reference.productLabelResult} onValueChange={value => updateDispatchReference(referenceIndex, { productLabelResult: value as "C" | "NC" })}><SelectTrigger aria-label={`Rótulo do produto ${reference.name || referenceIndex + 1}`}><SelectValue /></SelectTrigger><SelectContent><SelectItem value="C">Conforme</SelectItem><SelectItem value="NC">Não conforme</SelectItem></SelectContent></Select></div><div className="space-y-2"><Label>Rótulo da caixa</Label><Select value={reference.boxLabelResult} onValueChange={value => updateDispatchReference(referenceIndex, { boxLabelResult: value as "C" | "NC" })}><SelectTrigger aria-label={`Rótulo da caixa ${reference.name || referenceIndex + 1}`}><SelectValue /></SelectTrigger><SelectContent><SelectItem value="C">Conforme</SelectItem><SelectItem value="NC">Não conforme</SelectItem></SelectContent></Select></div><div className="space-y-2"><Label htmlFor={`dispatch-temperature-${referenceIndex}`}>Temperatura do produto (°C)</Label><Input id={`dispatch-temperature-${referenceIndex}`} type="number" step="0.1" value={reference.productTemperature} onChange={event => updateDispatchReference(referenceIndex, { productTemperature: event.target.value })} /></div></div>
+                        <div className="space-y-2"><Label htmlFor={`dispatch-observations-${referenceIndex}`}>Observações da referência</Label><Textarea id={`dispatch-observations-${referenceIndex}`} value={reference.observations} onChange={event => updateDispatchReference(referenceIndex, { observations: event.target.value })} placeholder="Obrigatório quando a referência não está conforme." /></div>
+                      </>
+                    )}
+                  </div>
+                )) : <p className="rounded-lg border border-dashed border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">Este registo não contém referências estruturadas para edição.</p>}
+                <div className="grid gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3 sm:grid-cols-2"><div className="space-y-2"><Label htmlFor="dispatch-vehicle-temperature">Temperatura do veículo (°C)</Label><Input id="dispatch-vehicle-temperature" type="number" step="0.1" value={dispatchVehicle.temperature} onChange={event => setDispatchVehicle(current => ({ ...current, temperature: event.target.value }))} /></div><div className="space-y-2"><Label htmlFor="dispatch-vehicle-observations">Observações gerais do veículo</Label><Textarea id="dispatch-vehicle-observations" value={dispatchVehicle.observations} onChange={event => setDispatchVehicle(current => ({ ...current, observations: event.target.value }))} placeholder="Obrigatório se a temperatura do veículo não estiver conforme." /></div></div>
+              </section>
+            )}
             <div className="space-y-2">
               <Label htmlFor="daily-entry-title">Título</Label>
               <Input
@@ -2103,6 +2322,10 @@ export default function ModuleControl() {
     referenceDate: authorization.data?.dueAt,
     bphfCriteria: authorization.data?.bphfCriteria,
     metalDetectorLines: authorization.data?.metalDetectorLines,
+    foodDefenseEntries:
+      module === "food_defense"
+        ? ((dailyResults.data?.entries ?? []) as DailyControlEntry[])
+        : [],
   };
   if (resultsOnly)
     return (
@@ -6824,9 +7047,11 @@ export function TemperatureControls({ createEntry }: any) {
 function FoodDefense({
   createEntry,
   plannedTaskId,
+  foodDefenseEntries = [],
 }: {
   createEntry: any;
   plannedTaskId?: number;
+  foodDefenseEntries?: DailyControlEntry[];
 }) {
   const { factoryId } = useControlFactory();
   const [assessments, setAssessments] = useState<
@@ -6868,9 +7093,25 @@ function FoodDefense({
       ...current,
       [id]: { ...assessment(id), ...changes },
     }));
-  const completed = FOOD_DEFENSE_CRITERIA.filter(
-    item => assessment(item.id).result
-  ).length;
+  const completedCriterionIds = useMemo(() => {
+    const ids = new Set<string>();
+    foodDefenseEntries.forEach(entry => {
+      const payload = entry.payload ?? {};
+      if (typeof payload.foodDefenseCriterionId === "string")
+        ids.add(payload.foodDefenseCriterionId);
+      if (Array.isArray(payload.criteria))
+        payload.criteria.forEach(criterion => {
+          if (
+            criterion &&
+            typeof criterion === "object" &&
+            typeof (criterion as Record<string, unknown>).id === "string"
+          )
+            ids.add((criterion as Record<string, string>).id);
+        });
+    });
+    return ids;
+  }, [foodDefenseEntries]);
+  const completed = completedCriterionIds.size;
   const ncItems = FOOD_DEFENSE_CRITERIA.filter(
     item => assessment(item.id).result === "NC"
   );
@@ -6917,52 +7158,43 @@ function FoodDefense({
       plannedTaskId,
     });
   };
-  function submit(event: FormEvent) {
-    event.preventDefault();
-    if (completed !== FOOD_DEFENSE_CRITERIA.length)
-      return toast.error(
-        "Conclua todos os critérios da checklist Food Defense antes de registar."
-      );
-    const incompleteRisk = ncItems.find(item => {
-      const value = assessment(item.id);
-      return !value.probability || !value.severity;
-    });
-    if (incompleteRisk)
+  function registerPoint(item: (typeof FOOD_DEFENSE_CRITERIA)[number]) {
+    if (!factoryId)
+      return toast.error("Selecione a fábrica antes de registar este ponto.");
+    const value = assessment(item.id);
+    if (!value.result)
+      return toast.error("Selecione o resultado antes de registar este ponto.");
+    const risk = riskFor(item.id);
+    if (value.result === "NC" && (!value.probability || !value.severity))
       return toast.error(
         "Em cada NC indique probabilidade e severidade para calcular a vulnerabilidade."
       );
-    const result = ncItems.length ? "NC" : "C";
-    const criteria = FOOD_DEFENSE_CRITERIA.map(item => {
-      const value = assessment(item.id);
-      const risk = riskFor(item.id);
-      return {
-        ...item,
-        ...value,
-        vulnerability: risk?.vulnerability ?? null,
-        riskLevel: risk?.guidance.label ?? null,
-        recommendedAction: risk?.guidance.action ?? null,
-      };
-    });
+    const criterion = {
+      ...item,
+      ...value,
+      vulnerability: risk?.vulnerability ?? null,
+      riskLevel: risk?.guidance.label ?? null,
+      recommendedAction: risk?.guidance.action ?? null,
+    };
     createEntry.mutate({
       module: "food_defense",
-      title: "Food Defense — avaliação anual",
-      area: "Food Defense",
-      result,
-      notes: ncItems.length
-        ? `${ncItems.length} critério(s) NC identificado(s).`
-        : "Checklist anual conforme.",
+      title: `Food Defense — ${item.criterion}`,
+      area: item.section,
+      factoryId: Number(factoryId),
+      result: value.result,
+      notes: value.notes.trim() || "Ponto validado individualmente.",
       payload: {
         periodicity: "annual",
-        criteria,
+        foodDefenseCriterionId: item.id,
+        criteria: [criterion],
         riskMatrix: "V = Probabilidade × Severidade",
         evidencePhotos,
       },
       createNonconformity: false,
-      severity: ncItems.some(
-        item => (riskFor(item.id)?.vulnerability ?? 0) >= 6
-      )
+      severity:
+        value.result === "NC" && (risk?.vulnerability ?? 0) >= 6
         ? "critical"
-        : ncItems.length
+        : value.result === "NC"
           ? "high"
           : "low",
     });
@@ -6974,7 +7206,7 @@ function FoodDefense({
         description="Avaliação anual baseada na checklist de segurança, acessos, operações, fornecimentos e pessoal."
         icon={ShieldCheck}
       />
-      <form onSubmit={submit} className="space-y-5">
+      <div className="space-y-5">
         <Card className="border-0 panel-shadow">
           <CardHeader>
             <CardTitle>Checklist anual Food Defense</CardTitle>
@@ -6982,7 +7214,7 @@ function FoodDefense({
           <CardContent>
             <div className="flex flex-wrap gap-3">
               <Badge className="bg-slate-100 text-slate-800 hover:bg-slate-100">
-                {completed} / {FOOD_DEFENSE_CRITERIA.length} critérios avaliados
+                {completed} / {FOOD_DEFENSE_CRITERIA.length} critérios registados
               </Badge>
               <Badge
                 className={
@@ -7000,8 +7232,8 @@ function FoodDefense({
           const criteria = FOOD_DEFENSE_CRITERIA.filter(
             item => item.section === section
           );
-          const completeInSection = criteria.filter(
-            item => assessment(item.id).result
+          const completeInSection = criteria.filter(item =>
+            completedCriterionIds.has(item.id)
           ).length;
           return (
             <details
@@ -7020,13 +7252,28 @@ function FoodDefense({
                 <ChevronDown className="h-5 w-5 text-slate-500" />
               </summary>
               <div className="space-y-4 p-4">
+                {section.toLocaleLowerCase("pt-PT") === "segurança geral" ? (
+                  <a
+                    href="https://visionofhumanity.org/indexes/global-peace-index/"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="flex items-center justify-between gap-3 rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-950 transition-colors hover:bg-sky-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-600"
+                  >
+                    <span>
+                      <span className="block font-semibold">Classificação anual de Portugal</span>
+                      <span className="mt-1 block text-xs text-sky-800">Consultar o Global Peace Index antes de validar os critérios de Segurança Geral.</span>
+                    </span>
+                    <ExternalLink className="h-4 w-4 shrink-0" aria-hidden="true" />
+                  </a>
+                ) : null}
                 {criteria.map((item, index) => {
                   const value = assessment(item.id);
                   const risk = riskFor(item.id);
+                  const pointRegistered = completedCriterionIds.has(item.id);
                   return (
                     <Card
                       key={item.id}
-                      className={`border ${value.result === "NC" ? "border-red-200 bg-red-50/40" : "border-slate-100"}`}
+                      className={`border ${value.result === "NC" ? "border-red-200 bg-red-50/40" : pointRegistered ? "border-emerald-200 bg-emerald-50/40" : "border-slate-100"}`}
                     >
                       <CardContent className="space-y-4 p-4">
                         <div className="flex gap-3">
@@ -7037,6 +7284,9 @@ function FoodDefense({
                             {item.criterion}
                           </p>
                         </div>
+                        <Badge className={pointRegistered ? "w-fit bg-emerald-100 text-emerald-800 hover:bg-emerald-100" : "w-fit bg-amber-100 text-amber-800 hover:bg-amber-100"}>
+                          {pointRegistered ? "Ponto registado" : "Ponto por registar"}
+                        </Badge>
                         <div className="space-y-2">
                           <Label>Resultado da avaliação atual</Label>
                           <div className="grid grid-cols-3 gap-2">
@@ -7181,6 +7431,19 @@ function FoodDefense({
                             </div>
                           </div>
                         )}
+                        <Button
+                          type="button"
+                          className="w-full"
+                          variant={value.result === "NC" ? "destructive" : "default"}
+                          disabled={createEntry.isPending || !value.result}
+                          onClick={() => registerPoint(item)}
+                        >
+                          {createEntry.isPending
+                            ? "A registar…"
+                            : pointRegistered
+                              ? "Registar nova validação deste ponto"
+                              : "Registar este ponto"}
+                        </Button>
                       </CardContent>
                     </Card>
                   );
@@ -7196,19 +7459,10 @@ function FoodDefense({
             onChange={setEvidencePhotos}
           />
         ) : null}
-        <Button
-          className="w-full"
-          size="lg"
-          variant={ncItems.length ? "destructive" : "default"}
-          disabled={createEntry.isPending}
-        >
-          {createEntry.isPending
-            ? "A registar…"
-            : ncItems.length
-              ? "Registar avaliação Food Defense com NC"
-              : "Registar avaliação Food Defense conforme"}
-        </Button>
-      </form>
+        <p className="rounded-xl border border-dashed border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
+          Registe cada ponto após a respetiva validação. A fábrica só fica completa quando todos os critérios aplicáveis tiverem pelo menos um registo.
+        </p>
+      </div>
     </>
   );
 }

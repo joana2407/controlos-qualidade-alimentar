@@ -31,7 +31,6 @@ import {
   Pencil,
   Plus,
   Save,
-  ShieldAlert,
   Trash2,
 } from "lucide-react";
 import React, { useEffect, useMemo, useState } from "react";
@@ -54,6 +53,11 @@ type IncidenceTreatment = {
     fileName: string;
     mimeType: "image/jpeg" | "image/png" | "image/webp";
   }>;
+};
+type FragileTreatmentReview = {
+  periodicity: "D" | "S" | "Q" | "M";
+  riskLevel: "1" | "2" | "3";
+  rationale: string;
 };
 const emptyIncidenceTreatment = (): IncidenceTreatment => ({
   status: "pending",
@@ -91,6 +95,7 @@ type OccurrenceItem = {
     mimeType: "image/jpeg" | "image/png" | "image/webp";
   }>;
   treatment: IncidenceTreatment;
+  fragileTreatmentReview: FragileTreatmentReview | null;
   pointKey: string;
   bphfContext: {
     collaboratorName: string;
@@ -232,6 +237,51 @@ const treatmentSummaryLabel = (status: IncidenceTreatment["status"]) =>
     : status === "in_progress"
       ? "Em curso"
       : "Pendentes";
+const fragileRiskForPeriodicity = (
+  periodicity: FragileTreatmentReview["periodicity"]
+): FragileTreatmentReview["riskLevel"] =>
+  periodicity === "D" ? "3" : periodicity === "M" ? "1" : "2";
+const fragileTreatmentReviewFrom = (value: unknown): FragileTreatmentReview | null => {
+  const payload =
+    value && typeof value === "object" && !Array.isArray(value)
+      ? (value as Record<string, unknown>)
+      : {};
+  const source =
+    payload.fragileTreatmentReview &&
+    typeof payload.fragileTreatmentReview === "object" &&
+    !Array.isArray(payload.fragileTreatmentReview)
+      ? (payload.fragileTreatmentReview as Record<string, unknown>)
+      : payload;
+  if (!Number(source.itemId ?? payload.fragileItemId)) return null;
+  const periodicity =
+    source.periodicity === "D" ||
+    source.periodicity === "S" ||
+    source.periodicity === "Q" ||
+    source.periodicity === "M"
+      ? source.periodicity
+      : "S";
+  return {
+    periodicity,
+    riskLevel:
+      source.riskLevel === "1" ||
+      source.riskLevel === "2" ||
+      source.riskLevel === "3"
+        ? source.riskLevel
+        : fragileRiskForPeriodicity(periodicity),
+    rationale: typeof source.rationale === "string" ? source.rationale : "",
+  };
+};
+const fragilePeriodicityLabel: Record<FragileTreatmentReview["periodicity"], string> = {
+  D: "Diária",
+  S: "Semanal",
+  Q: "Quinzenal",
+  M: "Mensal",
+};
+const fragileRiskLabel: Record<FragileTreatmentReview["riskLevel"], string> = {
+  "1": "Nível 1 — baixo",
+  "2": "Nível 2 — moderado",
+  "3": "Nível 3 — elevado",
+};
 
 export default function Nonconformities() {
   const utils = trpc.useUtils();
@@ -251,6 +301,12 @@ export default function Nonconformities() {
   const [treatmentDraft, setTreatmentDraft] = useState<IncidenceTreatment>(
     emptyIncidenceTreatment()
   );
+  const [fragileTreatmentReviewDraft, setFragileTreatmentReviewDraft] =
+    useState<FragileTreatmentReview>({
+      periodicity: "S",
+      riskLevel: "2",
+      rationale: "",
+    });
   const [confirmDeleteIncidence, setConfirmDeleteIncidence] = useState(false);
   const [similarFilter, setSimilarFilter] =
     useState<SimilarIncidenceFilter | null>(null);
@@ -380,6 +436,7 @@ export default function Nonconformities() {
               (item as any).treatment ??
                 (item.payload as any)?.incidenceTreatment
             ),
+            fragileTreatmentReview: fragileTreatmentReviewFrom(item.payload),
             bphfContext: bphfContextFrom(
               item.module,
               (item.payload as Record<string, unknown>) ?? {},
@@ -414,6 +471,7 @@ export default function Nonconformities() {
             ...emptyIncidenceTreatment(),
             status: "completed" as const,
           },
+          fragileTreatmentReview: null,
           bphfContext: null,
           pointKey: controlledPointKey(item),
         })),
@@ -431,26 +489,24 @@ export default function Nonconformities() {
     [incidences.data, ncs.data, openNcOnly, similarFilter, treatmentFilter]
   );
   const selected = occurrences.find(item => item.key === selectedKey) ?? null;
-  const localOpenNcCount =
-    ncs.data?.filter(item => item.status !== "closed").length ?? 0;
-  const generatedExternalOpenNcCount = (incidences.data ?? []).filter(
-    item => item.generatedNonconformity && !item.nonconformityId
-  ).length;
-  const openNcCount = localOpenNcCount + generatedExternalOpenNcCount;
   const treatmentSummary = useMemo(() => {
     const summary: Record<IncidenceTreatment["status"], number> = {
       pending: 0,
       in_progress: 0,
       completed: 0,
     };
-    occurrences
-      .filter(item => item.type === "incidence")
-      .forEach(item => {
+    const visibleIncidences = occurrences.filter(
+      item => item.type === "incidence"
+    );
+    visibleIncidences.forEach(item => {
         summary[item.treatment.status] += 1;
-      });
+    });
     return {
       ...summary,
       total: summary.pending + summary.in_progress + summary.completed,
+      open: summary.pending + summary.in_progress,
+      generatedNc: visibleIncidences.filter(item => item.generatedNonconformity)
+        .length,
     };
   }, [occurrences]);
 
@@ -460,6 +516,13 @@ export default function Nonconformities() {
     setIncidenceNotesDraft(selected?.description ?? "");
     setIncidencePhotosDraft(selected?.evidencePhotos ?? []);
     setTreatmentDraft(selected?.treatment ?? emptyIncidenceTreatment());
+    setFragileTreatmentReviewDraft(
+      selected?.fragileTreatmentReview ?? {
+        periodicity: "S",
+        riskLevel: "2",
+        rationale: "",
+      }
+    );
     setEditingIncidence(false);
     setEditingTreatment(false);
     setConfirmDeleteIncidence(false);
@@ -661,18 +724,15 @@ export default function Nonconformities() {
               </Button>
             </div>
           </div>
-          <div className="rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-800">
-            <ShieldAlert className="mr-2 inline h-4 w-4" />
-            {openNcCount} Não Conformidades abertas
-          </div>
+          <OfflineIncidencePanel variant="header" />
         </header>
-        <Card className="border border-amber-200 bg-amber-50/60">
-          <CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
+        <Card className="border border-slate-200 bg-white">
+          <CardHeader className="flex flex-col gap-3 pb-3 sm:flex-row sm:items-start sm:justify-between">
             <div>
-              <p className="font-medium text-amber-950">Estado de tratamento</p>
-              <p className="mt-1 text-sm text-amber-800">
-                Acompanhe o tratamento independentemente da decisão de gerar NC.
-              </p>
+              <CardTitle className="text-base">Resumo das incidências</CardTitle>
+              <CardDescription>
+                Tratamentos, incidências abertas e NC geradas nos resultados visíveis.
+              </CardDescription>
             </div>
             <Select
               value={treatmentFilter}
@@ -691,24 +751,16 @@ export default function Nonconformities() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">
-                  Todos os estados de tratamento
+                  Todos os tratamentos
                 </SelectItem>
-                <SelectItem value="pending">Tratamento pendente</SelectItem>
-                <SelectItem value="in_progress">Em tratamento</SelectItem>
-                <SelectItem value="completed">Tratamento concluído</SelectItem>
+                <SelectItem value="pending">Pendentes</SelectItem>
+                <SelectItem value="in_progress">Em curso</SelectItem>
+                <SelectItem value="completed">Concluídos</SelectItem>
               </SelectContent>
             </Select>
-          </CardContent>
-        </Card>
-        <Card className="border border-slate-200 bg-white">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base">Resumo dos tratamentos</CardTitle>
-            <CardDescription>
-              Distribuição das incidências visíveis pelos estados de tratamento.
-            </CardDescription>
           </CardHeader>
           <CardContent aria-label="Resumo gráfico dos tratamentos" className="space-y-4">
-            <div className="grid gap-3 sm:grid-cols-3">
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
               {(["pending", "in_progress", "completed"] as const).map(status => (
                 <div
                   key={status}
@@ -728,6 +780,22 @@ export default function Nonconformities() {
                   </p>
                 </div>
               ))}
+              <div className="rounded-xl border border-orange-200 bg-orange-50 p-3">
+                <p className="text-xs font-medium uppercase tracking-wide text-slate-600">
+                  Incidências abertas
+                </p>
+                <p className="mt-1 text-2xl font-semibold text-slate-950">
+                  {treatmentSummary.open}
+                </p>
+              </div>
+              <div className="rounded-xl border border-red-200 bg-red-50 p-3">
+                <p className="text-xs font-medium uppercase tracking-wide text-slate-600">
+                  NC geradas
+                </p>
+                <p className="mt-1 text-2xl font-semibold text-slate-950">
+                  {treatmentSummary.generatedNc}
+                </p>
+              </div>
             </div>
             <div
               className="flex h-3 overflow-hidden rounded-full bg-slate-100"
@@ -753,7 +821,6 @@ export default function Nonconformities() {
             </div>
           </CardContent>
         </Card>
-        <OfflineIncidencePanel />
         {!canManage &&
         canEditSelectedIncidence &&
         selected?.type === "incidence" ? (
@@ -1580,6 +1647,101 @@ export default function Nonconformities() {
                           </div>
                         )}
                       </div>
+                      {canManage && selected.module === "fragile_items" && selected.fragileTreatmentReview ? (
+                        <div className="space-y-4 rounded-xl border border-red-200 bg-red-50/60 p-4">
+                          <div>
+                            <p className="font-medium text-red-950">
+                              Decisão sobre o ponto de Quebráveis
+                            </p>
+                            <p className="mt-1 text-sm text-red-900">
+                              Reavalie o risco de contaminação física e a periodicidade de acompanhamento. Esta decisão atualiza o ponto de controlo e fica registada nesta incidência.
+                            </p>
+                          </div>
+                          <div className="grid gap-4 sm:grid-cols-2">
+                            <div className="space-y-2">
+                              <Label>Categoria de risco</Label>
+                              <Select
+                                value={fragileTreatmentReviewDraft.riskLevel}
+                                onValueChange={value => {
+                                  const riskLevel = value as FragileTreatmentReview["riskLevel"];
+                                  setFragileTreatmentReviewDraft(current => ({
+                                    ...current,
+                                    riskLevel,
+                                    periodicity:
+                                      riskLevel === "3"
+                                        ? "D"
+                                        : riskLevel === "1"
+                                          ? "M"
+                                          : current.periodicity === "D" || current.periodicity === "M"
+                                            ? "S"
+                                            : current.periodicity,
+                                  }));
+                                }}
+                              >
+                                <SelectTrigger aria-label="Categoria de risco do ponto de Quebráveis">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {Object.entries(fragileRiskLabel).map(([value, label]) => (
+                                    <SelectItem key={value} value={value}>{label}</SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                            <div className="space-y-2">
+                              <Label>Periodicidade de acompanhamento</Label>
+                              <Select
+                                value={fragileTreatmentReviewDraft.periodicity}
+                                onValueChange={value =>
+                                  setFragileTreatmentReviewDraft(current => ({
+                                    ...current,
+                                    periodicity: value as FragileTreatmentReview["periodicity"],
+                                  }))
+                                }
+                              >
+                                <SelectTrigger aria-label="Periodicidade de acompanhamento do ponto de Quebráveis">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {Object.entries(fragilePeriodicityLabel).map(([value, label]) => (
+                                    <SelectItem key={value} value={value}>{label}</SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                          </div>
+                          <div className="space-y-2">
+                            <Label>Justificação da reavaliação</Label>
+                            <Textarea
+                              aria-label="Justificação da reavaliação de Quebráveis"
+                              value={fragileTreatmentReviewDraft.rationale}
+                              onChange={event =>
+                                setFragileTreatmentReviewDraft(current => ({
+                                  ...current,
+                                  rationale: event.target.value,
+                                }))
+                              }
+                              placeholder="Descreva o risco de contaminação física e a razão da nova frequência."
+                              rows={3}
+                            />
+                          </div>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="destructive"
+                            onClick={() =>
+                              updateIncidence.mutate({
+                                id: selected.id,
+                                fragileTreatmentReview: fragileTreatmentReviewDraft,
+                              })
+                            }
+                            disabled={updateIncidence.isPending}
+                          >
+                            <Save className="mr-2 h-4 w-4" />
+                            Aplicar decisão ao ponto
+                          </Button>
+                        </div>
+                      ) : null}
                       {canManage && (
                         <div className="space-y-3 rounded-xl border border-slate-200 p-4">
                           <p className="text-sm font-medium text-slate-900">

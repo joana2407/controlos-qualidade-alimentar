@@ -415,6 +415,7 @@ export const fragileItems = mysqlTable("fragile_items", {
   location: varchar("location", { length: 120 }).notNull(),
   factoryId: int("factoryId"),
   periodicity: mysqlEnum("fragile_periodicity", ["D", "S", "Q", "M"]).default("M").notNull(),
+  riskLevel: mysqlEnum("fragile_risk_level", ["1", "2", "3"]).default("2").notNull(),
   sourceSheet: varchar("sourceSheet", { length: 160 }),
   sortOrder: int("sortOrder").default(100).notNull(),
   referenceImageKey: varchar("referenceImageKey", { length: 512 }),
