@@ -614,3 +614,7 @@
 - [x] Permitir validar cada ponto da checklist Food Defense de forma independente e repetível.
 - [x] Alinhar o progresso, pendências e resultados Food Defense à conclusão mínima por ponto aplicável.
 - [x] Incluir na secção Segurança Geral um link para consultar a classificação anual de Portugal no Global Peace Index.
+- [x] Fazer a pesquisa de colaboradores BPHF encontrar texto no início, meio ou fim do nome.
+- [x] Adicionar regressão para pesquisa parcial de colaborador no BPHF.
+- [x] Adicionar «Arca de Congelação expedição» ao controlo de Temperaturas da Fábrica 2, com limite ≤ −18 ºC.
+- [x] Validar a presença e a completitude da nova verificação de Temperaturas da Fábrica 2.

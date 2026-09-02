@@ -3109,7 +3109,7 @@ export function Bphf({
               .normalize("NFD")
               .replace(/[\u0300-\u036f]/g, "")
               .toLocaleLowerCase("pt-PT")
-              .startsWith(normalizedEmployeeSearch)
+              .includes(normalizedEmployeeSearch)
           );
           return (
             <Card
@@ -3244,7 +3244,7 @@ export function Bphf({
                                       .normalize("NFD")
                                       .replace(/[\u0300-\u036f]/g, "")
                                       .toLocaleLowerCase("pt-PT")
-                                      .startsWith(normalizedNextSearch)
+                                      .includes(normalizedNextSearch)
                                   ) {
                                     setCollaboratorsByCriterion(current => ({
                                       ...current,
@@ -6681,6 +6681,12 @@ const TEMPERATURE_EQUIPMENT_BY_FACTORY: Record<
       name: "Câmara de Frio",
       area: "Câmara de Frio",
       limit: 10,
+    },
+    {
+      id: "f2-dispatch-freezer",
+      name: "Arca de Congelação expedição",
+      area: "Expedição",
+      limit: -18,
     },
   ],
 };

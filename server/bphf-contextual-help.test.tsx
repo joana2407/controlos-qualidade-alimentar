@@ -98,24 +98,26 @@ describe("ajuda contextual de BPHF", () => {
     expect(screen.queryAllByRole("button", { name: "Registar verificação adicional" })).toHaveLength(0);
   });
 
-  it("filtra imediatamente os colaboradores pelo início do nome digitado", () => {
+  it("filtra imediatamente os colaboradores pelo texto digitado em qualquer posição do nome", () => {
     employeeData.splice(0, employeeData.length,
-      { id: 1, name: "Paulo Ferreira" },
-      { id: 2, name: "Patrícia Gomes" },
-      { id: 3, name: "Maria Silva" },
+      { id: 1, name: "Rafael Costa" },
+      { id: 2, name: "Ana Rafael Pereira" },
+      { id: 3, name: "Sofia Moreira Rafael" },
+      { id: 4, name: "Maria Silva" },
     );
     render(<ControlFactoryContext.Provider value={{ factories: [{ id: 1, name: "Fábrica 1 (Fatiado)" }], factoryId: "1", setFactoryId: vi.fn() }}><Bphf createEntry={{ isPending: false, mutate: vi.fn(), mutateAsync: vi.fn() }} areas={["Produção"]} /></ControlFactoryContext.Provider>);
 
     const searchInput = screen.getAllByRole("combobox", { name: /Selecione o colaborador para/i })[0]!;
     const criterionCard = searchInput.closest(".panel-shadow") as HTMLElement | null;
     if (!criterionCard) throw new Error("Não foi encontrado o cartão do critério BPHF.");
-    fireEvent.change(searchInput, { target: { value: "P" } });
+    fireEvent.change(searchInput, { target: { value: "rafael" } });
 
-    expect(within(criterionCard).getByText("Paulo Ferreira")).toBeTruthy();
-    expect(within(criterionCard).getByText("Patrícia Gomes")).toBeTruthy();
+    expect(within(criterionCard).getByText("Rafael Costa")).toBeTruthy();
+    expect(within(criterionCard).getByText("Ana Rafael Pereira")).toBeTruthy();
+    expect(within(criterionCard).getByText("Sofia Moreira Rafael")).toBeTruthy();
     expect(within(criterionCard).queryByText("Maria Silva")).toBeNull();
-    fireEvent.click(within(criterionCard).getByRole("button", { name: "Paulo Ferreira" }));
-    expect((searchInput as HTMLInputElement).value).toBe("Paulo Ferreira");
+    fireEvent.click(within(criterionCard).getByRole("button", { name: "Ana Rafael Pereira" }));
+    expect((searchInput as HTMLInputElement).value).toBe("Ana Rafael Pereira");
     expect(screen.queryByPlaceholderText("Escreva para filtrar, ex.: P")).toBeNull();
   });
 });

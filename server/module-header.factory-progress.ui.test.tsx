@@ -130,6 +130,15 @@ describe("cabeçalho de controlo — progresso por fábrica", () => {
     expect(screen.queryByText("Linha 2")).toBeNull();
   });
 
+  it("apresenta a Arca de Congelação de Expedição na Fábrica 2 com limite de -18 ºC", () => {
+    routeModule.value = "temperature_controls";
+    window.history.pushState({}, "", "/controlos/temperature_controls?factoryId=2");
+    render(<ModuleControl />);
+
+    expect(screen.getByText("Arca de Congelação expedição")).toBeTruthy();
+    expect(screen.getByText(/Limite.*-18/)).toBeTruthy();
+  });
+
   it("mostra a conclusão por área nas Caixas de Sugestões e mantém as localizações pendentes", () => {
     routeModule.value = "suggestion_boxes";
     window.history.pushState({}, "", "/controlos/suggestion_boxes?factoryId=1");
