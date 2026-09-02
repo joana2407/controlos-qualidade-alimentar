@@ -618,3 +618,6 @@
 - [x] Adicionar regressão para pesquisa parcial de colaborador no BPHF.
 - [x] Adicionar «Arca de Congelação expedição» ao controlo de Temperaturas da Fábrica 2, com limite ≤ −18 ºC.
 - [x] Validar a presença e a completitude da nova verificação de Temperaturas da Fábrica 2.
+- [x] Permitir registar várias leituras diárias do mesmo equipamento no controlo de Temperaturas.
+- [x] Manter a completitude da tarefa da fábrica dependente de pelo menos uma leitura por equipamento aplicável.
+- [x] Adicionar regressões para leituras múltiplas e fecho mínimo por equipamento.

@@ -6748,54 +6748,51 @@ export function TemperatureControls({ createEntry }: any) {
       },
     }));
 
-  async function submit(event: FormEvent) {
-    event.preventDefault();
+  async function submitEquipment(
+    item: (typeof TEMPERATURE_EQUIPMENT_BY_FACTORY)[string][number]
+  ) {
     if (!factoryId || !factory || !equipment.length)
       return toast.error(
         "Selecione a Fábrica 1 ou a Fábrica 2 para este controlo."
       );
-    const incomplete = equipment.some(
-      item =>
-        readings[item.id]?.temperature === "" ||
-        !Number.isFinite(Number(readings[item.id]?.temperature))
-    );
-    if (incomplete)
+    const reading = readings[item.id];
+    if (
+      !reading ||
+      reading.temperature === "" ||
+      !Number.isFinite(Number(reading.temperature))
+    )
+      return toast.error("Indique a temperatura medida neste equipamento.");
+    const temperature = Number(reading.temperature);
+    const result = temperature <= item.limit ? "C" : "NC";
+    const notes = reading.notes.trim() || null;
+    if (result === "NC" && !notes)
       return toast.error(
-        "Registe a temperatura medida em todos os equipamentos apresentados."
+        "Inclua uma observação para o equipamento fora do limite."
       );
-    const items = equipment.map(item => {
-      const temperature = Number(readings[item.id]!.temperature);
-      return {
-        ...item,
-        temperature,
-        result: temperature <= item.limit ? "C" : "NC",
-        notes: readings[item.id]!.notes.trim() || null,
-      };
-    });
-    if (items.some(item => item.result === "NC" && !item.notes))
-      return toast.error(
-        "Inclua uma observação para cada equipamento fora do limite."
-      );
-    const result = items.some(item => item.result === "NC") ? "NC" : "C";
     await createEntry.mutateAsync({
       module: "temperature_controls",
-      title: `Controlo de Temperatura — ${factory.name}`,
-      area: Array.from(new Set(items.map(item => item.area))).join(", "),
+      title: `Controlo de Temperatura — ${item.name}`,
+      area: item.area,
       result,
-      notes:
-        items
-          .filter(item => item.notes)
-          .map(item => `${item.name}: ${item.notes}`)
-          .join(" · ") || undefined,
-      payload: { equipment: items, evidencePhotos },
+      notes: notes ?? undefined,
+      payload: {
+        equipment: [
+          {
+            ...item,
+            temperature,
+            result,
+            notes,
+          },
+        ],
+        evidencePhotos: result === "NC" ? evidencePhotos : [],
+      },
       createNonconformity: false,
       severity: result === "NC" ? "high" : "low",
     });
-    setReadings(
-      Object.fromEntries(
-        equipment.map(item => [item.id, { temperature: "", notes: "" }])
-      )
-    );
+    setReadings(current => ({
+      ...current,
+      [item.id]: { temperature: "", notes: "" },
+    }));
     setEvidencePhotos([]);
   }
 
@@ -6814,7 +6811,7 @@ export function TemperatureControls({ createEntry }: any) {
         description="Registe temperaturas dos equipamentos críticos. É obrigatória uma verificação diária mínima por equipamento, podendo efetuar registos adicionais."
         icon={ThermometerSnowflake}
       />
-      <form onSubmit={submit} className="space-y-5">
+      <div className="space-y-5">
         <Card className="border-0 panel-shadow">
           <CardHeader>
             <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
@@ -6822,9 +6819,8 @@ export function TemperatureControls({ createEntry }: any) {
                 <CardTitle>Verificação manual por equipamento</CardTitle>
                 <CardDescription>
                   Os limites são validados automaticamente: congelação ≤ -18 ºC
-                  e câmara de frio ≤ 10 ºC. Após registar a verificação mínima,
-                  pode voltar a preencher este formulário para efetuar outra
-                  leitura dos mesmos equipamentos.
+                  e câmara de frio ≤ 10 ºC. Registe cada equipamento de forma
+                  independente; pode acrescentar novas leituras ao longo do dia.
                 </CardDescription>
               </div>
               <Button asChild type="button" variant="outline">
@@ -6920,6 +6916,21 @@ export function TemperatureControls({ createEntry }: any) {
                         />
                       </div>
                     </div>
+                    <Button
+                      type="button"
+                      className="mt-4 w-full sm:w-auto"
+                      disabled={
+                        createEntry.isPending ||
+                        reading.temperature === "" ||
+                        !Number.isFinite(Number(reading.temperature)) ||
+                        (result === "NC" && !reading.notes.trim())
+                      }
+                      onClick={() => void submitEquipment(item)}
+                    >
+                      {createEntry.isPending
+                        ? "A registar…"
+                        : "Registar leitura deste equipamento"}
+                    </Button>
                   </div>
                 );
               })
@@ -6931,18 +6942,9 @@ export function TemperatureControls({ createEntry }: any) {
                 onChange={setEvidencePhotos}
               />
             )}
-            <Button
-              className="w-full"
-              size="lg"
-              disabled={createEntry.isPending || !equipment.length}
-            >
-              {createEntry.isPending
-                ? "A registar…"
-                : "Registar verificação de temperaturas"}
-            </Button>
           </CardContent>
         </Card>
-      </form>
+      </div>
       <Card className="border-0 panel-shadow">
         <CardHeader>
           <CardTitle>Consulta de resultados</CardTitle>

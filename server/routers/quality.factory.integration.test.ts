@@ -805,15 +805,46 @@ describe("procedimentos de qualidade por fábrica", () => {
 
   it("permite antecipar um controlo futuro atribuído e regista a data prevista", async () => {
     const futureDueAt = new Date(2026, 7, 18, 10, 0, 0);
+    const initialEntryCount = entries.length;
     tasks.push({ id: 89, factoryId: 1, status: "pending", dueAt: futureDueAt, completedAt: null, module: "temperature_controls", area: "Plano do Dia", title: "Plano do Dia — Temperaturas antecipado", responsible: "Sabrina Esteves", assigneeProfileIds: [1] });
+    persistInsertedControlEntries = true;
     const caller = qualityRouter.createCaller(createContext({ id: 1, name: "Sabrina Esteves", title: "Tec. Qualidade", role: "technician" }));
+    try {
+      const authorization = await caller.controlAuthorization({ module: "temperature_controls", factoryId: 1, plannedTaskId: 89 });
+      await caller.createEntry({ module: "temperature_controls", title: "Temperaturas antecipadas", area: "Área da Qualidade", factoryId: 1, result: "C", plannedTaskId: 89, payload: { equipment: [{ id: "f1-freezer-1" }, { id: "f1-freezer-2" }] } });
 
-    const authorization = await caller.controlAuthorization({ module: "temperature_controls", factoryId: 1, plannedTaskId: 89 });
-    await caller.createEntry({ module: "temperature_controls", title: "Temperaturas antecipadas", area: "Área da Qualidade", factoryId: 1, result: "C", plannedTaskId: 89, payload: { equipment: [{ id: "f1-freezer-1" }, { id: "f1-freezer-2" }] } });
+      expect(authorization).toMatchObject({ allowed: true, taskId: 89, dueAt: futureDueAt, isPreviousPending: false, isFuturePlanned: true });
+      expect(dbInserts.at(-1)).toMatchObject({ payload: { equipment: [{ id: "f1-freezer-1" }, { id: "f1-freezer-2" }], plannedTaskId: 89, plannedDate: futureDueAt.toISOString(), registeredAgainstPreviousPlan: false, registeredAheadOfPlannedDate: true, actualVerificationDate: "2026-08-14" } });
+      expect(dbUpdates.at(-1)).toMatchObject({ status: "completed", completedByProfileId: 1, completedByName: "Sabrina Esteves" });
+    } finally {
+      entries.splice(initialEntryCount);
+      persistInsertedControlEntries = false;
+    }
+  });
 
-    expect(authorization).toMatchObject({ allowed: true, taskId: 89, dueAt: futureDueAt, isPreviousPending: false, isFuturePlanned: true });
-    expect(dbInserts.at(-1)).toMatchObject({ payload: { equipment: [{ id: "f1-freezer-1" }, { id: "f1-freezer-2" }], plannedTaskId: 89, plannedDate: futureDueAt.toISOString(), registeredAgainstPreviousPlan: false, registeredAheadOfPlannedDate: true, actualVerificationDate: "2026-08-14" } });
-    expect(dbUpdates.at(-1)).toMatchObject({ status: "completed", completedByProfileId: 1, completedByName: "Sabrina Esteves" });
+  it("mantém Temperaturas pendente até existir uma leitura por equipamento e aceita leituras adicionais", async () => {
+    const task = { id: 96, factoryId: 2, status: "pending", dueAt: now, completedAt: null, module: "temperature_controls", area: "Plano do Dia", title: "Plano do Dia — Temperaturas F2", responsible: "Sabrina Esteves", assigneeProfileIds: [1] };
+    const initialEntryCount = entries.length;
+    tasks.push(task);
+    persistInsertedControlEntries = true;
+    const caller = qualityRouter.createCaller(createContext({ id: 1, name: "Sabrina Esteves", title: "Tec. Qualidade", role: "technician" }));
+    try {
+      await caller.createEntry({ module: "temperature_controls", title: "Temperatura — Câmara de Frio", area: "Câmara de Frio", factoryId: 2, result: "C", payload: { equipment: [{ id: "f2-cold-room", temperature: 6 }] } });
+
+      expect(dbUpdates).not.toEqual(expect.arrayContaining([expect.objectContaining({ status: "completed" })]));
+      await expect(caller.controlAuthorization({ module: "temperature_controls", factoryId: 2, plannedTaskId: task.id })).resolves.toMatchObject({ allowed: true, taskId: task.id });
+
+      await caller.createEntry({ module: "temperature_controls", title: "Temperatura — Arca de Congelação expedição", area: "Expedição", factoryId: 2, result: "C", payload: { equipment: [{ id: "f2-dispatch-freezer", temperature: -19 }] } });
+      expect(dbUpdates.at(-1)).toMatchObject({ status: "completed", completedByProfileId: 1, completedByName: "Sabrina Esteves" });
+
+      task.status = "completed";
+      await expect(caller.createEntry({ module: "temperature_controls", title: "Temperatura adicional — Câmara de Frio", area: "Câmara de Frio", factoryId: 2, result: "C", payload: { equipment: [{ id: "f2-cold-room", temperature: 5 }] } })).resolves.toMatchObject({ success: true });
+    } finally {
+      entries.splice(initialEntryCount);
+      const taskIndex = tasks.findIndex(item => item.id === task.id);
+      if (taskIndex >= 0) tasks.splice(taskIndex, 1);
+      persistInsertedControlEntries = false;
+    }
   });
 
   it("resolve uma tarefa planeada pela data selecionada, sem exigir o identificador da tarefa", async () => {

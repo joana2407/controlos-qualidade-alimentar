@@ -101,6 +101,10 @@ const fragileTreatmentReviewSchema = z.object({
   riskLevel: fragileRiskLevelSchema,
   rationale: z.string().trim().max(1200).optional(),
 });
+const TEMPERATURE_EQUIPMENT_IDS_BY_FACTORY: Record<number, string[]> = {
+  1: ["f1-freezer-1", "f1-freezer-2"],
+  2: ["f2-cold-room", "f2-dispatch-freezer"],
+};
 const normaliseIncidenceIsoDate = (value: unknown) => {
   if (typeof value !== "string") return value;
   const trimmed = value.trim();
@@ -422,6 +426,34 @@ function metalDetectorsTaskComplete(
   return expectedAreas.every(area => completedAreas.has(area));
 }
 
+function temperatureControlsTaskComplete(
+  task: { factoryId: number | null },
+  entries: Array<{ payload?: unknown }>
+) {
+  if (!task.factoryId) return false;
+  const expectedEquipmentIds =
+    TEMPERATURE_EQUIPMENT_IDS_BY_FACTORY[task.factoryId] ?? [];
+  if (!expectedEquipmentIds.length) return false;
+  const registeredEquipmentIds = new Set<string>();
+  entries.forEach(entry => {
+    const equipment = entryPayload(entry).equipment;
+    if (!Array.isArray(equipment)) return;
+    equipment.forEach(item => {
+      if (
+        item &&
+        typeof item === "object" &&
+        typeof (item as Record<string, unknown>).id === "string"
+      )
+        registeredEquipmentIds.add(
+          (item as Record<string, string>).id
+        );
+    });
+  });
+  return expectedEquipmentIds.every(equipmentId =>
+    registeredEquipmentIds.has(equipmentId)
+  );
+}
+
 function expectedBphfAreas(
   task: { factoryId: number | null },
   areaCatalog: Array<{
@@ -651,6 +683,8 @@ function isHistoricalPlanTaskSatisfied(
     return bphfTaskComplete(task, taskEntries, areaCatalog);
   if (task.module === "metal_detectors")
     return metalDetectorsTaskComplete(task, taskEntries, areaCatalog);
+  if (task.module === "temperature_controls")
+    return temperatureControlsTaskComplete(task, taskEntries);
   if (task.module === "monthly_checklist")
     return monthlyChecklistTaskComplete(
       task,
@@ -1607,6 +1641,8 @@ export const qualityRouter = router({
           return bphfTaskComplete(task, taskEntries, areaCatalog);
         if (task.module === "metal_detectors")
           return metalDetectorsTaskComplete(task, taskEntries, areaCatalog);
+        if (task.module === "temperature_controls")
+          return temperatureControlsTaskComplete(task, taskEntries);
         if (task.module === "suggestion_boxes")
           return suggestionBoxesTaskComplete(task, taskEntries, factoryCatalog);
         if (task.module === "monthly_checklist")
@@ -3155,7 +3191,6 @@ export const qualityRouter = router({
           "shelf_life",
           "dispatch_control",
           "internal_analysis",
-          "temperature_controls",
         ];
       let plannedControlComplete = Boolean(
         authorization.task && oneSubmissionModules.includes(input.module)
@@ -3165,6 +3200,7 @@ export const qualityRouter = router({
         [
           "bphf",
           "metal_detectors",
+          "temperature_controls",
           "suggestion_boxes",
           "fragile_items",
           "monthly_checklist",
@@ -3225,6 +3261,11 @@ export const qualityRouter = router({
             authorization.task!,
             taskEntriesForPlan,
             progressAreas
+          );
+        } else if (input.module === "temperature_controls") {
+          plannedControlComplete = temperatureControlsTaskComplete(
+            authorization.task!,
+            taskEntriesForPlan
           );
         } else if (input.module === "monthly_checklist") {
           plannedControlComplete = monthlyChecklistTaskComplete(

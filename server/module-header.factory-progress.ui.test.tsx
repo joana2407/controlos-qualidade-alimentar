@@ -201,6 +201,18 @@ describe("cabeçalho de controlo — progresso por fábrica", () => {
     expect(screen.getByText("Conforme")).toBeTruthy();
   });
 
+  it("permite preparar uma leitura independente para cada equipamento de Temperaturas", () => {
+    routeModule.value = "temperature_controls";
+    Object.assign(authorizationState, { allowed: true, taskId: 514, dueAt: new Date("2026-08-20T12:00:00"), isPreviousPending: false, isFuturePlanned: false, reason: "Autorizado" });
+    window.history.pushState({}, "", "/controlos/temperature_controls?factoryId=2");
+    render(<ModuleControl />);
+
+    expect(screen.getByText("Câmara de Frio")).toBeTruthy();
+    expect(screen.getByText("Arca de Congelação expedição")).toBeTruthy();
+    expect(screen.getAllByRole("button", { name: "Registar leitura deste equipamento" })).toHaveLength(2);
+    expect(screen.queryByRole("button", { name: "Registar verificação de temperaturas" })).toBeNull();
+  });
+
   it("filtra o histórico sensorial pelo nome do produto e permite limpar a pesquisa", async () => {
     const user = userEvent.setup();
     routeModule.value = "sensory";
