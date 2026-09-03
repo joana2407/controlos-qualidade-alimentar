@@ -3026,7 +3026,7 @@ export function Bphf({
       employee => String(employee.id) === collaboratorId
     );
     if (!area) return toast.error("Selecione a área verificada neste ponto.");
-    if (!collaborator)
+    if (result !== "N/A" && !collaborator)
       return toast.error("Selecione o colaborador inspecionado neste ponto.");
     if (!result)
       return toast.error(
@@ -3042,8 +3042,8 @@ export function Bphf({
       notes: notes[criterion] || undefined,
       payload: {
         criterion,
-        collaboratorId: collaborator.id,
-        collaboratorName: collaborator.name,
+        collaboratorId: collaborator?.id,
+        collaboratorName: collaborator?.name ?? "Não aplicável",
         evidencePhotos: evidenceByCriterion[criterion] ?? [],
       },
       createNonconformity: false,
@@ -3056,7 +3056,11 @@ export function Bphf({
     setNotes(current => ({ ...current, [criterion]: "" }));
     setEvidenceByCriterion(current => ({ ...current, [criterion]: [] }));
     utils.quality.listBphfCollaboratorInspections.invalidate();
-    toast.success(`Área ${area} registada para ${collaborator.name}.`);
+    toast.success(
+      result === "N/A"
+        ? `Área ${area} registada como não aplicável.`
+        : `Área ${area} registada para ${collaborator?.name}.`
+    );
   }
 
   return (
@@ -3173,7 +3177,9 @@ export function Bphf({
                   <>
                     <div className="grid gap-4 md:grid-cols-2">
                       <div className="space-y-2">
-                        <Label>Área verificada</Label>
+                        <Label htmlFor={`bphf-area-${index}`}>
+                          Área verificada
+                        </Label>
                         <Select
                           value={areasByCriterion[criterion] ?? ""}
                           onValueChange={value =>
@@ -3183,7 +3189,10 @@ export function Bphf({
                             }))
                           }
                         >
-                          <SelectTrigger>
+                          <SelectTrigger
+                            id={`bphf-area-${index}`}
+                            aria-label={`Área verificada para ${criterion}`}
+                          >
                             <SelectValue placeholder="Selecione a área" />
                           </SelectTrigger>
                           <SelectContent>
@@ -3200,6 +3209,12 @@ export function Bphf({
                       </div>
                       <div className="space-y-2">
                         <Label>Colaborador inspecionado</Label>
+                        {result === "N/A" && (
+                          <p className="text-xs text-muted-foreground">
+                            Não é necessário indicar colaborador quando o
+                            resultado é N/A.
+                          </p>
+                        )}
                         <div className="flex gap-2">
                           <Popover
                             open={openEmployeeSearchCriterion === criterion}
@@ -3218,7 +3233,12 @@ export function Bphf({
                                 }
                                 aria-controls={`bphf-employee-options-${index}`}
                                 aria-label={`Selecione o colaborador para ${criterion}`}
-                                value={employeeSearch}
+                                value={
+                                  result === "N/A"
+                                    ? "Não aplicável"
+                                    : employeeSearch
+                                }
+                                disabled={result === "N/A"}
                                 onFocus={() =>
                                   setOpenEmployeeSearchCriterion(criterion)
                                 }
@@ -3296,6 +3316,7 @@ export function Bphf({
                             size="icon"
                             aria-label={`Adicionar colaborador para ${criterion}`}
                             onClick={() => openEmployeeDialog(criterion)}
+                            disabled={result === "N/A"}
                           >
                             <Plus className="h-4 w-4" />
                           </Button>
@@ -3356,8 +3377,9 @@ export function Bphf({
                       disabled={
                         createEntry.isPending ||
                         !areasByCriterion[criterion] ||
-                        !collaboratorsByCriterion[criterion] ||
-                        !result
+                        !result ||
+                        (result !== "N/A" &&
+                          !collaboratorsByCriterion[criterion])
                       }
                       variant={result === "NC" ? "destructive" : "default"}
                       onClick={() => registerCriterion(criterion)}

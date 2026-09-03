@@ -1191,13 +1191,20 @@ export const qualityRouter = router({
         .orderBy(desc(controlEntries.completedAt))
         .limit(150);
       return entries.flatMap(entry => {
-        const payload = entry.payload as Record<string, unknown>;
+        const payload =
+          entry.payload &&
+          typeof entry.payload === "object" &&
+          !Array.isArray(entry.payload)
+            ? (entry.payload as Record<string, unknown>)
+            : {};
         const collaboratorId = Number(payload.collaboratorId);
         const collaboratorName =
           typeof payload.collaboratorName === "string"
             ? payload.collaboratorName
             : "";
-        if (!collaboratorId || !collaboratorName) return [];
+        const hasCollaborator = collaboratorId > 0 && Boolean(collaboratorName);
+        const isNotApplicable = entry.result === "N/A";
+        if (!hasCollaborator && !isNotApplicable) return [];
         if (input?.collaboratorId && collaboratorId !== input.collaboratorId)
           return [];
         if (input?.result && entry.result !== input.result) return [];
@@ -1214,8 +1221,10 @@ export const qualityRouter = router({
         return [
           {
             id: entry.id,
-            collaboratorId,
-            collaboratorName,
+            collaboratorId: hasCollaborator ? collaboratorId : null,
+            collaboratorName: hasCollaborator
+              ? collaboratorName
+              : "Não aplicável",
             criterion:
               typeof payload.criterion === "string"
                 ? payload.criterion

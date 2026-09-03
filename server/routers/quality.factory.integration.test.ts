@@ -98,10 +98,19 @@ function mockDatabase() {
     select: () => ({
       from: (table: unknown) => {
         const records = sourceFor(table);
+        const filteredQuery = {
+          limit: async () => records,
+          orderBy: () => ({
+            limit: async () => records,
+            then: <T>(resolve: (value: unknown[]) => T | PromiseLike<T>) =>
+              Promise.resolve(records).then(resolve),
+          }),
+          then: <T>(resolve: (value: unknown[]) => T | PromiseLike<T>) => Promise.resolve(records).then(resolve),
+        };
         return {
           orderBy: async () => records,
           then: <T>(resolve: (value: unknown[]) => T | PromiseLike<T>) => Promise.resolve(records).then(resolve),
-          where: () => ({ limit: async () => records, orderBy: async () => records, then: <T>(resolve: (value: unknown[]) => T | PromiseLike<T>) => Promise.resolve(records).then(resolve) }),
+          where: () => filteredQuery,
         };
       },
     }),
@@ -146,6 +155,45 @@ describe("procedimentos de qualidade por fábrica", () => {
 
     expect(listedTasks).toEqual(expect.arrayContaining([expect.objectContaining({ area: "Plano do Dia", module: "bphf", qualityModule: "bphf", factoryId: 1 })]));
     expect(listedTasks).toEqual(expect.arrayContaining([expect.objectContaining({ area: "Produção T", qualityModule: null })]));
+  });
+
+  it("mantém visível um registo BPHF N/A sem colaborador para concluir a área respetiva", async () => {
+    const entryId = 740;
+    entries.push({
+      id: entryId,
+      factoryId: 1,
+      module: "bphf",
+      area: "Limpeza",
+      title: "Higienização das mãos dos manipuladores",
+      result: "N/A",
+      completedAt: now,
+      payload: {
+        criterion: "Higienização das mãos dos manipuladores",
+        plannedTaskId: 750029,
+        collaboratorName: "Não aplicável",
+      },
+    } as any);
+    try {
+      const caller = qualityRouter.createCaller(createContext());
+      const inspections = await caller.listBphfCollaboratorInspections({
+        factoryId: 1,
+        operationalDate: now,
+        plannedTaskId: 750029,
+      });
+
+      expect(inspections).toContainEqual(
+        expect.objectContaining({
+          id: entryId,
+          area: "Limpeza",
+          criterion: "Higienização das mãos dos manipuladores",
+          result: "N/A",
+          collaboratorId: null,
+          collaboratorName: "Não aplicável",
+        })
+      );
+    } finally {
+      entries.splice(entries.findIndex(entry => entry.id === entryId), 1);
+    }
   });
 
   it("autoriza Food Defense nas três fábricas quando a avaliação anual foi publicada para a técnica", async () => {

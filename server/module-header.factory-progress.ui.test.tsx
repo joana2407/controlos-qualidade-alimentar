@@ -15,6 +15,7 @@ const dailyResultsInputs = vi.hoisted(() => [] as unknown[]);
 const routeModule = vi.hoisted(() => ({ value: "bphf" }));
 const authorizationState = vi.hoisted(() => ({ allowed: true, taskId: 51 as number | null, dueAt: new Date("2026-08-20T12:00:00"), isPreviousPending: true, isFuturePlanned: false, reason: "Autorizado" }));
 const uploadEvidenceMutate = vi.hoisted(() => vi.fn());
+const createEntryMutateAsync = vi.hoisted(() => vi.fn());
 const bphfInspections = vi.hoisted(() => [] as Array<{ id: number; criterion: string; area: string; collaboratorName: string; result: string; completedAt: Date }>);
 
 vi.mock("@/lib/trpc", () => ({
@@ -30,7 +31,7 @@ vi.mock("@/lib/trpc", () => ({
       listBphfInspectionEmployees: { useQuery: () => ({ data: [{ id: 1, name: "Colaborador de teste" }] }) },
       listBphfCollaboratorInspections: { useQuery: () => ({ isLoading: false, data: bphfInspections }) },
       addBphfInspectionEmployee: { useMutation: () => ({ isPending: false, mutate: vi.fn() }) },
-      createEntry: { useMutation: () => ({ isPending: false, mutate: vi.fn(), mutateAsync: vi.fn() }) },
+      createEntry: { useMutation: () => ({ isPending: false, mutate: vi.fn(), mutateAsync: createEntryMutateAsync }) },
       uploadVerificationEvidence: { useMutation: () => ({ isPending: false, mutate: uploadEvidenceMutate }) },
       updateControlEntry: { useMutation: () => ({ isPending: false, mutate: vi.fn() }) },
       deleteControlEntry: { useMutation: () => ({ isPending: false, mutate: vi.fn() }) },
@@ -47,7 +48,7 @@ vi.mock("wouter", () => ({
 import ModuleControl from "../client/src/pages/ModuleControl";
 
 describe("cabeçalho de controlo — progresso por fábrica", () => {
-  afterEach(() => { cleanup(); dashboardInputs.length = 0; authorizationInputs.length = 0; dailyResultsInputs.length = 0; bphfInspections.length = 0; uploadEvidenceMutate.mockReset(); routeModule.value = "bphf"; delete (authorizationState as any).bphfCriteria; delete (authorizationState as any).metalDetectorLines; Object.assign(authorizationState, { allowed: true, taskId: 51, dueAt: new Date("2026-08-20T12:00:00"), isPreviousPending: true, isFuturePlanned: false, reason: "Autorizado" }); window.history.pushState({}, "", "/"); });
+  afterEach(() => { cleanup(); dashboardInputs.length = 0; authorizationInputs.length = 0; dailyResultsInputs.length = 0; bphfInspections.length = 0; uploadEvidenceMutate.mockReset(); createEntryMutateAsync.mockReset(); routeModule.value = "bphf"; delete (authorizationState as any).bphfCriteria; delete (authorizationState as any).metalDetectorLines; Object.assign(authorizationState, { allowed: true, taskId: 51, dueAt: new Date("2026-08-20T12:00:00"), isPreviousPending: true, isFuturePlanned: false, reason: "Autorizado" }); window.history.pushState({}, "", "/"); });
 
   it("substitui o resumo geral pelos cartões das fábricas incluídas no Plano do Dia", () => {
     render(<ModuleControl />);
@@ -118,6 +119,52 @@ describe("cabeçalho de controlo — progresso por fábrica", () => {
     expect(screen.getAllByText("Higienização das mãos dos manipuladores").length).toBeGreaterThan(0);
     expect(screen.queryByText("Estado de limpeza e conservação do fardamento")).toBeNull();
     expect(screen.queryByText("Cumprimento geral das regras de BPHF")).toBeNull();
+  });
+
+  it("permite concluir uma área BPHF como N/A sem indicar um colaborador", async () => {
+    const user = userEvent.setup();
+    Object.assign(authorizationState as any, {
+      bphfCriteria: ["Higienização das mãos dos manipuladores"],
+      dueAt: new Date("2026-09-03T10:00:00"),
+      isPreviousPending: false,
+    });
+    createEntryMutateAsync.mockResolvedValue({ id: 880 });
+    window.history.pushState({}, "", "/controlos/bphf?factoryId=1&plannedTaskId=51");
+    render(<ModuleControl />);
+
+    await user.click(
+      screen.getByRole("combobox", {
+        name: "Área verificada para Higienização das mãos dos manipuladores",
+      })
+    );
+    await user.click(screen.getByRole("option", { name: /Limpeza — pendente/ }));
+    await user.click(screen.getByRole("button", { name: "N/A" }));
+
+    const employeeInput = screen.getByRole("combobox", {
+      name: "Selecione o colaborador para Higienização das mãos dos manipuladores",
+    }) as HTMLInputElement;
+    expect(employeeInput.disabled).toBe(true);
+    expect(employeeInput.value).toBe("Não aplicável");
+    expect(
+      screen.getByRole("button", { name: "Registar área verificada" })
+    ).toHaveProperty("disabled", false);
+
+    await user.click(
+      screen.getByRole("button", { name: "Registar área verificada" })
+    );
+
+    await waitFor(() =>
+      expect(createEntryMutateAsync).toHaveBeenCalledWith(
+        expect.objectContaining({
+          module: "bphf",
+          area: "Limpeza",
+          result: "N/A",
+          payload: expect.objectContaining({
+            collaboratorName: "Não aplicável",
+          }),
+        })
+      )
+    );
   });
 
   it("mostra no formulário de Detetores apenas as linhas escolhidas no Plano do Dia", () => {

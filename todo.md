@@ -636,3 +636,6 @@
 - [x] Adicionar regressões para impedir estados divergentes entre o formulário, Controlos e Hoje.
 - [x] Centralizar a completitude de tarefas planeadas para impedir pendências indevidas em qualquer módulo.
 - [x] Reconciliar, sem apagar histórico, os estados técnicos de tarefas com a completitude real dos registos.
+- [x] Reproduzir e corrigir o bloqueio do botão «Registar área verificada» no BPHF pendente de Limpeza em 03/09.
+- [x] Garantir que a validação BPHF apresenta claramente o campo obrigatório em falta e permite guardar uma área válida.
+- [x] Adicionar regressão para o registo de uma área BPHF pendente com colaborador aplicável ou N/A.
