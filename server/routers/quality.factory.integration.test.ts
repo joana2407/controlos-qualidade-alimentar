@@ -350,6 +350,30 @@ describe("procedimentos de qualidade por fábrica", () => {
     }
   });
 
+  it("mantém a tarefa F2 de Temperaturas pendente quando falta um equipamento previsto, mesmo com estado técnico concluído", async () => {
+    const plannedTaskId = 511;
+    tasks.push({ id: plannedTaskId, factoryId: 2, status: "completed", dueAt: now, completedAt: now, module: "temperature_controls", area: "Plano do Dia", title: "Plano do Dia — Temperaturas F2", responsible: "Sabrina Esteves", assigneeProfileIds: [1], temperatureEquipmentIds: ["f2-cold-room", "f2-dispatch-freezer"] });
+    entries.push({ id: 511, factoryId: 2, module: "temperature_controls", area: "Câmara de Frio", result: "C", completedAt: now, payload: { plannedTaskId, plannedDate: now.toISOString(), equipment: [{ id: "f2-cold-room" }] } } as any);
+    try {
+      const caller = qualityRouter.createCaller(createContext({ id: 1, name: "Sabrina Esteves", title: "Tec. Qualidade", role: "technician" }));
+
+      const dashboard = await caller.dashboard({ date: now });
+      const listedTasks = await caller.listTasks({ factoryId: 2 });
+      const access = await caller.controlAuthorization({ module: "temperature_controls", factoryId: 2, plannedTaskId });
+      const progress = dashboard.moduleProgressByFactory.temperature_controls.find(item => item.factoryId === 2);
+
+      expect(progress).toMatchObject({ expected: 2, completed: 1, percentage: 50, pendingTaskId: plannedTaskId });
+      expect(dashboard.moduleProgress.temperature_controls.pending).toContain("Plano do Dia — Temperaturas F2");
+      expect(dashboard.metrics).toMatchObject({ pending: expect.any(Number) });
+      expect(dashboard.metrics.pending).toBeGreaterThan(0);
+      expect(listedTasks).toEqual(expect.arrayContaining([expect.objectContaining({ id: plannedTaskId, status: "pending" })]));
+      expect(access).toMatchObject({ allowed: true, taskId: plannedTaskId });
+    } finally {
+      entries.splice(entries.findIndex(entry => entry.id === 511), 1);
+      tasks.splice(tasks.findIndex(task => task.id === plannedTaskId), 1);
+    }
+  });
+
   it("mantém Temperaturas do dia acessíveis para registos adicionais depois da verificação mínima", async () => {
     tasks.push({ id: 512, factoryId: 1, status: "completed", dueAt: now, completedAt: now, module: "temperature_controls", area: "Plano do Dia", title: "Plano do Dia — Temperaturas F1", responsible: "Sabrina Esteves", assigneeProfileIds: [1] });
     try {
@@ -823,7 +847,7 @@ describe("procedimentos de qualidade por fábrica", () => {
   });
 
   it("mantém Temperaturas pendente até existir uma leitura por equipamento e aceita leituras adicionais", async () => {
-    const task = { id: 96, factoryId: 2, status: "pending", dueAt: now, completedAt: null, module: "temperature_controls", area: "Plano do Dia", title: "Plano do Dia — Temperaturas F2", responsible: "Sabrina Esteves", assigneeProfileIds: [1] };
+    const task = { id: 96, factoryId: 2, status: "pending", dueAt: now, completedAt: null, module: "temperature_controls", area: "Plano do Dia", title: "Plano do Dia — Temperaturas F2", responsible: "Sabrina Esteves", assigneeProfileIds: [1], temperatureEquipmentIds: ["f2-cold-room", "f2-dispatch-freezer"] };
     const initialEntryCount = entries.length;
     tasks.push(task);
     persistInsertedControlEntries = true;

@@ -109,6 +109,7 @@ export const controlTasks = mysqlTable("control_tasks", {
   bphfCriteria: json("bphfCriteria").$type<string[] | null>(),
   bphfCriteriaPeriodicities: json("bphfCriteriaPeriodicities").$type<Record<string, "daily" | "weekly" | "monthly" | "quarterly" | "annual"> | null>(),
   metalDetectorLines: json("metalDetectorLines").$type<string[] | null>(),
+  temperatureEquipmentIds: json("temperatureEquipmentIds").$type<string[] | null>(),
   status: mysqlEnum("task_status", ["pending", "completed", "cancelled"]).default("pending").notNull(),
   completedAt: timestamp("completedAt"),
   completedByProfileId: int("completedByProfileId"),

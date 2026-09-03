@@ -621,3 +621,7 @@
 - [x] Permitir registar várias leituras diárias do mesmo equipamento no controlo de Temperaturas.
 - [x] Manter a completitude da tarefa da fábrica dependente de pelo menos uma leitura por equipamento aplicável.
 - [x] Adicionar regressões para leituras múltiplas e fecho mínimo por equipamento.
+- [x] Auditar a tarefa pendente de Temperaturas da Fábrica 2 face aos registos e à completitude apresentada.
+- [x] Unificar as regras de completitude e pendência de Temperaturas entre o formulário, Controlos, Hoje e gestão do Plano do Dia.
+- [x] Auditar e corrigir regras semelhantes de pendência nos controlos por equipamento, ponto, linha ou critério.
+- [x] Adicionar regressões para impedir tarefas concluídas de surgirem como pendentes.

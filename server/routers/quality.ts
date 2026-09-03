@@ -105,6 +105,10 @@ const TEMPERATURE_EQUIPMENT_IDS_BY_FACTORY: Record<number, string[]> = {
   1: ["f1-freezer-1", "f1-freezer-2"],
   2: ["f2-cold-room", "f2-dispatch-freezer"],
 };
+const LEGACY_TEMPERATURE_EQUIPMENT_IDS_BY_FACTORY: Record<number, string[]> = {
+  1: ["f1-freezer-1", "f1-freezer-2"],
+  2: ["f2-cold-room"],
+};
 const normaliseIncidenceIsoDate = (value: unknown) => {
   if (typeof value !== "string") return value;
   const trimmed = value.trim();
@@ -426,13 +430,31 @@ function metalDetectorsTaskComplete(
   return expectedAreas.every(area => completedAreas.has(area));
 }
 
+function expectedTemperatureEquipmentIds(task: {
+  factoryId: number | null;
+  temperatureEquipmentIds?: string[] | null;
+}) {
+  if (Array.isArray(task.temperatureEquipmentIds))
+    return Array.from(
+      new Set(
+        task.temperatureEquipmentIds.filter(
+          (equipmentId): equipmentId is string =>
+            typeof equipmentId === "string" && Boolean(equipmentId)
+        )
+      )
+    );
+  if (!task.factoryId) return [];
+  return LEGACY_TEMPERATURE_EQUIPMENT_IDS_BY_FACTORY[task.factoryId] ?? [];
+}
+
 function temperatureControlsTaskComplete(
-  task: { factoryId: number | null },
+  task: {
+    factoryId: number | null;
+    temperatureEquipmentIds?: string[] | null;
+  },
   entries: Array<{ payload?: unknown }>
 ) {
-  if (!task.factoryId) return false;
-  const expectedEquipmentIds =
-    TEMPERATURE_EQUIPMENT_IDS_BY_FACTORY[task.factoryId] ?? [];
+  const expectedEquipmentIds = expectedTemperatureEquipmentIds(task);
   if (!expectedEquipmentIds.length) return false;
   const registeredEquipmentIds = new Set<string>();
   entries.forEach(entry => {
@@ -644,6 +666,7 @@ function isHistoricalPlanTaskSatisfied(
     dueAt: Date;
     bphfCriteria?: string[] | null;
     metalDetectorLines?: string[] | null;
+    temperatureEquipmentIds?: string[] | null;
   },
   entries: Array<{
     area: string;
@@ -1292,7 +1315,6 @@ export const qualityRouter = router({
             inScope &&
             taskDate < today &&
             isBusinessDay(new Date(task.dueAt)) &&
-            task.status === "pending" &&
             !isHistoricalPlanTaskSatisfied(
               task,
               entries,
@@ -1567,9 +1589,6 @@ export const qualityRouter = router({
       const businessTasks = scopedTasks.filter(
         task => isBusinessDay(task.dueAt) && task.status !== "cancelled"
       );
-      const pendingByStatus = businessTasks.filter(
-        task => task.status === "pending"
-      );
       const completedToday = scopedEntries.filter(
         entry => entryOperationalDate(entry) === localDateKey(operationalDate)
       );
@@ -1668,9 +1687,10 @@ export const qualityRouter = router({
       const completedPlannedControls = plannedControls.filter(
         isPlannedControlCompleted
       );
-      const resolvedPending = pendingByStatus.filter(
-        task =>
-          task.area !== "Plano do Dia" || !isPlannedControlCompleted(task)
+      const resolvedPending = businessTasks.filter(task =>
+        task.area === "Plano do Dia"
+          ? !isPlannedControlCompleted(task)
+          : task.status === "pending"
       );
       const resolvedOverdue = resolvedPending.filter(task => task.dueAt < start);
       const visiblePending = hasScheduleForSelectedDate ? resolvedPending : [];
@@ -1847,7 +1867,14 @@ export const qualityRouter = router({
                 completedChecks.has(check)
               ).length;
             } else if (module === "temperature_controls") {
-              expected = factory.id === 1 ? 2 : factory.id === 2 ? 1 : 0;
+              const expectedEquipmentIds = Array.from(
+                new Set(
+                  factoryControls.flatMap(task =>
+                    expectedTemperatureEquipmentIds(task)
+                  )
+                )
+              );
+              expected = expectedEquipmentIds.length;
               const completedEquipmentIds = new Set(
                 factoryEntriesToday
                   .flatMap(entry =>
@@ -1862,7 +1889,9 @@ export const qualityRouter = router({
                   )
                   .filter((id): id is string => typeof id === "string")
               );
-              completed = completedEquipmentIds.size;
+              completed = expectedEquipmentIds.filter(equipmentId =>
+                completedEquipmentIds.has(equipmentId)
+              ).length;
             } else if (module === "food_defense") {
               expected = FOOD_DEFENSE_EXPECTED_CRITERIA;
               const completedCriterionIds = new Set<string>();
@@ -2246,7 +2275,6 @@ export const qualityRouter = router({
             ? task.assigneeProfileIds
             : [];
           const completedFromPreviousRegistration =
-            task.status === "pending" &&
             task.area === "Plano do Dia" &&
             isHistoricalPlanTaskSatisfied(
               task,
@@ -2262,11 +2290,33 @@ export const qualityRouter = router({
           return (
             isBusinessDay(task.dueAt) &&
             task.status !== "cancelled" &&
-            !completedFromPreviousRegistration &&
+            !(task.status === "pending" && completedFromPreviousRegistration) &&
             (profile.role === "manager" || assignees.includes(profile.id))
           );
         })
         .map(task => {
+          const completedFromRegisteredControls =
+            task.area === "Plano do Dia" &&
+            isHistoricalPlanTaskSatisfied(
+              task,
+              entries,
+              areaCatalog,
+              monthlyItems,
+              monthlyAssignments,
+              factoryCatalog,
+              monthlyAreaAssignments,
+              monthlyAreaRows,
+              fragileCatalog
+            );
+          const reconciledTask =
+            task.area === "Plano do Dia"
+              ? {
+                  ...task,
+                  status: completedFromRegisteredControls
+                    ? ("completed" as const)
+                    : ("pending" as const),
+                }
+              : task;
           const report = entries.find(
             entry => entry.payload?.taskId === task.id
           );
@@ -2302,7 +2352,7 @@ export const qualityRouter = router({
             task.area === "Plano do Dia" ? task.module : null;
           return report
             ? {
-                ...task,
+                ...reconciledTask,
                 qualityModule,
                 executionReport: {
                   result: report.result,
@@ -2313,7 +2363,7 @@ export const qualityRouter = router({
                   evidencePhotos,
                 },
               }
-            : { ...task, qualityModule, executionReport: null };
+            : { ...reconciledTask, qualityModule, executionReport: null };
         });
     }),
 
@@ -2495,12 +2545,16 @@ export const qualityRouter = router({
           dueAt: date,
           responsible: profiles.map(profile => profile.name).join(", "),
           assigneeProfileIds: input.assigneeProfileIds,
-          bphfCriteria: module === "bphf" ? plannedBphfCriteria : null,
-          metalDetectorLines:
-            module === "metal_detectors"
-              ? plannedMetalDetectorLinesByFactory?.[factoryId ?? -1] ?? null
-              : null,
-          createdBy: ctx.user!.openId,
+            bphfCriteria: module === "bphf" ? plannedBphfCriteria : null,
+            metalDetectorLines:
+              module === "metal_detectors"
+                ? plannedMetalDetectorLinesByFactory?.[factoryId ?? -1] ?? null
+                : null,
+            temperatureEquipmentIds:
+              module === "temperature_controls" && factoryId
+                ? [...(TEMPERATURE_EQUIPMENT_IDS_BY_FACTORY[factoryId] ?? [])]
+                : null,
+            createdBy: ctx.user!.openId,
         }))
       );
       if (controlsToCreate.length)
