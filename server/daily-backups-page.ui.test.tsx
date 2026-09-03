@@ -34,4 +34,17 @@ describe("pasta de backups diários", () => {
     fireEvent.click(screen.getByRole("button", { name: /gerar 1 em falta/i }));
     expect(backupMocks.bulk).toHaveBeenCalledTimes(1);
   });
+
+  it("filtra os ficheiros pelo intervalo inclusivo da data operacional", () => {
+    render(<DailyBackups />);
+
+    fireEvent.change(screen.getByLabelText("Data inicial dos backups"), { target: { value: "2026-08-22" } });
+    fireEvent.change(screen.getByLabelText("Data final dos backups"), { target: { value: "2026-08-22" } });
+
+    expect(screen.queryByText("relatorio-diario-2026-08-21-V1.xlsx")).toBeNull();
+    expect(screen.getByText("relatorio-diario-2026-08-22-V1.xlsx")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Limpar filtros" }));
+    expect(screen.getByText("relatorio-diario-2026-08-21-V1.xlsx")).toBeTruthy();
+  });
 });

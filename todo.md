@@ -628,3 +628,6 @@
 - [x] Expor no painel Hoje as verificações em falta por controlo planeado.
 - [x] Apresentar indicadores legíveis de equipamentos, linhas, pontos ou critérios ainda em falta.
 - [x] Adicionar regressões para os indicadores de verificações em falta no painel Hoje.
+- [x] Adicionar filtros de data inicial e final aos Ficheiros de backup.
+- [x] Manter a pesquisa por data ou versão, descarga e geração manual compatíveis com o novo intervalo.
+- [x] Adicionar regressões para a filtragem de backups por intervalo de datas.
