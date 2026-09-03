@@ -1652,45 +1652,25 @@ export const qualityRouter = router({
         });
       const isPlannedControlCompleted = (
         task: (typeof plannedControls)[number]
-      ) => {
-        const taskEntries = completedToday.filter(entry =>
-          entryMatchesPlannedTask(entry, task)
+      ) =>
+        isHistoricalPlanTaskSatisfied(
+          task,
+          entries,
+          areaCatalog,
+          monthlyItems,
+          monthlyAssignments,
+          factoryCatalog,
+          monthlyAreaAssignments,
+          monthlyAreaRows,
+          scopedFragileCatalog
         );
-        if (task.module === "bphf")
-          return bphfTaskComplete(task, taskEntries, areaCatalog);
-        if (task.module === "metal_detectors")
-          return metalDetectorsTaskComplete(task, taskEntries, areaCatalog);
-        if (task.module === "temperature_controls")
-          return temperatureControlsTaskComplete(task, taskEntries);
-        if (task.module === "suggestion_boxes")
-          return suggestionBoxesTaskComplete(task, taskEntries, factoryCatalog);
-        if (task.module === "monthly_checklist")
-          return monthlyChecklistTaskComplete(
-            task,
-            taskEntries,
-            monthlyItems,
-            monthlyAssignments,
-            monthlyAreaAssignments,
-            monthlyAreaRows
-          );
-        if (task.module === "food_defense")
-          return foodDefenseTaskComplete(taskEntries);
-        if (task.module === "fragile_items")
-          return fragileItemsTaskComplete(
-            task,
-            taskEntries,
-            scopedEntries,
-            scopedFragileCatalog
-          );
-        return task.status === "completed" || taskEntries.length > 0;
-      };
       const completedPlannedControls = plannedControls.filter(
         isPlannedControlCompleted
       );
       const missingVerificationsForPlannedControl = (
         task: (typeof plannedControls)[number]
       ) => {
-        const taskEntries = completedToday.filter(entry =>
+        const taskEntries = entries.filter(entry =>
           entryMatchesPlannedTask(entry, task)
         );
         if (task.module === "temperature_controls") {
@@ -3552,6 +3532,56 @@ export const qualityRouter = router({
             expectedItemIds.length > 0 &&
             expectedItemIds.every(id => completedItemIds.has(id));
         }
+      }
+      if (authorization.task) {
+        const [
+          canonicalEntries,
+          canonicalAreas,
+          canonicalMonthlyItems,
+          canonicalMonthlyAssignments,
+          canonicalMonthlyAreaAssignments,
+          canonicalMonthlyAreas,
+          canonicalFactories,
+          canonicalFragileItems,
+        ] = await Promise.all([
+          db.select().from(controlEntries).orderBy(desc(controlEntries.completedAt)),
+          db.select().from(areas).orderBy(areas.name),
+          db.select().from(checklistItems).orderBy(checklistItems.sortOrder),
+          db
+            .select()
+            .from(checklistItemFactories)
+            .orderBy(checklistItemFactories.factoryId),
+          db.select().from(checklistItemAreas),
+          db.select().from(checklistAreas),
+          db.select().from(factories).orderBy(factories.name),
+          db.select().from(fragileItems).orderBy(fragileItems.sortOrder),
+        ]);
+        const currentEntryForCompletion = {
+          module: input.module,
+          factoryId: input.factoryId ?? authorization.task.factoryId,
+          area: input.area,
+          title: input.title,
+          completedAt,
+          payload: {
+            ...(input.payload &&
+            typeof input.payload === "object" &&
+            !Array.isArray(input.payload)
+              ? input.payload
+              : {}),
+            plannedTaskId: authorization.task.id,
+          },
+        };
+        plannedControlComplete = isHistoricalPlanTaskSatisfied(
+          authorization.task,
+          [...canonicalEntries, currentEntryForCompletion],
+          canonicalAreas,
+          canonicalMonthlyItems,
+          canonicalMonthlyAssignments,
+          canonicalFactories,
+          canonicalMonthlyAreaAssignments,
+          canonicalMonthlyAreas,
+          canonicalFragileItems
+        );
       }
       if (authorization.task && plannedControlComplete) {
         await db

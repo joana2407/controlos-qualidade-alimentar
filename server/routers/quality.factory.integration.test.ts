@@ -350,6 +350,26 @@ describe("procedimentos de qualidade por fábrica", () => {
     }
   });
 
+  it("reconcilia no dashboard uma tarefa concluída por registo associado mesmo sem data planeada no payload legado", async () => {
+    const previousDate = new Date(2026, 7, 12, 10, 0, 0);
+    const plannedTaskId = 530;
+    tasks.push({ id: plannedTaskId, factoryId: 1, status: "pending", dueAt: previousDate, completedAt: null, module: "temperature_controls", area: "Plano do Dia", title: "Plano do Dia — Temperaturas F1 legado", responsible: "Sabrina Esteves", assigneeProfileIds: [1], temperatureEquipmentIds: ["f1-freezer-1", "f1-freezer-2"] });
+    entries.push({ id: plannedTaskId, factoryId: 1, module: "temperature_controls", area: "Área da Qualidade", result: "C", completedAt: now, payload: { plannedTaskId, equipment: [{ id: "f1-freezer-1" }, { id: "f1-freezer-2" }] } } as any);
+    try {
+      const caller = qualityRouter.createCaller(createContext({ id: 1, name: "Sabrina Esteves", title: "Tec. Qualidade", role: "technician" }));
+
+      const dashboard = await caller.dashboard({ date: previousDate });
+      const plannedControl = dashboard.plannedControls.find(item => item.id === plannedTaskId);
+      const listedTasks = await caller.listTasks({ factoryId: 1 });
+
+      expect(plannedControl).toMatchObject({ id: plannedTaskId, completed: true, missingVerificationCount: 0 });
+      expect(listedTasks.map(task => task.id)).not.toContain(plannedTaskId);
+    } finally {
+      entries.splice(entries.findIndex(entry => entry.id === plannedTaskId), 1);
+      tasks.splice(tasks.findIndex(task => task.id === plannedTaskId), 1);
+    }
+  });
+
   it("mantém a tarefa F2 de Temperaturas pendente quando falta um equipamento previsto, mesmo com estado técnico concluído", async () => {
     const plannedTaskId = 511;
     tasks.push({ id: plannedTaskId, factoryId: 2, status: "completed", dueAt: now, completedAt: now, module: "temperature_controls", area: "Plano do Dia", title: "Plano do Dia — Temperaturas F2", responsible: "Sabrina Esteves", assigneeProfileIds: [1], temperatureEquipmentIds: ["f2-cold-room", "f2-dispatch-freezer"] });

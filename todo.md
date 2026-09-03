@@ -631,3 +631,8 @@
 - [x] Adicionar filtros de data inicial e final aos Ficheiros de backup.
 - [x] Manter a pesquisa por data ou versão, descarga e geração manual compatíveis com o novo intervalo.
 - [x] Adicionar regressões para a filtragem de backups por intervalo de datas.
+- [x] Auditar pendências indevidas que contradizem o progresso e registos realizados, incluindo BPHF.
+- [x] Unificar autorização, completitude e listas de pendências para todos os controlos planeados.
+- [x] Adicionar regressões para impedir estados divergentes entre o formulário, Controlos e Hoje.
+- [x] Centralizar a completitude de tarefas planeadas para impedir pendências indevidas em qualquer módulo.
+- [x] Reconciliar, sem apagar histórico, os estados técnicos de tarefas com a completitude real dos registos.
