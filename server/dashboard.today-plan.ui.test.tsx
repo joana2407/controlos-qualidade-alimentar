@@ -52,13 +52,14 @@ describe("painel Hoje — Plano do Dia", () => {
   });
 
   it("filtra a lista de controlos agendados entre concluídos e por realizar", async () => {
-    vi.mocked(trpc.quality.dashboard.useQuery).mockReturnValue({ isLoading: false, data: { operationalDate: new Date("2026-08-20T10:00:00Z"), metrics: { pending: 0, overdue: 0, criticalOpen: 0, fragilePending: 0, completedToday: 1, dailyExecutionRate: 50 }, plannedControls: [{ id: 41, module: "bphf", factoryId: 1, responsible: "Sabrina Esteves", completed: true }, { id: 42, module: "sensory", factoryId: 1, responsible: "Neuza Antunes", completed: false }], tasks: [], taskGroups: { today: [], tomorrow: [], thisWeek: [] }, criticalNcs: [] } } as any);
+    vi.mocked(trpc.quality.dashboard.useQuery).mockReturnValue({ isLoading: false, data: { operationalDate: new Date("2026-08-20T10:00:00Z"), metrics: { pending: 0, overdue: 0, criticalOpen: 0, fragilePending: 0, completedToday: 1, dailyExecutionRate: 50 }, plannedControls: [{ id: 41, module: "bphf", factoryId: 1, responsible: "Sabrina Esteves", completed: true }, { id: 42, module: "sensory", factoryId: 1, responsible: "Neuza Antunes", completed: false, missingVerificationCount: 1, missingVerifications: ["Registo mínimo do controlo"] }], tasks: [], taskGroups: { today: [], tomorrow: [], thisWeek: [] }, criticalNcs: [] } } as any);
     const user = userEvent.setup();
     render(<QualityDashboard />);
     const filter = screen.getByRole("combobox", { name: "Filtrar controlos agendados por estado" });
 
     expect(screen.getByRole("button", { name: "Abrir resultados de Verificação de BPHF" })).toBeTruthy();
     expect(screen.getByRole("link", { name: "Abrir preenchimento de Controlo sensorial de produto acabado" })).toBeTruthy();
+    expect(screen.getByText(/Em falta: Registo mínimo do controlo/)).toBeTruthy();
 
     await user.click(filter);
     await user.click(screen.getByRole("option", { name: "Concluídos" }));

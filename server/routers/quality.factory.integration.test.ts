@@ -361,11 +361,13 @@ describe("procedimentos de qualidade por fábrica", () => {
       const listedTasks = await caller.listTasks({ factoryId: 2 });
       const access = await caller.controlAuthorization({ module: "temperature_controls", factoryId: 2, plannedTaskId });
       const progress = dashboard.moduleProgressByFactory.temperature_controls.find(item => item.factoryId === 2);
+      const plannedControl = dashboard.plannedControls.find(item => item.id === plannedTaskId);
 
       expect(progress).toMatchObject({ expected: 2, completed: 1, percentage: 50, pendingTaskId: plannedTaskId });
       expect(dashboard.moduleProgress.temperature_controls.pending).toContain("Plano do Dia — Temperaturas F2");
       expect(dashboard.metrics).toMatchObject({ pending: expect.any(Number) });
       expect(dashboard.metrics.pending).toBeGreaterThan(0);
+      expect(plannedControl).toMatchObject({ missingVerificationCount: 1, missingVerifications: ["Arca de Congelação expedição"] });
       expect(listedTasks).toEqual(expect.arrayContaining([expect.objectContaining({ id: plannedTaskId, status: "pending" })]));
       expect(access).toMatchObject({ allowed: true, taskId: plannedTaskId });
     } finally {

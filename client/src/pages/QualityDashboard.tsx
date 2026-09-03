@@ -41,9 +41,18 @@ export default function QualityDashboard() {
   const taskGroups = data?.taskGroups ?? { today: [], tomorrow: [], thisWeek: [] };
   const plannedControls = useMemo(() => {
     const controls = data?.plannedControls ?? [];
-    if (plannedControlFilter === "completed") return controls.filter((control) => control.completed);
-    if (plannedControlFilter === "pending") return controls.filter((control) => !control.completed);
-    return controls;
+    const withMissingVerificationSummary = controls.map((control) => {
+      if (control.completed || !control.missingVerificationCount) return control;
+      const preview = control.missingVerifications.slice(0, 2).join(" · ");
+      const remaining = control.missingVerificationCount - control.missingVerifications.slice(0, 2).length;
+      return {
+        ...control,
+        responsible: `${control.responsible} · Em falta: ${preview}${remaining > 0 ? ` e mais ${remaining}` : ""}`,
+      };
+    });
+    if (plannedControlFilter === "completed") return withMissingVerificationSummary.filter((control) => control.completed);
+    if (plannedControlFilter === "pending") return withMissingVerificationSummary.filter((control) => !control.completed);
+    return withMissingVerificationSummary;
   }, [data?.plannedControls, plannedControlFilter]);
   const isCurrentDate = selectedDate === new Date().toISOString().slice(0, 10);
   const selectedDateLabel = dateFormat(selectedDateValue, false);

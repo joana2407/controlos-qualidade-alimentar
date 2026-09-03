@@ -625,3 +625,6 @@
 - [x] Unificar as regras de completitude e pendência de Temperaturas entre o formulário, Controlos, Hoje e gestão do Plano do Dia.
 - [x] Auditar e corrigir regras semelhantes de pendência nos controlos por equipamento, ponto, linha ou critério.
 - [x] Adicionar regressões para impedir tarefas concluídas de surgirem como pendentes.
+- [x] Expor no painel Hoje as verificações em falta por controlo planeado.
+- [x] Apresentar indicadores legíveis de equipamentos, linhas, pontos ou critérios ainda em falta.
+- [x] Adicionar regressões para os indicadores de verificações em falta no painel Hoje.

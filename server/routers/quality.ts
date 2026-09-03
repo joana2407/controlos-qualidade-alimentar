@@ -1687,6 +1687,181 @@ export const qualityRouter = router({
       const completedPlannedControls = plannedControls.filter(
         isPlannedControlCompleted
       );
+      const missingVerificationsForPlannedControl = (
+        task: (typeof plannedControls)[number]
+      ) => {
+        const taskEntries = completedToday.filter(entry =>
+          entryMatchesPlannedTask(entry, task)
+        );
+        if (task.module === "temperature_controls") {
+          const equipmentNameById: Record<string, string> = {
+            "f1-freezer-1": "Equipamento de congelação 1",
+            "f1-freezer-2": "Equipamento de congelação 2",
+            "f2-cold-room": "Câmara de Frio",
+            "f2-dispatch-freezer": "Arca de Congelação expedição",
+          };
+          const registeredEquipmentIds = new Set(
+            taskEntries.flatMap(entry => {
+              const equipment = entryPayload(entry).equipment;
+              return Array.isArray(equipment)
+                ? equipment
+                    .map(item =>
+                      item && typeof item === "object"
+                        ? (item as Record<string, unknown>).id
+                        : null
+                    )
+                    .filter((id): id is string => typeof id === "string")
+                : [];
+            })
+          );
+          const missing = expectedTemperatureEquipmentIds(task).filter(
+            equipmentId => !registeredEquipmentIds.has(equipmentId)
+          );
+          return {
+            count: missing.length,
+            labels: missing.map(
+              equipmentId => equipmentNameById[equipmentId] ?? equipmentId
+            ),
+          };
+        }
+        if (task.module === "metal_detectors") {
+          const expected = expectedMetalDetectorLines(task, areaCatalog);
+          const completed = new Set(taskEntries.map(entry => entry.area));
+          const missing = expected.filter(line => !completed.has(line));
+          return { count: missing.length, labels: missing };
+        }
+        if (task.module === "bphf") {
+          const expectedAreas = expectedBphfAreas(task, areaCatalog);
+          const expectedCriteria = Array.isArray(task.bphfCriteria)
+            ? BPHF_CRITERIA.filter(criterion =>
+                task.bphfCriteria!.includes(criterion)
+              )
+            : BPHF_CRITERIA;
+          const completed = new Set(
+            taskEntries.map(entry => `${entry.area}::${entry.title ?? ""}`)
+          );
+          const missing = expectedAreas.flatMap(area =>
+            expectedCriteria
+              .filter(criterion => !completed.has(`${area}::${criterion}`))
+              .map(criterion => `${area} · ${criterion}`)
+          );
+          return { count: missing.length, labels: missing };
+        }
+        if (task.module === "suggestion_boxes") {
+          const factory = factoryCatalog.find(
+            item => item.id === task.factoryId
+          );
+          const completed = new Set(taskEntries.map(entry => entry.area));
+          const missing = suggestionLocationsForFactory(factory?.code).filter(
+            location => !completed.has(location)
+          );
+          return { count: missing.length, labels: missing };
+        }
+        if (task.module === "monthly_checklist") {
+          const areaNameById = new Map(
+            monthlyAreaRows
+              .filter(area => area.active !== "false")
+              .map(area => [area.id, area.name])
+          );
+          const itemById = new Map(monthlyItems.map(item => [item.id, item]));
+          const expected = monthlyItems
+            .filter(
+              item =>
+                item.active === "true" &&
+                (monthlyAssignments.some(
+                  assignment => assignment.checklistItemId === item.id
+                )
+                  ? monthlyAssignments.some(
+                      assignment =>
+                        assignment.checklistItemId === item.id &&
+                        assignment.factoryId === task.factoryId
+                    )
+                  : true)
+            )
+            .flatMap(item => {
+              const areas = monthlyAreaAssignments
+                .filter(assignment => assignment.checklistItemId === item.id)
+                .map(assignment =>
+                  areaNameById.get(assignment.checklistAreaId)
+                )
+                .filter((area): area is string => Boolean(area));
+              return (areas.length ? areas : [item.area ?? "Geral"]).map(
+                area => `${item.id}:${area}`
+              );
+            });
+          const completed = new Set(
+            taskEntries
+              .map(entry => {
+                const itemId = entryPayload(entry).checklistItemId;
+                return typeof itemId === "number" && entry.area
+                  ? `${itemId}:${entry.area}`
+                  : null;
+              })
+              .filter((key): key is string => Boolean(key))
+          );
+          const missing = expected.filter(key => !completed.has(key));
+          return {
+            count: missing.length,
+            labels: missing.map(key => {
+              const [itemId, area] = key.split(":");
+              const item = itemById.get(Number(itemId));
+              return `${item?.label ?? "Ponto da checklist"} · ${area}`;
+            }),
+          };
+        }
+        if (task.module === "fragile_items") {
+          const completed = new Set(
+            taskEntries
+              .map(entry => entryPayload(entry).fragileItemId)
+              .filter((itemId): itemId is number => typeof itemId === "number")
+          );
+          const missing = scopedFragileCatalog
+            .filter(
+              item =>
+                item.factoryId === task.factoryId &&
+                item.status === "active" &&
+                isFragileInspectionPending(
+                  item.periodicity,
+                  lastFragileInspectionsBeforeDay.get(item.id),
+                  operationalDate
+                ) &&
+                !completed.has(item.id)
+            )
+            .map(item => item.name);
+          return { count: missing.length, labels: missing };
+        }
+        if (task.module === "food_defense") {
+          const completedIds = new Set<string>();
+          taskEntries.forEach(entry => {
+            const payload = entryPayload(entry);
+            if (typeof payload.foodDefenseCriterionId === "string")
+              completedIds.add(payload.foodDefenseCriterionId);
+            if (Array.isArray(payload.criteria))
+              payload.criteria.forEach(criterion => {
+                if (
+                  criterion &&
+                  typeof criterion === "object" &&
+                  !Array.isArray(criterion) &&
+                  typeof (criterion as Record<string, unknown>).id === "string"
+                )
+                  completedIds.add(
+                    (criterion as Record<string, string>).id
+                  );
+              });
+          });
+          const count = Math.max(
+            0,
+            FOOD_DEFENSE_EXPECTED_CRITERIA - completedIds.size
+          );
+          return {
+            count,
+            labels: count ? [`${count} ponto(s) da checklist Food Defense`] : [],
+          };
+        }
+        return taskEntries.length
+          ? { count: 0, labels: [] }
+          : { count: 1, labels: ["Registo mínimo do controlo"] };
+      };
       const resolvedPending = businessTasks.filter(task =>
         task.area === "Plano do Dia"
           ? !isPlannedControlCompleted(task)
@@ -1999,10 +2174,18 @@ export const qualityRouter = router({
 
       return {
         tasks: visibleAdHocTasks.slice(0, 20),
-        plannedControls: plannedControls.map(task => ({
-          ...task,
-          completed: isPlannedControlCompleted(task),
-        })),
+        plannedControls: plannedControls.map(task => {
+          const completed = isPlannedControlCompleted(task);
+          const missing = completed
+            ? { count: 0, labels: [] }
+            : missingVerificationsForPlannedControl(task);
+          return {
+            ...task,
+            completed,
+            missingVerificationCount: missing.count,
+            missingVerifications: missing.labels,
+          };
+        }),
         operationalDate,
         taskGroups: {
           today: visibleAdHocTasks,
