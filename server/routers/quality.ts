@@ -6822,6 +6822,270 @@ export const qualityRouter = router({
       };
     }),
 
+  operationalAnalytics: qualitySessionProcedure
+    .input(
+      z
+        .object({
+          period: z.enum(["day", "week", "month"]).default("day"),
+          referenceDate: dateInput.optional(),
+        })
+        .optional()
+    )
+    .query(async ({ input }) => {
+      const db = await requireDb();
+      const [
+        entries,
+        tasks,
+        ncs,
+        factoryCatalog,
+        areaCatalog,
+        monthlyItems,
+        monthlyAssignments,
+        monthlyAreaAssignments,
+        monthlyAreaRows,
+        fragileCatalog,
+      ] = await Promise.all([
+        db.select().from(controlEntries),
+        db.select().from(controlTasks),
+        db.select().from(nonconformities),
+        db.select().from(factories),
+        db.select().from(areas),
+        db.select().from(checklistItems),
+        db.select().from(checklistItemFactories),
+        db.select().from(checklistItemAreas),
+        db.select().from(checklistAreas),
+        db.select().from(fragileItems),
+      ]);
+      const period = input?.period ?? "day";
+      const referenceDate = input?.referenceDate ?? new Date();
+      const periodStart = asDateRange(referenceDate).start;
+      if (period === "week") {
+        const weekDay = (periodStart.getDay() + 6) % 7;
+        periodStart.setDate(periodStart.getDate() - weekDay);
+      }
+      if (period === "month") periodStart.setDate(1);
+      const periodEnd = new Date(periodStart);
+      if (period === "day") periodEnd.setDate(periodEnd.getDate() + 1);
+      if (period === "week") periodEnd.setDate(periodEnd.getDate() + 7);
+      if (period === "month") periodEnd.setMonth(periodEnd.getMonth() + 1);
+      const isWithinPeriod = (date: Date) =>
+        date >= periodStart && date < periodEnd;
+      const isDeletedEntry = (entry: (typeof entries)[number]) => {
+        const payload = entryPayload(entry);
+        const lifecycle = payload.recordLifecycle;
+        return Boolean(
+          lifecycle &&
+            typeof lifecycle === "object" &&
+            !Array.isArray(lifecycle) &&
+            (lifecycle as Record<string, unknown>).status === "deleted"
+        );
+      };
+      const activeEntries = entries.filter(entry => !isDeletedEntry(entry));
+      const entriesInPeriod = activeEntries.filter(entry =>
+        isWithinPeriod(entry.completedAt)
+      );
+      const plannedTasks = tasks.filter(
+        task => task.status !== "cancelled" && isWithinPeriod(task.dueAt)
+      );
+      const analysedTasks = plannedTasks.map(task => ({
+        ...task,
+        completed: isHistoricalPlanTaskSatisfied(
+          task,
+          activeEntries,
+          areaCatalog,
+          monthlyItems,
+          monthlyAssignments,
+          factoryCatalog,
+          monthlyAreaAssignments,
+          monthlyAreaRows,
+          fragileCatalog
+        ),
+      }));
+      const completionSummary = (items: typeof analysedTasks) => {
+        const total = items.length;
+        const completed = items.filter(item => item.completed).length;
+        return {
+          total,
+          completed,
+          pending: total - completed,
+          rate: total ? Math.round((completed / total) * 1000) / 10 : 0,
+        };
+      };
+      const factoryNames = new Map(
+        factoryCatalog.map(factory => [factory.id, factory.name])
+      );
+      const completionByFactory = [
+        ...factoryCatalog.map(factory => ({
+          factoryId: factory.id,
+          label: factory.name,
+          ...completionSummary(
+            analysedTasks.filter(task => task.factoryId === factory.id)
+          ),
+        })),
+        ...(analysedTasks.some(task => task.factoryId === null)
+          ? [
+              {
+                factoryId: null,
+                label: "Controlos transversais",
+                ...completionSummary(
+                  analysedTasks.filter(task => task.factoryId === null)
+                ),
+              },
+            ]
+          : []),
+      ];
+      const completionByControl = Array.from(
+        new Set(analysedTasks.map(task => task.module))
+      ).map(module => ({
+        module,
+        ...completionSummary(
+          analysedTasks.filter(task => task.module === module)
+        ),
+      }));
+      const resultSummary = {
+        total: entriesInPeriod.length,
+        conforming: entriesInPeriod.filter(entry => entry.result === "C").length,
+        nonconforming: entriesInPeriod.filter(entry => entry.result === "NC")
+          .length,
+        notApplicable: entriesInPeriod.filter(entry => entry.result === "N/A")
+          .length,
+        conformity: calculateConformityRate(
+          entriesInPeriod.map(entry => entry.result)
+        ),
+      };
+      const relevantIncidences = entriesInPeriod.filter(
+        entry => entry.result === "NC"
+      );
+      const incidenceStatus = ["pending", "in_progress", "completed"] as const;
+      const incidenceByTreatment = incidenceStatus.map(status => ({
+        status,
+        total: relevantIncidences.filter(
+          entry => incidenceTreatmentFromPayload(entryPayload(entry)).status === status
+        ).length,
+      }));
+      const incidenceDecisionStatuses = [
+        "pending",
+        "no_nc",
+        "nc_generated",
+      ] as const;
+      const incidenceByDecision = incidenceDecisionStatuses.map(status => ({
+          status,
+          total: relevantIncidences.filter(entry => {
+            const payload = entryPayload(entry);
+            const generatedNonconformity =
+              payload.generatedNonconformity === true ||
+              ncs.some(nc => nc.sourceEntryId === entry.id);
+            return (
+              incidenceDecisionFromPayload(payload, generatedNonconformity) ===
+              status
+            );
+          }).length,
+        }));
+      const ncsInPeriod = ncs.filter(nc => isWithinPeriod(nc.detectedAt));
+      const nonconformityStatuses = [
+        "open",
+        "in_progress",
+        "awaiting_validation",
+        "closed",
+      ].map(status => ({
+        status,
+        total: ncsInPeriod.filter(nc => nc.status === status).length,
+      }));
+      const severityLevels = ["critical", "high", "medium", "low"] as const;
+      const nonconformityBySeverity = severityLevels.map(severity => ({
+        severity,
+        total: ncsInPeriod.filter(nc => nc.severity === severity).length,
+      }));
+      const technicians = new Map<
+        string,
+        {
+          profileId: number | null;
+          name: string;
+          title: string | null;
+          entries: (typeof entriesInPeriod)[number][];
+        }
+      >();
+      entriesInPeriod.forEach(entry => {
+        const profileId = entry.registeredByProfileId ?? null;
+        const name = entry.registeredByName?.trim() || "Registo sem técnico identificado";
+        const key = profileId ? `profile-${profileId}` : `name-${name}`;
+        const technician = technicians.get(key) ?? {
+          profileId,
+          name,
+          title: entry.registeredByTitle ?? null,
+          entries: [],
+        };
+        technician.entries.push(entry);
+        technicians.set(key, technician);
+      });
+      const activityByTechnician = Array.from(technicians.values())
+        .map(technician => ({
+          profileId: technician.profileId,
+          name: technician.name,
+          title: technician.title,
+          total: technician.entries.length,
+          conforming: technician.entries.filter(entry => entry.result === "C")
+            .length,
+          nonconforming: technician.entries.filter(entry => entry.result === "NC")
+            .length,
+          conformity: calculateConformityRate(
+            technician.entries.map(entry => entry.result)
+          ),
+        }))
+        .sort((left, right) => right.total - left.total || left.name.localeCompare(right.name));
+      const numberOfDays = Math.max(
+        1,
+        Math.ceil((periodEnd.getTime() - periodStart.getTime()) / 86_400_000)
+      );
+      const activityTrend = Array.from({ length: numberOfDays }, (_, index) => {
+        const dayStart = new Date(periodStart);
+        dayStart.setDate(dayStart.getDate() + index);
+        const dayEnd = new Date(dayStart);
+        dayEnd.setDate(dayEnd.getDate() + 1);
+        const dayEntries = entriesInPeriod.filter(
+          entry => entry.completedAt >= dayStart && entry.completedAt < dayEnd
+        );
+        const dayTasks = analysedTasks.filter(
+          task => task.dueAt >= dayStart && task.dueAt < dayEnd
+        );
+        return {
+          label: dayStart.toLocaleDateString("pt-PT", {
+            day: "2-digit",
+            month: "2-digit",
+          }),
+          registrations: dayEntries.length,
+          incidences: dayEntries.filter(entry => entry.result === "NC").length,
+          completedTasks: dayTasks.filter(task => task.completed).length,
+          plannedTasks: dayTasks.length,
+        };
+      });
+      return {
+        period,
+        periodStart,
+        periodEnd,
+        completion: completionSummary(analysedTasks),
+        completionByFactory,
+        completionByControl,
+        results: resultSummary,
+        incidences: {
+          total: relevantIncidences.length,
+          byTreatment: incidenceByTreatment,
+          byDecision: incidenceByDecision,
+          nonconformities: {
+            total: ncsInPeriod.length,
+            byStatus: nonconformityStatuses,
+            bySeverity: nonconformityBySeverity,
+          },
+        },
+        activityByTechnician,
+        activityTrend,
+        factories: factoryCatalog.map(factory => ({
+          id: factory.id,
+          name: factoryNames.get(factory.id) ?? factory.code,
+        })),
+      };
+    }),
+
   initializeChecklist: qualityManagerProcedure.mutation(async ({ ctx }) => {
     const db = await requireDb();
     const defaultAreaId = await ensureChecklistArea(

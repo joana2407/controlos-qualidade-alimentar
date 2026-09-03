@@ -639,3 +639,9 @@
 - [x] Reproduzir e corrigir o bloqueio do botão «Registar área verificada» no BPHF pendente de Limpeza em 03/09.
 - [x] Garantir que a validação BPHF apresenta claramente o campo obrigatório em falta e permite guardar uma área válida.
 - [x] Adicionar regressão para o registo de uma área BPHF pendente com colaborador aplicável ou N/A.
+- [x] Criar o painel de análise operacional com escolha de período diário, semanal e mensal.
+- [x] Apresentar completitude por fábrica e por controlo em gráficos circulares e de barras.
+- [x] Incluir análise de incidências por estado, severidade e tendência no período selecionado.
+- [x] Incluir análise de atividade e resultados por técnico responsável.
+- [x] Adicionar indicadores de qualidade adicionais relevantes e uma síntese operacional do período.
+- [x] Validar cálculos, responsividade e acesso ao novo painel analítico.

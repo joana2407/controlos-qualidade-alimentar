@@ -157,6 +157,100 @@ describe("procedimentos de qualidade por fábrica", () => {
     expect(listedTasks).toEqual(expect.arrayContaining([expect.objectContaining({ area: "Produção T", qualityModule: null })]));
   });
 
+  it("agrega a completitude canónica, as incidências e a atividade técnica no painel analítico", async () => {
+    const originalEntryLength = entries.length;
+    const originalNcLength = ncs.length;
+    const originalAreaLength = areaRows.length;
+    areaRows.push({ id: 102, name: "Produção", group: "bphf", factoryId: 1, active: "true" });
+    tasks.push({
+      id: 550,
+      factoryId: 1,
+      status: "pending",
+      dueAt: now,
+      completedAt: null,
+      module: "bphf",
+      area: "Plano do Dia",
+      title: "Plano analítico BPHF F1",
+      responsible: "Equipa atribuída",
+      assigneeProfileIds: [1],
+      bphfCriteria: ["Higienização das mãos dos manipuladores"],
+    } as any);
+    entries.push(
+      {
+        id: 551,
+        factoryId: 1,
+        module: "bphf",
+        area: "Produção",
+        title: "Higienização das mãos dos manipuladores",
+        result: "C",
+        completedAt: now,
+        registeredByProfileId: 1,
+        registeredByName: "Sabrina Esteves",
+        registeredByTitle: "Tec. Qualidade",
+        payload: { plannedTaskId: 550 },
+      },
+      {
+        id: 552,
+        factoryId: 1,
+        module: "metal_detectors",
+        area: "Tradicional 1",
+        title: "Detetor de metais",
+        result: "NC",
+        completedAt: now,
+        registeredByProfileId: 1,
+        registeredByName: "Sabrina Esteves",
+        registeredByTitle: "Tec. Qualidade",
+        payload: { incidenceTreatment: { status: "in_progress" } },
+      }
+    );
+    ncs.push({
+      id: 553,
+      sourceEntryId: 552,
+      factoryId: 1,
+      status: "closed",
+      severity: "high",
+      module: "metal_detectors",
+      area: "Tradicional 1",
+      title: "NC analítica",
+      detectedAt: now,
+    } as any);
+    try {
+      const caller = qualityRouter.createCaller(createContext());
+      const analytics = await caller.operationalAnalytics({
+        period: "day",
+        referenceDate: now,
+      });
+
+      expect(analytics.completionByControl).toContainEqual(
+        expect.objectContaining({ module: "bphf", completed: 1 })
+      );
+      expect(analytics.completionByFactory).toContainEqual(
+        expect.objectContaining({ factoryId: 1, completed: 1 })
+      );
+      expect(analytics.incidences.byTreatment).toContainEqual({
+        status: "in_progress",
+        total: 1,
+      });
+      expect(analytics.incidences.nonconformities.byStatus).toContainEqual({
+        status: "closed",
+        total: 2,
+      });
+      expect(analytics.activityByTechnician).toContainEqual(
+        expect.objectContaining({
+          profileId: 1,
+          name: "Sabrina Esteves",
+          total: 2,
+          nonconforming: 1,
+        })
+      );
+    } finally {
+      tasks.splice(tasks.findIndex(task => task.id === 550), 1);
+      entries.splice(originalEntryLength);
+      ncs.splice(originalNcLength);
+      areaRows.splice(originalAreaLength);
+    }
+  });
+
   it("mantém visível um registo BPHF N/A sem colaborador para concluir a área respetiva", async () => {
     const entryId = 740;
     entries.push({

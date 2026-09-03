@@ -14,6 +14,7 @@ import Reports from "./pages/Reports";
 import Configuration from "./pages/Configuration";
 import PlatformOverview from "./pages/PlatformOverview";
 import DailyBackups from "./pages/DailyBackups";
+import OperationalAnalytics from "./pages/OperationalAnalytics";
 
 function Router() {
   // make sure to consider if you need authentication for certain routes
@@ -28,6 +29,7 @@ function Router() {
       <Route path={"/incidencias"} component={Nonconformities} />
       <Route path={"/nao-conformidades"} component={Nonconformities} />
       <Route path={"/relatorios"} component={Reports} />
+      <Route path={"/analise-operacional"} component={OperationalAnalytics} />
       <Route path={"/backups-diarios"} component={DailyBackups} />
       <Route path={"/configuracao"} component={Configuration} />
       <Route path={"/404"} component={NotFound} />
