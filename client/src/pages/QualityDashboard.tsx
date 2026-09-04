@@ -16,18 +16,22 @@ import { toast } from "sonner";
 
 type PlannedControlFilter = "all" | "completed" | "pending";
 
-export function productionLotForDate(date: Date) {
-  const localDate = new Date(
-    date.getFullYear(),
-    date.getMonth(),
-    date.getDate()
-  );
-  const firstDayOfYear = new Date(localDate.getFullYear(), 0, 1);
-  const julianDay =
-    Math.floor(
-      (localDate.getTime() - firstDayOfYear.getTime()) / 86_400_000
-    ) + 1;
-  return `L-${String(localDate.getFullYear()).slice(-2)}${String(
+export function localDateInputValue(date = new Date()) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+export function productionLotForDate(date: Date | string) {
+  const [year, month, day] =
+    typeof date === "string"
+      ? date.split("-").map(Number)
+      : [date.getFullYear(), date.getMonth() + 1, date.getDate()];
+  const julianDay = Math.floor(
+    (Date.UTC(year, month - 1, day) - Date.UTC(year, 0, 1)) / 86_400_000
+  ) + 1;
+  return `L-${String(year).slice(-2)}${String(
     julianDay
   ).padStart(3, "0")}`;
 }
@@ -37,7 +41,7 @@ export default function QualityDashboard() {
   const { canManage } = useQualityAccess();
   const utils = trpc.useUtils();
   const [factoryId, setFactoryId] = useState("");
-  const [selectedDate, setSelectedDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [selectedDate, setSelectedDate] = useState(() => localDateInputValue());
   const [plannedControlFilter, setPlannedControlFilter] = useState<PlannedControlFilter>("all");
   const [controlToDelete, setControlToDelete] = useState<{ id: number; label: string } | null>(null);
   const metadata = trpc.quality.metadata.useQuery();
@@ -71,9 +75,9 @@ export default function QualityDashboard() {
     if (plannedControlFilter === "pending") return withMissingVerificationSummary.filter((control) => !control.completed);
     return withMissingVerificationSummary;
   }, [data?.plannedControls, plannedControlFilter]);
-  const isCurrentDate = selectedDate === new Date().toISOString().slice(0, 10);
+  const isCurrentDate = selectedDate === localDateInputValue();
   const selectedDateLabel = dateFormat(selectedDateValue, false);
-  const productionLot = productionLotForDate(selectedDateValue);
+  const productionLot = productionLotForDate(selectedDate);
   const primaryTaskGroupLabel = isCurrentDate ? "Hoje" : selectedDateLabel;
   const completedControlResultsUrl = (control: { id: number; module: string; factoryId: number | null }) => {
     const query = new URLSearchParams({

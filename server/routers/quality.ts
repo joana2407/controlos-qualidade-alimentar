@@ -373,6 +373,88 @@ function isDeletedControlEntry(entry: { payload?: unknown }) {
   );
 }
 
+function coverageSlot(type: string, ...parts: Array<string | number>) {
+  return JSON.stringify([type, ...parts]);
+}
+
+export function completedCoverageSlots(
+  module: (typeof qualityModuleValues)[number],
+  entries: Array<{ area: string; title?: string; payload?: unknown }>
+) {
+  const completed = new Set<string>();
+  entries.forEach(entry => {
+    const payload = entryPayload(entry);
+    if (module === "bphf") {
+      const criterion =
+        typeof payload.criterion === "string"
+          ? payload.criterion
+          : entry.title ?? "";
+      if (criterion) completed.add(coverageSlot("bphf", entry.area, criterion));
+      return;
+    }
+    if (module === "metal_detectors") {
+      completed.add(coverageSlot("metal", entry.area));
+      return;
+    }
+    if (module === "temperature_controls") {
+      if (Array.isArray(payload.equipment))
+        payload.equipment.forEach(item => {
+          if (
+            item &&
+            typeof item === "object" &&
+            typeof (item as Record<string, unknown>).id === "string"
+          )
+            completed.add(
+              coverageSlot(
+                "temperature",
+                String((item as Record<string, unknown>).id)
+              )
+            );
+        });
+      return;
+    }
+    if (module === "monthly_checklist") {
+      if (typeof payload.checklistItemId === "number")
+        completed.add(
+          coverageSlot("monthly", payload.checklistItemId, entry.area)
+        );
+      return;
+    }
+    if (module === "food_defense") {
+      if (typeof payload.foodDefenseCriterionId === "string")
+        completed.add(
+          coverageSlot("food_defense", payload.foodDefenseCriterionId)
+        );
+      if (Array.isArray(payload.criteria))
+        payload.criteria.forEach(criterion => {
+          if (
+            criterion &&
+            typeof criterion === "object" &&
+            typeof (criterion as Record<string, unknown>).id === "string"
+          )
+            completed.add(
+              coverageSlot(
+                "food_defense",
+                String((criterion as Record<string, unknown>).id)
+              )
+            );
+        });
+      return;
+    }
+    if (module === "fragile_items") {
+      if (typeof payload.fragileItemId === "number")
+        completed.add(coverageSlot("fragile", payload.fragileItemId));
+      return;
+    }
+    if (module === "suggestion_boxes") {
+      completed.add(coverageSlot("suggestion", entry.area));
+      return;
+    }
+    completed.add(coverageSlot("submission"));
+  });
+  return completed;
+}
+
 export function entryMatchesPlannedTask(
   entry: {
     module: string;
@@ -672,6 +754,132 @@ function fragileItemsTaskComplete(
   return expectedItemIds.every(itemId => completedItemIds.has(itemId));
 }
 
+export function buildPlannedCoverage(
+  task: {
+    module: (typeof qualityModuleValues)[number];
+    factoryId: number | null;
+    dueAt: Date;
+    bphfCriteria?: string[] | null;
+    metalDetectorLines?: string[] | null;
+    temperatureEquipmentIds?: string[] | null;
+  },
+  entries: Array<{
+    area: string;
+    module: string;
+    factoryId: number | null;
+    completedAt: Date;
+    payload?: unknown;
+  }>,
+  areaCatalog: Array<{
+    group: string;
+    factoryId: number | null;
+    active: string;
+    name: string;
+  }>,
+  monthlyItems: Array<{ id: number; active: string; area?: string }>,
+  monthlyAssignments: Array<{ checklistItemId: number; factoryId: number }>,
+  factoryCatalog: Array<{ id: number; code: string }>,
+  monthlyAreaAssignments: Array<{
+    checklistItemId: number;
+    checklistAreaId: number;
+  }>,
+  monthlyAreaRows: Array<{ id: number; name: string; active?: string }>,
+  fragileCatalog: Array<{
+    id: number;
+    factoryId: number | null;
+    periodicity: FragilePeriodicity;
+    status: string;
+  }>
+) {
+  if (task.module === "bphf") {
+    const criteria = Array.isArray(task.bphfCriteria)
+      ? BPHF_CRITERIA.filter(criterion => task.bphfCriteria!.includes(criterion))
+      : BPHF_CRITERIA;
+    return expectedBphfAreas(task, areaCatalog).flatMap(area =>
+      criteria.map(criterion => coverageSlot("bphf", area, criterion))
+    );
+  }
+  if (task.module === "metal_detectors")
+    return expectedMetalDetectorLines(task, areaCatalog).map(line =>
+      coverageSlot("metal", line)
+    );
+  if (task.module === "temperature_controls")
+    return expectedTemperatureEquipmentIds(task).map(equipmentId =>
+      coverageSlot("temperature", equipmentId)
+    );
+  if (task.module === "suggestion_boxes") {
+    const factory = factoryCatalog.find(item => item.id === task.factoryId);
+    return suggestionLocationsForFactory(factory?.code).map(location =>
+      coverageSlot("suggestion", location)
+    );
+  }
+  if (task.module === "monthly_checklist") {
+    const areaNameById = new Map(
+      monthlyAreaRows
+        .filter(area => area.active !== "false")
+        .map(area => [area.id, area.name])
+    );
+    return monthlyItems
+      .filter(
+        item =>
+          item.active === "true" &&
+          (monthlyAssignments.some(
+            assignment => assignment.checklistItemId === item.id
+          )
+            ? monthlyAssignments.some(
+                assignment =>
+                  assignment.checklistItemId === item.id &&
+                  assignment.factoryId === task.factoryId
+              )
+            : true)
+      )
+      .flatMap(item => {
+        const areaNames = monthlyAreaAssignments
+          .filter(assignment => assignment.checklistItemId === item.id)
+          .map(assignment => areaNameById.get(assignment.checklistAreaId))
+          .filter((area): area is string => Boolean(area));
+        return (areaNames.length ? areaNames : [item.area ?? "Geral"]).map(area =>
+          coverageSlot("monthly", item.id, area)
+        );
+      });
+  }
+  if (task.module === "food_defense")
+    return Array.from({ length: FOOD_DEFENSE_EXPECTED_CRITERIA }, (_, index) =>
+      coverageSlot("food_defense", `fd-${index + 1}`)
+    );
+  if (task.module === "fragile_items") {
+    if (!task.factoryId) return [];
+    const dueDateKey = localDateKey(task.dueAt);
+    const lastInspectionsBeforePlan = new Map<number, Date>();
+    entries
+      .filter(
+        entry =>
+          !isDeletedControlEntry(entry) &&
+          entry.module === "fragile_items" &&
+          entry.factoryId === task.factoryId &&
+          entryOperationalDate(entry) < dueDateKey
+      )
+      .forEach(entry => {
+        const itemId = entryPayload(entry).fragileItemId;
+        if (typeof itemId === "number" && !lastInspectionsBeforePlan.has(itemId))
+          lastInspectionsBeforePlan.set(itemId, entry.completedAt);
+      });
+    return fragileCatalog
+      .filter(
+        item =>
+          item.factoryId === task.factoryId &&
+          item.status === "active" &&
+          isFragileInspectionPending(
+            item.periodicity,
+            lastInspectionsBeforePlan.get(item.id),
+            task.dueAt
+          )
+      )
+      .map(item => coverageSlot("fragile", item.id));
+  }
+  return [coverageSlot("submission")];
+}
+
 export function isHistoricalPlanTaskSatisfied(
   task: {
     id: number;
@@ -681,6 +889,7 @@ export function isHistoricalPlanTaskSatisfied(
     bphfCriteria?: string[] | null;
     metalDetectorLines?: string[] | null;
     temperatureEquipmentIds?: string[] | null;
+    plannedCoverage?: string[] | null;
   },
   entries: Array<{
     area: string;
@@ -716,6 +925,10 @@ export function isHistoricalPlanTaskSatisfied(
   const taskEntries = entries.filter(entry =>
     entryMatchesPlannedTask(entry, task)
   );
+  if (Array.isArray(task.plannedCoverage) && task.plannedCoverage.length) {
+    const completedSlots = completedCoverageSlots(task.module, taskEntries);
+    return task.plannedCoverage.every(slot => completedSlots.has(slot));
+  }
   if (task.module === "bphf")
     return bphfTaskComplete(task, taskEntries, areaCatalog);
   if (task.module === "metal_detectors")
@@ -1762,6 +1975,46 @@ export const qualityRouter = router({
         const taskEntries = entries.filter(entry =>
           entryMatchesPlannedTask(entry, task)
         );
+        if (Array.isArray(task.plannedCoverage) && task.plannedCoverage.length) {
+          const completedSlots = completedCoverageSlots(task.module, taskEntries);
+          const missingSlots = task.plannedCoverage.filter(
+            slot => !completedSlots.has(slot)
+          );
+          if (task.module === "food_defense")
+            return {
+              count: missingSlots.length,
+              labels: missingSlots.length
+                ? [`${missingSlots.length} ponto(s) da checklist Food Defense`]
+                : [],
+            };
+          const itemById = new Map(monthlyItems.map(item => [item.id, item]));
+          const fragileById = new Map(
+            scopedFragileCatalog.map(item => [item.id, item])
+          );
+          const equipmentNameById: Record<string, string> = {
+            "f1-freezer-1": "Equipamento de congelação 1",
+            "f1-freezer-2": "Equipamento de congelação 2",
+            "f2-cold-room": "Câmara de Frio",
+            "f2-dispatch-freezer": "Arca de Congelação expedição",
+          };
+          const labels = missingSlots.map(slot => {
+            const [type, first, second] = JSON.parse(slot) as [
+              string,
+              string | number | undefined,
+              string | undefined,
+            ];
+            if (type === "bphf") return `${first} · ${second}`;
+            if (type === "metal" || type === "suggestion") return String(first);
+            if (type === "temperature")
+              return equipmentNameById[String(first)] ?? String(first);
+            if (type === "monthly")
+              return `${itemById.get(Number(first))?.label ?? "Ponto da checklist"} · ${second}`;
+            if (type === "fragile")
+              return fragileById.get(Number(first))?.name ?? `Ponto de Quebráveis ${first}`;
+            return "Registo mínimo do controlo";
+          });
+          return { count: missingSlots.length, labels };
+        }
         if (task.module === "temperature_controls") {
           const equipmentNameById: Record<string, string> = {
             "f1-freezer-1": "Equipamento de congelação 1",
@@ -2717,11 +2970,27 @@ export const qualityRouter = router({
           code: "BAD_REQUEST",
           message: "Selecione responsáveis ativos para o Plano do Dia.",
         });
-      const existing = await db
-        .select()
-        .from(controlTasks)
-        .where(eq(controlTasks.status, "pending"));
-      const areaCatalog = await db.select().from(areas).orderBy(areas.name);
+      const [existing, areaCatalog, monthlyItems, monthlyAssignments, factoryCatalog, monthlyAreaAssignments, monthlyAreaRows, fragileCatalog, existingEntries] =
+        await Promise.all([
+          db
+            .select()
+            .from(controlTasks)
+            .where(eq(controlTasks.status, "pending")),
+          db.select().from(areas).orderBy(areas.name),
+          db.select().from(checklistItems).orderBy(checklistItems.sortOrder),
+          db
+            .select()
+            .from(checklistItemFactories)
+            .orderBy(checklistItemFactories.factoryId),
+          db.select().from(factories).orderBy(factories.name),
+          db.select().from(checklistItemAreas),
+          db.select().from(checklistAreas),
+          db.select().from(fragileItems).orderBy(fragileItems.sortOrder),
+          db
+            .select()
+            .from(controlEntries)
+            .orderBy(desc(controlEntries.completedAt)),
+        ]);
       const selectedFactories = Array.from(new Set(input.factoryIds));
       const plannedBphfCriteria = input.modules.includes("bphf")
         ? Array.from(new Set(input.bphfCriteria ?? BPHF_CRITERIA))
@@ -2806,6 +3075,30 @@ export const qualityRouter = router({
               module === "temperature_controls" && factoryId
                 ? [...(TEMPERATURE_EQUIPMENT_IDS_BY_FACTORY[factoryId] ?? [])]
                 : null,
+            plannedCoverage: buildPlannedCoverage(
+              {
+                module,
+                factoryId,
+                dueAt: date,
+                bphfCriteria: module === "bphf" ? plannedBphfCriteria : null,
+                metalDetectorLines:
+                  module === "metal_detectors"
+                    ? plannedMetalDetectorLinesByFactory?.[factoryId ?? -1] ?? null
+                    : null,
+                temperatureEquipmentIds:
+                  module === "temperature_controls" && factoryId
+                    ? [...(TEMPERATURE_EQUIPMENT_IDS_BY_FACTORY[factoryId] ?? [])]
+                    : null,
+              },
+              existingEntries,
+              areaCatalog,
+              monthlyItems,
+              monthlyAssignments,
+              factoryCatalog,
+              monthlyAreaAssignments,
+              monthlyAreaRows,
+              fragileCatalog
+            ),
             createdBy: ctx.user!.openId,
         }))
       );

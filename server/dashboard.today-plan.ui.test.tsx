@@ -52,6 +52,7 @@ describe("painel Hoje — Plano do Dia", () => {
   });
 
   it("calcula e atualiza o lote de produção L-AAjjj para a data selecionada", () => {
+    expect(productionLotForDate("2026-09-04")).toBe("L-26247");
     expect(productionLotForDate(new Date("2026-09-04T12:00:00"))).toBe("L-26247");
     expect(productionLotForDate(new Date("2024-12-31T12:00:00"))).toBe("L-24366");
     render(<QualityDashboard />);

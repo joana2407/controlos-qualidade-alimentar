@@ -657,3 +657,10 @@
 - [x] Auditar em todos os controlos as tarefas pendentes com registos associados, por data, fábrica e identificador do plano.
 - [x] Distinguir pendências reais de divergências técnicas na associação ou na regra de completitude.
 - [x] Corrigir a causa transversal que permite a recorrência de pendências indevidas entre formulário, Controlos e Hoje.
+- [x] Corrigir o cálculo do lote L-AAjjj para usar o dia juliano da data operacional local.
+- [x] Validar que 04/09/2026 apresenta L-26247, sem recuo de dia por fuso horário.
+- [x] Reauditar nos dados atuais todas as pendências visíveis com registos associados e identificar a divergência exata por controlo.
+- [x] Guardar em cada tarefa uma fotografia imutável das verificações previstas no momento da publicação do plano.
+- [x] Fazer autorização, completitude, painel Hoje, Controlos e reconciliação usarem exclusivamente a cobertura planeada da tarefa.
+- [x] Migrar com segurança tarefas históricas para a cobertura planeada correta, sem apagar nem reescrever registos.
+- [x] Adicionar regressões para impedir que alterações posteriores aos catálogos reabram tarefas já concluídas.

@@ -5,7 +5,7 @@ import { getDb } from "../db";
 import { storageGetSignedUrl, storagePut } from "../storage";
 import { invokeLLM } from "../_core/llm";
 import { notifyOwner } from "../_core/notification";
-import { entryMatchesPlannedTask, qualityRouter } from "./quality";
+import { entryMatchesPlannedTask, isHistoricalPlanTaskSatisfied, qualityRouter } from "./quality";
 
 vi.mock("../db", () => ({ getDb: vi.fn() }));
 vi.mock("../storage", () => ({ storagePut: vi.fn(), storageGetSignedUrl: vi.fn() }));
@@ -154,6 +154,77 @@ describe("procedimentos de qualidade por fábrica", () => {
     };
 
     expect(entryMatchesPlannedTask(deletedEntry, task)).toBe(false);
+  });
+
+  it("mantém a completitude estável pela cobertura planeada em todos os tipos de controlo", () => {
+    const slot = (type: string, ...parts: Array<string | number>) =>
+      JSON.stringify([type, ...parts]);
+    const cases = [
+      {
+        module: "bphf" as const,
+        plannedCoverage: [slot("bphf", "Produção", "Fardamento")],
+        entry: { area: "Produção", title: "Fardamento", payload: {} },
+      },
+      {
+        module: "metal_detectors" as const,
+        plannedCoverage: [slot("metal", "Linha 1")],
+        entry: { area: "Linha 1", payload: {} },
+      },
+      {
+        module: "temperature_controls" as const,
+        plannedCoverage: [slot("temperature", "arca-1")],
+        entry: { area: "Temperaturas", payload: { equipment: [{ id: "arca-1" }] } },
+      },
+      {
+        module: "monthly_checklist" as const,
+        plannedCoverage: [slot("monthly", 41, "Produção")],
+        entry: { area: "Produção", payload: { checklistItemId: 41 } },
+      },
+      {
+        module: "food_defense" as const,
+        plannedCoverage: [slot("food_defense", "fd-1")],
+        entry: { area: "Segurança geral", payload: { foodDefenseCriterionId: "fd-1" } },
+      },
+      {
+        module: "fragile_items" as const,
+        plannedCoverage: [slot("fragile", 71)],
+        entry: { area: "Produção", payload: { fragileItemId: 71 } },
+      },
+      {
+        module: "suggestion_boxes" as const,
+        plannedCoverage: [slot("suggestion", "Caixa WC feminino")],
+        entry: { area: "Caixa WC feminino", payload: {} },
+      },
+      {
+        module: "sensory" as const,
+        plannedCoverage: [slot("submission")],
+        entry: { area: "Controlo sensorial", payload: {} },
+      },
+    ];
+
+    cases.forEach((item, index) => {
+      const task = {
+        id: 700 + index,
+        module: item.module,
+        factoryId: 1,
+        dueAt: now,
+        plannedCoverage: item.plannedCoverage,
+      };
+      const entry = {
+        id: 800 + index,
+        module: item.module,
+        factoryId: 1,
+        completedAt: now,
+        result: "C",
+        title: "title" in item.entry ? item.entry.title : undefined,
+        ...item.entry,
+        payload: { ...item.entry.payload, plannedTaskId: task.id },
+      };
+
+      expect(
+        isHistoricalPlanTaskSatisfied(task, [entry], [], [], [], [], [], [], [])
+      ).toBe(true);
+    });
   });
 
   it("devolve os controlos publicados para a data selecionada no painel Hoje", async () => {
