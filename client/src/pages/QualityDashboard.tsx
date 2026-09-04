@@ -15,6 +15,23 @@ import React, { useMemo, useState } from "react";
 import { toast } from "sonner";
 
 type PlannedControlFilter = "all" | "completed" | "pending";
+
+export function productionLotForDate(date: Date) {
+  const localDate = new Date(
+    date.getFullYear(),
+    date.getMonth(),
+    date.getDate()
+  );
+  const firstDayOfYear = new Date(localDate.getFullYear(), 0, 1);
+  const julianDay =
+    Math.floor(
+      (localDate.getTime() - firstDayOfYear.getTime()) / 86_400_000
+    ) + 1;
+  return `L-${String(localDate.getFullYear()).slice(-2)}${String(
+    julianDay
+  ).padStart(3, "0")}`;
+}
+
 export default function QualityDashboard() {
   const [, navigate] = useLocation();
   const { canManage } = useQualityAccess();
@@ -56,6 +73,7 @@ export default function QualityDashboard() {
   }, [data?.plannedControls, plannedControlFilter]);
   const isCurrentDate = selectedDate === new Date().toISOString().slice(0, 10);
   const selectedDateLabel = dateFormat(selectedDateValue, false);
+  const productionLot = productionLotForDate(selectedDateValue);
   const primaryTaskGroupLabel = isCurrentDate ? "Hoje" : selectedDateLabel;
   const completedControlResultsUrl = (control: { id: number; module: string; factoryId: number | null }) => {
     const query = new URLSearchParams({
@@ -83,7 +101,7 @@ export default function QualityDashboard() {
           <p className="font-mono-ui text-xs uppercase tracking-[0.2em] text-teal-300">Operação diária</p>
           <h1 className="mt-2 text-3xl font-semibold tracking-tight">{isCurrentDate ? "Hoje" : selectedDateLabel}</h1>
           <p className="mt-1 max-w-xl text-sm text-slate-300">Acompanhe a execução dos controlos planeados, priorize os desvios críticos e mantenha a produção em conformidade.</p>
-          <div className="mt-4 flex flex-wrap items-center gap-2"><div className="flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100"><CalendarDays className="h-4 w-4 text-teal-300" /><Input aria-label="Data a consultar no painel Hoje" type="date" value={selectedDate} onChange={(event) => setSelectedDate(event.target.value)} className="h-7 w-32 border-0 bg-transparent p-0 text-sm text-slate-100 [color-scheme:dark] focus-visible:ring-0" /></div><Factory className="ml-1 h-4 w-4 text-teal-300" /><Select value={factoryId || "all"} onValueChange={(value) => setFactoryId(value === "all" ? "" : value)}><SelectTrigger className="h-9 w-72 border-slate-700 bg-slate-800 text-slate-100"><SelectValue placeholder="Todas as fábricas e linhas" /></SelectTrigger><SelectContent><SelectItem value="all">Todas as fábricas e linhas</SelectItem>{(metadata.data?.factories ?? []).map((factory) => <SelectItem key={factory.id} value={String(factory.id)}>{factory.name}</SelectItem>)}</SelectContent></Select></div>
+          <div className="mt-4 flex flex-wrap items-center gap-2"><div className="flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100"><CalendarDays className="h-4 w-4 text-teal-300" /><Input aria-label="Data a consultar no painel Hoje" type="date" value={selectedDate} onChange={(event) => setSelectedDate(event.target.value)} className="h-7 w-32 border-0 bg-transparent p-0 text-sm text-slate-100 [color-scheme:dark] focus-visible:ring-0" /></div><div className="rounded-lg border border-teal-400/25 bg-teal-950/40 px-3 py-2" aria-label={`Lote de produção: ${productionLot}`}><p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-teal-200">Lote de produção</p><p className="font-mono-ui mt-0.5 text-sm font-semibold text-white">{productionLot}</p></div><Factory className="ml-1 h-4 w-4 text-teal-300" /><Select value={factoryId || "all"} onValueChange={(value) => setFactoryId(value === "all" ? "" : value)}><SelectTrigger className="h-9 w-72 border-slate-700 bg-slate-800 text-slate-100"><SelectValue placeholder="Todas as fábricas e linhas" /></SelectTrigger><SelectContent><SelectItem value="all">Todas as fábricas e linhas</SelectItem>{(metadata.data?.factories ?? []).map((factory) => <SelectItem key={factory.id} value={String(factory.id)}>{factory.name}</SelectItem>)}</SelectContent></Select></div>
         </div>
         <div className="flex items-center gap-3">
           <div className="rounded-xl border border-slate-700 bg-slate-800 px-4 py-2 text-right"><p className="text-xs text-slate-400">Execução do dia</p><p className="font-mono-ui text-xl font-semibold text-teal-300">{data?.metrics.dailyExecutionRate ?? 0}%</p></div>

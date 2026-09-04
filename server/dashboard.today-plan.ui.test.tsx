@@ -22,7 +22,7 @@ vi.mock("@/contexts/QualityAccessContext", () => ({ useQualityAccess: () => ({ c
 vi.mock("@/components/quality/QualityUi", () => ({ SeverityBadge: () => <span>Severidade</span>, StatusBadge: () => <span>Estado</span> }));
 vi.mock("wouter", () => ({ Link: ({ children, href, ...props }: { children: React.ReactNode; href: string }) => <a href={href} {...props}>{children}</a>, useLocation: () => ["/", routerMocks.navigate] }));
 
-import QualityDashboard from "../client/src/pages/QualityDashboard";
+import QualityDashboard, { productionLotForDate } from "../client/src/pages/QualityDashboard";
 import { trpc } from "../client/src/lib/trpc";
 
 if (!HTMLElement.prototype.hasPointerCapture) HTMLElement.prototype.hasPointerCapture = () => false;
@@ -49,6 +49,23 @@ describe("painel Hoje — Plano do Dia", () => {
     fireEvent.change(dateInput, { target: { value: "2026-08-25" } });
     expect((dateInput as HTMLInputElement).value).toBe("2026-08-25");
     expect(screen.getByRole("heading", { level: 1 }).textContent).not.toBe("Hoje");
+  });
+
+  it("calcula e atualiza o lote de produção L-AAjjj para a data selecionada", () => {
+    expect(productionLotForDate(new Date("2026-09-04T12:00:00"))).toBe("L-26247");
+    expect(productionLotForDate(new Date("2024-12-31T12:00:00"))).toBe("L-24366");
+    render(<QualityDashboard />);
+
+    fireEvent.change(screen.getByLabelText("Data a consultar no painel Hoje"), {
+      target: { value: "2026-09-04" },
+    });
+    expect(screen.getByLabelText("Lote de produção: L-26247")).toBeTruthy();
+    expect(screen.getByText("L-26247")).toBeTruthy();
+
+    fireEvent.change(screen.getByLabelText("Data a consultar no painel Hoje"), {
+      target: { value: "2026-01-01" },
+    });
+    expect(screen.getByLabelText("Lote de produção: L-26001")).toBeTruthy();
   });
 
   it("filtra a lista de controlos agendados entre concluídos e por realizar", async () => {

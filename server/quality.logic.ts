@@ -121,6 +121,19 @@ function fridayOnOrAfter(date: Date) {
   return result;
 }
 
+/** Soma meses de calendário sem deixar, por exemplo, 31/01 transbordar para março. */
+function addCalendarMonthsClamped(date: Date, months: number) {
+  const source = startOfDay(date);
+  const targetYear = source.getFullYear();
+  const targetMonth = source.getMonth() + months;
+  const lastDayOfTargetMonth = new Date(targetYear, targetMonth + 1, 0).getDate();
+  return new Date(
+    targetYear,
+    targetMonth,
+    Math.min(source.getDate(), lastDayOfTargetMonth)
+  );
+}
+
 /** Devolve a data de vencimento do ciclo de um ponto de Quebráveis. */
 export function fragileInspectionDueDate(periodicity: FragilePeriodicity, lastInspectionAt: Date | null | undefined, referenceDate = new Date()) {
   const reference = startOfDay(referenceDate);
@@ -128,7 +141,7 @@ export function fragileInspectionDueDate(periodicity: FragilePeriodicity, lastIn
   if (!lastInspectionAt) return fridayOnOrAfter(reference);
   if (periodicity === "S") return fridayOnOrAfter(new Date(startOfDay(lastInspectionAt).setDate(startOfDay(lastInspectionAt).getDate() + 7)));
   if (periodicity === "Q") return fridayOnOrAfter(new Date(startOfDay(lastInspectionAt).setDate(startOfDay(lastInspectionAt).getDate() + 14)));
-  return fridayOnOrAfter(new Date(lastInspectionAt.getFullYear(), lastInspectionAt.getMonth() + 1, 1));
+  return fridayOnOrAfter(addCalendarMonthsClamped(lastInspectionAt, 1));
 }
 
 /**

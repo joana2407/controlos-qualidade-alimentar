@@ -645,3 +645,15 @@
 - [x] Incluir análise de atividade e resultados por técnico responsável.
 - [x] Adicionar indicadores de qualidade adicionais relevantes e uma síntese operacional do período.
 - [x] Validar cálculos, responsividade e acesso ao novo painel analítico.
+- [x] Calcular o lote de produção a partir da data selecionada no painel Hoje, no formato L-AAjjj.
+- [x] Apresentar a identificação do lote no cabeçalho responsivo do painel Hoje.
+- [x] Adicionar regressões para o cálculo e a atualização do lote ao alterar a data.
+- [x] Corrigir o bloqueio que impede novos registos no controlo sensorial após a validação mínima diária.
+- [x] Preservar os produtos já registados e a completitude ao acrescentar novas validações sensoriais.
+- [x] Adicionar regressões de autorização, submissão e interface para produtos sensoriais adicionais.
+- [x] Corrigir o vencimento mensal de Quebráveis para ser contado a partir da última inspeção válida.
+- [x] Apresentar verificações mensais de Quebráveis apenas na sexta-feira útil seguinte ao vencimento.
+- [x] Adicionar regressões para o exemplo mensal de 28/08 para 28/09 e para as demais periodicidades.
+- [x] Auditar em todos os controlos as tarefas pendentes com registos associados, por data, fábrica e identificador do plano.
+- [x] Distinguir pendências reais de divergências técnicas na associação ou na regra de completitude.
+- [x] Corrigir a causa transversal que permite a recorrência de pendências indevidas entre formulário, Controlos e Hoje.

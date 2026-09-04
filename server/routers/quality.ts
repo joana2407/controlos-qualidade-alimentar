@@ -363,7 +363,17 @@ function entryOperationalDate(entry: { completedAt: Date; payload?: unknown }) {
     : localDateKey(new Date(entry.completedAt));
 }
 
-function entryMatchesPlannedTask(
+function isDeletedControlEntry(entry: { payload?: unknown }) {
+  const lifecycle = entryPayload(entry).recordLifecycle;
+  return Boolean(
+    lifecycle &&
+      typeof lifecycle === "object" &&
+      !Array.isArray(lifecycle) &&
+      (lifecycle as Record<string, unknown>).status === "deleted"
+  );
+}
+
+export function entryMatchesPlannedTask(
   entry: {
     module: string;
     factoryId: number | null;
@@ -377,7 +387,11 @@ function entryMatchesPlannedTask(
     dueAt: Date;
   }
 ) {
-  if (entry.module !== task.module || entry.factoryId !== task.factoryId)
+  if (
+    isDeletedControlEntry(entry) ||
+    entry.module !== task.module ||
+    entry.factoryId !== task.factoryId
+  )
     return false;
   const payload = entryPayload(entry);
   return (
@@ -658,7 +672,7 @@ function fragileItemsTaskComplete(
   return expectedItemIds.every(itemId => completedItemIds.has(itemId));
 }
 
-function isHistoricalPlanTaskSatisfied(
+export function isHistoricalPlanTaskSatisfied(
   task: {
     id: number;
     module: (typeof qualityModuleValues)[number];
@@ -781,9 +795,9 @@ async function assessControlAuthorization(
     input.module === "metal_detectors";
   const eligibleTasks = tasks.filter((item: any) => {
     const isCurrentDay = localDateKey(new Date(item.dueAt)) === today;
-    const hasIncompletePlannedCoverage =
+    const plannedCoverageSatisfied =
       item.status !== "cancelled" &&
-      !isHistoricalPlanTaskSatisfied(
+      isHistoricalPlanTaskSatisfied(
         item,
         entries,
         areaCatalog,
@@ -794,9 +808,10 @@ async function assessControlAuthorization(
         monthlyAreaRows,
         fragileCatalog
       );
+    const hasIncompletePlannedCoverage = !plannedCoverageSatisfied;
     const isCompletedPlanOpenForSupplement =
       allowsSupplementaryDailyEntries &&
-      item.status === "completed" &&
+      plannedCoverageSatisfied &&
       isCurrentDay;
     return (
       (hasIncompletePlannedCoverage || isCompletedPlanOpenForSupplement) &&
@@ -876,6 +891,71 @@ async function requireControlAuthorization(
   if (!access.allowed)
     throw new TRPCError({ code: "FORBIDDEN", message: access.reason });
   return access;
+}
+
+async function reconcilePlannedControlTaskStatus(
+  db: any,
+  plannedTaskId: number | null | undefined
+) {
+  if (!plannedTaskId) return;
+  const task = (
+    await db
+      .select()
+      .from(controlTasks)
+      .where(eq(controlTasks.id, plannedTaskId))
+      .limit(1)
+  )[0];
+  if (!task || task.area !== "Plano do Dia" || task.status === "cancelled")
+    return;
+  const [entries, areaCatalog, monthlyItems, monthlyAssignments, monthlyAreaAssignments, monthlyAreaRows, factoryCatalog, fragileCatalog] =
+    await Promise.all([
+      db.select().from(controlEntries).orderBy(desc(controlEntries.completedAt)),
+      db.select().from(areas).orderBy(areas.name),
+      db.select().from(checklistItems).orderBy(checklistItems.sortOrder),
+      db
+        .select()
+        .from(checklistItemFactories)
+        .orderBy(checklistItemFactories.factoryId),
+      db.select().from(checklistItemAreas),
+      db.select().from(checklistAreas),
+      db.select().from(factories).orderBy(factories.name),
+      db.select().from(fragileItems).orderBy(fragileItems.sortOrder),
+    ]);
+  const completed = isHistoricalPlanTaskSatisfied(
+    task,
+    entries,
+    areaCatalog,
+    monthlyItems,
+    monthlyAssignments,
+    factoryCatalog,
+    monthlyAreaAssignments,
+    monthlyAreaRows,
+    fragileCatalog
+  );
+  const latestMatchingEntry = entries.find((entry: any) =>
+    entryMatchesPlannedTask(entry, task)
+  );
+  await db
+    .update(controlTasks)
+    .set(
+      completed
+        ? {
+            status: "completed",
+            completedAt: latestMatchingEntry?.completedAt ?? task.dueAt,
+            completedByProfileId:
+              latestMatchingEntry?.registeredByProfileId ?? null,
+            completedByName: latestMatchingEntry?.registeredByName ?? null,
+            completedByTitle: latestMatchingEntry?.registeredByTitle ?? null,
+          }
+        : {
+            status: "pending",
+            completedAt: null,
+            completedByProfileId: null,
+            completedByName: null,
+            completedByTitle: null,
+          }
+    )
+    .where(eq(controlTasks.id, task.id));
 }
 
 async function requireDb() {
@@ -3232,6 +3312,13 @@ export const qualityRouter = router({
           },
         })
         .where(eq(controlEntries.id, input.id));
+      const updatedPlannedTaskId = Number(nextPayload.plannedTaskId);
+      await reconcilePlannedControlTaskStatus(
+        db,
+        Number.isInteger(updatedPlannedTaskId) && updatedPlannedTaskId > 0
+          ? updatedPlannedTaskId
+          : null
+      );
       return { success: true };
     }),
 
@@ -3297,6 +3384,13 @@ export const qualityRouter = router({
           },
         })
         .where(eq(controlEntries.id, input.id));
+      const deletedPlannedTaskId = Number(payload.plannedTaskId);
+      await reconcilePlannedControlTaskStatus(
+        db,
+        Number.isInteger(deletedPlannedTaskId) && deletedPlannedTaskId > 0
+          ? deletedPlannedTaskId
+          : null
+      );
       return { success: true };
     }),
 

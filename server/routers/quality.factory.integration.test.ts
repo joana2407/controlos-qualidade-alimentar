@@ -5,7 +5,7 @@ import { getDb } from "../db";
 import { storageGetSignedUrl, storagePut } from "../storage";
 import { invokeLLM } from "../_core/llm";
 import { notifyOwner } from "../_core/notification";
-import { qualityRouter } from "./quality";
+import { entryMatchesPlannedTask, qualityRouter } from "./quality";
 
 vi.mock("../db", () => ({ getDb: vi.fn() }));
 vi.mock("../storage", () => ({ storagePut: vi.fn(), storageGetSignedUrl: vi.fn() }));
@@ -134,6 +134,26 @@ describe("procedimentos de qualidade por fábrica", () => {
     expect(dashboard.moduleProgressByFactory.bphf).toEqual([{ factoryId: 1, expected: 0, completed: 0, registeredToday: 0, percentage: 0 }]);
     expect(dashboard.moduleProgressByFactory.metal_detectors).toEqual([{ factoryId: 1, expected: 0, completed: 0, registeredToday: 0, percentage: 0 }]);
     expect(filteredTasks.map((task) => task.id)).toEqual([1, 2]);
+  });
+
+  it("não associa um registo eliminado à tarefa planeada para efeitos de completitude", () => {
+    const task = {
+      id: 501,
+      module: "sensory" as const,
+      factoryId: 1,
+      dueAt: now,
+    };
+    const deletedEntry = {
+      module: "sensory",
+      factoryId: 1,
+      completedAt: now,
+      payload: {
+        plannedTaskId: 501,
+        recordLifecycle: { status: "deleted" },
+      },
+    };
+
+    expect(entryMatchesPlannedTask(deletedEntry, task)).toBe(false);
   });
 
   it("devolve os controlos publicados para a data selecionada no painel Hoje", async () => {
@@ -979,6 +999,21 @@ describe("procedimentos de qualidade por fábrica", () => {
 
     await expect(caller.controlAuthorization({ module: "sensory", factoryId: 1 })).resolves.toMatchObject({ taskId: 79, isPreviousPending: false });
     await expect(caller.controlAuthorization({ module: "sensory", factoryId: 1, plannedTaskId: 78 })).resolves.toMatchObject({ taskId: 78, isPreviousPending: true, dueAt: previousDueAt });
+  });
+
+  it("mantém o controlo sensorial de hoje aberto a registos adicionais quando a completitude já foi atingida", async () => {
+    const sensoryPlan = { id: 81, factoryId: 1, status: "pending", dueAt: now, completedAt: null, module: "sensory", area: "Plano do Dia", title: "Plano do Dia — Sensorial F1", responsible: "Sabrina Esteves", assigneeProfileIds: [1] };
+    const sensoryEntry = { id: 810, factoryId: 1, module: "sensory", area: "Controlo sensorial", title: "Controlo sensorial — Pão de forma", result: "C", completedAt: now, payload: { plannedTaskId: 81, plannedDate: now.toISOString() } };
+    tasks.push(sensoryPlan);
+    entries.push(sensoryEntry);
+    try {
+      const caller = qualityRouter.createCaller(createContext({ id: 1, name: "Sabrina Esteves", title: "Tec. Qualidade", role: "technician" }));
+
+      await expect(caller.controlAuthorization({ module: "sensory", factoryId: 1, plannedTaskId: 81 })).resolves.toMatchObject({ allowed: true, taskId: 81 });
+    } finally {
+      tasks.splice(tasks.indexOf(sensoryPlan), 1);
+      entries.splice(entries.indexOf(sensoryEntry), 1);
+    }
   });
 
   it("conclui uma pendência sensorial após o registo integral da verificação", async () => {

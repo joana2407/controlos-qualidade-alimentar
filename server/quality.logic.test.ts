@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { businessDayAfter, calculateConformityRate, calculateDispatchConformity, calculateSensoryScore, fragileInspectionDelayDays, isBusinessDay, isFragileInspectionPending, isPortuguesePublicHoliday, nextBusinessDay, shouldCreateCriticalMetalAlert } from "./quality.logic";
+import { businessDayAfter, calculateConformityRate, calculateDispatchConformity, calculateSensoryScore, fragileInspectionDelayDays, fragileInspectionDueDate, isBusinessDay, isFragileInspectionPending, isPortuguesePublicHoliday, nextBusinessDay, shouldCreateCriticalMetalAlert } from "./quality.logic";
 
 describe("quality calculations", () => {
   it("applies the fixed sensory weights and converts the result to percentage", () => {
@@ -47,9 +47,20 @@ describe("quality calculations", () => {
     expect(isFragileInspectionPending("M", null, thursday)).toBe(false);
     expect(isFragileInspectionPending("S", new Date(2026, 7, 7, 9, 0, 0), friday)).toBe(true);
     expect(isFragileInspectionPending("Q", new Date(2026, 6, 31, 10, 0, 0), friday)).toBe(true);
-    expect(isFragileInspectionPending("M", new Date(2026, 6, 31, 8, 0, 0), friday)).toBe(true);
+    expect(isFragileInspectionPending("M", new Date(2026, 6, 31, 8, 0, 0), friday)).toBe(false);
     expect(isFragileInspectionPending("M", null, friday)).toBe(true);
     expect(fragileInspectionDelayDays("S", new Date(2026, 7, 7, 9, 0, 0), new Date(2026, 7, 21, 10, 0, 0))).toBe(7);
+  });
+
+  it("calcula a periodicidade mensal a partir da última inspeção e aguarda a sexta-feira seguinte ao vencimento", () => {
+    const lastInspection = new Date(2026, 7, 28, 10, 0, 0);
+    const dueDate = fragileInspectionDueDate("M", lastInspection);
+
+    expect(dueDate).toMatchObject(new Date(2026, 9, 2, 0, 0, 0));
+    expect(isFragileInspectionPending("M", lastInspection, new Date(2026, 8, 25, 10, 0, 0))).toBe(false);
+    expect(isFragileInspectionPending("M", lastInspection, new Date(2026, 8, 28, 10, 0, 0))).toBe(false);
+    expect(isFragileInspectionPending("M", lastInspection, new Date(2026, 9, 2, 10, 0, 0))).toBe(true);
+    expect(fragileInspectionDueDate("M", new Date(2026, 0, 31, 10, 0, 0))).toMatchObject(new Date(2026, 2, 6, 0, 0, 0));
   });
 
   it("não marca Quebráveis como pendentes num feriado e transporta a pendência para o próximo dia útil", () => {
