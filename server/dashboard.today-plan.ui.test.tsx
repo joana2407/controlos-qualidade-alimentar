@@ -41,6 +41,7 @@ describe("painel Hoje — Plano do Dia", () => {
     expect(screen.getAllByText("A aguardar decisão").length).toBeGreaterThan(0);
     expect(screen.queryByText("Tarefas atrasadas")).toBeNull();
     expect(screen.queryByText("Quebráveis pendentes")).toBeNull();
+    expect(screen.queryByText(/revisões retroativas por consultar/i)).toBeNull();
   });
 
   it("permite escolher outra data para consultar o planeamento respetivo", () => {

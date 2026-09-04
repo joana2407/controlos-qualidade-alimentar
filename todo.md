@@ -664,3 +664,5 @@
 - [x] Fazer autorização, completitude, painel Hoje, Controlos e reconciliação usarem exclusivamente a cobertura planeada da tarefa.
 - [x] Migrar com segurança tarefas históricas para a cobertura planeada correta, sem apagar nem reescrever registos.
 - [x] Adicionar regressões para impedir que alterações posteriores aos catálogos reabram tarefas já concluídas.
+- [x] Remover do painel Hoje o aviso de revisões retroativas por consultar.
+- [x] Manter as revisões retroativas acessíveis apenas nos Relatórios e Backups.
