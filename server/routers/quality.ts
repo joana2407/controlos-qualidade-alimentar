@@ -1614,6 +1614,7 @@ export const qualityRouter = router({
           return (
             task.area === "Plano do Dia" &&
             task.module === input.module &&
+            task.status !== "cancelled" &&
             inScope &&
             taskDate < today &&
             isBusinessDay(new Date(task.dueAt)) &&
@@ -7213,9 +7214,15 @@ export const qualityRouter = router({
     .input(
       z
         .object({
-          period: z.enum(["day", "week", "month"]).default("day"),
+          period: z.enum(["day", "week", "month", "custom"]).default("day"),
           referenceDate: dateInput.optional(),
+          startDate: dateInput.optional(),
+          endDate: dateInput.optional(),
         })
+        .refine(
+          value => Boolean(value.startDate) === Boolean(value.endDate),
+          "Indique a data inicial e a data final do intervalo."
+        )
         .optional()
     )
     .query(async ({ input }) => {
@@ -7244,17 +7251,25 @@ export const qualityRouter = router({
         db.select().from(fragileItems),
       ]);
       const period = input?.period ?? "day";
-      const referenceDate = input?.referenceDate ?? new Date();
-      const periodStart = asDateRange(referenceDate).start;
-      if (period === "week") {
-        const weekDay = (periodStart.getDay() + 6) % 7;
-        periodStart.setDate(periodStart.getDate() - weekDay);
+      const hasExplicitRange = Boolean(input?.startDate && input?.endDate);
+      const referenceDate = input?.referenceDate ?? input?.startDate ?? new Date();
+      let periodStart = asDateRange(referenceDate).start;
+      let periodEnd: Date;
+      if (hasExplicitRange) {
+        periodStart = asDateRange(input!.startDate!).start;
+        periodEnd = asDateRange(input!.endDate!).end;
+      } else {
+        if (period === "week") {
+          const weekDay = (periodStart.getDay() + 6) % 7;
+          periodStart.setDate(periodStart.getDate() - weekDay);
+        }
+        if (period === "month") periodStart.setDate(1);
+        periodEnd = new Date(periodStart);
+        if (period === "day" || period === "custom")
+          periodEnd.setDate(periodEnd.getDate() + 1);
+        if (period === "week") periodEnd.setDate(periodEnd.getDate() + 7);
+        if (period === "month") periodEnd.setMonth(periodEnd.getMonth() + 1);
       }
-      if (period === "month") periodStart.setDate(1);
-      const periodEnd = new Date(periodStart);
-      if (period === "day") periodEnd.setDate(periodEnd.getDate() + 1);
-      if (period === "week") periodEnd.setDate(periodEnd.getDate() + 7);
-      if (period === "month") periodEnd.setMonth(periodEnd.getMonth() + 1);
       const isWithinPeriod = (date: Date) =>
         date >= periodStart && date < periodEnd;
       const isDeletedEntry = (entry: (typeof entries)[number]) => {
@@ -7321,6 +7336,19 @@ export const qualityRouter = router({
             ]
           : []),
       ];
+      const resultsForControl = (module: string) => {
+        const moduleEntries = entriesInPeriod.filter(
+          entry => entry.module === module
+        );
+        return {
+          registrations: moduleEntries.length,
+          conforming: moduleEntries.filter(entry => entry.result === "C").length,
+          nonconforming: moduleEntries.filter(entry => entry.result === "NC")
+            .length,
+          notApplicable: moduleEntries.filter(entry => entry.result === "N/A")
+            .length,
+        };
+      };
       const completionByControl = Array.from(
         new Set(analysedTasks.map(task => task.module))
       ).map(module => ({
@@ -7328,6 +7356,7 @@ export const qualityRouter = router({
         ...completionSummary(
           analysedTasks.filter(task => task.module === module)
         ),
+        ...resultsForControl(module),
       }));
       const resultSummary = {
         total: entriesInPeriod.length,
@@ -7405,20 +7434,46 @@ export const qualityRouter = router({
         technician.entries.push(entry);
         technicians.set(key, technician);
       });
+      const sourceEntriesById = new Map(
+        activeEntries.map(entry => [entry.id, entry])
+      );
       const activityByTechnician = Array.from(technicians.values())
-        .map(technician => ({
-          profileId: technician.profileId,
-          name: technician.name,
-          title: technician.title,
-          total: technician.entries.length,
-          conforming: technician.entries.filter(entry => entry.result === "C")
-            .length,
-          nonconforming: technician.entries.filter(entry => entry.result === "NC")
-            .length,
-          conformity: calculateConformityRate(
-            technician.entries.map(entry => entry.result)
-          ),
-        }))
+        .map(technician => {
+          const generatedNonconformities = ncsInPeriod.filter(nc => {
+            const sourceEntry = nc.sourceEntryId
+              ? sourceEntriesById.get(nc.sourceEntryId)
+              : undefined;
+            if (technician.profileId !== null) {
+              return (
+                nc.reportedByProfileId === technician.profileId ||
+                (nc.reportedByProfileId === null &&
+                  sourceEntry?.registeredByProfileId === technician.profileId)
+              );
+            }
+            return (
+              nc.reportedByName?.trim() === technician.name ||
+              (!nc.reportedByName &&
+                sourceEntry?.registeredByName?.trim() === technician.name)
+            );
+          }).length;
+          const incidences = technician.entries.filter(
+            entry => entry.result === "NC"
+          ).length;
+          return {
+            profileId: technician.profileId,
+            name: technician.name,
+            title: technician.title,
+            total: technician.entries.length,
+            conforming: technician.entries.filter(entry => entry.result === "C")
+              .length,
+            incidences,
+            nonconforming: incidences,
+            generatedNonconformities,
+            conformity: calculateConformityRate(
+              technician.entries.map(entry => entry.result)
+            ),
+          };
+        })
         .sort((left, right) => right.total - left.total || left.name.localeCompare(right.name));
       const numberOfDays = Math.max(
         1,
@@ -7442,6 +7497,9 @@ export const qualityRouter = router({
           }),
           registrations: dayEntries.length,
           incidences: dayEntries.filter(entry => entry.result === "NC").length,
+          generatedNonconformities: ncsInPeriod.filter(
+            nc => nc.detectedAt >= dayStart && nc.detectedAt < dayEnd
+          ).length,
           completedTasks: dayTasks.filter(task => task.completed).length,
           plannedTasks: dayTasks.length,
         };

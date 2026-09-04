@@ -39,9 +39,9 @@ describe("painel Hoje — resumo operacional diário", () => {
     expect(screen.getByRole("link", { name: /abrir relatório/i }).getAttribute("href")).toBe("/relatorios");
   });
 
-  it("alerta para uma revisão retroativa ainda por consultar e encaminha para a versão", () => {
+  it("não apresenta revisões retroativas no painel Hoje", () => {
     render(<QualityDashboard />);
-    expect(screen.getByText(/revisão retroativa por consultar/i)).toBeTruthy();
-    expect(screen.getByRole("link", { name: /abrir 1 revisão.*pendente/i }).getAttribute("href")).toBe("/relatorios?archiveId=41");
+    expect(screen.queryByText(/revisão retroativa por consultar/i)).toBeNull();
+    expect(screen.queryByRole("link", { name: /abrir 1 revisão.*pendente/i })).toBeNull();
   });
 });

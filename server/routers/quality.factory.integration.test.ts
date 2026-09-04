@@ -313,7 +313,7 @@ describe("procedimentos de qualidade por fábrica", () => {
       });
 
       expect(analytics.completionByControl).toContainEqual(
-        expect.objectContaining({ module: "bphf", completed: 1 })
+        expect.objectContaining({ module: "bphf", completed: 1, conforming: 3 })
       );
       expect(analytics.completionByFactory).toContainEqual(
         expect.objectContaining({ factoryId: 1, completed: 1 })
@@ -331,7 +331,8 @@ describe("procedimentos de qualidade por fábrica", () => {
           profileId: 1,
           name: "Sabrina Esteves",
           total: 2,
-          nonconforming: 1,
+          incidences: 1,
+          generatedNonconformities: 1,
         })
       );
     } finally {
@@ -340,6 +341,19 @@ describe("procedimentos de qualidade por fábrica", () => {
       ncs.splice(originalNcLength);
       areaRows.splice(originalAreaLength);
     }
+  });
+
+  it("aceita um intervalo inclusivo personalizado no painel analítico", async () => {
+    const caller = qualityRouter.createCaller(createContext());
+    const analytics = await caller.operationalAnalytics({
+      period: "custom",
+      referenceDate: now,
+      startDate: new Date(2026, 7, 14, 12, 0, 0),
+      endDate: new Date(2026, 7, 14, 12, 0, 0),
+    });
+
+    expect(analytics.periodStart).toEqual(new Date(2026, 7, 14));
+    expect(analytics.periodEnd).toEqual(new Date(2026, 7, 15));
   });
 
   it("mantém visível um registo BPHF N/A sem colaborador para concluir a área respetiva", async () => {
@@ -662,6 +676,43 @@ describe("procedimentos de qualidade por fábrica", () => {
       expect(authorization).toMatchObject({ allowed: false, isPreviousPending: false });
     } finally {
       entries.pop();
+      tasks.pop();
+    }
+  });
+
+  it("não apresenta uma tarefa cancelada como pendência, mesmo quando foi atribuída a vários técnicos", async () => {
+    const previousDate = new Date(2026, 7, 13, 10, 0, 0);
+    const cancelledTaskId = 521;
+    tasks.push({
+      id: cancelledTaskId,
+      factoryId: 1,
+      status: "cancelled",
+      dueAt: previousDate,
+      completedAt: null,
+      module: "bphf",
+      area: "Plano do Dia",
+      title: "Plano do Dia — BPHF F1 cancelado",
+      responsible: "Sabrina Esteves, Neuza Antunes",
+      assigneeProfileIds: [1, 2],
+    });
+    try {
+      const sabrina = qualityRouter.createCaller(
+        createContext({ id: 1, name: "Sabrina Esteves", title: "Tec. Qualidade", role: "technician" })
+      );
+      const neuza = qualityRouter.createCaller(
+        createContext({ id: 2, name: "Neuza Antunes", title: "Tec. Qualidade", role: "technician" })
+      );
+
+      const [sabrinaPending, neuzaPending, listedTasks] = await Promise.all([
+        sabrina.pendingControlTasks({ module: "bphf", factoryId: 1 }),
+        neuza.pendingControlTasks({ module: "bphf", factoryId: 1 }),
+        sabrina.listTasks({ factoryId: 1 }),
+      ]);
+
+      expect(sabrinaPending.map(task => task.id)).not.toContain(cancelledTaskId);
+      expect(neuzaPending.map(task => task.id)).not.toContain(cancelledTaskId);
+      expect(listedTasks.map(task => task.id)).not.toContain(cancelledTaskId);
+    } finally {
       tasks.pop();
     }
   });

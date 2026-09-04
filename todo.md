@@ -666,3 +666,19 @@
 - [x] Adicionar regressões para impedir que alterações posteriores aos catálogos reabram tarefas já concluídas.
 - [x] Remover do painel Hoje o aviso de revisões retroativas por consultar.
 - [x] Manter as revisões retroativas acessíveis apenas nos Relatórios e Backups.
+- [x] Reproduzir a divergência entre a lista de pendências, o painel Hoje e a lista de tarefas para as datas apresentadas.
+- [x] Verificar se múltiplos colaboradores atribuídos interferem indevidamente com a conclusão de uma tarefa.
+- [x] Fazer todas as listas de pendências dependerem exclusivamente da completitude canónica da tarefa.
+- [x] Reconciliar estados técnicos divergentes sem apagar nem reescrever registos históricos.
+- [x] Adicionar regressões para tarefas concluídas com um ou vários colaboradores atribuídos.
+- [x] Adicionar ao Painel Analítico filtros de data inicial e data final.
+- [x] Mostrar o número da semana ISO ou o mês/ano analisado de acordo com o período selecionado.
+- [x] Fazer os atalhos Dia, Semana e Mês preencherem explicitamente o intervalo analisado.
+- [x] Adaptar os indicadores e gráficos do Painel Analítico ao intervalo de datas selecionado.
+- [x] Incluir no gráfico de completitude por controlo a distribuição de resultados C, NC e N/A.
+- [x] Remover o gráfico circular separado de resultados após consolidar a informação no gráfico por controlo.
+- [x] Diferenciar nos indicadores e gráficos analíticos as incidências registadas das NC efetivamente geradas.
+- [x] Incluir nos gráficos e no resumo por técnico o número de incidências e de NC geradas no período.
+- [x] Incluir uma série de NC geradas no gráfico de evolução diária do período.
+- [x] Aplicar no painel a regra: desvio de controlo gera incidência; o tratamento pode encerrar sem NC ou gerar NC.
+- [x] Incluir estas regras na explicação da Plataforma, incluindo a leitura dos indicadores analíticos.

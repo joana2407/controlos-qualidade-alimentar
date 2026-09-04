@@ -17,10 +17,12 @@ describe("visão geral da plataforma", () => {
     expect(screen.queryByText("Verifique pelo menos um operador em cada área aplicável.")).toBeNull();
     expect(screen.getByText("Como executar cada controlo.")).toBeTruthy();
     ["BPHF", "Detetores de metais", "Controlo sensorial", "Shelf-life", "Checklist mensal", "Caixas de sugestões", "Quebráveis", "Controlo à expedição", "Análises internas", "Controlos de Temperatura"].forEach((label) => expect(screen.getAllByText(label).length).toBeGreaterThan(0));
-    expect(screen.getByText("Registe o desvio, guarde a evidência e abra NC quando a repetição o exigir.")).toBeTruthy();
-    expect(screen.getByText("1. Registar e evidenciar")).toBeTruthy();
-    expect(screen.getByText("2. Abrir NC obrigatória")).toBeTruthy();
-    expect(screen.getByText(/3 verificações NC semelhantes/)).toBeTruthy();
+    expect(screen.getByText("Um desvio cria uma Incidência; só a decisão de tratamento pode gerar uma NC.")).toBeTruthy();
+    expect(screen.getByText("1. Desvio → Incidência")).toBeTruthy();
+    expect(screen.getByText("2. Tratar e decidir")).toBeTruthy();
+    expect(screen.getByText("3. NC gerada quando aplicável")).toBeTruthy();
+    expect(screen.getByText(/«Incidências» conta os desvios registados; «NC geradas» conta apenas/)).toBeTruthy();
+    expect(screen.getByText(/3 incidências semelhantes no mesmo controlo/)).toBeTruthy();
     expect(screen.getByText("Concluir uma pendência de um dia anterior.")).toBeTruthy();
     expect(screen.getByText("Data prevista")).toBeTruthy();
     expect(screen.getByText("Data de realização")).toBeTruthy();
