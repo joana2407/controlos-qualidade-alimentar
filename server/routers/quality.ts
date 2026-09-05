@@ -176,21 +176,11 @@ function controlledPointKey(
   ]
     .map(key => payload[key])
     .find(value => typeof value === "number" || typeof value === "string");
-  const pointName = [
-    payload.line,
-    payload.location,
-    payload.equipmentName,
-    payload.product,
-    entry.area,
-    entry.title,
-  ].find(value => typeof value === "string" && value.trim());
-  const normalisedName = String(pointName ?? "Ponto não identificado")
-    .trim()
-    .toLocaleLowerCase("pt-PT")
-    .replace(/\s+/g, " ");
-  return `${entry.module}|${entry.factoryId ?? "none"}|${
-    pointId !== undefined ? `id:${String(pointId)}` : `name:${normalisedName}`
-  }`;
+  // Um título, produto ou área em texto livre não identifica de forma segura o
+  // mesmo ponto controlado. Sem um identificador persistido não há base para
+  // somar incidências distintas e recomendar automaticamente a abertura de NC.
+  if (pointId === undefined) return null;
+  return `${entry.module}|${entry.factoryId ?? "none"}|id:${String(pointId)}`;
 }
 const BPHF_AREA_NAMES = ["Produção", "Embalagem", "Limpeza"] as const;
 const BPHF_CRITERIA = [
@@ -4603,6 +4593,7 @@ export const qualityRouter = router({
       const key = hasBphfCollaborator
         ? `${entry.module}|collaborator:${collaboratorId}`
         : controlledPointKey(entry, payload);
+      if (!key) return;
       const group = grouped.get(key) ?? {
         title: hasBphfCollaborator
           ? `Colaborador: ${collaboratorName}`

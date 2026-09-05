@@ -989,10 +989,11 @@ export default function Nonconformities() {
                 <p className="font-semibold">Abertura de NC obrigatória</p>
                 <p className="mt-1 text-sm text-red-900">
                   Foram registadas 3 ou mais incidências NC no mesmo ponto de
-                  controlo, ainda sem NC associada, nos últimos 6 meses. Nos
-                  controlos BPHF, a repetição é calculada pelo colaborador
-                  inspecionado. Abra a Não Conformidade no sistema externo para
-                  dar início ao tratamento.
+                  controlo identificado, ainda sem NC associada, nos últimos 6
+                  meses. Nos controlos BPHF, a repetição é calculada pelo
+                  colaborador inspecionado. Incidências registadas sem controlo
+                  associado são tratadas individualmente e não são somadas neste
+                  alerta.
                 </p>
                 <div className="mt-3 flex flex-wrap gap-2">
                   {similarIncidenceAlerts.data.map(alert => (

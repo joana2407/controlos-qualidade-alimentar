@@ -682,3 +682,7 @@
 - [x] Incluir uma série de NC geradas no gráfico de evolução diária do período.
 - [x] Aplicar no painel a regra: desvio de controlo gera incidência; o tratamento pode encerrar sem NC ou gerar NC.
 - [x] Incluir estas regras na explicação da Plataforma, incluindo a leitura dos indicadores analíticos.
+- [x] Auditar os alertas de NC que agrupam incidências de desvios diferentes.
+- [x] Definir uma chave de recorrência que inclua controlo, fábrica, ponto ou critério e natureza do desvio.
+- [x] Corrigir o alerta de abertura obrigatória de NC para excluir incidências não relacionadas.
+- [x] Adicionar regressões para desvios distintos no mesmo produto ou ponto de controlo.

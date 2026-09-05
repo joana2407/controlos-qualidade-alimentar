@@ -1496,6 +1496,23 @@ describe("procedimentos de qualidade por fábrica", () => {
     }
   });
 
+  it("não soma incidências manuais ou produtos com o mesmo título sem um ponto de controlo identificável", async () => {
+    const unlinkedIncidences = [
+      { id: 9081, factoryId: 2, module: "not_applicable", area: "Não aplicável", title: "Broa da Serra", result: "NC", notes: "Algumas unidades queimadas.", completedAt: new Date(2026, 7, 10, 10, 0, 0), payload: {} },
+      { id: 9082, factoryId: 2, module: "not_applicable", area: "Não aplicável", title: "Broa da Serra", result: "NC", notes: "Falta de ingrediente numa produção diferente.", completedAt: new Date(2026, 7, 11, 10, 0, 0), payload: {} },
+      { id: 9083, factoryId: 2, module: "not_applicable", area: "Não aplicável", title: "Broa da Serra", result: "NC", notes: "Embalagem danificada.", completedAt: new Date(2026, 7, 12, 10, 0, 0), payload: {} },
+    ];
+    entries.push(...unlinkedIncidences);
+    try {
+      const caller = qualityRouter.createCaller(createContext());
+      const alerts = await caller.similarIncidenceAlerts();
+
+      expect(alerts.some(alert => alert.title === "Broa da Serra")).toBe(false);
+    } finally {
+      entries.splice(entries.length - unlinkedIncidences.length, unlinkedIncidences.length);
+    }
+  });
+
   it("aceita a data de conclusão portuguesa ao guardar o tratamento da incidência", async () => {
     const incidence = { id: 908, factoryId: 1, module: "fragile_items", area: "Produção", title: "Quebrável — Quadro elétrico", result: "NC", completedAt: now, payload: {} };
     entries.unshift(incidence);
