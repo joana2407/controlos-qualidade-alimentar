@@ -2913,6 +2913,98 @@ export const qualityRouter = router({
       return { success: true };
     }),
 
+  createIncidenceFollowUpTask: qualityManagerProcedure
+    .input(
+      z.object({
+        sourceEntryId: z.number().int(),
+        title: z.string().trim().min(3).max(180),
+        description: z.string().trim().min(3).max(3000),
+        dueAt: dateInput,
+        assigneeProfileIds: z.array(z.number().int()).min(1).max(10),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      if (!isBusinessDay(input.dueAt))
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message:
+            "A tarefa de seguimento deve ser agendada num dia útil, de segunda a sexta-feira.",
+        });
+      const db = await requireDb();
+      const sourceEntry = (
+        await db
+          .select()
+          .from(controlEntries)
+          .where(eq(controlEntries.id, input.sourceEntryId))
+          .limit(1)
+      )[0];
+      const sourcePayload =
+        sourceEntry?.payload &&
+        typeof sourceEntry.payload === "object" &&
+        !Array.isArray(sourceEntry.payload)
+          ? (sourceEntry.payload as Record<string, unknown>)
+          : {};
+      const lifecycle =
+        sourcePayload.recordLifecycle &&
+        typeof sourcePayload.recordLifecycle === "object" &&
+        !Array.isArray(sourcePayload.recordLifecycle)
+          ? (sourcePayload.recordLifecycle as Record<string, unknown>)
+          : {};
+      if (!sourceEntry || sourceEntry.result !== "NC" || lifecycle.status === "deleted")
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message:
+            "A tarefa de seguimento só pode ser criada a partir de uma incidência ativa de uma verificação não conforme.",
+        });
+      const selectedProfiles = await db
+        .select()
+        .from(qualityPinProfiles)
+        .where(inArray(qualityPinProfiles.id, input.assigneeProfileIds))
+        .orderBy(qualityPinProfiles.id);
+      const profiles = selectedProfiles.filter(profile =>
+        input.assigneeProfileIds.includes(profile.id)
+      );
+      if (
+        profiles.length !== input.assigneeProfileIds.length ||
+        profiles.some(profile => profile.active !== "true")
+      )
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Selecione utilizadores ativos para a tarefa de seguimento.",
+        });
+      await db.insert(controlTasks).values({
+        title: input.title,
+        description: input.description,
+        module: sourceEntry.module,
+        area: sourceEntry.area,
+        factoryId: sourceEntry.factoryId,
+        dueAt: input.dueAt,
+        responsible: profiles.map(profile => profile.name).join(", "),
+        assigneeProfileIds: input.assigneeProfileIds,
+        sourceEntryId: sourceEntry.id,
+        createdBy: ctx.user!.openId,
+      });
+      return { success: true };
+    }),
+
+  listIncidenceFollowUpTasks: qualitySessionProcedure
+    .input(z.object({ sourceEntryId: z.number().int() }))
+    .query(async ({ ctx, input }) => {
+      const db = await requireDb();
+      const profile = ctx.operatorProfile!;
+      const tasks = await db
+        .select()
+        .from(controlTasks)
+        .where(eq(controlTasks.sourceEntryId, input.sourceEntryId))
+        .orderBy(controlTasks.dueAt);
+      return tasks.filter(task => {
+        const assignees = Array.isArray(task.assigneeProfileIds)
+          ? task.assigneeProfileIds
+          : [];
+        return profile.role === "manager" || assignees.includes(profile.id);
+      });
+    }),
+
   publishDailyPlan: qualityManagerProcedure
     .input(
       z
@@ -3571,6 +3663,7 @@ export const qualityRouter = router({
             ? "NÃO VERIFICADO"
             : first.lots[0]?.lot ?? "";
       }
+      const effectiveResult = recalculatedDispatchResult ?? input.result;
       await db
         .update(controlEntries)
         .set({
@@ -3579,7 +3672,7 @@ export const qualityRouter = router({
           ...(input.factoryId !== undefined
             ? { factoryId: input.factoryId }
             : {}),
-          result: recalculatedDispatchResult ?? input.result,
+          result: effectiveResult,
           notes: input.notes?.trim() || null,
           payload: {
             ...nextPayload,
@@ -3591,11 +3684,26 @@ export const qualityRouter = router({
                 byProfileId: ctx.operatorProfile!.id,
                 byName: ctx.operatorProfile!.name,
                 byTitle: ctx.operatorProfile!.title,
+                previousResult: entry.result,
+                result: effectiveResult,
+                incidenceResolved:
+                  entry.result === "NC" && effectiveResult === "C",
               },
             ],
           },
         })
         .where(eq(controlEntries.id, input.id));
+      if (entry.result === "NC" && effectiveResult === "C") {
+        await db
+          .update(controlTasks)
+          .set({ status: "cancelled" })
+          .where(
+            and(
+              eq(controlTasks.sourceEntryId, entry.id),
+              eq(controlTasks.status, "pending")
+            )
+          );
+      }
       const updatedPlannedTaskId = Number(nextPayload.plannedTaskId);
       await reconcilePlannedControlTaskStatus(
         db,
@@ -3603,7 +3711,10 @@ export const qualityRouter = router({
           ? updatedPlannedTaskId
           : null
       );
-      return { success: true };
+      return {
+        success: true,
+        incidenciaResolvida: entry.result === "NC" && effectiveResult === "C",
+      };
     }),
 
   deleteControlEntry: qualityOperatorProcedure

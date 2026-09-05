@@ -1211,6 +1211,152 @@ describe("procedimentos de qualidade por fábrica", () => {
     expect(dbInserts[0]).toMatchObject({ title: "Verificação geral", description: "Confirmar a condição da área.", area: "Sem área", factoryId: 1, assigneeProfileIds: [1, 2], responsible: "Sabrina Esteves, Neuza Antunes" });
   });
 
+  it("permite à Responsável criar uma tarefa de seguimento ligada a uma incidência NC", async () => {
+    const sourceEntry = entries[0]!;
+    const originalSourceEntry = { ...sourceEntry };
+    Object.assign(sourceEntry, {
+      module: "bphf",
+      factoryId: 1,
+      area: "Produção T",
+      result: "NC",
+      payload: { criterion: "Cacifos", collaboratorName: "Colaborador A" },
+    });
+    const manager = qualityRouter.createCaller(createContext());
+    const technician = qualityRouter.createCaller(createContext({ id: 1, name: "Sabrina Esteves", title: "Tec. Qualidade", role: "technician" }));
+    try {
+      await expect(
+        technician.createIncidenceFollowUpTask({
+          sourceEntryId: sourceEntry.id,
+          title: "Repetir inspeção aos cacifos",
+          description: "Repetir a verificação para o colaborador indicado.",
+          dueAt: now,
+          assigneeProfileIds: [2],
+        })
+      ).rejects.toMatchObject({ code: "FORBIDDEN" });
+      await expect(
+        manager.createIncidenceFollowUpTask({
+          sourceEntryId: sourceEntry.id,
+          title: "Repetir inspeção aos cacifos",
+          description: "Repetir a verificação para o colaborador indicado.",
+          dueAt: now,
+          assigneeProfileIds: [2],
+        })
+      ).resolves.toMatchObject({ success: true });
+      expect(dbInserts).toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          title: "Repetir inspeção aos cacifos",
+          module: "bphf",
+          area: "Produção T",
+          factoryId: 1,
+          sourceEntryId: sourceEntry.id,
+          assigneeProfileIds: [2],
+          responsible: "Neuza Antunes",
+        }),
+      ]));
+    } finally {
+      Object.assign(sourceEntry, originalSourceEntry);
+    }
+  });
+
+  it("retira a incidência ativa e cancela apenas os seguimentos pendentes quando a verificação passa a Conforme", async () => {
+    const sourceEntry = entries[0]!;
+    const originalSourceEntry = { ...sourceEntry };
+    const followUpTask = {
+      id: 980,
+      factoryId: 1,
+      status: "pending" as const,
+      dueAt: now,
+      completedAt: null,
+      module: "bphf" as const,
+      area: "Produção T",
+      title: "Seguimento — Cacifos",
+      responsible: "Neuza Antunes",
+      assigneeProfileIds: [2],
+      sourceEntryId: sourceEntry.id,
+    };
+    Object.assign(sourceEntry, {
+      module: "bphf",
+      factoryId: 1,
+      area: "Produção T",
+      result: "NC",
+      registeredByProfileId: 3,
+      registeredByName: "Joana Pina",
+      payload: { criterion: "Cacifos" },
+    });
+    tasks.push(followUpTask);
+    try {
+      const result = await qualityRouter
+        .createCaller(createContext())
+        .updateControlEntry({
+          id: sourceEntry.id,
+          title: "Cacifos — verificação corrigida",
+          area: "Produção T",
+          factoryId: 1,
+          result: "C",
+          notes: "Verificação revista e conforme.",
+        });
+      expect(result).toMatchObject({ success: true, incidenciaResolvida: true });
+      expect(dbUpdates).toEqual(expect.arrayContaining([
+        expect.objectContaining({ status: "cancelled" }),
+        expect.objectContaining({
+          result: "C",
+          payload: expect.objectContaining({
+            editHistory: [expect.objectContaining({ incidenceResolved: true })],
+          }),
+        }),
+      ]));
+    } finally {
+      tasks.splice(tasks.findIndex(task => task.id === followUpTask.id), 1);
+      Object.assign(sourceEntry, originalSourceEntry);
+    }
+  });
+
+  it("cancela o seguimento de Quebráveis quando a verificação de origem é corrigida para Conforme", async () => {
+    const sourceEntry = entries[0]!;
+    const originalSourceEntry = { ...sourceEntry };
+    const followUpTask = {
+      id: 981,
+      factoryId: 1,
+      status: "pending" as const,
+      dueAt: now,
+      completedAt: null,
+      module: "fragile_items" as const,
+      area: "Zona Tratamento Térmico",
+      title: "Seguimento — Porta do forno",
+      responsible: "Neuza Antunes",
+      assigneeProfileIds: [2],
+      sourceEntryId: sourceEntry.id,
+    };
+    Object.assign(sourceEntry, {
+      module: "fragile_items",
+      factoryId: 1,
+      area: "Zona Tratamento Térmico",
+      result: "NC",
+      registeredByProfileId: 3,
+      registeredByName: "Joana Pina",
+      payload: { fragileItemId: 1 },
+    });
+    tasks.push(followUpTask);
+    try {
+      await expect(
+        qualityRouter.createCaller(createContext()).updateControlEntry({
+          id: sourceEntry.id,
+          title: sourceEntry.title ?? "Portas forno Anelar 1",
+          area: "Zona Tratamento Térmico",
+          factoryId: 1,
+          result: "C",
+          notes: "Ponto revisto sem desvio.",
+        })
+      ).resolves.toMatchObject({ incidenciaResolvida: true });
+      expect(dbUpdates).toEqual(
+        expect.arrayContaining([expect.objectContaining({ status: "cancelled" })])
+      );
+    } finally {
+      tasks.splice(tasks.findIndex(task => task.id === followUpTask.id), 1);
+      Object.assign(sourceEntry, originalSourceEntry);
+    }
+  });
+
   it("reserva a consulta e a conclusão das tarefas aos responsáveis atribuídos ou à Responsável", async () => {
     const originalAssignees = tasks[1]!.assigneeProfileIds;
     tasks[1]!.assigneeProfileIds = [1];

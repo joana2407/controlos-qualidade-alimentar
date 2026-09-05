@@ -116,9 +116,10 @@ export const controlTasks = mysqlTable("control_tasks", {
   completedByProfileId: int("completedByProfileId"),
   completedByName: varchar("completedByName", { length: 160 }),
   completedByTitle: varchar("completedByTitle", { length: 160 }),
+  sourceEntryId: int("sourceEntryId"),
   createdBy: varchar("createdBy", { length: 64 }).notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
-}, (table) => [index("task_due_idx").on(table.dueAt), index("task_module_idx").on(table.module), index("task_factory_idx").on(table.factoryId), index("task_operator_idx").on(table.completedByProfileId)]);
+}, (table) => [index("task_due_idx").on(table.dueAt), index("task_module_idx").on(table.module), index("task_factory_idx").on(table.factoryId), index("task_operator_idx").on(table.completedByProfileId), index("task_source_entry_idx").on(table.sourceEntryId)]);
 
 export const controlEntries = mysqlTable("control_entries", {
   id: int("id").autoincrement().primaryKey(),

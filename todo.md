@@ -686,3 +686,15 @@
 - [x] Definir uma chave de recorrência que inclua controlo, fábrica, ponto ou critério e natureza do desvio.
 - [x] Corrigir o alerta de abertura obrigatória de NC para excluir incidências não relacionadas.
 - [x] Adicionar regressões para desvios distintos no mesmo produto ou ponto de controlo.
+- [x] Identificar e expor no painel de Incidências a verificação de controlo que originou cada incidência.
+- [x] Adicionar um atalho para abrir a verificação de origem na respetiva data e controlo.
+- [x] Respeitar as permissões de consulta, edição e eliminação do registo de origem.
+- [x] Adicionar regressões para o atalho de origem, incluindo incidências de Quebráveis.
+- [x] Retirar automaticamente a incidência operacional quando a verificação de origem passa de NC para Conforme.
+- [x] Preservar a auditoria da correção sem manter a incidência como ativa nos painéis e alertas.
+- [x] Adicionar regressões para a alteração de uma verificação NC para Conforme, incluindo Quebráveis.
+- [x] Permitir à Responsável criar uma tarefa de seguimento diretamente no tratamento de uma incidência.
+- [x] Associar a tarefa de seguimento à incidência, à fábrica, ao ponto e ao colaborador de origem quando aplicável.
+- [x] Permitir atribuir a tarefa de seguimento a uma técnica e definir instrução e data de execução.
+- [x] Apresentar a tarefa associada na incidência e preservar a rastreabilidade ao concluir a tarefa.
+- [x] Adicionar regressões para criação, permissões e rastreabilidade da tarefa de seguimento.

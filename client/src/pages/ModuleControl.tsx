@@ -104,7 +104,7 @@ import {
   Truck,
   WandSparkles,
 } from "lucide-react";
-import React, { FormEvent, useEffect, useMemo, useState } from "react";
+import React, { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useRoute, useSearch } from "wouter";
 import { toast } from "sonner";
 
@@ -363,12 +363,16 @@ function DailyControlResults({
   isLoading,
   requiresFactory,
   module,
+  focusedEntryId,
+  openFocusedEntryForEditing = false,
 }: {
   results: DailyControlEntry[];
   operationalDate: Date;
   isLoading: boolean;
   requiresFactory: boolean;
   module?: string;
+  focusedEntryId?: number;
+  openFocusedEntryForEditing?: boolean;
 }) {
   const dateLabel = operationalDate.toLocaleDateString("pt-PT");
   const isSensory = module === "sensory";
@@ -490,14 +494,33 @@ function DailyControlResults({
           : "",
     });
   };
+  const handledFocusedEntry = useRef<string | null>(null);
+  useEffect(() => {
+    if (!focusedEntryId || isLoading) return;
+    const focusKey = `${focusedEntryId}:${openFocusedEntryForEditing ? "edit" : "view"}`;
+    if (handledFocusedEntry.current === focusKey) return;
+    const entry = results.find(result => result.id === focusedEntryId);
+    if (!entry) return;
+    handledFocusedEntry.current = focusKey;
+    setSelectedEntry(entry);
+    if (openFocusedEntryForEditing && canModifyEntry(entry)) beginEdit(entry);
+  }, [focusedEntryId, isLoading, openFocusedEntryForEditing, results]);
   const updateControlEntry = trpc.quality.updateControlEntry.useMutation({
-    onSuccess: () => {
+    onSuccess: data => {
       utils.quality.dashboard.invalidate();
       utils.quality.reports.invalidate();
       utils.quality.dailyControlResults.invalidate();
+      utils.quality.listIncidences.invalidate();
+      utils.quality.incidenceRecurrenceAlerts.invalidate();
+      utils.quality.similarIncidenceAlerts.invalidate();
+      utils.quality.listTasks.invalidate();
       setEditingEntry(null);
       setSelectedEntry(null);
-      toast.success("Registo de controlo atualizado.");
+      toast.success(
+        data.incidenciaResolvida
+          ? "Registo corrigido para Conforme. A incidência deixou de estar ativa."
+          : "Registo de controlo atualizado."
+      );
     },
     onError: error => toast.error(error.message),
   });
@@ -2144,6 +2167,8 @@ export default function ModuleControl() {
   const isSharedControl =
     module === "dispatch_control" || module === "internal_analysis";
   const plannedTaskId = Number(queryParams.get("plannedTaskId")) || undefined;
+  const focusedEntryId = Number(queryParams.get("entryId")) || undefined;
+  const openFocusedEntryForEditing = queryParams.get("edit") === "1";
   const plannedDateKey = queryParams.get("plannedDate");
   const resultsOnly = queryParams.get("view") === "results";
   const plannedDate = useMemo(() => {
@@ -2360,6 +2385,8 @@ export default function ModuleControl() {
                 isLoading={dailyResults.isLoading}
                 requiresFactory={!isSharedControl && !factoryId}
                 module={module}
+                focusedEntryId={focusedEntryId}
+                openFocusedEntryForEditing={openFocusedEntryForEditing}
               />
             </section>
           </div>
@@ -2498,10 +2525,12 @@ export default function ModuleControl() {
                 (dailyResults.data?.entries ?? []) as DailyControlEntry[]
               }
               operationalDate={progressDateInput}
-              isLoading={dailyResults.isLoading}
-              requiresFactory={!isSharedControl && !factoryId}
-              module={module}
-            />
+                isLoading={dailyResults.isLoading}
+                requiresFactory={!isSharedControl && !factoryId}
+                module={module}
+                focusedEntryId={focusedEntryId}
+                openFocusedEntryForEditing={openFocusedEntryForEditing}
+              />
           </section>
         </div>
       </ModuleProgressContext.Provider>

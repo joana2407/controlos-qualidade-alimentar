@@ -19,7 +19,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { dateFormat, moduleLabel } from "@/lib/quality";
+import { dateFormat, moduleLabel, MODULES } from "@/lib/quality";
 import { trpc } from "@/lib/trpc";
 import {
   AlertCircle,
@@ -34,6 +34,7 @@ import {
   Trash2,
 } from "lucide-react";
 import React, { useEffect, useMemo, useState } from "react";
+import { useLocation } from "wouter";
 import { toast } from "sonner";
 import { useQualityAccess } from "@/contexts/QualityAccessContext";
 
@@ -97,6 +98,8 @@ type OccurrenceItem = {
   treatment: IncidenceTreatment;
   fragileTreatmentReview: FragileTreatmentReview | null;
   pointKey: string;
+  plannedTaskId: number | null;
+  plannedDate: string | null;
   bphfContext: {
     collaboratorName: string;
     criterion: string;
@@ -126,6 +129,8 @@ const normaliseIsoDate = (value: unknown) => {
     ? `${portuguese[3]}-${portuguese[2].padStart(2, "0")}-${portuguese[1].padStart(2, "0")}`
     : "";
 };
+const localDateKey = (date: Date) =>
+  `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 const controlledPointKey = (item: {
   module: string;
   factoryId?: number | null;
@@ -286,6 +291,7 @@ const fragileRiskLabel: Record<FragileTreatmentReview["riskLevel"], string> = {
 export default function Nonconformities() {
   const utils = trpc.useUtils();
   const { canManage, activeProfile } = useQualityAccess();
+  const [, setLocation] = useLocation();
   const [factoryId, setFactoryId] = useState("");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
@@ -314,6 +320,11 @@ export default function Nonconformities() {
     IncidenceTreatment["status"] | "all"
   >("all");
   const [openNcOnly, setOpenNcOnly] = useState(false);
+  const [creatingFollowUpTask, setCreatingFollowUpTask] = useState(false);
+  const [followUpTitle, setFollowUpTitle] = useState("");
+  const [followUpDescription, setFollowUpDescription] = useState("");
+  const [followUpDueDate, setFollowUpDueDate] = useState("");
+  const [followUpAssigneeId, setFollowUpAssigneeId] = useState("");
   const filters = useMemo(
     () => ({
       factoryId: factoryId ? Number(factoryId) : undefined,
@@ -437,6 +448,13 @@ export default function Nonconformities() {
                 (item.payload as any)?.incidenceTreatment
             ),
             fragileTreatmentReview: fragileTreatmentReviewFrom(item.payload),
+            plannedTaskId:
+              Number((item.payload as Record<string, unknown>)?.plannedTaskId) ||
+              null,
+            plannedDate:
+              normaliseIsoDate(
+                (item.payload as Record<string, unknown>)?.plannedDate
+              ) || null,
             bphfContext: bphfContextFrom(
               item.module,
               (item.payload as Record<string, unknown>) ?? {},
@@ -472,6 +490,8 @@ export default function Nonconformities() {
             status: "completed" as const,
           },
           fragileTreatmentReview: null,
+          plannedTaskId: null,
+          plannedDate: null,
           bphfContext: null,
           pointKey: controlledPointKey(item),
         })),
@@ -489,6 +509,25 @@ export default function Nonconformities() {
     [incidences.data, ncs.data, openNcOnly, similarFilter, treatmentFilter]
   );
   const selected = occurrences.find(item => item.key === selectedKey) ?? null;
+  const followUpTaskInput = useMemo(
+    () => ({ sourceEntryId: selected?.type === "incidence" ? selected.id : 0 }),
+    [selected?.id, selected?.type]
+  );
+  const followUpTasks =
+    trpc.quality.listIncidenceFollowUpTasks?.useQuery?.(
+      followUpTaskInput,
+      { enabled: selected?.type === "incidence" }
+    ) ?? { data: [], isLoading: false };
+  const createFollowUpTask =
+    trpc.quality.createIncidenceFollowUpTask?.useMutation?.({
+      onSuccess: () => {
+        utils.quality.listIncidenceFollowUpTasks.invalidate();
+        utils.quality.listTasks.invalidate();
+        setCreatingFollowUpTask(false);
+        toast.success("Tarefa de seguimento criada e atribuída.");
+      },
+      onError: error => toast.error(error.message),
+    }) ?? { mutate: () => undefined, isPending: false };
   const treatmentSummary = useMemo(() => {
     const summary: Record<IncidenceTreatment["status"], number> = {
       pending: 0,
@@ -573,6 +612,34 @@ export default function Nonconformities() {
     selected?.type === "incidence" &&
       (canManage || selected.registeredByProfileId === activeProfile?.id)
   );
+  const openOriginVerification = () => {
+    if (!selected || selected.type !== "incidence") return;
+    if (!MODULES.some(item => item.id === selected.module)) {
+      toast.error("Esta incidência não está associada a uma verificação de controlo.");
+      return;
+    }
+    const query = new URLSearchParams({
+      plannedDate: selected.plannedDate || localDateKey(selected.date),
+      entryId: String(selected.id),
+      view: "results",
+      ...(canEditSelectedIncidence ? { edit: "1" } : {}),
+    });
+    if (selected.factoryId) query.set("factoryId", String(selected.factoryId));
+    if (selected.plannedTaskId)
+      query.set("plannedTaskId", String(selected.plannedTaskId));
+    setLocation(`/controlos/${selected.module}?${query.toString()}`);
+  };
+  const startFollowUpTask = () => {
+    if (!selected || selected.type !== "incidence") return;
+    const context = selected.bphfContext
+      ? `Repetir ${selected.bphfContext.criterion.toLocaleLowerCase("pt-PT")} para ${selected.bphfContext.collaboratorName}.`
+      : `Repetir a verificação: ${selected.title}.`;
+    setFollowUpTitle(`Seguimento — ${selected.title}`.slice(0, 180));
+    setFollowUpDescription(`${context} Incidência registada em ${dateFormat(selected.date, false)}.`);
+    setFollowUpDueDate("");
+    setFollowUpAssigneeId("");
+    setCreatingFollowUpTask(true);
+  };
   const addIncidencePhoto = async (file?: File) => {
     if (!file || !selected || selected.type !== "incidence") return;
     if (!["image/jpeg", "image/png", "image/webp"].includes(file.type))
@@ -1648,6 +1715,121 @@ export default function Nonconformities() {
                           </div>
                         )}
                       </div>
+                      {selected.type === "incidence" ? (
+                        <section className="space-y-3 rounded-xl border border-sky-200 bg-sky-50/70 p-4">
+                          <div>
+                            <p className="font-medium text-sky-950">
+                              Verificação que originou a incidência
+                            </p>
+                            <p className="mt-1 text-sm text-sky-900">
+                              Consulte o registo original. Ao corrigi-lo para Conforme,
+                              esta incidência deixa de estar ativa e os seguimentos ainda
+                              pendentes são cancelados.
+                            </p>
+                          </div>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            className="border-sky-300 bg-white text-sky-950 hover:bg-sky-100"
+                            onClick={openOriginVerification}
+                          >
+                            <Pencil className="mr-2 h-4 w-4" />
+                            {canEditSelectedIncidence
+                              ? "Ver / editar verificação de origem"
+                              : "Consultar verificação de origem"}
+                          </Button>
+                        </section>
+                      ) : null}
+                      {selected.type === "incidence" ? (
+                        <section className="space-y-3 rounded-xl border border-violet-200 bg-violet-50/60 p-4">
+                          <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                            <div>
+                              <p className="font-medium text-violet-950">
+                                Tarefas de seguimento
+                              </p>
+                              <p className="mt-1 text-sm text-violet-900">
+                                A Responsável pode atribuir uma nova verificação a partir
+                                desta incidência, mantendo o ponto e o colaborador de
+                                origem no contexto da tarefa.
+                              </p>
+                            </div>
+                            {canManage && !creatingFollowUpTask ? (
+                              <Button type="button" size="sm" onClick={startFollowUpTask}>
+                                <Plus className="mr-2 h-4 w-4" />
+                                Criar tarefa de seguimento
+                              </Button>
+                            ) : null}
+                          </div>
+                          {followUpTasks.isLoading ? (
+                            <p className="text-sm text-violet-800">A carregar tarefas associadas…</p>
+                          ) : followUpTasks.data?.length ? (
+                            <div className="space-y-2">
+                              {followUpTasks.data.map(task => (
+                                <div key={task.id} className="rounded-lg border border-violet-100 bg-white px-3 py-2 text-sm text-slate-800">
+                                  <p className="font-medium">{task.title}</p>
+                                  <p className="mt-1 text-xs text-slate-600">
+                                    {task.responsible} · {dateFormat(task.dueAt, false)} · {task.status === "pending" ? "Por realizar" : task.status === "completed" ? "Concluída" : "Cancelada"}
+                                  </p>
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <p className="text-sm text-violet-800">Ainda não existem tarefas de seguimento associadas.</p>
+                          )}
+                          {canManage && creatingFollowUpTask ? (
+                            <form
+                              className="space-y-3 rounded-lg border border-violet-200 bg-white p-3"
+                              onSubmit={event => {
+                                event.preventDefault();
+                                if (!followUpAssigneeId)
+                                  return toast.error("Selecione a técnica responsável.");
+                                if (!followUpDueDate)
+                                  return toast.error("Indique a data da tarefa de seguimento.");
+                                createFollowUpTask.mutate({
+                                  sourceEntryId: selected.id,
+                                  title: followUpTitle,
+                                  description: followUpDescription,
+                                  dueAt: new Date(`${followUpDueDate}T12:00:00`),
+                                  assigneeProfileIds: [Number(followUpAssigneeId)],
+                                });
+                              }}
+                            >
+                              <div className="space-y-2">
+                                <Label htmlFor="follow-up-title">Tarefa de seguimento</Label>
+                                <Input id="follow-up-title" value={followUpTitle} onChange={event => setFollowUpTitle(event.target.value)} required />
+                              </div>
+                              <div className="space-y-2">
+                                <Label htmlFor="follow-up-description">Instrução para a técnica</Label>
+                                <Textarea id="follow-up-description" value={followUpDescription} onChange={event => setFollowUpDescription(event.target.value)} rows={3} required />
+                              </div>
+                              <div className="grid gap-3 sm:grid-cols-2">
+                                <div className="space-y-2">
+                                  <Label htmlFor="follow-up-date">Data de execução</Label>
+                                  <Input id="follow-up-date" type="date" value={followUpDueDate} onChange={event => setFollowUpDueDate(event.target.value)} required />
+                                </div>
+                                <div className="space-y-2">
+                                  <Label>Técnica responsável</Label>
+                                  <Select value={followUpAssigneeId || "unassigned"} onValueChange={value => setFollowUpAssigneeId(value === "unassigned" ? "" : value)}>
+                                    <SelectTrigger aria-label="Técnica responsável pela tarefa de seguimento"><SelectValue placeholder="Selecionar técnica" /></SelectTrigger>
+                                    <SelectContent>
+                                      <SelectItem value="unassigned">Selecionar técnica</SelectItem>
+                                      {(metadata.data?.collaborators ?? []).filter(profile => profile.title !== "Resp. Qualidade").map(profile => <SelectItem key={profile.id} value={String(profile.id)}>{profile.name}</SelectItem>)}
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                              </div>
+                              <div className="flex flex-wrap gap-2">
+                                <Button type="submit" size="sm" disabled={createFollowUpTask.isPending}>
+                                  <Save className="mr-2 h-4 w-4" />
+                                  {createFollowUpTask.isPending ? "A criar…" : "Criar e atribuir tarefa"}
+                                </Button>
+                                <Button type="button" size="sm" variant="outline" onClick={() => setCreatingFollowUpTask(false)}>Cancelar</Button>
+                              </div>
+                            </form>
+                          ) : null}
+                        </section>
+                      ) : null}
                       {canManage && selected.module === "fragile_items" && selected.fragileTreatmentReview ? (
                         <div className="space-y-4 rounded-xl border border-red-200 bg-red-50/60 p-4">
                           <div>

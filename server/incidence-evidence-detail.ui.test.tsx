@@ -3,7 +3,7 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-const { similarAlerts, updateIncidence } = vi.hoisted(() => ({
+const { similarAlerts, updateIncidence, createFollowUpTask } = vi.hoisted(() => ({
   similarAlerts: [] as Array<{
     title: string;
     module: string;
@@ -15,6 +15,7 @@ const { similarAlerts, updateIncidence } = vi.hoisted(() => ({
     total: number;
   }>,
   updateIncidence: vi.fn(),
+  createFollowUpTask: vi.fn(),
 }));
 
 vi.mock("@/components/OfflineIncidencePanel", () => ({
@@ -24,14 +25,16 @@ vi.mock("@/components/OfflineIncidencePanel", () => ({
 vi.mock("@/contexts/QualityAccessContext", () => ({ useQualityAccess: () => ({ canManage: true, activeProfile: { id: 3, name: "Joana Pina" } }) }));
 vi.mock("@/lib/trpc", () => ({
   trpc: {
-    useUtils: () => ({ quality: { listIncidences: { invalidate: vi.fn() } } }),
+    useUtils: () => ({ quality: { listIncidences: { invalidate: vi.fn() }, listTasks: { invalidate: vi.fn() }, listIncidenceFollowUpTasks: { invalidate: vi.fn() } } }),
     quality: {
-      metadata: { useQuery: () => ({ data: { factories: [{ id: 1, name: "Fábrica 1 (Fatiado)" }] } }) },
+      metadata: { useQuery: () => ({ data: { factories: [{ id: 1, name: "Fábrica 1 (Fatiado)" }], collaborators: [{ id: 1, name: "Sabrina Esteves", title: "Tec. Qualidade" }, { id: 2, name: "Neuza Antunes", title: "Tec. Qualidade" }, { id: 3, name: "Joana Pina", title: "Resp. Qualidade" }] } }) },
       listIncidences: { useQuery: () => ({ data: [{ id: 9, title: "Incidência com foto", notes: "Evidência registada.", area: "Produção", factoryId: 1, module: "bphf", completedAt: new Date("2026-08-21T10:00:00"), generatedNonconformity: false, nonconformityId: null, occurrenceNumber: null, registeredByProfileId: 3, registeredByName: "Joana Pina", registeredByTitle: "Resp. Qualidade", payload: { collaboratorId: 71, collaboratorName: "Maria Silva", criterion: "Higienização das mãos dos manipuladores", incidenceTreatment: { status: "completed", correction: "Correção concluída.", responsible: "Joana Pina", completedAt: "2026-08-21" }, evidencePhotos: [{ key: "incidences/9/foto.png", url: "/manus-storage/incidences/9/foto.png", fileName: "foto-incidencia.png", mimeType: "image/png" }] } }, { id: 10, title: "Incidência pendente", notes: "Aguardar tratamento.", area: "Embalagem", factoryId: 1, module: "bphf", completedAt: new Date("2026-08-20T10:00:00"), generatedNonconformity: false, nonconformityId: null, occurrenceNumber: null, registeredByProfileId: 3, registeredByName: "Joana Pina", registeredByTitle: "Resp. Qualidade", payload: {} }] }) },
       listNcs: { useQuery: () => ({ data: [] }) },
       incidenceRecurrenceAlerts: { useQuery: () => ({ data: [] }) },
       similarIncidenceAlerts: { useQuery: () => ({ data: similarAlerts }) },
       updateIncidence: { useMutation: () => ({ mutate: updateIncidence, isPending: false }) },
+      listIncidenceFollowUpTasks: { useQuery: () => ({ data: [], isLoading: false }) },
+      createIncidenceFollowUpTask: { useMutation: () => ({ mutate: createFollowUpTask, isPending: false }) },
       deleteIncidence: { useMutation: () => ({ mutate: vi.fn(), isPending: false }) },
       uploadVerificationEvidence: { useMutation: () => ({ mutate: vi.fn(), isPending: false }) },
     },
@@ -40,7 +43,7 @@ vi.mock("@/lib/trpc", () => ({
 
 import Nonconformities from "../client/src/pages/Nonconformities";
 
-afterEach(() => { cleanup(); similarAlerts.length = 0; updateIncidence.mockReset(); });
+afterEach(() => { cleanup(); similarAlerts.length = 0; updateIncidence.mockReset(); createFollowUpTask.mockReset(); });
 
 describe("detalhe de incidência com evidências", () => {
   it("apresenta a fotografia anexada depois de selecionar a incidência", () => {
@@ -149,5 +152,23 @@ describe("detalhe de incidência com evidências", () => {
     expect(screen.getByRole("status").textContent).toMatch(/a visualizar as 3 incidências no mesmo ponto/i);
     expect(screen.getByRole("status").textContent).toMatch(/colaborador inspecionado «Maria Silva»/i);
     expect(screen.getByRole("button", { name: "Limpar acesso direto" })).toBeTruthy();
+  });
+
+  it("permite abrir a verificação de origem e criar uma tarefa de seguimento para uma técnica", () => {
+    render(<Nonconformities />);
+    fireEvent.click(screen.getByRole("button", { name: /Incidência com foto/i }));
+
+    expect(screen.getByRole("button", { name: /Ver \/ editar verificação de origem/i })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Criar tarefa de seguimento" }));
+    fireEvent.change(screen.getByLabelText("Data de execução"), { target: { value: "2026-08-24" } });
+    fireEvent.click(screen.getByRole("combobox", { name: "Técnica responsável pela tarefa de seguimento" }));
+    fireEvent.click(screen.getByRole("option", { name: "Neuza Antunes" }));
+    fireEvent.click(screen.getByRole("button", { name: "Criar e atribuir tarefa" }));
+
+    expect(createFollowUpTask).toHaveBeenCalledWith(expect.objectContaining({
+      sourceEntryId: 9,
+      assigneeProfileIds: [2],
+      title: expect.stringMatching(/Seguimento/i),
+    }));
   });
 });
