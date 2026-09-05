@@ -70,6 +70,7 @@ import {
   qualitySessionProcedure,
   router,
 } from "../_core/trpc";
+import { notifyOwner } from "../_core/notification";
 import { getDispatchProfile } from "../../shared/dispatch-control";
 
 const qualityModuleSchema = z.enum(qualityModuleValues);
@@ -2992,16 +2993,33 @@ export const qualityRouter = router({
     .query(async ({ ctx, input }) => {
       const db = await requireDb();
       const profile = ctx.operatorProfile!;
-      const tasks = await db
-        .select()
-        .from(controlTasks)
-        .where(eq(controlTasks.sourceEntryId, input.sourceEntryId))
-        .orderBy(controlTasks.dueAt);
+      const [tasks, entries] = await Promise.all([
+        db
+          .select()
+          .from(controlTasks)
+          .where(eq(controlTasks.sourceEntryId, input.sourceEntryId))
+          .orderBy(controlTasks.dueAt),
+        db.select().from(controlEntries).orderBy(desc(controlEntries.completedAt)),
+      ]);
       return tasks.filter(task => {
         const assignees = Array.isArray(task.assigneeProfileIds)
           ? task.assigneeProfileIds
           : [];
         return profile.role === "manager" || assignees.includes(profile.id);
+      }).map(task => {
+        const report = entries.find(entry => entry.payload?.taskId === task.id);
+        return report
+          ? {
+              ...task,
+              executionReport: {
+                result: report.result,
+                notes: report.notes,
+                completedAt: report.completedAt,
+                registeredByName: report.registeredByName,
+                registeredByTitle: report.registeredByTitle,
+              },
+            }
+          : { ...task, executionReport: null };
       });
     }),
 
@@ -3453,10 +3471,20 @@ export const qualityRouter = router({
         registeredByTitle: ctx.operatorProfile!.title,
         createdBy: ctx.user!.openId,
       });
+      const isFollowUpTask = Boolean(task.sourceEntryId);
+      const managerAlerted =
+        isFollowUpTask && ctx.operatorProfile!.role !== "manager"
+          ? await notifyOwner({
+              title: "Verificação de seguimento concluída",
+              content: `${ctx.operatorProfile!.name} concluiu a tarefa «${task.title}» com resultado ${input.result}. Observações: ${input.notes}`,
+            })
+          : false;
       return {
         success: true,
         critical: shouldCreateCriticalMetalAlert(task.module, input.result),
         incidence: input.result === "NC",
+        followUpCompleted: isFollowUpTask,
+        managerAlerted,
       };
     }),
 

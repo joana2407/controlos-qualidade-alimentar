@@ -1771,6 +1771,19 @@ export default function Nonconformities() {
                                   <p className="mt-1 text-xs text-slate-600">
                                     {task.responsible} · {dateFormat(task.dueAt, false)} · {task.status === "pending" ? "Por realizar" : task.status === "completed" ? "Concluída" : "Cancelada"}
                                   </p>
+                                  {task.executionReport ? (
+                                    <div className="mt-2 rounded-md bg-emerald-50 px-2.5 py-2 text-xs text-emerald-950">
+                                      <p className="font-semibold">
+                                        Nova verificação: {task.executionReport.result === "C" ? "Conforme" : "Não conforme"}
+                                      </p>
+                                      <p className="mt-1 whitespace-pre-wrap">
+                                        {task.executionReport.notes}
+                                      </p>
+                                      <p className="mt-1 text-emerald-800">
+                                        Registado por {task.executionReport.registeredByName ?? task.responsible}
+                                      </p>
+                                    </div>
+                                  ) : null}
                                 </div>
                               ))}
                             </div>

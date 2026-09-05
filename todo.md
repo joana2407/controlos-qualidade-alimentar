@@ -698,3 +698,10 @@
 - [x] Permitir atribuir a tarefa de seguimento a uma técnica e definir instrução e data de execução.
 - [x] Apresentar a tarefa associada na incidência e preservar a rastreabilidade ao concluir a tarefa.
 - [x] Adicionar regressões para criação, permissões e rastreabilidade da tarefa de seguimento.
+- [x] Adicionar campo de observações da técnica ao concluir uma tarefa de seguimento.
+- [x] Mostrar as observações registadas no detalhe da tarefa associada à incidência.
+- [x] Alertar a Responsável de Qualidade quando a técnica concluir a verificação de seguimento.
+- [x] Adicionar regressões para guardar observações e emitir o alerta de conclusão.
+- [x] Adicionar campo de observações da técnica ao concluir uma tarefa de seguimento.
+- [x] Mostrar as observações registadas no detalhe da tarefa associada à incidência.
+- [x] Adicionar regressões para guardar e consultar observações de tarefas de seguimento.

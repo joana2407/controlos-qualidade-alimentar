@@ -1412,6 +1412,51 @@ describe("procedimentos de qualidade por fábrica", () => {
     tasks[0]!.assigneeProfileIds = originalAssignees;
   });
 
+  it("guarda as observações e alerta a Responsável quando uma técnica conclui um seguimento", async () => {
+    const task = tasks[0]!;
+    const originalTask = { ...task, assigneeProfileIds: [...task.assigneeProfileIds] };
+    Object.assign(task, {
+      status: "pending",
+      assigneeProfileIds: [2],
+      sourceEntryId: 1,
+      title: "Repetir inspeção aos cacifos",
+    });
+    vi.mocked(notifyOwner).mockResolvedValue(true);
+    try {
+      await expect(
+        qualityRouter
+          .createCaller(
+            createContext({
+              id: 2,
+              name: "Neuza Antunes",
+              title: "Tec. Qualidade",
+              role: "technician",
+            })
+          )
+          .completeTask({
+            id: task.id,
+            result: "C",
+            notes: "Cacifo revisto e conforme na nova verificação.",
+          })
+      ).resolves.toMatchObject({ followUpCompleted: true, managerAlerted: true });
+      expect(dbInserts).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            notes: "Cacifo revisto e conforme na nova verificação.",
+          }),
+        ])
+      );
+      expect(notifyOwner).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: "Verificação de seguimento concluída",
+          content: expect.stringContaining("Cacifo revisto e conforme"),
+        })
+      );
+    } finally {
+      Object.assign(task, originalTask);
+    }
+  });
+
   it("aceita evidência fotográfica apenas do responsável atribuído ou da Responsável", async () => {
     const originalStatus = tasks[0]!.status;
     const originalAssignees = tasks[0]!.assigneeProfileIds;

@@ -131,6 +131,7 @@ type TaskEvidencePhoto = {
 type TaskReport = {
   id: number;
   title: string;
+  isFollowUp: boolean;
   result: "" | "C" | "NC";
   notes: string;
   evidencePhotos: TaskEvidencePhoto[];
@@ -748,7 +749,11 @@ export default function Controls() {
         "Escolha explicitamente C ou NC antes de concluir a tarefa."
       );
     if (reportTask.notes.trim().length < 3)
-      return toast.error("Descreva a execução da tarefa no relatório.");
+      return toast.error(
+        reportTask.isFollowUp
+          ? "Registe as observações da nova verificação."
+          : "Descreva a execução da tarefa no relatório."
+      );
     completeTask.mutate({
       id: reportTask.id,
       result: reportTask.result as "C" | "NC",
@@ -761,6 +766,7 @@ export default function Controls() {
     title: string;
     factoryId: number | null;
     qualityModule: string | null;
+    sourceEntryId: number | null;
   }) {
     if (task.qualityModule) {
       const query = new URLSearchParams();
@@ -772,6 +778,7 @@ export default function Controls() {
     setReportTask({
       id: task.id,
       title: task.title,
+      isFollowUp: Boolean(task.sourceEntryId),
       result: "",
       notes: "",
       evidencePhotos: [],
@@ -1553,7 +1560,9 @@ export default function Controls() {
                               task.executionReport && (
                                 <div className="mt-3 rounded-lg bg-emerald-50 p-3 text-sm text-emerald-950">
                                   <p className="font-semibold">
-                                    Relatório de execução ·{" "}
+                                    {task.sourceEntryId
+                                      ? "Observações da verificação de seguimento"
+                                      : "Relatório de execução"}{" "}·{" "}
                                     {task.executionReport.result}
                                   </p>
                                   <p className="mt-1">
@@ -1666,11 +1675,15 @@ export default function Controls() {
         >
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>Relatório de execução</DialogTitle>
+              <DialogTitle>
+                {reportTask?.isFollowUp
+                  ? "Resultado da verificação de seguimento"
+                  : "Relatório de execução"}
+              </DialogTitle>
               <DialogDescription>
-                Registe a execução de «{reportTask?.title}». Ao submeter, a
-                tarefa fica concluída e o relatório fica disponível à
-                Responsável de Qualidade.
+                {reportTask?.isFollowUp
+                  ? `Registe o resultado e as observações de «${reportTask.title}». Ao submeter, a tarefa fica concluída e a Responsável de Qualidade é alertada.`
+                  : `Registe a execução de «${reportTask?.title}». Ao submeter, a tarefa fica concluída e o relatório fica disponível à Responsável de Qualidade.`}
               </DialogDescription>
             </DialogHeader>
             <form className="space-y-4" onSubmit={submitTaskReport}>
@@ -1696,7 +1709,11 @@ export default function Controls() {
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label>Relatório de execução</Label>
+                <Label>
+                  {reportTask?.isFollowUp
+                    ? "Observações da nova verificação"
+                    : "Relatório de execução"}
+                </Label>
                 <Textarea
                   required
                   value={reportTask?.notes ?? ""}
@@ -1707,7 +1724,11 @@ export default function Controls() {
                         : current
                     )
                   }
-                  placeholder="Descreva o que foi realizado, as verificações efetuadas e quaisquer desvios identificados."
+                  placeholder={
+                    reportTask?.isFollowUp
+                      ? "Registe o resultado da nova verificação, o que foi observado e os eventuais desvios."
+                      : "Descreva o que foi realizado, as verificações efetuadas e quaisquer desvios identificados."
+                  }
                 />
               </div>
               <div className="space-y-2">
