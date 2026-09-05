@@ -101,6 +101,10 @@ describe("painel de análise operacional", () => {
     expect(screen.getByText("Fábrica 1 (Fatiado)")).toBeTruthy();
     expect(screen.getByText("Sabrina Esteves")).toBeTruthy();
     expect(screen.getAllByText("NC geradas").length).toBeGreaterThan(0);
+    expect(screen.getByText("Incidências")).toBeTruthy();
+    expect(
+      screen.getByText(/O vermelho fica reservado às NC formais geradas a partir de incidências/i)
+    ).toBeTruthy();
     expect(analyticsInputs[0]).toMatchObject({ period: "day" });
     expect(analyticsInputs[0].startDate).toBeInstanceOf(Date);
     expect(analyticsInputs[0].endDate).toBeInstanceOf(Date);

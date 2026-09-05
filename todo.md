@@ -705,3 +705,7 @@
 - [x] Adicionar campo de observações da técnica ao concluir uma tarefa de seguimento.
 - [x] Mostrar as observações registadas no detalhe da tarefa associada à incidência.
 - [x] Adicionar regressões para guardar e consultar observações de tarefas de seguimento.
+- [x] Renomear no gráfico por controlo o resultado NC para «Incidências registadas».
+- [x] Aplicar uma cor própria para Incidências, distinta da cor de Não Conformidades geradas.
+- [x] Clarificar no gráfico e na legenda a diferença entre resultados de controlo, incidências e NC formais.
+- [x] Adicionar regressões para rótulos e cores não ambíguos no Painel Analítico.
