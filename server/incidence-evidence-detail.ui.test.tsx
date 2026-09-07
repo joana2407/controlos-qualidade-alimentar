@@ -29,7 +29,7 @@ vi.mock("@/lib/trpc", () => ({
     quality: {
       metadata: { useQuery: () => ({ data: { factories: [{ id: 1, name: "Fábrica 1 (Fatiado)" }], collaborators: [{ id: 1, name: "Sabrina Esteves", title: "Tec. Qualidade" }, { id: 2, name: "Neuza Antunes", title: "Tec. Qualidade" }, { id: 3, name: "Joana Pina", title: "Resp. Qualidade" }] } }) },
       listBphfInspectionEmployees: { useQuery: () => ({ data: [{ id: 71, name: "Maria Silva" }, { id: 72, name: "João Costa" }] }) },
-      listIncidences: { useQuery: () => ({ data: [{ id: 9, title: "Incidência com foto", notes: "Evidência registada.", area: "Produção", factoryId: 1, module: "bphf", completedAt: new Date("2026-08-21T10:00:00"), occurredOn: "2026-08-19", generatedNonconformity: false, nonconformityId: null, occurrenceNumber: null, registeredByProfileId: 3, registeredByName: "Joana Pina", registeredByTitle: "Resp. Qualidade", payload: { collaboratorId: 71, collaboratorName: "Maria Silva", criterion: "Higienização das mãos dos manipuladores", incidenceTreatment: { status: "completed", correction: "Correção concluída.", responsible: "Joana Pina", completedAt: "2026-08-21" }, evidencePhotos: [{ key: "incidences/9/foto.png", url: "/manus-storage/incidences/9/foto.png", fileName: "foto-incidencia.png", mimeType: "image/png" }] } }, { id: 10, title: "Incidência pendente", notes: "Aguardar tratamento.", area: "Embalagem", factoryId: 1, module: "bphf", completedAt: new Date("2026-08-20T10:00:00"), occurredOn: "2026-08-20", generatedNonconformity: false, nonconformityId: null, occurrenceNumber: null, registeredByProfileId: 3, registeredByName: "Joana Pina", registeredByTitle: "Resp. Qualidade", payload: {} }] }) },
+      listIncidences: { useQuery: () => ({ data: [{ id: 9, title: "Incidência com foto", notes: "Evidência registada.", area: "Produção", factoryId: 1, module: "bphf", completedAt: new Date("2026-08-21T10:00:00"), occurredOn: "2026-08-19", generatedNonconformity: false, nonconformityId: null, occurrenceNumber: null, registeredByProfileId: 3, registeredByName: "Joana Pina", registeredByTitle: "Resp. Qualidade", payload: { collaboratorId: 71, collaboratorName: "Maria Silva", criterion: "Higienização das mãos dos manipuladores", product: "Pão de forma", lot: "L-26247", validity: "2026-09-20", reason: "Bolor identificado na amostra.", incidenceTreatment: { status: "completed", correction: "Correção concluída.", responsible: "Joana Pina", completedAt: "2026-08-21" }, evidencePhotos: [{ key: "incidences/9/foto.png", url: "/manus-storage/incidences/9/foto.png", fileName: "foto-incidencia.png", mimeType: "image/png" }] } }, { id: 10, title: "Incidência pendente", notes: "Aguardar tratamento.", area: "Embalagem", factoryId: 1, module: "bphf", completedAt: new Date("2026-08-20T10:00:00"), occurredOn: "2026-08-20", generatedNonconformity: false, nonconformityId: null, occurrenceNumber: null, registeredByProfileId: 3, registeredByName: "Joana Pina", registeredByTitle: "Resp. Qualidade", payload: {} }] }) },
       listNcs: { useQuery: () => ({ data: [] }) },
       incidenceRecurrenceAlerts: { useQuery: () => ({ data: [] }) },
       similarIncidenceAlerts: { useQuery: () => ({ data: similarAlerts }) },
@@ -70,8 +70,19 @@ describe("detalhe de incidência com evidências", () => {
     fireEvent.click(screen.getByRole("button", { name: /Incidência com foto/i }));
 
     expect(screen.getByText("Contexto da verificação BPHF")).toBeTruthy();
-    expect(screen.getByText("Maria Silva")).toBeTruthy();
+    expect(screen.getAllByText("Maria Silva").length).toBeGreaterThan(0);
     expect(screen.getByText(/Produção · Higienização das mãos dos manipuladores/i)).toBeTruthy();
+  });
+
+  it("mostra os detalhes completos da verificação no resumo da incidência", () => {
+    render(<Nonconformities />);
+    fireEvent.click(screen.getByRole("button", { name: /Incidência com foto/i }));
+
+    expect(screen.getByText("Detalhes da verificação e do desvio")).toBeTruthy();
+    expect(screen.getByText("Pão de forma")).toBeTruthy();
+    expect(screen.getByText("L-26247")).toBeTruthy();
+    expect(screen.getByText("2026-09-20")).toBeTruthy();
+    expect(screen.getByText("Bolor identificado na amostra.")).toBeTruthy();
   });
 
   it("permite atribuir ou remover um colaborador responsável através da lista BPHF", () => {

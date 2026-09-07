@@ -76,6 +76,7 @@ type OccurrenceItem = {
   id: number;
   title: string;
   description: string;
+  payload: Record<string, unknown>;
   area: string;
   factoryId: number | null;
   module: string;
@@ -228,6 +229,49 @@ const bphfContextFrom = (
         result,
       }
     : null;
+const incidenceDetailLabels: Record<string, string> = {
+  observationResult: "Resultado da verificação",
+  product: "Produto",
+  lot: "Lote",
+  validity: "Validade",
+  reason: "Motivo / observações do desvio",
+  collaboratorName: "Colaborador inspecionado",
+  collaboratorId: "Identificador do colaborador",
+  criterion: "Critério verificado",
+  area: "Área / zona",
+  line: "Linha / equipamento",
+  equipmentName: "Equipamento",
+  location: "Localização",
+  controlResult: "Resultado do controlo",
+  verificationType: "Tipo de verificação",
+  samplePoint: "Ponto de amostragem",
+  orderNumber: "Número da encomenda",
+  customer: "Cliente",
+  expiry: "Validade",
+};
+const incidenceDetailHiddenKeys = new Set([
+  "dailyIncidenceGenerated",
+  "evidencePhotos",
+  "photos",
+  "plannedTaskId",
+  "plannedDate",
+  "sourceEntryId",
+  "incidenceTreatment",
+]);
+const formatIncidenceDetailValue = (value: unknown): string => {
+  if (value === null || value === undefined || value === "") return "Não indicado";
+  if (typeof value === "boolean") return value ? "Sim" : "Não";
+  if (typeof value === "object") return JSON.stringify(value, null, 2);
+  return String(value);
+};
+const incidenceDetailsFrom = (payload: Record<string, unknown>) =>
+  Object.entries(payload)
+    .filter(([key, value]) => !incidenceDetailHiddenKeys.has(key) && value !== null && value !== undefined && value !== "")
+    .map(([key, value]) => ({
+      key,
+      label: incidenceDetailLabels[key] ?? key,
+      value: formatIncidenceDetailValue(value),
+    }));
 const treatmentLabel = (status: IncidenceTreatment["status"]) =>
   status === "completed"
     ? "Tratamento concluído"
@@ -431,6 +475,10 @@ export default function Nonconformities() {
             id: item.id,
             title: item.title,
             description: item.notes ?? "Sem observações.",
+            payload:
+              item.payload && typeof item.payload === "object" && !Array.isArray(item.payload)
+                ? (item.payload as Record<string, unknown>)
+                : {},
             area: item.area,
             factoryId: item.factoryId,
             module: item.module,
@@ -484,6 +532,7 @@ export default function Nonconformities() {
           id: item.id,
           title: item.title,
           description: item.description,
+          payload: {},
           area: item.area,
           factoryId: item.factoryId,
           module: item.module,
@@ -1381,6 +1430,32 @@ export default function Nonconformities() {
                         Observações: {selected.description}
                       </p>
                     </div>
+                  ) : null}
+                  {selected.type === "incidence" &&
+                  incidenceDetailsFrom(selected.payload).length ? (
+                    <section className="rounded-xl border border-amber-200 bg-amber-50/70 p-4">
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <p className="text-sm font-semibold text-amber-950">
+                            Detalhes da verificação e do desvio
+                          </p>
+                          <p className="mt-1 text-xs text-amber-900">
+                            Informação registada no momento em que a incidência foi detetada.
+                          </p>
+                        </div>
+                        <Badge className="bg-white text-amber-900 hover:bg-white">
+                          {moduleLabel(selected.module)}
+                        </Badge>
+                      </div>
+                      <dl className="mt-4 grid gap-3 sm:grid-cols-2">
+                        {incidenceDetailsFrom(selected.payload).map(detail => (
+                          <div key={detail.key} className="rounded-lg border border-amber-100 bg-white/80 p-3">
+                            <dt className="text-xs font-medium text-amber-800">{detail.label}</dt>
+                            <dd className="mt-1 whitespace-pre-wrap break-words text-sm text-slate-900">{detail.value}</dd>
+                          </div>
+                        ))}
+                      </dl>
+                    </section>
                   ) : null}
                   {selected.type === "incidence" &&
                   selected.evidencePhotos.length ? (

@@ -785,3 +785,6 @@
 - [x] Validar cada novo registo de Shelf-life individualmente, com resultado e rastreabilidade próprios.
 - [x] Manter a regra de completitude: um registo válido é suficiente para concluir a tarefa planeada.
 - [x] Adicionar regressões para registos múltiplos e validação individual de Shelf-life.
+
+- [x] Mostrar nas incidências um resumo completo do desvio, incluindo os detalhes da verificação de origem e os dados Shelf-life/BPHF disponíveis.
+- [x] Cobrir com regressões a apresentação dos detalhes completos de incidências.
