@@ -754,3 +754,6 @@
 - [x] Integrar o logótipo fornecido na entrada por PIN e no cabeçalho da navegação QualiControl.
 - [x] Armazenar o logótipo como ativo estático externo apropriado para publicação.
 - [x] Adicionar regressão para a presença e o acesso do logótipo na identidade visual.
+- [x] Adicionar um botão explícito para minimizar a lista expandida de Controlos Operacionais.
+- [x] Garantir que a lista pode voltar a ser aberta através do controlo principal, em desktop e telemóvel.
+- [x] Adicionar regressão de interação e acessibilidade para minimizar os Controlos Operacionais.

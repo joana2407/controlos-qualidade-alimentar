@@ -52,18 +52,25 @@ describe("atalhos laterais dos painéis de controlo", () => {
     const controlPanel = screen.getByText("Controlos Operacionais").closest(".bg-slate-950");
     expect(controlPanel?.className).toContain("bg-slate-950");
     expect(controlPanel?.className).toContain("isolate");
-    expect(controlPanel?.querySelector("button")?.className).toContain("[&>span:last-child]:!whitespace-normal");
+    expect(screen.getByRole("button", { name: "BPHF" }).className).toContain("[&>span:last-child]:!whitespace-normal");
     expect(controlPanel?.contains(screen.getByRole("button", { name: "BPHF" }))).toBe(true);
     expect(controlPanel?.contains(screen.queryByRole("button", { name: "Controlo sensorial de I&D" }))).toBe(false);
     expect((controlPanel?.compareDocumentPosition(screen.getByText("Painéis externos")) ?? 0) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    const minimise = screen.getByRole("button", { name: "Minimizar Controlos Operacionais" });
+    expect(minimise.textContent).toContain("Minimizar");
+    fireEvent.click(minimise);
+    expect(screen.queryByText("Controlos Operacionais")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Abrir módulos de controlo" }));
+    expect(screen.getByText("Controlos Operacionais")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Ver painel de controlos" })).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "BPHF" }));
     expect(setLocation).toHaveBeenLastCalledWith("/controlos/bphf");
 
-    fragile.focus();
-    expect(document.activeElement).toBe(fragile);
-    expect(fragile.tagName).toBe("BUTTON");
-    fireEvent.click(fragile);
+    const reopenedFragile = screen.getByRole("button", { name: "Quebráveis" });
+    reopenedFragile.focus();
+    expect(document.activeElement).toBe(reopenedFragile);
+    expect(reopenedFragile.tagName).toBe("BUTTON");
+    fireEvent.click(reopenedFragile);
     expect(setLocation).toHaveBeenLastCalledWith("/controlos/fragile_items");
 
     fireEvent.click(screen.getByRole("button", { name: "Plataforma" }));
