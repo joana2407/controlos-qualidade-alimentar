@@ -2217,6 +2217,29 @@ export default function ModuleControl() {
   const dashboard = trpc.quality.dashboard.useQuery({
     date: progressDateInput,
   });
+  const controlFactories = useMemo(() => {
+    if (module !== "food_defense") return factories;
+    const scheduledFactoryIds = new Set(
+      ((dashboard.data?.moduleProgressByFactory as Record<
+        string,
+        FactoryModuleProgress[]
+      > | undefined)?.food_defense ?? [])
+        .filter(item => item.expected > 0)
+        .map(item => item.factoryId)
+    );
+    return scheduledFactoryIds.size
+      ? factories.filter(factory => scheduledFactoryIds.has(factory.id))
+      : factories;
+  }, [dashboard.data?.moduleProgressByFactory, factories, module]);
+  useEffect(() => {
+    if (
+      module === "food_defense" &&
+      factoryId &&
+      controlFactories.length &&
+      !controlFactories.some(factory => factory.id === Number(factoryId))
+    )
+      setFactoryId(String(controlFactories[0].id));
+  }, [controlFactories, factoryId, module]);
   const dailyResultsInput = useMemo(
     () => ({
       module: (config?.id ?? "bphf") as (typeof MODULES)[number]["id"],
@@ -2355,7 +2378,7 @@ export default function ModuleControl() {
   if (resultsOnly)
     return (
       <ControlFactoryContext.Provider
-        value={{ factories, factoryId, setFactoryId }}
+        value={{ factories: controlFactories, factoryId, setFactoryId }}
       >
         <ModuleProgressContext.Provider
           value={{
@@ -2399,7 +2422,7 @@ export default function ModuleControl() {
   )
     return (
       <ControlFactoryContext.Provider
-        value={{ factories, factoryId, setFactoryId }}
+        value={{ factories: controlFactories, factoryId, setFactoryId }}
       >
         <ModuleProgressContext.Provider
           value={{
@@ -2439,7 +2462,7 @@ export default function ModuleControl() {
     );
   return (
     <ControlFactoryContext.Provider
-      value={{ factories, factoryId, setFactoryId }}
+      value={{ factories: controlFactories, factoryId, setFactoryId }}
     >
       <ModuleProgressContext.Provider
         value={{
@@ -5054,6 +5077,7 @@ export function DispatchControl() {
 
 export function ShelfLife({ createEntry }: any) {
   const [result, setResult] = useState<"" | "C" | "NC">("");
+  const [registeredEvaluations, setRegisteredEvaluations] = useState(0);
   const [product, setProduct] = useState("");
   const [lot, setLot] = useState("");
   const [validity, setValidity] = useState("");
@@ -5064,6 +5088,14 @@ export function ShelfLife({ createEntry }: any) {
   const isNcComplete = Boolean(
     product.trim() && lot.trim() && validity && reason.trim()
   );
+  const resetEvaluation = () => {
+    setResult("");
+    setProduct("");
+    setLot("");
+    setValidity("");
+    setReason("");
+    setEvidencePhotos([]);
+  };
 
   function submit(event: FormEvent) {
     event.preventDefault();
@@ -5073,27 +5105,36 @@ export function ShelfLife({ createEntry }: any) {
       return toast.error(
         "Em caso de NC, identifique o produto, lote, validade e motivo da incidência."
       );
-    createEntry.mutate({
-      module: "shelf_life",
-      title:
-        result === "NC"
-          ? `Incidência shelf-life — ${product}`
-          : "Shelf-life — Conforme",
-      area: "Shelf-life",
-      result: result as "C" | "NC",
-      notes: result === "NC" ? reason : undefined,
-      payload: {
-        observationResult: result,
-        product: result === "NC" ? product : null,
-        lot: result === "NC" ? lot : null,
-        validity: result === "NC" ? validity : null,
-        reason: result === "NC" ? reason : null,
-        dailyIncidenceGenerated: result === "NC",
-        evidencePhotos,
+    createEntry.mutate(
+      {
+        module: "shelf_life",
+        title:
+          result === "NC"
+            ? `Incidência shelf-life — ${product}`
+            : "Shelf-life — Conforme",
+        area: "Shelf-life",
+        result: result as "C" | "NC",
+        notes: result === "NC" ? reason : undefined,
+        payload: {
+          observationResult: result,
+          product: result === "NC" ? product : null,
+          lot: result === "NC" ? lot : null,
+          validity: result === "NC" ? validity : null,
+          reason: result === "NC" ? reason : null,
+          dailyIncidenceGenerated: result === "NC",
+          evidencePhotos,
+        },
+        createNonconformity: false,
+        severity: "medium",
       },
-      createNonconformity: false,
-      severity: "medium",
-    });
+      {
+        onSuccess: () => {
+          setRegisteredEvaluations(current => current + 1);
+          resetEvaluation();
+          toast.success("Avaliação Shelf-life registada. Pode adicionar outra.");
+        },
+      }
+    );
   }
 
   return (
@@ -5115,6 +5156,11 @@ export function ShelfLife({ createEntry }: any) {
                 que pode, se necessário, ser associada posteriormente a uma Não
                 Conformidade.
               </p>
+              {registeredEvaluations ? (
+                <p className="mt-2 text-sm font-medium text-teal-950">
+                  {registeredEvaluations} avaliação{registeredEvaluations === 1 ? "" : "ões"} registada{registeredEvaluations === 1 ? "" : "s"} nesta sessão. Cada avaliação é validada individualmente.
+                </p>
+              ) : null}
             </div>
             <div className="space-y-2">
               <div className="flex items-center gap-1.5">
@@ -5204,9 +5250,13 @@ export function ShelfLife({ createEntry }: any) {
               }
             >
               {result === "NC"
-                ? "Registar incidência"
+                ? registeredEvaluations
+                  ? "Registar nova incidência"
+                  : "Registar incidência"
                 : result === "C"
-                  ? "Registar verificação conforme"
+                  ? registeredEvaluations
+                    ? "Registar nova verificação conforme"
+                    : "Registar verificação conforme"
                   : "Selecione o resultado"}
             </Button>
           </CardContent>
@@ -7237,7 +7287,7 @@ function FoodDefense({
     };
     createEntry.mutate({
       module: "food_defense",
-      title: `Food Defense — ${item.criterion}`,
+      title: `Food Defense · ${item.id}`,
       area: item.section,
       factoryId: Number(factoryId),
       result: value.result,
@@ -7245,6 +7295,7 @@ function FoodDefense({
       payload: {
         periodicity: "annual",
         foodDefenseCriterionId: item.id,
+        foodDefenseCriterion: item.criterion,
         criteria: [criterion],
         riskMatrix: "V = Probabilidade × Severidade",
         evidencePhotos,

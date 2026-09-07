@@ -35,7 +35,7 @@ describe("fluxo shelf-life", () => {
   });
 
   it("mantém o registo conforme simplificado sem campos de rastreabilidade", () => {
-    const mutate = vi.fn();
+    const mutate = vi.fn((_input, options) => options?.onSuccess?.());
     render(<ShelfLife createEntry={{ isPending: false, mutate }} />);
 
     expect(screen.queryByLabelText("Produto")).toBeNull();
@@ -44,12 +44,22 @@ describe("fluxo shelf-life", () => {
     expect((screen.getByRole("button", { name: "Registar verificação conforme" }) as HTMLButtonElement).disabled).toBe(false);
     fireEvent.click(screen.getByRole("button", { name: "Registar verificação conforme" }));
 
-    expect(mutate).toHaveBeenCalledWith(expect.objectContaining({
-      module: "shelf_life",
-      result: "C",
-      createNonconformity: false,
-      title: "Shelf-life — Conforme",
-    }));
+    expect(mutate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        module: "shelf_life",
+        result: "C",
+        createNonconformity: false,
+        title: "Shelf-life — Conforme",
+      }),
+      expect.any(Object)
+    );
+    expect(screen.getByText(/1 avaliação registada nesta sessão/i)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "C" }));
+    expect(
+      screen.getByRole("button", {
+        name: "Registar nova verificação conforme",
+      })
+    ).toBeTruthy();
   });
 
   it("mostra os campos de rastreabilidade em NC e gera automaticamente a incidência", () => {
@@ -71,11 +81,18 @@ describe("fluxo shelf-life", () => {
     fireEvent.change(reason, { target: { value: "Bolor identificado." } });
     fireEvent.click(screen.getByRole("button", { name: "Registar incidência" }));
 
-    expect(mutate).toHaveBeenCalledWith(expect.objectContaining({
-      result: "NC",
-      createNonconformity: false,
-      title: "Incidência shelf-life — Pão de forma",
-      payload: expect.objectContaining({ product: "Pão de forma", lot: "L-2026", dailyIncidenceGenerated: true }),
-    }));
+    expect(mutate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        result: "NC",
+        createNonconformity: false,
+        title: "Incidência shelf-life — Pão de forma",
+        payload: expect.objectContaining({
+          product: "Pão de forma",
+          lot: "L-2026",
+          dailyIncidenceGenerated: true,
+        }),
+      }),
+      expect.any(Object)
+    );
   });
 });

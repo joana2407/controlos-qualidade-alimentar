@@ -763,3 +763,25 @@
 - [x] Adicionar regressões para criação, edição e consulta por data de ocorrência.
 - [x] Clarificar no Painel Hoje o rótulo «Incidências a aguardar decisão».
 - [x] Adicionar regressão para a designação do indicador de incidências pendentes de decisão.
+- [x] Permitir selecionar opcionalmente um colaborador responsável ao criar uma incidência, reutilizando o catálogo BPHF.
+- [x] Permitir editar ou remover a associação de colaborador numa incidência existente.
+- [x] Mostrar, filtrar e exportar incidências associadas a cada colaborador responsável.
+- [x] Adicionar regressões de associação, edição e filtragem de incidências por colaborador.
+- [x] Substituir o campo de colaborador inspecionado nos filtros de BPHF por uma lista do catálogo de colaboradores.
+- [x] Permitir selecionar vários controlos em simultâneo nos filtros dos Relatórios.
+- [x] Aplicar a seleção múltipla de controlos à consulta, aos gráficos e à exportação Excel.
+- [x] Adicionar regressões para filtros de colaborador selecionável e múltiplos controlos nos Relatórios.
+- [x] Renomear o filtro «Colaborador» dos Relatórios para «Téc. responsável pelo preenchimento».
+- [x] Adicionar um filtro selecionável de «Colaborador» para pessoas inspecionadas ou associadas às observações/incidências.
+- [x] Aplicar ambos os filtros de colaborador de forma independente à consulta e à exportação Excel.
+- [x] Adicionar regressões para a distinção entre técnico responsável pelo preenchimento e colaborador associado.
+- [x] Garantir que Food Defense só apresenta para preenchimento as fábricas selecionadas no plano.
+- [x] Excluir fábricas não planeadas dos indicadores de completitude de Food Defense.
+- [x] Adicionar regressões para planeamento, preenchimento e completitude de Food Defense por fábrica.
+- [x] Corrigir a validação de Food Defense para que critérios longos não excedam o limite técnico de título.
+- [x] Preservar o texto integral dos critérios Food Defense nos registos e resultados.
+- [x] Adicionar regressão para registo de critério Food Defense com mais de 180 caracteres.
+- [x] Permitir adicionar mais do que um registo no controlo Shelf-life após cumprir o mínimo obrigatório.
+- [x] Validar cada novo registo de Shelf-life individualmente, com resultado e rastreabilidade próprios.
+- [x] Manter a regra de completitude: um registo válido é suficiente para concluir a tarefa planeada.
+- [x] Adicionar regressões para registos múltiplos e validação individual de Shelf-life.

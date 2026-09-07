@@ -14,6 +14,8 @@ describe("checklist anual Food Defense", () => {
     expect(page).toContain("Registar este ponto");
     expect(page).toContain("Registar nova validação deste ponto");
     expect(page).toContain("foodDefenseCriterionId: item.id");
+    expect(page).toContain("title: `Food Defense · ${item.id}`");
+    expect(page).toContain("foodDefenseCriterion: item.criterion");
     expect(page).toContain("Ponto por registar");
     expect(page).toContain("Vulnerabilidade (V)");
     expect(page).toContain("Ação indicada:");
@@ -21,6 +23,16 @@ describe("checklist anual Food Defense", () => {
     expect(page).toMatch(/<Notes\s+value=\{value\.notes\}\s+onChange=\{notes\s*=>\s*update\(item\.id, \{ notes \}\)\}\s*\/>/);
     expect(page).toContain("Sugerir com IA");
     expect(page).toContain("suggestFoodDefenseMeasure");
+  });
+
+  it("apresenta e autoriza Food Defense apenas nas fábricas incluídas no Plano do Dia", () => {
+    const page = readFileSync(new URL("../client/src/pages/ModuleControl.tsx", import.meta.url), "utf8");
+    const router = readFileSync(new URL("../server/routers/quality.ts", import.meta.url), "utf8");
+    expect(router).toContain('item.factoryId === input.factoryId');
+    expect(router).not.toContain("spansAllFoodDefenseFactories");
+    expect(router).toContain("if (!factoryControls.length)");
+    expect(page).toContain("const controlFactories = useMemo");
+    expect(page).toContain("factories: controlFactories");
   });
 
   it("expõe uma sugestão IA autorizada e estruturada para a medida de controlo", () => {

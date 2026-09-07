@@ -980,7 +980,6 @@ async function assessControlAuthorization(
   }
 ) {
   const isShared = sharedPlanModules.has(input.module);
-  const spansAllFoodDefenseFactories = input.module === "food_defense";
   if (!isShared && !input.factoryId)
     return {
       allowed: false,
@@ -1018,6 +1017,7 @@ async function assessControlAuthorization(
   const allowsSupplementaryDailyEntries =
     input.module === "bphf" ||
     input.module === "internal_analysis" ||
+    input.module === "shelf_life" ||
     input.module === "temperature_controls" ||
     input.module === "sensory" ||
     input.module === "suggestion_boxes" ||
@@ -1049,9 +1049,7 @@ async function assessControlAuthorization(
       isBusinessDay(new Date(item.dueAt)) &&
       (isShared
         ? item.factoryId === null
-        : spansAllFoodDefenseFactories
-          ? item.factoryId !== null
-          : item.factoryId === input.factoryId)
+        : item.factoryId === input.factoryId)
     );
   });
   const matchingTasks = input.plannedTaskId
@@ -2299,7 +2297,7 @@ export const qualityRouter = router({
               task => task.module === module && task.factoryId === factory.id
             );
             const isAnnualFoodDefense = module === "food_defense";
-            if (!isAnnualFoodDefense && !factoryControls.length)
+            if (!factoryControls.length)
               return {
                 factoryId: factory.id,
                 expected: 0,
@@ -4606,6 +4604,7 @@ export const qualityRouter = router({
           startDate: dateInput.optional(),
           endDate: dateInput.optional(),
           factoryId: z.number().int().optional(),
+          collaboratorId: z.number().int().positive().optional(),
         })
         .optional()
     )
@@ -4662,7 +4661,9 @@ export const qualityRouter = router({
             !payload.deletedAt &&
             occurredAt >= start &&
             occurredAt < end &&
-            (!input?.factoryId || entry.factoryId === input.factoryId)
+            (!input?.factoryId || entry.factoryId === input.factoryId) &&
+            (!input?.collaboratorId ||
+              Number(payload.collaboratorId) === input.collaboratorId)
           );
         })
         .map(entry => {
@@ -4913,6 +4914,7 @@ export const qualityRouter = router({
           .max(8)
           .optional(),
         occurredOn: incidenceIsoDateSchema.optional(),
+        collaboratorId: z.number().int().positive().nullable().optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -4957,6 +4959,27 @@ export const qualityRouter = router({
         !Array.isArray(entry.payload)
           ? ({ ...entry.payload } as Record<string, unknown>)
           : {};
+      if (input.collaboratorId !== undefined) {
+        if (input.collaboratorId === null) {
+          delete payload.collaboratorId;
+          delete payload.collaboratorName;
+        } else {
+          const collaborator = (
+            await db
+              .select()
+              .from(bphfInspectionEmployees)
+              .where(eq(bphfInspectionEmployees.id, input.collaboratorId))
+              .limit(1)
+          )[0];
+          if (!collaborator)
+            throw new TRPCError({
+              code: "NOT_FOUND",
+              message: "O colaborador selecionado já não existe no catálogo BPHF.",
+            });
+          payload.collaboratorId = collaborator.id;
+          payload.collaboratorName = collaborator.name;
+        }
+      }
       if (input.generatedNonconformity !== undefined) {
         payload.generatedNonconformity = input.generatedNonconformity;
         payload.treatmentDecision = input.generatedNonconformity
@@ -7005,6 +7028,7 @@ export const qualityRouter = router({
           startDate: dateInput.optional(),
           endDate: dateInput.optional(),
           module: qualityModuleSchema.optional(),
+          modules: z.array(qualityModuleSchema).min(1).max(20).optional(),
           result: resultSchema.optional(),
           ncStatus: z
             .enum(["open", "in_progress", "awaiting_validation", "closed"])
@@ -7059,6 +7083,11 @@ export const qualityRouter = router({
         });
       const withinPeriod = (date: Date) =>
         (!start || date >= start) && (!end || date < end);
+      const selectedModules = input?.modules?.length
+        ? Array.from(new Set(input.modules))
+        : input?.module
+          ? [input.module]
+          : [];
       const payloadRecord = (payload: unknown) =>
         payload && typeof payload === "object" && !Array.isArray(payload)
           ? (payload as Record<string, unknown>)
@@ -7312,7 +7341,7 @@ export const qualityRouter = router({
           return (
             !isDeletedEntry(entry) &&
             withinPeriod(entry.completedAt) &&
-            (!input?.module || entry.module === input.module) &&
+            (!selectedModules.length || selectedModules.includes(entry.module)) &&
             (!input?.result || entry.result === input.result) &&
             (!input?.orderNumber || orderNumber === input.orderNumber) &&
             (!input?.collaboratorProfileId ||
@@ -7332,7 +7361,7 @@ export const qualityRouter = router({
       const scopedNcs = scopeToFactory(ncs, input?.factoryId).filter(
         nc =>
           withinPeriod(nc.detectedAt) &&
-          (!input?.module || nc.module === input.module) &&
+          (!selectedModules.length || selectedModules.includes(nc.module)) &&
           (!input?.ncStatus || nc.status === input.ncStatus) &&
           (!input?.collaboratorProfileId ||
             nc.reportedByProfileId === input.collaboratorProfileId)

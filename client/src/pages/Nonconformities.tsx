@@ -107,6 +107,8 @@ type OccurrenceItem = {
     criterion: string;
     result: string;
   } | null;
+  collaboratorId: number | null;
+  collaboratorName: string | null;
 };
 
 type SimilarIncidenceFilter = {
@@ -295,6 +297,7 @@ export default function Nonconformities() {
   const { canManage, activeProfile } = useQualityAccess();
   const [, setLocation] = useLocation();
   const [factoryId, setFactoryId] = useState("");
+  const [collaboratorId, setCollaboratorId] = useState("");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [selectedKey, setSelectedKey] = useState("");
@@ -303,6 +306,7 @@ export default function Nonconformities() {
   const [incidenceTitleDraft, setIncidenceTitleDraft] = useState("");
   const [incidenceNotesDraft, setIncidenceNotesDraft] = useState("");
   const [incidenceOccurredOnDraft, setIncidenceOccurredOnDraft] = useState("");
+  const [incidenceCollaboratorIdDraft, setIncidenceCollaboratorIdDraft] = useState("none");
   const [incidencePhotosDraft, setIncidencePhotosDraft] = useState<
     OccurrenceItem["evidencePhotos"]
   >([]);
@@ -331,12 +335,14 @@ export default function Nonconformities() {
   const filters = useMemo(
     () => ({
       factoryId: factoryId ? Number(factoryId) : undefined,
+      collaboratorId: collaboratorId ? Number(collaboratorId) : undefined,
       startDate: startDate ? new Date(`${startDate}T12:00:00`) : undefined,
       endDate: endDate ? new Date(`${endDate}T12:00:00`) : undefined,
     }),
-    [endDate, factoryId, startDate]
+    [collaboratorId, endDate, factoryId, startDate]
   );
   const metadata = trpc.quality.metadata.useQuery();
+  const bphfEmployees = trpc.quality.listBphfInspectionEmployees.useQuery();
   const incidences = trpc.quality.listIncidences.useQuery(filters);
   const ncs = trpc.quality.listNcs.useQuery(filters);
   const recurrenceAlerts = trpc.quality.incidenceRecurrenceAlerts.useQuery(
@@ -465,6 +471,8 @@ export default function Nonconformities() {
               (item.payload as Record<string, unknown>) ?? {},
               item.result ?? "NC"
             ),
+            collaboratorId: Number((item.payload as Record<string, unknown>)?.collaboratorId) || null,
+            collaboratorName: typeof (item.payload as Record<string, unknown>)?.collaboratorName === "string" ? (item.payload as Record<string, unknown>).collaboratorName as string : null,
             pointKey: controlledPointKey(item),
           })),
         ...(!similarFilter && (treatmentFilter !== "pending" || openNcOnly)
@@ -500,6 +508,8 @@ export default function Nonconformities() {
           plannedTaskId: null,
           plannedDate: null,
           bphfContext: null,
+          collaboratorId: null,
+          collaboratorName: null,
           pointKey: controlledPointKey(item),
         })),
       ]
@@ -561,6 +571,9 @@ export default function Nonconformities() {
     setIncidenceTitleDraft(selected?.title ?? "");
     setIncidenceNotesDraft(selected?.description ?? "");
     setIncidenceOccurredOnDraft(selected?.occurredOn ?? "");
+    setIncidenceCollaboratorIdDraft(
+      selected?.collaboratorId ? String(selected.collaboratorId) : "none"
+    );
     setIncidencePhotosDraft(selected?.evidencePhotos ?? []);
     setTreatmentDraft(selected?.treatment ?? emptyIncidenceTreatment());
     setFragileTreatmentReviewDraft(
@@ -729,7 +742,7 @@ export default function Nonconformities() {
               Acompanhe incidências registadas nos controlos, a decisão sobre a
               geração de NC e as Não Conformidades formalmente abertas.
             </p>
-            <div className="mt-4 grid gap-2 sm:grid-cols-3">
+            <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
               <div className="flex items-center gap-2">
                 <Factory className="h-4 w-4 text-red-700" />
                 <Select
@@ -749,6 +762,28 @@ export default function Nonconformities() {
                     {(metadata.data?.factories ?? []).map(factory => (
                       <SelectItem key={factory.id} value={String(factory.id)}>
                         {factory.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label className="mb-1 block text-xs">Colaborador</Label>
+                <Select
+                  value={collaboratorId || "all"}
+                  onValueChange={value => {
+                    setCollaboratorId(value === "all" ? "" : value);
+                    setSelectedKey("");
+                  }}
+                >
+                  <SelectTrigger aria-label="Filtrar incidências por colaborador responsável">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todos os colaboradores</SelectItem>
+                    {(bphfEmployees.data ?? []).map(collaborator => (
+                      <SelectItem key={collaborator.id} value={String(collaborator.id)}>
+                        {collaborator.name}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -929,6 +964,25 @@ export default function Nonconformities() {
                       setIncidenceTitleDraft(event.target.value)
                     }
                   />
+                  <div className="space-y-1">
+                    <Label>Colaborador responsável</Label>
+                    <Select
+                      value={incidenceCollaboratorIdDraft}
+                      onValueChange={setIncidenceCollaboratorIdDraft}
+                    >
+                      <SelectTrigger aria-label="Colaborador responsável pela incidência">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">Não aplicável</SelectItem>
+                        {(bphfEmployees.data ?? []).map(collaborator => (
+                          <SelectItem key={collaborator.id} value={String(collaborator.id)}>
+                            {collaborator.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
                   <Textarea
                     aria-label="Observações da incidência"
                     value={incidenceNotesDraft}
@@ -994,6 +1048,10 @@ export default function Nonconformities() {
                             title: incidenceTitleDraft,
                             notes: incidenceNotesDraft,
                             occurredOn: incidenceOccurredOnDraft,
+                            collaboratorId:
+                              incidenceCollaboratorIdDraft === "none"
+                                ? null
+                                : Number(incidenceCollaboratorIdDraft),
                             evidencePhotos: incidencePhotosDraft,
                           },
                           {
@@ -1021,6 +1079,11 @@ export default function Nonconformities() {
                         setEditingIncidence(false);
                         setIncidencePhotosDraft(selected.evidencePhotos);
                         setIncidenceOccurredOnDraft(selected.occurredOn);
+                        setIncidenceCollaboratorIdDraft(
+                          selected.collaboratorId
+                            ? String(selected.collaboratorId)
+                            : "none"
+                        );
                       }}
                     >
                       Cancelar
@@ -1979,6 +2042,25 @@ export default function Nonconformities() {
                                   setIncidenceTitleDraft(event.target.value)
                                 }
                               />
+                              <div className="space-y-1">
+                                <Label>Colaborador responsável</Label>
+                                <Select
+                                  value={incidenceCollaboratorIdDraft}
+                                  onValueChange={setIncidenceCollaboratorIdDraft}
+                                >
+                                  <SelectTrigger aria-label="Colaborador responsável pela incidência">
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="none">Não aplicável</SelectItem>
+                                    {(bphfEmployees.data ?? []).map(collaborator => (
+                                      <SelectItem key={collaborator.id} value={String(collaborator.id)}>
+                                        {collaborator.name}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              </div>
                               <Textarea
                                 value={incidenceNotesDraft}
                                 onChange={event =>
@@ -1997,6 +2079,10 @@ export default function Nonconformities() {
                                         title: incidenceTitleDraft,
                                         notes: incidenceNotesDraft,
                                         occurredOn: incidenceOccurredOnDraft,
+                                        collaboratorId:
+                                          incidenceCollaboratorIdDraft === "none"
+                                            ? null
+                                            : Number(incidenceCollaboratorIdDraft),
                                       },
                                       {
                                         onSuccess: () => {
@@ -2021,6 +2107,11 @@ export default function Nonconformities() {
                                   onClick={() => {
                                     setEditingIncidence(false);
                                     setIncidenceOccurredOnDraft(selected.occurredOn);
+                                    setIncidenceCollaboratorIdDraft(
+                                      selected.collaboratorId
+                                        ? String(selected.collaboratorId)
+                                        : "none"
+                                    );
                                   }}
                                 >
                                   Cancelar

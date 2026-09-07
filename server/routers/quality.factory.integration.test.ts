@@ -395,13 +395,15 @@ describe("procedimentos de qualidade por fábrica", () => {
     }
   });
 
-  it("autoriza Food Defense nas três fábricas quando a avaliação anual foi publicada para a técnica", async () => {
+  it("autoriza Food Defense apenas na fábrica incluída na avaliação anual da técnica", async () => {
     addPublishedControlTask("food_defense", 1, [1]);
     const caller = qualityRouter.createCaller(createContext({ id: 1, name: "Sabrina Esteves", title: "Tec. Qualidade", role: "technician" }));
 
-    const access = await caller.controlAuthorization({ module: "food_defense", factoryId: 3 });
+    const access = await caller.controlAuthorization({ module: "food_defense", factoryId: 1 });
+    const outsideScope = await caller.controlAuthorization({ module: "food_defense", factoryId: 3 });
 
     expect(access).toMatchObject({ allowed: true, taskId: expect.any(Number) });
+    expect(outsideScope).toMatchObject({ allowed: false, taskId: null });
   });
 
   it("permite ao perfil Gestão consultar, mas bloqueia operações de alteração", async () => {
@@ -451,14 +453,16 @@ describe("procedimentos de qualidade por fábrica", () => {
     expect(access).toMatchObject({ allowed: true, taskId: 501, dueAt: previousDate, isPreviousPending: true });
   });
 
-  it("mostra sempre o progresso anual Food Defense nas três fábricas", async () => {
+  it("mostra progresso Food Defense apenas nas fábricas incluídas no Plano do Dia", async () => {
+    addPublishedControlTask("food_defense", 1, [1]);
+    addPublishedControlTask("food_defense", 3, [1]);
     const caller = qualityRouter.createCaller(createContext());
     const dashboard = await caller.dashboard();
 
     expect(dashboard.moduleProgressByFactory.food_defense).toEqual([
-      { factoryId: 1, expected: 131, completed: 0, registeredToday: 0, percentage: 0 },
-      { factoryId: 2, expected: 131, completed: 0, registeredToday: 0, percentage: 0 },
-      { factoryId: 3, expected: 131, completed: 0, registeredToday: 0, percentage: 0 },
+      expect.objectContaining({ factoryId: 1, expected: 131, completed: 0, registeredToday: 0, percentage: 0, pendingTaskId: expect.any(Number) }),
+      { factoryId: 2, expected: 0, completed: 0, registeredToday: 0, percentage: 0 },
+      expect.objectContaining({ factoryId: 3, expected: 131, completed: 0, registeredToday: 0, percentage: 0, pendingTaskId: expect.any(Number) }),
     ]);
   });
 

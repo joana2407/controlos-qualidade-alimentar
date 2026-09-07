@@ -8,6 +8,7 @@ export type OfflineIncidenceDraft = {
   title: string;
   description: string;
   factoryId: number | null;
+  collaboratorId: number | null;
   module: string;
   photos: OfflineIncidencePhoto[];
   occurredOn: string;

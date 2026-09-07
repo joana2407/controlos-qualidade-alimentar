@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
 import { z } from "zod";
-import { controlEntries, qualityModuleValues } from "../drizzle/schema";
+import { bphfInspectionEmployees, controlEntries, qualityModuleValues } from "../drizzle/schema";
 import { getDb } from "./db";
 import type { QualityOperator } from "./_core/context";
 import { storagePut } from "./storage";
@@ -11,6 +11,7 @@ export const offlineIncidenceInputSchema = z.object({
   description: z.string().trim().min(2).max(3000),
   factoryId: z.number().int().positive().nullable(),
   area: z.string().trim().min(2).max(120).optional().default("Não aplicável"),
+  collaboratorId: z.number().int().positive().nullable().optional(),
   module: z.enum(qualityModuleValues),
   photos: z.array(z.object({ fileName: z.string().min(1).max(255), mimeType: z.enum(["image/jpeg", "image/png", "image/webp"]), dataUrl: z.string().min(20).max(7_000_000) })).max(5).optional().default([]),
   occurredOn: z.string().date().optional(),
@@ -28,6 +29,17 @@ export async function persistOfflineIncidence(input: OfflineIncidenceInput, oper
   if (existing) return { id: existing.id, duplicate: true };
 
   const completedAt = new Date();
+  const collaborator = input.collaboratorId
+    ? (
+        await db
+          .select()
+          .from(bphfInspectionEmployees)
+          .where(eq(bphfInspectionEmployees.id, input.collaboratorId))
+          .limit(1)
+      )[0]
+    : null;
+  if (input.collaboratorId && !collaborator)
+    throw new Error("O colaborador selecionado já não existe no catálogo BPHF.");
   const evidencePhotos = await Promise.all(input.photos.map(async (photo) => {
     const base64 = photo.dataUrl.split(",")[1];
     if (!base64) throw new Error("Uma das fotografias da incidência é inválida.");
@@ -45,6 +57,12 @@ export async function persistOfflineIncidence(input: OfflineIncidenceInput, oper
     payload: {
       offlineManualIncidence: true,
       occurredOn: input.occurredOn ?? new Date(input.occurredAt).toISOString().slice(0, 10),
+      ...(collaborator
+        ? {
+            collaboratorId: collaborator.id,
+            collaboratorName: collaborator.name,
+          }
+        : {}),
       offlineQueuedAt: input.queuedAt,
       offlineSyncId: input.offlineSyncId,
       evidencePhotos,

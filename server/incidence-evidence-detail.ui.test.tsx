@@ -28,6 +28,7 @@ vi.mock("@/lib/trpc", () => ({
     useUtils: () => ({ quality: { listIncidences: { invalidate: vi.fn() }, listTasks: { invalidate: vi.fn() }, listIncidenceFollowUpTasks: { invalidate: vi.fn() } } }),
     quality: {
       metadata: { useQuery: () => ({ data: { factories: [{ id: 1, name: "Fábrica 1 (Fatiado)" }], collaborators: [{ id: 1, name: "Sabrina Esteves", title: "Tec. Qualidade" }, { id: 2, name: "Neuza Antunes", title: "Tec. Qualidade" }, { id: 3, name: "Joana Pina", title: "Resp. Qualidade" }] } }) },
+      listBphfInspectionEmployees: { useQuery: () => ({ data: [{ id: 71, name: "Maria Silva" }, { id: 72, name: "João Costa" }] }) },
       listIncidences: { useQuery: () => ({ data: [{ id: 9, title: "Incidência com foto", notes: "Evidência registada.", area: "Produção", factoryId: 1, module: "bphf", completedAt: new Date("2026-08-21T10:00:00"), occurredOn: "2026-08-19", generatedNonconformity: false, nonconformityId: null, occurrenceNumber: null, registeredByProfileId: 3, registeredByName: "Joana Pina", registeredByTitle: "Resp. Qualidade", payload: { collaboratorId: 71, collaboratorName: "Maria Silva", criterion: "Higienização das mãos dos manipuladores", incidenceTreatment: { status: "completed", correction: "Correção concluída.", responsible: "Joana Pina", completedAt: "2026-08-21" }, evidencePhotos: [{ key: "incidences/9/foto.png", url: "/manus-storage/incidences/9/foto.png", fileName: "foto-incidencia.png", mimeType: "image/png" }] } }, { id: 10, title: "Incidência pendente", notes: "Aguardar tratamento.", area: "Embalagem", factoryId: 1, module: "bphf", completedAt: new Date("2026-08-20T10:00:00"), occurredOn: "2026-08-20", generatedNonconformity: false, nonconformityId: null, occurrenceNumber: null, registeredByProfileId: 3, registeredByName: "Joana Pina", registeredByTitle: "Resp. Qualidade", payload: {} }] }) },
       listNcs: { useQuery: () => ({ data: [] }) },
       incidenceRecurrenceAlerts: { useQuery: () => ({ data: [] }) },
@@ -71,6 +72,20 @@ describe("detalhe de incidência com evidências", () => {
     expect(screen.getByText("Contexto da verificação BPHF")).toBeTruthy();
     expect(screen.getByText("Maria Silva")).toBeTruthy();
     expect(screen.getByText(/Produção · Higienização das mãos dos manipuladores/i)).toBeTruthy();
+  });
+
+  it("permite atribuir ou remover um colaborador responsável através da lista BPHF", () => {
+    render(<Nonconformities />);
+    fireEvent.click(screen.getByRole("button", { name: /Incidência pendente/i }));
+    fireEvent.click(screen.getByRole("button", { name: "Editar incidência" }));
+    fireEvent.click(screen.getByRole("combobox", { name: "Colaborador responsável pela incidência" }));
+    fireEvent.click(screen.getByRole("option", { name: "Maria Silva" }));
+    fireEvent.click(screen.getByRole("button", { name: "Guardar" }));
+
+    expect(updateIncidence).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 10, collaboratorId: 71 }),
+      expect.any(Object)
+    );
   });
 
   it("mostra a data de ocorrência e permite atualizá-la ao editar a incidência", () => {
