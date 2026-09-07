@@ -12,6 +12,8 @@ describe("interface de avaliação sensorial de I&D", () => {
     expect(page).toContain("Evolução por tempo de vida");
     expect(page).toContain("Fechar projeto de I&D");
     expect(page).toContain("Provador");
+    expect(page).toContain("Conclusões finais do projeto");
+    expect(page).toContain("Preencha as conclusões finais para fechar o projeto.");
   });
 
   it("regista a rota própria para o controlo de I&D", () => {

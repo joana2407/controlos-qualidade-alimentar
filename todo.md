@@ -717,3 +717,7 @@
 - [x] Permitir acompanhar o projeto ao longo do tempo e fechar o projeto preservando o histórico.
 - [x] Integrar o controlo sensorial de I&D na navegação, Plataforma e relatórios.
 - [x] Adicionar testes de dados, cálculo de nota, permissões, fecho e interface do controlo de I&D.
+- [x] Restringir o fecho de projetos de I&D à Responsável de Qualidade.
+- [x] Exigir conclusões finais obrigatórias no formulário e no servidor antes de fechar um projeto de I&D.
+- [x] Mostrar as conclusões finais no histórico do projeto fechado.
+- [x] Adicionar regressões de permissões e validação de conclusões no fecho de I&D.
