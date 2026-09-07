@@ -9,12 +9,27 @@ export const QUALITY_PANEL_OPTIONS = [
   { key: "rd_sensory", label: "I&D — controlo sensorial", description: "Projetos e avaliações sensoriais de I&D." },
 ] as const;
 
+export const QUALITY_EXTERNAL_PANEL_OPTIONS = [
+  { key: "occurrences", label: "Gestão de Ocorrências", description: "Acesso ao painel externo de ocorrências." },
+  { key: "raw_materials", label: "Gestão de MP", description: "Acesso ao painel externo de matérias-primas." },
+  { key: "artisan_rd", label: "I&D · Artisan", description: "Acesso ao painel externo de I&D Artisan." },
+  { key: "calibration", label: "Plano de Calibração", description: "Acesso ao painel externo de calibração." },
+  { key: "maintenance", label: "Plano de Manutenção", description: "Acesso ao painel externo de manutenção." },
+  { key: "production_breakdowns", label: "Quebras de produção", description: "Acesso aos painéis externos de quebras das fábricas." },
+] as const;
+
 export type QualityPanelKey = (typeof QUALITY_PANEL_OPTIONS)[number]["key"];
+export type QualityExternalPanelKey = (typeof QUALITY_EXTERNAL_PANEL_OPTIONS)[number]["key"];
 
 export const QUALITY_PANEL_KEYS = QUALITY_PANEL_OPTIONS.map(panel => panel.key) as QualityPanelKey[];
+export const QUALITY_EXTERNAL_PANEL_KEYS = QUALITY_EXTERNAL_PANEL_OPTIONS.map(panel => panel.key) as QualityExternalPanelKey[];
 
 export function isQualityPanelKey(value: string): value is QualityPanelKey {
   return QUALITY_PANEL_KEYS.includes(value as QualityPanelKey);
+}
+
+export function isQualityExternalPanelKey(value: string): value is QualityExternalPanelKey {
+  return QUALITY_EXTERNAL_PANEL_KEYS.includes(value as QualityExternalPanelKey);
 }
 
 export function panelsForQualityPath(pathname: string): QualityPanelKey | null {
@@ -32,4 +47,9 @@ export function panelsForQualityPath(pathname: string): QualityPanelKey | null {
 export function hasQualityPanelAccess(role: "technician" | "manager" | "viewer", allowedPanels: QualityPanelKey[] | null | undefined, panel: QualityPanelKey | null) {
   if (role === "manager" || panel === null) return true;
   return (allowedPanels ?? QUALITY_PANEL_KEYS).includes(panel);
+}
+
+export function hasQualityExternalPanelAccess(role: "technician" | "manager" | "viewer", allowedPanels: QualityExternalPanelKey[] | null | undefined, panel: QualityExternalPanelKey) {
+  if (role === "manager") return true;
+  return (allowedPanels ?? QUALITY_EXTERNAL_PANEL_KEYS).includes(panel);
 }

@@ -37,6 +37,7 @@ describe("login operacional por PIN", () => {
   it("não pré-seleciona um perfil e só apresenta o PIN depois da escolha explícita", () => {
     render(<OperatorPinGate access={access} />);
 
+    expect(screen.getByAltText("Logótipo A&S")).toBeTruthy();
     expect(screen.queryByLabelText("PIN de Sabrina Esteves")).toBeNull();
     expect(screen.getByText("Selecione o seu perfil para introduzir o PIN.")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: /Sabrina Esteves/i }));

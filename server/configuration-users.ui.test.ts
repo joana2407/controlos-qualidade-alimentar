@@ -22,10 +22,14 @@ describe("Configuração de utilizadores e autorizações", () => {
     expect(page).toContain("Técnica/Técnico de Qualidade");
     expect(page).toContain("Responsável de Qualidade");
     expect(page).toContain("Consulta");
-    expect(page).toContain("Painéis autorizados");
+    expect(page).toContain("Painéis internos autorizados");
+    expect(page).toContain("Painéis externos autorizados");
     expect(panels).toContain("Painel Hoje");
     expect(panels).toContain("Controlos Operacionais");
     expect(panels).toContain("I&D — controlo sensorial");
+    expect(panels).toContain("Gestão de Ocorrências");
+    expect(panels).toContain("I&D · Artisan");
+    expect(panels).toContain("Quebras de produção");
     expect(page).toContain("trpc.quality.createPinProfile");
     expect(page).toContain("trpc.quality.updatePinProfileAccess");
     expect(page).toContain("trpc.quality.updatePinProfilePanels");
@@ -38,5 +42,6 @@ describe("Configuração de utilizadores e autorizações", () => {
     expect(router).toContain("Não pode alterar as suas próprias autorizações a partir desta sessão.");
     expect(router).toContain("updatePinProfilePanels: qualityManagerProcedure");
     expect(router).toContain("A Responsável de Qualidade mantém acesso integral aos painéis.");
+    expect(router).toContain("allowedExternalPanels");
   });
 });

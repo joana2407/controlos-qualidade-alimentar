@@ -2,7 +2,7 @@ import { OperatorPinGate } from "@/components/OperatorPinGate";
 import { QualityAccessProvider, useQualityAccess } from "@/contexts/QualityAccessContext";
 import { trpc } from "@/lib/trpc";
 import { canAccessWorkspace } from "@/lib/workspaceAccess";
-import { hasQualityPanelAccess, panelsForQualityPath } from "@shared/quality-panel-access";
+import { hasQualityExternalPanelAccess, hasQualityPanelAccess, panelsForQualityPath, type QualityExternalPanelKey } from "@shared/quality-panel-access";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -70,13 +70,21 @@ const occurrencePanels = [
   { icon: FilePlus2, label: "Nova reclamação", path: "/reclamacoes/nova" },
 ];
 
-const preparedExternalPanels = [
-  { icon: ClipboardList, label: "Gestão de Ocorrências", iconClass: "bg-red-50 text-red-700", url: "https://analiseocorrencias.manus.space/login" },
-  { icon: PackageSearch, label: "Gestão de MP", iconClass: "bg-amber-50 text-amber-700", url: "https://gestaomateriasprimas.manus.space/" },
-  { icon: FlaskConical, label: "I&D · Artisan", iconClass: "bg-cyan-50 text-cyan-700", url: "https://joseloureiro1607.github.io/Artisan/" },
-  { icon: Ruler, label: "Plano Calibração", iconClass: "bg-violet-50 text-violet-700", url: "https://planocalibracao.manus.space/" },
-  { icon: Wrench, label: "Plano de Manutenção", iconClass: "bg-blue-50 text-blue-700", url: "https://manutencaoprenventiva-as.manus.space/" },
+const preparedExternalPanels: Array<{
+  accessKey: QualityExternalPanelKey;
+  icon: React.ComponentType<{ className?: string }>;
+  label: string;
+  iconClass: string;
+  url?: string;
+  factories?: Array<{ label: string; iconClass: string; url: string }>;
+}> = [
+  { accessKey: "occurrences", icon: ClipboardList, label: "Gestão de Ocorrências", iconClass: "bg-red-50 text-red-700", url: "https://analiseocorrencias.manus.space/login" },
+  { accessKey: "raw_materials", icon: PackageSearch, label: "Gestão de MP", iconClass: "bg-amber-50 text-amber-700", url: "https://gestaomateriasprimas.manus.space/" },
+  { accessKey: "artisan_rd", icon: FlaskConical, label: "I&D · Artisan", iconClass: "bg-cyan-50 text-cyan-700", url: "https://joseloureiro1607.github.io/Artisan/" },
+  { accessKey: "calibration", icon: Ruler, label: "Plano Calibração", iconClass: "bg-violet-50 text-violet-700", url: "https://planocalibracao.manus.space/" },
+  { accessKey: "maintenance", icon: Wrench, label: "Plano de Manutenção", iconClass: "bg-blue-50 text-blue-700", url: "https://manutencaoprenventiva-as.manus.space/" },
   {
+    accessKey: "production_breakdowns",
     icon: TrendingDown,
     label: "Quebras de produção",
     iconClass: "bg-rose-50 text-rose-700",
@@ -191,6 +199,7 @@ function DashboardLayoutContent({
   const visibleMenuItems = menuItems.filter((item) => (item.path !== "/configuracao" || canManage) && canAccessPanelPath(item.path));
   const visibleControlPanels = controlPanels.filter(panel => canAccessPanelPath(panel.path));
   const visibleResearchDevelopmentPanels = researchDevelopmentPanels.filter(panel => canAccessPanelPath(panel.path));
+  const visibleExternalPanels = preparedExternalPanels.filter(panel => hasQualityExternalPanelAccess(activeProfile!.role, activeProfile!.externalPanelAccess, panel.accessKey));
   const canViewCurrentPanel = canAccessPanelPath(location);
 
   useEffect(() => {
@@ -250,6 +259,7 @@ function DashboardLayoutContent({
               >
                 <PanelLeft className="h-4 w-4 text-muted-foreground" />
               </button>
+              <img src="/manus-storage/qualicontrol-logo_e5bfd122.png" alt="Logótipo A&S" className="h-9 w-10 shrink-0 object-contain" />
               {!isCollapsed ? (
                 <div className="flex items-center gap-2 min-w-0">
                   <div className="flex flex-col leading-tight">
@@ -293,10 +303,10 @@ function DashboardLayoutContent({
                 return <SidebarMenuItem key={panel.path}><SidebarMenuButton isActive={panelActive} onClick={() => setLocation(panel.path)} tooltip={panel.label} className="h-auto min-h-11 px-3 py-2 text-sm font-medium text-slate-800 transition-all hover:bg-cyan-100 hover:text-slate-950 data-[active=true]:bg-cyan-600 data-[active=true]:text-white [&>span:last-child]:!overflow-visible [&>span:last-child]:!text-clip [&>span:last-child]:!whitespace-normal"><span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-cyan-100 text-cyan-800"><panel.icon className="h-4 w-4" /></span><span className="min-w-0 leading-5">{panel.label}</span></SidebarMenuButton></SidebarMenuItem>;
               })}
             </SidebarMenu>}
-            <SidebarMenu className="mt-2 border-t border-border/70 px-2 py-2">
+            {visibleExternalPanels.length > 0 && <SidebarMenu className="mt-2 border-t border-border/70 px-2 py-2">
               {!isCollapsed && <p className="px-2 pb-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Painéis externos</p>}
-              {preparedExternalPanels.map((panel) => panel.factories ? <SidebarMenuItem key={panel.label}><SidebarMenuButton onClick={() => isCollapsed ? toast.info(`${panel.label}: abra a barra lateral para escolher a fábrica.`) : setProductionBreakdownsOpen((open) => !open)} tooltip={`${panel.label} — selecionar fábrica`} aria-expanded={productionBreakdownsOpen} className="h-10 text-muted-foreground transition-all hover:text-foreground"><span className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-md ${panel.iconClass}`}><panel.icon className="h-3.5 w-3.5" /></span><span>{panel.label}</span>{!isCollapsed && <ChevronDown className={`ml-auto h-4 w-4 transition-transform ${productionBreakdownsOpen ? "rotate-0" : "-rotate-90"}`} />}</SidebarMenuButton>{productionBreakdownsOpen && !isCollapsed && <div className="ml-8 border-l border-border/70 py-1"><SidebarMenu className="px-2 py-0">{panel.factories.map((factory) => <SidebarMenuItem key={factory.label}><SidebarMenuButton onClick={() => window.open(factory.url, "_blank", "noopener,noreferrer")} tooltip={`${factory.label} — abrir painel externo`} className="h-8 text-sm text-muted-foreground transition-all hover:text-foreground"><Factory className={`h-3.5 w-3.5 ${factory.iconClass}`} /><span>{factory.label}</span></SidebarMenuButton></SidebarMenuItem>)}</SidebarMenu></div>}</SidebarMenuItem> : <SidebarMenuItem key={panel.label}><SidebarMenuButton onClick={() => window.open(panel.url, "_blank", "noopener,noreferrer")} tooltip={`${panel.label} — abrir painel externo`} className="h-10 text-muted-foreground transition-all hover:text-foreground"><span className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-md ${panel.iconClass}`}><panel.icon className="h-3.5 w-3.5" /></span><span>{panel.label}</span></SidebarMenuButton></SidebarMenuItem>)}
-            </SidebarMenu>
+              {visibleExternalPanels.map((panel) => panel.factories ? <SidebarMenuItem key={panel.label}><SidebarMenuButton onClick={() => isCollapsed ? toast.info(`${panel.label}: abra a barra lateral para escolher a fábrica.`) : setProductionBreakdownsOpen((open) => !open)} tooltip={`${panel.label} — selecionar fábrica`} aria-expanded={productionBreakdownsOpen} className="h-10 text-muted-foreground transition-all hover:text-foreground"><span className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-md ${panel.iconClass}`}><panel.icon className="h-3.5 w-3.5" /></span><span>{panel.label}</span>{!isCollapsed && <ChevronDown className={`ml-auto h-4 w-4 transition-transform ${productionBreakdownsOpen ? "rotate-0" : "-rotate-90"}`} />}</SidebarMenuButton>{productionBreakdownsOpen && !isCollapsed && <div className="ml-8 border-l border-border/70 py-1"><SidebarMenu className="px-2 py-0">{panel.factories.map((factory) => <SidebarMenuItem key={factory.label}><SidebarMenuButton onClick={() => window.open(factory.url, "_blank", "noopener,noreferrer")} tooltip={`${factory.label} — abrir painel externo`} className="h-8 text-sm text-muted-foreground transition-all hover:text-foreground"><Factory className={`h-3.5 w-3.5 ${factory.iconClass}`} /><span>{factory.label}</span></SidebarMenuButton></SidebarMenuItem>)}</SidebarMenu></div>}</SidebarMenuItem> : <SidebarMenuItem key={panel.label}><SidebarMenuButton onClick={() => window.open(panel.url, "_blank", "noopener,noreferrer")} tooltip={`${panel.label} — abrir painel externo`} className="h-10 text-muted-foreground transition-all hover:text-foreground"><span className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-md ${panel.iconClass}`}><panel.icon className="h-3.5 w-3.5" /></span><span>{panel.label}</span></SidebarMenuButton></SidebarMenuItem>)}
+            </SidebarMenu>}
           </SidebarContent>
 
           <SidebarFooter className="p-3">

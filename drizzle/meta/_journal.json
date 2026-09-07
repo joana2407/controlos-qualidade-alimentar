@@ -288,6 +288,13 @@
       "when": 1788777863103,
       "tag": "0041_heavy_ultimatum",
       "breakpoints": true
+    },
+    {
+      "idx": 42,
+      "version": "5",
+      "when": 1788786745375,
+      "tag": "0042_petite_chat",
+      "breakpoints": true
     }
   ]
 }

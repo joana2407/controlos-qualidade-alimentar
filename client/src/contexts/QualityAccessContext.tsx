@@ -1,5 +1,5 @@
 import React, { createContext, useContext } from "react";
-import type { QualityPanelKey } from "@shared/quality-panel-access";
+import type { QualityExternalPanelKey, QualityPanelKey } from "@shared/quality-panel-access";
 
 export type QualityOperatorProfile = {
   id: number;
@@ -7,6 +7,7 @@ export type QualityOperatorProfile = {
   title: string;
   role: "technician" | "manager" | "viewer";
   panelAccess?: QualityPanelKey[];
+  externalPanelAccess?: QualityExternalPanelKey[];
 };
 
 type QualityAccessValue = {

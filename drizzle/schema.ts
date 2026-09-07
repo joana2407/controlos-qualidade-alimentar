@@ -51,6 +51,7 @@ export const qualityPanelAccess = mysqlTable("quality_panel_access", {
   id: int("id").autoincrement().primaryKey(),
   profileId: int("profileId").notNull().unique(),
   allowedPanels: json("allowedPanels").$type<string[]>().notNull(),
+  allowedExternalPanels: json("allowedExternalPanels").$type<string[]>(),
   updatedBy: varchar("updatedBy", { length: 64 }).notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 }, (table) => [index("quality_panel_access_profile_idx").on(table.profileId)]);

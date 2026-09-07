@@ -747,3 +747,10 @@
 - [x] Reforçar a separação visual entre Configuração, I&D e Painéis externos na barra lateral.
 - [x] Garantir legibilidade da navegação em larguras reduzidas e em telemóvel.
 - [x] Adicionar regressões de organização, leitura e acesso da barra lateral revista.
+- [x] Incluir os painéis externos no catálogo de autorizações configuráveis por utilizador.
+- [x] Permitir à Responsável selecionar os painéis externos autorizados para cada perfil PIN.
+- [x] Ocultar na barra lateral os atalhos externos não autorizados.
+- [x] Adicionar regressões para configuração e visibilidade dos painéis externos por utilizador.
+- [x] Integrar o logótipo fornecido na entrada por PIN e no cabeçalho da navegação QualiControl.
+- [x] Armazenar o logótipo como ativo estático externo apropriado para publicação.
+- [x] Adicionar regressão para a presença e o acesso do logótipo na identidade visual.

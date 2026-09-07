@@ -6,7 +6,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 let currentLocation = "/controlos/fragile_items";
 let isMobile = false;
 let occurrenceScope = "all";
-let activeProfile: { id: number; name: string; title: string; role: "technician" | "manager" | "viewer"; panelAccess?: string[] } = { id: 3, name: "Joana Pina", title: "Resp. Qualidade", role: "manager" };
+let activeProfile: { id: number; name: string; title: string; role: "technician" | "manager" | "viewer"; panelAccess?: string[]; externalPanelAccess?: string[] } = { id: 3, name: "Joana Pina", title: "Resp. Qualidade", role: "manager" };
 const setLocation = vi.fn();
 
 vi.mock("@/_core/hooks/useAuth", () => ({
@@ -110,11 +110,13 @@ describe("atalhos laterais dos painéis de controlo", () => {
   });
 
   it("oculta os painéis não atribuídos a uma técnica e bloqueia a rota direta", async () => {
-    activeProfile = { id: 1, name: "Técnica limitada", title: "Tec. Qualidade", role: "technician", panelAccess: ["dashboard", "operational_controls"] };
+    activeProfile = { id: 1, name: "Técnica limitada", title: "Tec. Qualidade", role: "technician", panelAccess: ["dashboard", "operational_controls"], externalPanelAccess: ["artisan_rd"] };
     currentLocation = "/id-sensorial";
     render(<DashboardLayout workspace="quality"><div>Conteúdo de I&D</div></DashboardLayout>);
     await waitFor(() => expect(screen.getByText("Painel não autorizado")).toBeTruthy());
-    expect(screen.queryByRole("button", { name: "I&D · Artisan" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "I&D · Artisan" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Gestão de Ocorrências" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Gestão de MP" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Controlo sensorial de I&D" })).toBeNull();
     expect(screen.getByRole("button", { name: "Controlos" })).toBeTruthy();
   });

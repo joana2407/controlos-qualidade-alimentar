@@ -73,12 +73,13 @@ import {
 } from "../_core/trpc";
 import { notifyOwner } from "../_core/notification";
 import { getDispatchProfile } from "../../shared/dispatch-control";
-import { QUALITY_PANEL_KEYS, isQualityPanelKey, type QualityPanelKey } from "../../shared/quality-panel-access";
+import { QUALITY_EXTERNAL_PANEL_KEYS, QUALITY_PANEL_KEYS, isQualityExternalPanelKey, isQualityPanelKey, type QualityExternalPanelKey, type QualityPanelKey } from "../../shared/quality-panel-access";
 
 const qualityModuleSchema = z.enum(qualityModuleValues);
 const resultSchema = z.enum(resultValues);
 const qualityProfileRoleSchema = z.enum(["technician", "manager", "viewer"]);
 const qualityPanelKeySchema = z.enum(QUALITY_PANEL_KEYS as [QualityPanelKey, ...QualityPanelKey[]]);
+const qualityExternalPanelKeySchema = z.enum(QUALITY_EXTERNAL_PANEL_KEYS as [QualityExternalPanelKey, ...QualityExternalPanelKey[]]);
 const qualityProfileRoleDetails = {
   technician: { title: "Tec. Qualidade", label: "Técnica/Técnico de Qualidade" },
   manager: { title: "Resp. Qualidade", label: "Responsável de Qualidade" },
@@ -1238,7 +1239,7 @@ export const qualityRouter = router({
       : existing;
     const managerProfile = profiles.find(profile => profile.role === "manager");
     const panelAccessRows = await db.select().from(qualityPanelAccess);
-    const panelAccessByProfileId = new Map(panelAccessRows.map(row => [row.profileId, row.allowedPanels.filter(isQualityPanelKey)]));
+    const panelAccessByProfileId = new Map(panelAccessRows.map(row => [row.profileId, { internal: row.allowedPanels.filter(isQualityPanelKey), external: row.allowedExternalPanels?.filter(isQualityExternalPanelKey) ?? QUALITY_EXTERNAL_PANEL_KEYS }]));
     return {
       profiles: profiles.map(profile => ({
         id: profile.id,
@@ -1248,11 +1249,13 @@ export const qualityRouter = router({
         role: profile.role,
         isConfigured: Boolean(profile.pinHash),
         active: profile.active === "true",
-        panelAccess: profile.role === "manager" ? QUALITY_PANEL_KEYS : (panelAccessByProfileId.get(profile.id) ?? QUALITY_PANEL_KEYS),
+        panelAccess: profile.role === "manager" ? QUALITY_PANEL_KEYS : (panelAccessByProfileId.get(profile.id)?.internal ?? QUALITY_PANEL_KEYS),
+        externalPanelAccess: profile.role === "manager" ? QUALITY_EXTERNAL_PANEL_KEYS : (panelAccessByProfileId.get(profile.id)?.external ?? QUALITY_EXTERNAL_PANEL_KEYS),
       })),
       activeProfile: ctx.operatorProfile ? {
         ...ctx.operatorProfile,
-        panelAccess: ctx.operatorProfile.role === "manager" ? QUALITY_PANEL_KEYS : (panelAccessByProfileId.get(ctx.operatorProfile.id) ?? QUALITY_PANEL_KEYS),
+        panelAccess: ctx.operatorProfile.role === "manager" ? QUALITY_PANEL_KEYS : (panelAccessByProfileId.get(ctx.operatorProfile.id)?.internal ?? QUALITY_PANEL_KEYS),
+        externalPanelAccess: ctx.operatorProfile.role === "manager" ? QUALITY_EXTERNAL_PANEL_KEYS : (panelAccessByProfileId.get(ctx.operatorProfile.id)?.external ?? QUALITY_EXTERNAL_PANEL_KEYS),
       } : null,
       canManage: ctx.operatorProfile?.role === "manager",
       canBootstrap: ctx.user?.role === "admin" && !managerProfile?.pinHash,
@@ -1315,6 +1318,7 @@ export const qualityRouter = router({
       role: qualityProfileRoleSchema,
       pin: z.string().regex(/^\d{4,8}$/),
       allowedPanels: z.array(qualityPanelKeySchema).max(QUALITY_PANEL_KEYS.length),
+      allowedExternalPanels: z.array(qualityExternalPanelKeySchema).max(QUALITY_EXTERNAL_PANEL_KEYS.length),
     }))
     .mutation(async ({ ctx, input }) => {
       const db = await requireDb();
@@ -1332,8 +1336,9 @@ export const qualityRouter = router({
       }).$returningId();
       const profile = (await db.select().from(qualityPinProfiles).where(eq(qualityPinProfiles.id, Number(inserted[0]!.id))).limit(1))[0]!;
       const allowedPanels = input.role === "manager" ? QUALITY_PANEL_KEYS : input.allowedPanels;
-      await db.insert(qualityPanelAccess).values({ profileId: profile.id, allowedPanels, updatedBy: ctx.user!.openId });
-      return { id: profile.id, name: profile.name, title: profile.title, role: profile.role, active: profile.active === "true", isConfigured: Boolean(profile.pinHash), panelAccess: allowedPanels };
+      const allowedExternalPanels = input.role === "manager" ? QUALITY_EXTERNAL_PANEL_KEYS : input.allowedExternalPanels;
+      await db.insert(qualityPanelAccess).values({ profileId: profile.id, allowedPanels, allowedExternalPanels, updatedBy: ctx.user!.openId });
+      return { id: profile.id, name: profile.name, title: profile.title, role: profile.role, active: profile.active === "true", isConfigured: Boolean(profile.pinHash), panelAccess: allowedPanels, externalPanelAccess: allowedExternalPanels };
     }),
 
   updatePinProfileAccess: qualityManagerProcedure
@@ -1363,13 +1368,14 @@ export const qualityRouter = router({
     .input(z.object({
       profileId: z.number().int(),
       allowedPanels: z.array(qualityPanelKeySchema).max(QUALITY_PANEL_KEYS.length),
+      allowedExternalPanels: z.array(qualityExternalPanelKeySchema).max(QUALITY_EXTERNAL_PANEL_KEYS.length),
     }))
     .mutation(async ({ ctx, input }) => {
       const db = await requireDb();
       const profile = (await db.select().from(qualityPinProfiles).where(eq(qualityPinProfiles.id, input.profileId)).limit(1))[0];
       if (!profile) throw new TRPCError({ code: "NOT_FOUND", message: "Utilizador não encontrado." });
       if (profile.role === "manager") throw new TRPCError({ code: "BAD_REQUEST", message: "A Responsável de Qualidade mantém acesso integral aos painéis." });
-      await db.insert(qualityPanelAccess).values({ profileId: profile.id, allowedPanels: input.allowedPanels, updatedBy: ctx.user!.openId }).onDuplicateKeyUpdate({ set: { allowedPanels: input.allowedPanels, updatedBy: ctx.user!.openId } });
+      await db.insert(qualityPanelAccess).values({ profileId: profile.id, allowedPanels: input.allowedPanels, allowedExternalPanels: input.allowedExternalPanels, updatedBy: ctx.user!.openId }).onDuplicateKeyUpdate({ set: { allowedPanels: input.allowedPanels, allowedExternalPanels: input.allowedExternalPanels, updatedBy: ctx.user!.openId } });
       return { success: true };
     }),
 
