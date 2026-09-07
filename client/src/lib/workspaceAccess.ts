@@ -7,6 +7,6 @@ const normalize = (value: string) => value.normalize("NFD").replace(/[\u0300-\u0
 export function canAccessWorkspace(profile: QualityOperatorProfile | null | undefined, workspace: WorkspaceKey) {
   if (!profile) return false;
   const name = normalize(profile.name);
-  if (workspace === "quality") return ["sabrina esteves", "neuza antunes", "joana pina", "gestao", "gestão"].includes(name);
+  if (workspace === "quality") return Boolean(profile.panelAccess?.length) || ["sabrina esteves", "neuza antunes", "joana pina", "gestao", "gestão"].includes(name);
   return name === "sabrina esteves" || name === "joana pina" || name === "nuno" || name.startsWith("nuno ") || name === "gestao" || name === "gestão" || normalize(profile.title).includes("gestao");
 }

@@ -46,6 +46,15 @@ export const qualityPinProfiles = mysqlTable("quality_pin_profiles", {
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 }, (table) => [index("quality_profile_role_idx").on(table.role)]);
 
+/** Painéis internos do QualiControl autorizados individualmente para cada perfil PIN. */
+export const qualityPanelAccess = mysqlTable("quality_panel_access", {
+  id: int("id").autoincrement().primaryKey(),
+  profileId: int("profileId").notNull().unique(),
+  allowedPanels: json("allowedPanels").$type<string[]>().notNull(),
+  updatedBy: varchar("updatedBy", { length: 64 }).notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, (table) => [index("quality_panel_access_profile_idx").on(table.profileId)]);
+
 /** Colaboradores que podem ser identificados numa inspeção BPHF de cacifos. */
 export const bphfInspectionEmployees = mysqlTable("bphf_inspection_employees", {
   id: int("id").autoincrement().primaryKey(),
@@ -163,6 +172,9 @@ export const rdSensoryProjects = mysqlTable("rd_sensory_projects", {
   createdBy: varchar("createdBy", { length: 64 }).notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  deletedAt: timestamp("deletedAt"),
+  deletedByProfileId: int("deletedByProfileId"),
+  deletedByName: varchar("deletedByName", { length: 160 }),
 }, (table) => [
   index("rd_sensory_project_status_idx").on(table.status),
   index("rd_sensory_project_product_idx").on(table.product),
@@ -186,10 +198,14 @@ export const rdSensoryEvaluations = mysqlTable("rd_sensory_evaluations", {
   weightedScore: int("weightedScore").notNull(),
   observations: text("observations"),
   suggestions: text("suggestions"),
+  photos: json("photos").$type<Array<{ key: string; url: string; fileName: string; mimeType: "image/jpeg" | "image/png" | "image/webp" }>>(),
   createdByProfileId: int("createdByProfileId").notNull(),
   createdByName: varchar("createdByName", { length: 160 }).notNull(),
   createdBy: varchar("createdBy", { length: 64 }).notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
+  deletedAt: timestamp("deletedAt"),
+  deletedByProfileId: int("deletedByProfileId"),
+  deletedByName: varchar("deletedByName", { length: 160 }),
 }, (table) => [
   index("rd_sensory_evaluation_project_idx").on(table.projectId),
   index("rd_sensory_evaluation_date_idx").on(table.evaluatedAt),

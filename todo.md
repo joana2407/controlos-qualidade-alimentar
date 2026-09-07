@@ -729,3 +729,21 @@
 - [x] Permitir associar novas tentativas ou formulações ao projeto de I&D selecionado, preservando o histórico.
 - [x] Adicionar um filtro de seleção por projeto à listagem de projetos de I&D.
 - [x] Adicionar regressões para seleção, filtragem e histórico por projeto de I&D.
+- [x] Remover do painel Configuração os cartões de criação direta de áreas, planos e itens de checklist.
+- [x] Permitir à Responsável de Qualidade criar utilizadores adicionais com PIN.
+- [x] Permitir configurar o tipo de autorização de cada utilizador criado.
+- [x] Adicionar regressões para simplificação de Configuração, criação de utilizadores e autorizações.
+- [x] Permitir à Responsável de Qualidade selecionar os painéis autorizados por utilizador.
+- [x] Aplicar as autorizações individuais de painel à navegação e às rotas operacionais.
+- [x] Preservar o acesso integral da Responsável e diferenciar utilizadores técnicos com painéis distintos.
+- [x] Adicionar regressões de autorização, navegação e bloqueio de painéis não atribuídos.
+- [x] Permitir anexar fotografias a cada avaliação sensorial de I&D e consultar as imagens no histórico.
+- [x] Permitir à Responsável de Qualidade editar a identificação de projetos e avaliações de I&D.
+- [x] Permitir à Responsável de Qualidade eliminar projetos ou avaliações de I&D com proteção de rastreabilidade.
+- [x] Adicionar regressões de anexos fotográficos, edição, eliminação e permissões de I&D.
+- [x] Permitir exportar para Excel o projeto de I&D selecionado, incluindo identificação, avaliações, notas e histórico.
+- [x] Adicionar regressões para a exportação Excel do projeto de I&D.
+- [x] Reorganizar a grelha de Controlos Operacionais para impedir nomes truncados e leitura comprimida.
+- [x] Reforçar a separação visual entre Configuração, I&D e Painéis externos na barra lateral.
+- [x] Garantir legibilidade da navegação em larguras reduzidas e em telemóvel.
+- [x] Adicionar regressões de organização, leitura e acesso da barra lateral revista.

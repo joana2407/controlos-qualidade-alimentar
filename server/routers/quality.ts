@@ -20,6 +20,7 @@ import {
   fragileAreas,
   fragileItems,
   nonconformities,
+  qualityPanelAccess,
   qualityPinProfiles,
   qualityPinSessions,
   qualityModuleValues,
@@ -72,9 +73,17 @@ import {
 } from "../_core/trpc";
 import { notifyOwner } from "../_core/notification";
 import { getDispatchProfile } from "../../shared/dispatch-control";
+import { QUALITY_PANEL_KEYS, isQualityPanelKey, type QualityPanelKey } from "../../shared/quality-panel-access";
 
 const qualityModuleSchema = z.enum(qualityModuleValues);
 const resultSchema = z.enum(resultValues);
+const qualityProfileRoleSchema = z.enum(["technician", "manager", "viewer"]);
+const qualityPanelKeySchema = z.enum(QUALITY_PANEL_KEYS as [QualityPanelKey, ...QualityPanelKey[]]);
+const qualityProfileRoleDetails = {
+  technician: { title: "Tec. Qualidade", label: "Técnica/Técnico de Qualidade" },
+  manager: { title: "Resp. Qualidade", label: "Responsável de Qualidade" },
+  viewer: { title: "Consulta", label: "Consulta" },
+} as const;
 const retroactiveReasonSchema = z.enum([
   "verified_not_registered",
   "technical_unavailability",
@@ -1228,6 +1237,8 @@ export const qualityRouter = router({
           .orderBy(qualityPinProfiles.id)
       : existing;
     const managerProfile = profiles.find(profile => profile.role === "manager");
+    const panelAccessRows = await db.select().from(qualityPanelAccess);
+    const panelAccessByProfileId = new Map(panelAccessRows.map(row => [row.profileId, row.allowedPanels.filter(isQualityPanelKey)]));
     return {
       profiles: profiles.map(profile => ({
         id: profile.id,
@@ -1237,8 +1248,12 @@ export const qualityRouter = router({
         role: profile.role,
         isConfigured: Boolean(profile.pinHash),
         active: profile.active === "true",
+        panelAccess: profile.role === "manager" ? QUALITY_PANEL_KEYS : (panelAccessByProfileId.get(profile.id) ?? QUALITY_PANEL_KEYS),
       })),
-      activeProfile: ctx.operatorProfile,
+      activeProfile: ctx.operatorProfile ? {
+        ...ctx.operatorProfile,
+        panelAccess: ctx.operatorProfile.role === "manager" ? QUALITY_PANEL_KEYS : (panelAccessByProfileId.get(ctx.operatorProfile.id) ?? QUALITY_PANEL_KEYS),
+      } : null,
       canManage: ctx.operatorProfile?.role === "manager",
       canBootstrap: ctx.user?.role === "admin" && !managerProfile?.pinHash,
       needsInitialSetup: !profiles.every(profile => Boolean(profile.pinHash)),
@@ -1256,7 +1271,7 @@ export const qualityRouter = router({
             })
           )
           .min(1)
-          .max(4),
+          .max(50),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -1291,6 +1306,70 @@ export const qualityRouter = router({
           .set({ pinHash: hashPin(pin) })
           .where(eq(qualityPinProfiles.id, profile.id));
       }
+      return { success: true };
+    }),
+
+  createPinProfile: qualityManagerProcedure
+    .input(z.object({
+      name: z.string().trim().min(2).max(160),
+      role: qualityProfileRoleSchema,
+      pin: z.string().regex(/^\d{4,8}$/),
+      allowedPanels: z.array(qualityPanelKeySchema).max(QUALITY_PANEL_KEYS.length),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const db = await requireDb();
+      const existing = await db.select().from(qualityPinProfiles).where(eq(qualityPinProfiles.name, input.name)).limit(1);
+      if (existing[0]) throw new TRPCError({ code: "CONFLICT", message: "Já existe um utilizador com este nome." });
+      const profileDetails = qualityProfileRoleDetails[input.role];
+      const inserted = await db.insert(qualityPinProfiles).values({
+        code: `USR_${createSessionToken().slice(0, 24).toUpperCase()}`,
+        name: input.name,
+        title: profileDetails.title,
+        role: input.role,
+        pinHash: hashPin(input.pin),
+        active: "true",
+        createdBy: ctx.user!.openId,
+      }).$returningId();
+      const profile = (await db.select().from(qualityPinProfiles).where(eq(qualityPinProfiles.id, Number(inserted[0]!.id))).limit(1))[0]!;
+      const allowedPanels = input.role === "manager" ? QUALITY_PANEL_KEYS : input.allowedPanels;
+      await db.insert(qualityPanelAccess).values({ profileId: profile.id, allowedPanels, updatedBy: ctx.user!.openId });
+      return { id: profile.id, name: profile.name, title: profile.title, role: profile.role, active: profile.active === "true", isConfigured: Boolean(profile.pinHash), panelAccess: allowedPanels };
+    }),
+
+  updatePinProfileAccess: qualityManagerProcedure
+    .input(z.object({
+      profileId: z.number().int(),
+      role: qualityProfileRoleSchema,
+      active: z.boolean(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const db = await requireDb();
+      const profiles = await db.select().from(qualityPinProfiles);
+      const target = profiles.find(profile => profile.id === input.profileId);
+      if (!target) throw new TRPCError({ code: "NOT_FOUND", message: "Utilizador não encontrado." });
+      if (target.id === ctx.operatorProfile!.id) throw new TRPCError({ code: "BAD_REQUEST", message: "Não pode alterar as suas próprias autorizações a partir desta sessão." });
+      const activeManagerRemains = profiles.some(profile => {
+        const role = profile.id === target.id ? input.role : profile.role;
+        const active = profile.id === target.id ? input.active : profile.active === "true";
+        return role === "manager" && active;
+      });
+      if (!activeManagerRemains) throw new TRPCError({ code: "BAD_REQUEST", message: "Tem de permanecer pelo menos uma Responsável de Qualidade ativa." });
+      const profileDetails = qualityProfileRoleDetails[input.role];
+      await db.update(qualityPinProfiles).set({ role: input.role, title: profileDetails.title, active: input.active ? "true" : "false" }).where(eq(qualityPinProfiles.id, target.id));
+      return { success: true };
+    }),
+
+  updatePinProfilePanels: qualityManagerProcedure
+    .input(z.object({
+      profileId: z.number().int(),
+      allowedPanels: z.array(qualityPanelKeySchema).max(QUALITY_PANEL_KEYS.length),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const db = await requireDb();
+      const profile = (await db.select().from(qualityPinProfiles).where(eq(qualityPinProfiles.id, input.profileId)).limit(1))[0];
+      if (!profile) throw new TRPCError({ code: "NOT_FOUND", message: "Utilizador não encontrado." });
+      if (profile.role === "manager") throw new TRPCError({ code: "BAD_REQUEST", message: "A Responsável de Qualidade mantém acesso integral aos painéis." });
+      await db.insert(qualityPanelAccess).values({ profileId: profile.id, allowedPanels: input.allowedPanels, updatedBy: ctx.user!.openId }).onDuplicateKeyUpdate({ set: { allowedPanels: input.allowedPanels, updatedBy: ctx.user!.openId } });
       return { success: true };
     }),
 

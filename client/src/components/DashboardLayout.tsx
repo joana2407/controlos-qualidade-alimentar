@@ -2,8 +2,10 @@ import { OperatorPinGate } from "@/components/OperatorPinGate";
 import { QualityAccessProvider, useQualityAccess } from "@/contexts/QualityAccessContext";
 import { trpc } from "@/lib/trpc";
 import { canAccessWorkspace } from "@/lib/workspaceAccess";
+import { hasQualityPanelAccess, panelsForQualityPath } from "@shared/quality-panel-access";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -180,12 +182,16 @@ function DashboardLayoutContent({
   const [productionBreakdownsOpen, setProductionBreakdownsOpen] = useState(false);
   const [isResizing, setIsResizing] = useState(false);
   const sidebarRef = useRef<HTMLDivElement>(null);
-  const activeMenuItem = [...menuItems, ...controlPanels].find(item => item.path === location);
+  const activeMenuItem = [...menuItems, ...controlPanels, ...researchDevelopmentPanels].find(item => item.path === location);
   const isMobile = useIsMobile();
   const { activeProfile, canManage, canOperate } = useQualityAccess();
   const utils = trpc.useUtils();
   const deactivate = trpc.quality.deactivatePinProfile.useMutation({ onSuccess: () => utils.quality.accessStatus.invalidate() });
-  const visibleMenuItems = menuItems.filter((item) => item.path !== "/configuracao" || canManage);
+  const canAccessPanelPath = (path: string) => hasQualityPanelAccess(activeProfile!.role, activeProfile!.panelAccess, panelsForQualityPath(path));
+  const visibleMenuItems = menuItems.filter((item) => (item.path !== "/configuracao" || canManage) && canAccessPanelPath(item.path));
+  const visibleControlPanels = controlPanels.filter(panel => canAccessPanelPath(panel.path));
+  const visibleResearchDevelopmentPanels = researchDevelopmentPanels.filter(panel => canAccessPanelPath(panel.path));
+  const canViewCurrentPanel = canAccessPanelPath(location);
 
   useEffect(() => {
     if (isCollapsed) {
@@ -279,14 +285,14 @@ function DashboardLayoutContent({
                 );
               })}
             </SidebarMenu>
-            {controlsOpen && !isCollapsed && <div className="mx-2 mb-3 rounded-xl border border-slate-700/90 bg-slate-950 p-2 text-slate-100 shadow-lg"><div className="flex items-center justify-between px-1 pb-1"><p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">Controlos Operacionais</p><span className="rounded-full bg-slate-800 px-2 py-0.5 text-[10px] font-medium text-slate-300">{controlPanels.length}</span></div><SidebarMenu className="grid grid-cols-2 gap-1 px-0 py-0">{controlPanels.map((panel) => { const panelActive = location === panel.path; return <SidebarMenuItem key={panel.path} className="min-w-0"><SidebarMenuButton isActive={panelActive} onClick={() => setLocation(panel.path)} tooltip={panel.label} className="h-9 min-w-0 px-2 text-xs font-medium text-slate-100 hover:bg-slate-800 hover:text-white data-[active=true]:bg-teal-600 data-[active=true]:text-white"><panel.icon className={`h-3.5 w-3.5 shrink-0 ${panelActive ? "text-white" : "text-teal-200"}`} /><span className="truncate">{panel.label}</span></SidebarMenuButton></SidebarMenuItem>; })}</SidebarMenu><Button type="button" variant="ghost" size="sm" className="mt-1 h-8 w-full text-xs text-teal-200 hover:bg-slate-800 hover:text-white" onClick={() => setLocation("/controlos")}>Ver painel de controlos</Button></div>}
-            <SidebarMenu className="border-t border-border/70 px-2 py-2">
-              {!isCollapsed && <p className="px-2 pb-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">I&amp;D</p>}
-              {researchDevelopmentPanels.map((panel) => {
+            {controlsOpen && !isCollapsed && visibleControlPanels.length > 0 && <div className="relative z-10 isolate mx-2 mb-3 rounded-xl border border-slate-700/90 bg-slate-950 p-2 text-slate-100 shadow-lg"><div className="flex items-center justify-between gap-2 border-b border-slate-800 px-2 pb-2"><p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-300">Controlos Operacionais</p><span className="rounded-full bg-slate-800 px-2 py-0.5 text-[10px] font-medium text-slate-200">{visibleControlPanels.length}</span></div><SidebarMenu className="mt-1 gap-1 px-0 py-0">{visibleControlPanels.map((panel) => { const panelActive = location === panel.path; return <SidebarMenuItem key={panel.path} className="min-w-0"><SidebarMenuButton isActive={panelActive} onClick={() => setLocation(panel.path)} tooltip={panel.label} className="h-auto min-h-10 min-w-0 px-3 py-2 text-sm font-medium text-slate-100 hover:bg-slate-800 hover:text-white data-[active=true]:bg-teal-600 data-[active=true]:text-white [&>span:last-child]:!overflow-visible [&>span:last-child]:!text-clip [&>span:last-child]:!whitespace-normal"><panel.icon className={`h-4 w-4 shrink-0 ${panelActive ? "text-white" : "text-teal-200"}`} /><span className="min-w-0 leading-5">{panel.label}</span></SidebarMenuButton></SidebarMenuItem>; })}</SidebarMenu><Button type="button" variant="ghost" size="sm" className="mt-2 h-8 w-full text-xs text-teal-100 hover:bg-slate-800 hover:text-white" onClick={() => setLocation("/controlos")}>Ver painel de controlos</Button></div>}
+            {visibleResearchDevelopmentPanels.length > 0 && <SidebarMenu className="mx-2 mt-1 rounded-xl border border-cyan-100 bg-cyan-50/70 px-2 py-2">
+              {!isCollapsed && <p className="px-2 pb-1.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-cyan-800">I&amp;D interno</p>}
+              {visibleResearchDevelopmentPanels.map((panel) => {
                 const panelActive = location === panel.path;
-                return <SidebarMenuItem key={panel.path}><SidebarMenuButton isActive={panelActive} onClick={() => setLocation(panel.path)} tooltip={panel.label} className="h-10 text-muted-foreground transition-all hover:text-foreground"><span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-cyan-50 text-cyan-700"><panel.icon className="h-3.5 w-3.5" /></span><span>{panel.label}</span></SidebarMenuButton></SidebarMenuItem>;
+                return <SidebarMenuItem key={panel.path}><SidebarMenuButton isActive={panelActive} onClick={() => setLocation(panel.path)} tooltip={panel.label} className="h-auto min-h-11 px-3 py-2 text-sm font-medium text-slate-800 transition-all hover:bg-cyan-100 hover:text-slate-950 data-[active=true]:bg-cyan-600 data-[active=true]:text-white [&>span:last-child]:!overflow-visible [&>span:last-child]:!text-clip [&>span:last-child]:!whitespace-normal"><span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-cyan-100 text-cyan-800"><panel.icon className="h-4 w-4" /></span><span className="min-w-0 leading-5">{panel.label}</span></SidebarMenuButton></SidebarMenuItem>;
               })}
-            </SidebarMenu>
+            </SidebarMenu>}
             <SidebarMenu className="mt-2 border-t border-border/70 px-2 py-2">
               {!isCollapsed && <p className="px-2 pb-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Painéis externos</p>}
               {preparedExternalPanels.map((panel) => panel.factories ? <SidebarMenuItem key={panel.label}><SidebarMenuButton onClick={() => isCollapsed ? toast.info(`${panel.label}: abra a barra lateral para escolher a fábrica.`) : setProductionBreakdownsOpen((open) => !open)} tooltip={`${panel.label} — selecionar fábrica`} aria-expanded={productionBreakdownsOpen} className="h-10 text-muted-foreground transition-all hover:text-foreground"><span className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-md ${panel.iconClass}`}><panel.icon className="h-3.5 w-3.5" /></span><span>{panel.label}</span>{!isCollapsed && <ChevronDown className={`ml-auto h-4 w-4 transition-transform ${productionBreakdownsOpen ? "rotate-0" : "-rotate-90"}`} />}</SidebarMenuButton>{productionBreakdownsOpen && !isCollapsed && <div className="ml-8 border-l border-border/70 py-1"><SidebarMenu className="px-2 py-0">{panel.factories.map((factory) => <SidebarMenuItem key={factory.label}><SidebarMenuButton onClick={() => window.open(factory.url, "_blank", "noopener,noreferrer")} tooltip={`${factory.label} — abrir painel externo`} className="h-8 text-sm text-muted-foreground transition-all hover:text-foreground"><Factory className={`h-3.5 w-3.5 ${factory.iconClass}`} /><span>{factory.label}</span></SidebarMenuButton></SidebarMenuItem>)}</SidebarMenu></div>}</SidebarMenuItem> : <SidebarMenuItem key={panel.label}><SidebarMenuButton onClick={() => window.open(panel.url, "_blank", "noopener,noreferrer")} tooltip={`${panel.label} — abrir painel externo`} className="h-10 text-muted-foreground transition-all hover:text-foreground"><span className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-md ${panel.iconClass}`}><panel.icon className="h-3.5 w-3.5" /></span><span>{panel.label}</span></SidebarMenuButton></SidebarMenuItem>)}
@@ -347,7 +353,7 @@ function DashboardLayoutContent({
             </div>
           </div>
         )}
-        <main className="flex-1 p-4">{children}</main>
+        <main className="flex-1 p-4">{canViewCurrentPanel ? children : <section className="mx-auto grid min-h-[55vh] max-w-lg place-items-center text-center"><Card className="border-amber-200 bg-amber-50"><CardContent className="p-8"><ShieldAlert className="mx-auto h-8 w-8 text-amber-700" /><h1 className="mt-4 text-xl font-semibold text-amber-950">Painel não autorizado</h1><p className="mt-2 text-sm leading-6 text-amber-900">O seu perfil não tem acesso a este painel. Contacte a Responsável de Qualidade para rever as suas autorizações.</p><Button className="mt-5" onClick={() => setLocation("/qualicontrol")}>Voltar aos painéis autorizados</Button></CardContent></Card></section>}</main>
       </SidebarInset>
     </>
   );

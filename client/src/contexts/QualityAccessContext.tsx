@@ -1,10 +1,12 @@
 import React, { createContext, useContext } from "react";
+import type { QualityPanelKey } from "@shared/quality-panel-access";
 
 export type QualityOperatorProfile = {
   id: number;
   name: string;
   title: string;
   role: "technician" | "manager" | "viewer";
+  panelAccess?: QualityPanelKey[];
 };
 
 type QualityAccessValue = {

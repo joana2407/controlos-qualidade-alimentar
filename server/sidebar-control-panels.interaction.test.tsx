@@ -6,6 +6,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 let currentLocation = "/controlos/fragile_items";
 let isMobile = false;
 let occurrenceScope = "all";
+let activeProfile: { id: number; name: string; title: string; role: "technician" | "manager" | "viewer"; panelAccess?: string[] } = { id: 3, name: "Joana Pina", title: "Resp. Qualidade", role: "manager" };
 const setLocation = vi.fn();
 
 vi.mock("@/_core/hooks/useAuth", () => ({
@@ -18,7 +19,7 @@ vi.mock("@/lib/trpc", () => ({
   trpc: {
     useUtils: () => ({ quality: { accessStatus: { invalidate: vi.fn() } } }),
     quality: {
-      accessStatus: { useQuery: () => ({ isLoading: false, data: { activeProfile: { id: 3, name: "Joana Pina", title: "Resp. Qualidade", role: "manager" }, canManage: true, profiles: [], canBootstrap: false, needsInitialSetup: false } }) },
+      accessStatus: { useQuery: () => ({ isLoading: false, data: { activeProfile, canManage: activeProfile.role === "manager", profiles: [], canBootstrap: false, needsInitialSetup: false } }) },
       deactivatePinProfile: { useMutation: (options: { onSettled?: () => void } = {}) => ({ mutate: () => options.onSettled?.() }) },
     },
     occurrences: { access: { useQuery: () => ({ data: { role: "admin", scope: occurrenceScope } }) } },
@@ -33,6 +34,7 @@ describe("atalhos laterais dos painéis de controlo", () => {
     currentLocation = "/controlos/fragile_items";
     isMobile = false;
     occurrenceScope = "all";
+    activeProfile = { id: 3, name: "Joana Pina", title: "Resp. Qualidade", role: "manager" };
     setLocation.mockClear();
     Object.defineProperty(window, "matchMedia", { writable: true, value: vi.fn(() => ({ matches: false, addEventListener: vi.fn(), removeEventListener: vi.fn() })) });
     class ResizeObserverMock { observe() {} unobserve() {} disconnect() {} }
@@ -49,7 +51,8 @@ describe("atalhos laterais dos painéis de controlo", () => {
     expect(controls).toBeTruthy();
     const controlPanel = screen.getByText("Controlos Operacionais").closest(".bg-slate-950");
     expect(controlPanel?.className).toContain("bg-slate-950");
-    expect(controlPanel?.querySelector("ul")?.className).toContain("grid-cols-2");
+    expect(controlPanel?.className).toContain("isolate");
+    expect(controlPanel?.querySelector("button")?.className).toContain("[&>span:last-child]:!whitespace-normal");
     expect(controlPanel?.contains(screen.getByRole("button", { name: "BPHF" }))).toBe(true);
     expect(controlPanel?.contains(screen.queryByRole("button", { name: "Controlo sensorial de I&D" }))).toBe(false);
     expect((controlPanel?.compareDocumentPosition(screen.getByText("Painéis externos")) ?? 0) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
@@ -66,7 +69,8 @@ describe("atalhos laterais dos painéis de controlo", () => {
     fireEvent.click(screen.getByRole("button", { name: "Plataforma" }));
     expect(setLocation).toHaveBeenLastCalledWith("/plataforma");
 
-    expect(screen.getByText("I&D")).toBeTruthy();
+    expect(screen.getByText("I&D interno")).toBeTruthy();
+    expect(screen.getByText("I&D interno").closest("ul")?.className).toContain("bg-cyan-50/70");
     fireEvent.click(screen.getByRole("button", { name: "Controlo sensorial de I&D" }));
     expect(setLocation).toHaveBeenLastCalledWith("/id-sensorial");
     expect(screen.getByRole("button", { name: "I&D · Artisan" })).toBeTruthy();
@@ -103,5 +107,15 @@ describe("atalhos laterais dos painéis de controlo", () => {
     fireEvent.click(screen.getByRole("button", { name: "Incidências" }));
     expect(setLocation).toHaveBeenLastCalledWith("/incidencias");
     expect(screen.queryByRole("button", { name: "Reclamações a fornecedores" })).toBeNull();
+  });
+
+  it("oculta os painéis não atribuídos a uma técnica e bloqueia a rota direta", async () => {
+    activeProfile = { id: 1, name: "Técnica limitada", title: "Tec. Qualidade", role: "technician", panelAccess: ["dashboard", "operational_controls"] };
+    currentLocation = "/id-sensorial";
+    render(<DashboardLayout workspace="quality"><div>Conteúdo de I&D</div></DashboardLayout>);
+    await waitFor(() => expect(screen.getByText("Painel não autorizado")).toBeTruthy());
+    expect(screen.queryByRole("button", { name: "I&D · Artisan" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Controlo sensorial de I&D" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Controlos" })).toBeTruthy();
   });
 });

@@ -1,11 +1,12 @@
 import { TRPCError } from "@trpc/server";
-import { desc, eq } from "drizzle-orm";
+import { and, desc, eq, isNull } from "drizzle-orm";
 import { z } from "zod";
 import {
   rdSensoryEvaluations,
   rdSensoryProjects,
 } from "../../drizzle/schema";
 import { getDb } from "../db";
+import { storagePut } from "../storage";
 import {
   qualityManagerProcedure,
   qualityOperatorProcedure,
@@ -14,6 +15,12 @@ import {
 } from "../_core/trpc";
 
 const scoreSchema = z.number().int().min(1).max(5);
+const photoSchema = z.object({
+  key: z.string().min(1),
+  url: z.string().startsWith("/manus-storage/"),
+  fileName: z.string().min(1).max(255),
+  mimeType: z.enum(["image/jpeg", "image/png", "image/webp"]),
+});
 const evaluationInput = z.object({
   projectId: z.number().int(),
   evaluatedAt: z.coerce.date(),
@@ -27,6 +34,15 @@ const evaluationInput = z.object({
   flavourScore: scoreSchema,
   observations: z.string().trim().max(3000).optional(),
   suggestions: z.string().trim().max(3000).optional(),
+  photos: z.array(photoSchema).max(5).optional(),
+});
+const projectInput = z.object({
+  title: z.string().trim().min(3).max(180),
+  product: z.string().trim().min(2).max(180),
+  productionLot: z.string().trim().max(100).optional(),
+  productionDate: z.coerce.date().optional(),
+  intendedShelfLifeDays: z.number().int().min(1).max(999).optional(),
+  intendedExpiryDate: z.coerce.date().optional(),
 });
 
 const scoreFields = [
@@ -104,12 +120,12 @@ async function requireDb() {
 }
 
 async function projectDetail(db: Awaited<ReturnType<typeof requireDb>>, projectId: number) {
-  const project = (await db.select().from(rdSensoryProjects).where(eq(rdSensoryProjects.id, projectId)).limit(1))[0];
+  const project = (await db.select().from(rdSensoryProjects).where(and(eq(rdSensoryProjects.id, projectId), isNull(rdSensoryProjects.deletedAt))).limit(1))[0];
   if (!project) throw new TRPCError({ code: "NOT_FOUND", message: "Projeto de I&D não encontrado." });
   const evaluations = await db
     .select()
     .from(rdSensoryEvaluations)
-    .where(eq(rdSensoryEvaluations.projectId, projectId))
+    .where(and(eq(rdSensoryEvaluations.projectId, projectId), isNull(rdSensoryEvaluations.deletedAt)))
     .orderBy(desc(rdSensoryEvaluations.evaluatedAt), desc(rdSensoryEvaluations.id));
   const computedFinalScore = averageScore(evaluations.map(evaluation => evaluation.weightedScore / 100));
   return {
@@ -126,9 +142,9 @@ export const rdSensoryRouter = router({
     .query(async ({ input }) => {
       const db = await requireDb();
       const projects = input?.status && input.status !== "all"
-        ? await db.select().from(rdSensoryProjects).where(eq(rdSensoryProjects.status, input.status)).orderBy(desc(rdSensoryProjects.updatedAt))
-        : await db.select().from(rdSensoryProjects).orderBy(desc(rdSensoryProjects.updatedAt));
-      const evaluations = await db.select().from(rdSensoryEvaluations).orderBy(desc(rdSensoryEvaluations.evaluatedAt));
+        ? await db.select().from(rdSensoryProjects).where(and(eq(rdSensoryProjects.status, input.status), isNull(rdSensoryProjects.deletedAt))).orderBy(desc(rdSensoryProjects.updatedAt))
+        : await db.select().from(rdSensoryProjects).where(isNull(rdSensoryProjects.deletedAt)).orderBy(desc(rdSensoryProjects.updatedAt));
+      const evaluations = await db.select().from(rdSensoryEvaluations).where(isNull(rdSensoryEvaluations.deletedAt)).orderBy(desc(rdSensoryEvaluations.evaluatedAt));
       return projects.map(project => {
         const projectEvaluations = evaluations.filter(evaluation => evaluation.projectId === project.id);
         return {
@@ -145,14 +161,7 @@ export const rdSensoryRouter = router({
     .query(async ({ input }) => projectDetail(await requireDb(), input.projectId)),
 
   createProject: qualityManagerProcedure
-    .input(z.object({
-      title: z.string().trim().min(3).max(180),
-      product: z.string().trim().min(2).max(180),
-      productionLot: z.string().trim().max(100).optional(),
-      productionDate: z.coerce.date().optional(),
-      intendedShelfLifeDays: z.number().int().min(1).max(999).optional(),
-      intendedExpiryDate: z.coerce.date().optional(),
-    }))
+    .input(projectInput)
     .mutation(async ({ ctx, input }) => {
       const db = await requireDb();
       const profile = ctx.operatorProfile!;
@@ -172,19 +181,80 @@ export const rdSensoryRouter = router({
     .input(evaluationInput)
     .mutation(async ({ ctx, input }) => {
       const db = await requireDb();
-      const project = (await db.select().from(rdSensoryProjects).where(eq(rdSensoryProjects.id, input.projectId)).limit(1))[0];
+      const project = (await db.select().from(rdSensoryProjects).where(and(eq(rdSensoryProjects.id, input.projectId), isNull(rdSensoryProjects.deletedAt))).limit(1))[0];
       if (!project) throw new TRPCError({ code: "NOT_FOUND", message: "Projeto de I&D não encontrado." });
       if (project.status === "closed") throw new TRPCError({ code: "FORBIDDEN", message: "O projeto de I&D está fechado e não aceita novas avaliações." });
       const profile = ctx.operatorProfile!;
       await db.insert(rdSensoryEvaluations).values({
         ...input,
         weightedScore: calculateRDSensoryWeightedScore(input),
+        photos: input.photos ?? null,
         tasterProfileId: input.tasterName === profile.name ? profile.id : null,
         createdByProfileId: profile.id,
         createdByName: profile.name,
         createdBy: ctx.user!.openId,
       });
       return projectDetail(db, input.projectId);
+    }),
+
+  uploadEvaluationPhoto: qualityOperatorProcedure
+    .input(z.object({
+      projectId: z.number().int(),
+      fileName: z.string().min(1).max(255),
+      mimeType: z.enum(["image/jpeg", "image/png", "image/webp"]),
+      dataUrl: z.string().min(20).max(7_000_000),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const db = await requireDb();
+      const project = (await db.select().from(rdSensoryProjects).where(and(eq(rdSensoryProjects.id, input.projectId), isNull(rdSensoryProjects.deletedAt))).limit(1))[0];
+      if (!project || project.status === "closed") throw new TRPCError({ code: "FORBIDDEN", message: "O projeto não está disponível para anexar fotografias." });
+      const base64 = input.dataUrl.split(",")[1];
+      if (!base64) throw new TRPCError({ code: "BAD_REQUEST", message: "Imagem inválida." });
+      const safeName = input.fileName.replace(/[^a-zA-Z0-9._-]/g, "_");
+      const { key, url } = await storagePut(`rd-sensory/${input.projectId}/${ctx.operatorProfile!.id}/${Date.now()}-${safeName}`, Buffer.from(base64, "base64"), input.mimeType);
+      return { key, url, fileName: input.fileName, mimeType: input.mimeType };
+    }),
+
+  updateProject: qualityManagerProcedure
+    .input(projectInput.extend({ projectId: z.number().int() }))
+    .mutation(async ({ input }) => {
+      const db = await requireDb();
+      await projectDetail(db, input.projectId);
+      const { projectId, ...changes } = input;
+      await db.update(rdSensoryProjects).set(changes).where(eq(rdSensoryProjects.id, projectId));
+      return projectDetail(db, projectId);
+    }),
+
+  updateEvaluation: qualityManagerProcedure
+    .input(evaluationInput.extend({ evaluationId: z.number().int() }).omit({ projectId: true }))
+    .mutation(async ({ input }) => {
+      const db = await requireDb();
+      const evaluation = (await db.select().from(rdSensoryEvaluations).where(and(eq(rdSensoryEvaluations.id, input.evaluationId), isNull(rdSensoryEvaluations.deletedAt))).limit(1))[0];
+      if (!evaluation) throw new TRPCError({ code: "NOT_FOUND", message: "Avaliação de I&D não encontrada." });
+      const { evaluationId, ...changes } = input;
+      await db.update(rdSensoryEvaluations).set({ ...changes, weightedScore: calculateRDSensoryWeightedScore({ ...changes, projectId: evaluation.projectId }) }).where(eq(rdSensoryEvaluations.id, evaluationId));
+      return projectDetail(db, evaluation.projectId);
+    }),
+
+  deleteEvaluation: qualityManagerProcedure
+    .input(z.object({ evaluationId: z.number().int() }))
+    .mutation(async ({ ctx, input }) => {
+      const db = await requireDb();
+      const evaluation = (await db.select().from(rdSensoryEvaluations).where(and(eq(rdSensoryEvaluations.id, input.evaluationId), isNull(rdSensoryEvaluations.deletedAt))).limit(1))[0];
+      if (!evaluation) throw new TRPCError({ code: "NOT_FOUND", message: "Avaliação de I&D não encontrada." });
+      await db.update(rdSensoryEvaluations).set({ deletedAt: new Date(), deletedByProfileId: ctx.operatorProfile!.id, deletedByName: ctx.operatorProfile!.name }).where(eq(rdSensoryEvaluations.id, evaluation.id));
+      return { success: true, projectId: evaluation.projectId };
+    }),
+
+  deleteProject: qualityManagerProcedure
+    .input(z.object({ projectId: z.number().int() }))
+    .mutation(async ({ ctx, input }) => {
+      const db = await requireDb();
+      await projectDetail(db, input.projectId);
+      const deletion = { deletedAt: new Date(), deletedByProfileId: ctx.operatorProfile!.id, deletedByName: ctx.operatorProfile!.name };
+      await db.update(rdSensoryEvaluations).set(deletion).where(and(eq(rdSensoryEvaluations.projectId, input.projectId), isNull(rdSensoryEvaluations.deletedAt)));
+      await db.update(rdSensoryProjects).set(deletion).where(eq(rdSensoryProjects.id, input.projectId));
+      return { success: true };
     }),
 
   closeProject: qualityManagerProcedure
