@@ -791,3 +791,14 @@
 
 - [x] Permitir minimizar e reabrir o friso «Detalhes da verificação e do desvio» numa incidência, sem perder os dados apresentados.
 - [x] Adicionar regressão de interação para abrir e minimizar o friso de detalhes das incidências.
+
+- [x] Criar nas Configurações uma lista dos colaboradores já registados, com nome, função e estado.
+- [x] Permitir à Responsável de Qualidade criar colaboradores a partir das Configurações.
+- [x] Permitir à Responsável de Qualidade editar colaboradores existentes.
+- [x] Permitir eliminar ou desativar colaboradores sem apagar o histórico de controlos e incidências associados.
+- [x] Adicionar testes de permissões, criação, edição, eliminação protegida e atualização dos seletores de colaboradores.
+
+- [x] Mostrar o relógio operacional em data e hora de Lisboa (Europe/Lisbon).
+- [x] Fazer a mudança do dia operacional à meia-noite de Lisboa, das 00:00 às 23:59, independentemente do fuso do dispositivo ou servidor.
+- [x] Rever lote diário, pendências, planos, filtros e registos para usar consistentemente o dia de Lisboa.
+- [x] Adicionar regressões para os limites 23:59/00:00 e para a hora apresentada ao utilizador.

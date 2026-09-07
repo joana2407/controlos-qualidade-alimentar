@@ -1512,6 +1512,72 @@ export const qualityRouter = router({
     }));
   }),
 
+  listBphfInspectionEmployeesAdmin: qualityManagerProcedure.query(async () => {
+    const db = await requireDb();
+    const employees = await db
+      .select()
+      .from(bphfInspectionEmployees)
+      .orderBy(bphfInspectionEmployees.active, bphfInspectionEmployees.name);
+    return employees.map(employee => ({
+      id: employee.id,
+      name: employee.name,
+      active: employee.active === "true",
+      createdAt: employee.createdAt,
+      updatedAt: employee.updatedAt,
+    }));
+  }),
+
+  createBphfInspectionEmployee: qualityManagerProcedure
+    .input(z.object({ name: z.string().trim().min(2).max(160) }))
+    .mutation(async ({ ctx, input }) => {
+      const db = await requireDb();
+      const name = input.name.replace(/\s+/g, " ").trim();
+      const existing = await db
+        .select()
+        .from(bphfInspectionEmployees)
+        .where(eq(bphfInspectionEmployees.name, name))
+        .limit(1);
+      if (existing[0]) {
+        if (existing[0].active !== "true") {
+          await db
+            .update(bphfInspectionEmployees)
+            .set({ active: "true", updatedAt: new Date() })
+            .where(eq(bphfInspectionEmployees.id, existing[0].id));
+          return { id: existing[0].id, name: existing[0].name, reactivated: true };
+        }
+        throw new TRPCError({ code: "CONFLICT", message: "Já existe um colaborador com este nome." });
+      }
+      const result = await db.insert(bphfInspectionEmployees).values({
+        name,
+        active: "true",
+        createdBy: ctx.user?.openId ?? `quality-profile-${ctx.operatorProfile!.id}`,
+      });
+      return { id: Number(result[0].insertId), name, reactivated: false };
+    }),
+
+  updateBphfInspectionEmployee: qualityManagerProcedure
+    .input(z.object({ id: z.number().int().positive(), name: z.string().trim().min(2).max(160) }))
+    .mutation(async ({ input }) => {
+      const db = await requireDb();
+      const name = input.name.replace(/\s+/g, " ").trim();
+      const target = (await db.select().from(bphfInspectionEmployees).where(eq(bphfInspectionEmployees.id, input.id)).limit(1))[0];
+      if (!target) throw new TRPCError({ code: "NOT_FOUND", message: "Colaborador não encontrado." });
+      const duplicate = (await db.select().from(bphfInspectionEmployees).where(eq(bphfInspectionEmployees.name, name)).limit(1))[0];
+      if (duplicate && duplicate.id !== target.id) throw new TRPCError({ code: "CONFLICT", message: "Já existe um colaborador com este nome." });
+      await db.update(bphfInspectionEmployees).set({ name, active: "true", updatedAt: new Date() }).where(eq(bphfInspectionEmployees.id, target.id));
+      return { success: true, id: target.id, name };
+    }),
+
+  deleteBphfInspectionEmployee: qualityManagerProcedure
+    .input(z.object({ id: z.number().int().positive() }))
+    .mutation(async ({ input }) => {
+      const db = await requireDb();
+      const target = (await db.select().from(bphfInspectionEmployees).where(eq(bphfInspectionEmployees.id, input.id)).limit(1))[0];
+      if (!target) throw new TRPCError({ code: "NOT_FOUND", message: "Colaborador não encontrado." });
+      await db.update(bphfInspectionEmployees).set({ active: "false", updatedAt: new Date() }).where(eq(bphfInspectionEmployees.id, target.id));
+      return { success: true, id: target.id };
+    }),
+
   addBphfInspectionEmployee: qualityOperatorProcedure
     .input(
       z.object({

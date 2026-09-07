@@ -30,6 +30,7 @@ import { Activity, AlertTriangle, Archive, ArrowLeft, BarChart3, Beaker, BookOpe
 import React, { CSSProperties, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { useLocation } from "wouter";
+import { lisbonDateLabel, lisbonTimeLabel } from "@shared/lisbon-time";
 import { DashboardLayoutSkeleton } from './DashboardLayoutSkeleton';
 
 const menuItems = [
@@ -178,6 +179,15 @@ type DashboardLayoutContentProps = {
   children: React.ReactNode;
   setSidebarWidth: (width: number) => void;
 };
+
+function LisbonOperationalClock() {
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(new Date()), 1000);
+    return () => window.clearInterval(timer);
+  }, []);
+  return <div className="flex items-center gap-2 border-b border-teal-100 bg-teal-50/80 px-4 py-2 text-xs text-teal-950" aria-label={`Data e hora de Lisboa: ${lisbonDateLabel(now)} ${lisbonTimeLabel(now)}`}><span className="font-medium">Lisboa</span><span className="text-teal-700">{lisbonDateLabel(now)}</span><span className="font-mono-ui font-semibold tabular-nums">{lisbonTimeLabel(now)}</span><span className="hidden text-teal-700 sm:inline">· Dia operacional muda às 00:00</span></div>;
+}
 
 function DashboardLayoutContent({
   children,
@@ -348,6 +358,7 @@ function DashboardLayoutContent({
       </div>
 
       <SidebarInset>
+        <LisbonOperationalClock />
         {!canOperate && <div className="border-b border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-950"><div className="mx-auto flex max-w-7xl items-center gap-2"><ShieldCheck className="h-4 w-4 text-sky-700" /><span><strong>Modo consulta:</strong> pode consultar a informação, mas não pode registar, editar, eliminar ou publicar.</span></div></div>}
         {isMobile && (
           <div className="flex border-b h-14 items-center justify-between bg-background/95 px-2 backdrop-blur supports-[backdrop-filter]:backdrop-blur sticky top-0 z-40">

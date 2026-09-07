@@ -2,6 +2,7 @@ import { eq } from "drizzle-orm";
 import { z } from "zod";
 import { bphfInspectionEmployees, controlEntries, qualityModuleValues } from "../drizzle/schema";
 import { getDb } from "./db";
+import { lisbonDateInputValue } from "../shared/lisbon-time";
 import type { QualityOperator } from "./_core/context";
 import { storagePut } from "./storage";
 
@@ -56,7 +57,7 @@ export async function persistOfflineIncidence(input: OfflineIncidenceInput, oper
     notes: input.description,
     payload: {
       offlineManualIncidence: true,
-      occurredOn: input.occurredOn ?? new Date(input.occurredAt).toISOString().slice(0, 10),
+      occurredOn: input.occurredOn ?? lisbonDateInputValue(new Date(input.occurredAt)),
       ...(collaborator
         ? {
             collaboratorId: collaborator.id,

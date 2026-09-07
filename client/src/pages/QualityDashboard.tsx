@@ -7,6 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
 import { dateFormat, moduleLabel } from "@/lib/quality";
+import { lisbonCalendarDateToUtc, lisbonDateInputValue } from "@shared/lisbon-time";
 import { trpc } from "@/lib/trpc";
 import { useQualityAccess } from "@/contexts/QualityAccessContext";
 import { Activity, AlertTriangle, ArrowRight, CalendarClock, CalendarDays, CheckCircle2, ClipboardList, Factory, FileText, FileWarning, Trash2 } from "lucide-react";
@@ -17,17 +18,17 @@ import { toast } from "sonner";
 type PlannedControlFilter = "all" | "completed" | "pending";
 
 export function localDateInputValue(date = new Date()) {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
+  return lisbonDateInputValue(date);
 }
 
 export function productionLotForDate(date: Date | string) {
   const [year, month, day] =
     typeof date === "string"
       ? date.split("-").map(Number)
-      : [date.getFullYear(), date.getMonth() + 1, date.getDate()];
+      : (() => {
+          const key = lisbonDateInputValue(date);
+          return key.split("-").map(Number);
+        })();
   const julianDay = Math.floor(
     (Date.UTC(year, month - 1, day) - Date.UTC(year, 0, 1)) / 86_400_000
   ) + 1;
@@ -45,7 +46,7 @@ export default function QualityDashboard() {
   const [plannedControlFilter, setPlannedControlFilter] = useState<PlannedControlFilter>("all");
   const [controlToDelete, setControlToDelete] = useState<{ id: number; label: string } | null>(null);
   const metadata = trpc.quality.metadata.useQuery();
-  const selectedDateValue = useMemo(() => new Date(`${selectedDate}T12:00:00`), [selectedDate]);
+  const selectedDateValue = useMemo(() => lisbonCalendarDateToUtc(selectedDate), [selectedDate]);
   const dashboardInput = useMemo(() => ({ factoryId: factoryId ? Number(factoryId) : undefined, date: selectedDateValue }), [factoryId, selectedDateValue]);
   const dashboard = trpc.quality.dashboard.useQuery(dashboardInput);
   const deleteTask = trpc.quality.deleteTask.useMutation({

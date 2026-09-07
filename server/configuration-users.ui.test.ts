@@ -35,6 +35,19 @@ describe("Configuração de utilizadores e autorizações", () => {
     expect(page).toContain("trpc.quality.updatePinProfilePanels");
   });
 
+  it("apresenta o catálogo de colaboradores com criação, edição e eliminação", () => {
+    expect(page).toContain("Colaboradores inspecionados");
+    expect(page).toContain("Criar colaborador");
+    expect(page).toContain("Editar");
+    expect(page).toContain("Eliminar");
+    expect(page).toContain("Colaboradores eliminados");
+    expect(page).toContain("O histórico será preservado.");
+    expect(page).toContain("trpc.quality.listBphfInspectionEmployeesAdmin");
+    expect(page).toContain("trpc.quality.createBphfInspectionEmployee");
+    expect(page).toContain("trpc.quality.updateBphfInspectionEmployee");
+    expect(page).toContain("trpc.quality.deleteBphfInspectionEmployee");
+  });
+
   it("limita no servidor a criação e a alteração de autorizações à Responsável de Qualidade", () => {
     expect(router).toContain("createPinProfile: qualityManagerProcedure");
     expect(router).toContain("updatePinProfileAccess: qualityManagerProcedure");
@@ -43,5 +56,15 @@ describe("Configuração de utilizadores e autorizações", () => {
     expect(router).toContain("updatePinProfilePanels: qualityManagerProcedure");
     expect(router).toContain("A Responsável de Qualidade mantém acesso integral aos painéis.");
     expect(router).toContain("allowedExternalPanels");
+  });
+
+  it("protege a gestão do catálogo e elimina logicamente sem apagar o histórico", () => {
+    expect(router).toContain("listBphfInspectionEmployeesAdmin: qualityManagerProcedure");
+    expect(router).toContain("createBphfInspectionEmployee: qualityManagerProcedure");
+    expect(router).toContain("updateBphfInspectionEmployee: qualityManagerProcedure");
+    expect(router).toContain("deleteBphfInspectionEmployee: qualityManagerProcedure");
+    expect(router).toContain('set({ active: "false", updatedAt: new Date() })');
+    expect(page).toContain("Pode ser reativado ao criar com o mesmo nome");
+    expect(router).toContain("reactivated: true");
   });
 });
