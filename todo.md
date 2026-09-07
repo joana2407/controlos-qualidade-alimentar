@@ -788,3 +788,6 @@
 
 - [x] Mostrar nas incidências um resumo completo do desvio, incluindo os detalhes da verificação de origem e os dados Shelf-life/BPHF disponíveis.
 - [x] Cobrir com regressões a apresentação dos detalhes completos de incidências.
+
+- [x] Permitir minimizar e reabrir o friso «Detalhes da verificação e do desvio» numa incidência, sem perder os dados apresentados.
+- [x] Adicionar regressão de interação para abrir e minimizar o friso de detalhes das incidências.

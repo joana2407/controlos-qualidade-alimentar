@@ -25,6 +25,8 @@ import {
   AlertCircle,
   AlertTriangle,
   CheckCircle2,
+  ChevronDown,
+  ChevronUp,
   Factory,
   FileWarning,
   ImagePlus,
@@ -345,6 +347,7 @@ export default function Nonconformities() {
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [selectedKey, setSelectedKey] = useState("");
+  const [detailsExpanded, setDetailsExpanded] = useState(true);
   const [occurrenceNumberDraft, setOccurrenceNumberDraft] = useState("");
   const [editingIncidence, setEditingIncidence] = useState(false);
   const [incidenceTitleDraft, setIncidenceTitleDraft] = useState("");
@@ -1269,7 +1272,10 @@ export default function Nonconformities() {
               ) : occurrences.length ? (
                 occurrences.map(item => (
                   <button
-                    onClick={() => setSelectedKey(item.key)}
+                    onClick={() => {
+                      setSelectedKey(item.key);
+                      setDetailsExpanded(true);
+                    }}
                     key={item.key}
                     className={`w-full rounded-xl border p-4 text-left transition-colors ${selectedKey === item.key ? "border-teal-400 bg-teal-50" : "border-slate-100 bg-white hover:border-slate-300"}`}
                   >
@@ -1434,7 +1440,7 @@ export default function Nonconformities() {
                   {selected.type === "incidence" &&
                   incidenceDetailsFrom(selected.payload).length ? (
                     <section className="rounded-xl border border-amber-200 bg-amber-50/70 p-4">
-                      <div className="flex items-center justify-between gap-3">
+                      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                         <div>
                           <p className="text-sm font-semibold text-amber-950">
                             Detalhes da verificação e do desvio
@@ -1443,18 +1449,38 @@ export default function Nonconformities() {
                             Informação registada no momento em que a incidência foi detetada.
                           </p>
                         </div>
-                        <Badge className="bg-white text-amber-900 hover:bg-white">
-                          {moduleLabel(selected.module)}
-                        </Badge>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Badge className="bg-white text-amber-900 hover:bg-white">
+                            {moduleLabel(selected.module)}
+                          </Badge>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="gap-1 border-amber-300 bg-white text-amber-950 hover:bg-amber-100"
+                            aria-expanded={detailsExpanded}
+                            aria-controls="incidence-verification-details"
+                            onClick={() => setDetailsExpanded(current => !current)}
+                          >
+                            {detailsExpanded ? (
+                              <ChevronUp className="h-4 w-4" />
+                            ) : (
+                              <ChevronDown className="h-4 w-4" />
+                            )}
+                            {detailsExpanded ? "Minimizar detalhes" : "Mostrar detalhes"}
+                          </Button>
+                        </div>
                       </div>
-                      <dl className="mt-4 grid gap-3 sm:grid-cols-2">
-                        {incidenceDetailsFrom(selected.payload).map(detail => (
-                          <div key={detail.key} className="rounded-lg border border-amber-100 bg-white/80 p-3">
-                            <dt className="text-xs font-medium text-amber-800">{detail.label}</dt>
-                            <dd className="mt-1 whitespace-pre-wrap break-words text-sm text-slate-900">{detail.value}</dd>
-                          </div>
-                        ))}
-                      </dl>
+                      {detailsExpanded && (
+                        <dl id="incidence-verification-details" className="mt-4 grid gap-3 sm:grid-cols-2">
+                          {incidenceDetailsFrom(selected.payload).map(detail => (
+                            <div key={detail.key} className="rounded-lg border border-amber-100 bg-white/80 p-3">
+                              <dt className="text-xs font-medium text-amber-800">{detail.label}</dt>
+                              <dd className="mt-1 whitespace-pre-wrap break-words text-sm text-slate-900">{detail.value}</dd>
+                            </div>
+                          ))}
+                        </dl>
+                      )}
                     </section>
                   ) : null}
                   {selected.type === "incidence" &&

@@ -85,6 +85,20 @@ describe("detalhe de incidência com evidências", () => {
     expect(screen.getByText("Bolor identificado na amostra.")).toBeTruthy();
   });
 
+  it("permite minimizar e reabrir os detalhes técnicos da incidência", () => {
+    render(<Nonconformities />);
+    fireEvent.click(screen.getByRole("button", { name: /Incidência com foto/i }));
+
+    const minimize = screen.getByRole("button", { name: "Minimizar detalhes" });
+    expect(minimize.getAttribute("aria-expanded")).toBe("true");
+    fireEvent.click(minimize);
+    expect(screen.getByRole("button", { name: "Mostrar detalhes" }).getAttribute("aria-expanded")).toBe("false");
+    expect(screen.queryByText("Pão de forma")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Mostrar detalhes" }));
+    expect(screen.getByText("Pão de forma")).toBeTruthy();
+  });
+
   it("permite atribuir ou remover um colaborador responsável através da lista BPHF", () => {
     render(<Nonconformities />);
     fireEvent.click(screen.getByRole("button", { name: /Incidência pendente/i }));
