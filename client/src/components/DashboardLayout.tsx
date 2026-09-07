@@ -24,7 +24,7 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 import { useIsMobile } from "@/hooks/useMobile";
-import { Activity, AlertTriangle, Archive, ArrowLeft, BarChart3, BookOpenCheck, Boxes, ChevronDown, ClipboardCheck, ClipboardList, Factory, FilePlus2, FileWarning, FlaskConical, KeyRound, LayoutDashboard, ListChecks, Magnet, MessageSquareMore, MessageSquareWarning, Microscope, PackageSearch, PanelLeft, Ruler, Settings2, ShieldAlert, ShieldCheck, ThermometerSnowflake, TimerReset, TrendingDown, Truck, Wrench } from "lucide-react";
+import { Activity, AlertTriangle, Archive, ArrowLeft, BarChart3, Beaker, BookOpenCheck, Boxes, ChevronDown, ClipboardCheck, ClipboardList, Factory, FilePlus2, FileWarning, FlaskConical, KeyRound, LayoutDashboard, ListChecks, Magnet, MessageSquareMore, MessageSquareWarning, Microscope, PackageSearch, PanelLeft, Ruler, Settings2, ShieldAlert, ShieldCheck, ThermometerSnowflake, TimerReset, TrendingDown, Truck, Wrench } from "lucide-react";
 import React, { CSSProperties, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { useLocation } from "wouter";
@@ -51,6 +51,7 @@ const controlPanels = [
   { icon: Boxes, label: "Quebráveis", path: "/controlos/fragile_items" },
   { icon: Truck, label: "Controlo à expedição", path: "/controlos/dispatch_control" },
   { icon: Microscope, label: "Análises internas", path: "/controlos/internal_analysis" },
+  { icon: Beaker, label: "Sensorial I&D", path: "/id-sensorial" },
   { icon: ThermometerSnowflake, label: "Controlos de Temperatura", path: "/controlos/temperature_controls" },
   { icon: ShieldAlert, label: "Food Defense", path: "/controlos/food_defense" },
 ];

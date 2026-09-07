@@ -712,3 +712,8 @@
 - [x] Adicionar um atalho externo de I&D para o endereço público Artisan.
 - [x] Abrir o painel externo de I&D numa nova janela com acesso seguro.
 - [x] Adicionar regressão de interface para o acesso externo de I&D.
+- [x] Analisar o ficheiro de controlo sensorial de I&D e extrair campos, escalas e regras de avaliação.
+- [x] Criar projetos de I&D com amostras, vários provadores, avaliações repetidas e nota final.
+- [x] Permitir acompanhar o projeto ao longo do tempo e fechar o projeto preservando o histórico.
+- [x] Integrar o controlo sensorial de I&D na navegação, Plataforma e relatórios.
+- [x] Adicionar testes de dados, cálculo de nota, permissões, fecho e interface do controlo de I&D.
