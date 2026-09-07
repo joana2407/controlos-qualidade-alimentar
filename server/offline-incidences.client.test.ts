@@ -28,13 +28,14 @@ describe("fila offline de incidências", () => {
       factoryId: 1,
       module: "not_applicable",
       photos: [{ fileName: "embalagem.jpg", mimeType: "image/jpeg", dataUrl: "data:image/jpeg;base64,Zm90bw==" }],
+      occurredOn: "2026-08-18",
       occurredAt: "2026-08-20T10:00:00.000Z",
       authorProfileId: 1,
       authorName: "Sabrina Esteves",
     });
 
     expect(result).toMatchObject({ synced: 0, pending: 1 });
-    await expect(listOfflineIncidences()).resolves.toEqual([expect.objectContaining({ title: "Embalagem danificada", authorName: "Sabrina Esteves", module: "not_applicable", photos: [expect.objectContaining({ fileName: "embalagem.jpg" })] })]);
+    await expect(listOfflineIncidences()).resolves.toEqual([expect.objectContaining({ title: "Embalagem danificada", authorName: "Sabrina Esteves", module: "not_applicable", occurredOn: "2026-08-18", photos: [expect.objectContaining({ fileName: "embalagem.jpg" })] })]);
   });
 
   it("remove da fila apenas as incidências confirmadas pela sincronização", async () => {
@@ -44,6 +45,7 @@ describe("fila offline de incidências", () => {
       factoryId: 2,
       module: "dispatch_control",
       photos: [],
+      occurredOn: "2026-08-19",
       occurredAt: "2026-08-20T11:00:00.000Z",
       authorProfileId: 2,
       authorName: "Neuza Antunes",
@@ -63,6 +65,7 @@ describe("fila offline de incidências", () => {
       factoryId: 1,
       module: "dispatch_control",
       photos: [],
+      occurredOn: "2026-08-20",
       occurredAt: "2026-08-20T12:00:00.000Z",
       authorProfileId: 1,
       authorName: "Sabrina Esteves",

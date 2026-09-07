@@ -80,6 +80,8 @@ type OccurrenceItem = {
   factoryId: number | null;
   module: string;
   date: Date;
+  occurredOn: string;
+  registeredAt: Date;
   severity: string | null;
   status: string;
   generatedNonconformity: boolean;
@@ -300,6 +302,7 @@ export default function Nonconformities() {
   const [editingIncidence, setEditingIncidence] = useState(false);
   const [incidenceTitleDraft, setIncidenceTitleDraft] = useState("");
   const [incidenceNotesDraft, setIncidenceNotesDraft] = useState("");
+  const [incidenceOccurredOnDraft, setIncidenceOccurredOnDraft] = useState("");
   const [incidencePhotosDraft, setIncidencePhotosDraft] = useState<
     OccurrenceItem["evidencePhotos"]
   >([]);
@@ -425,7 +428,9 @@ export default function Nonconformities() {
             area: item.area,
             factoryId: item.factoryId,
             module: item.module,
-            date: item.completedAt,
+            date: new Date(`${item.occurredOn ?? localDateKey(item.completedAt)}T12:00:00`),
+            occurredOn: item.occurredOn ?? localDateKey(item.completedAt),
+            registeredAt: item.completedAt,
             severity: null,
             status:
               item.treatmentStatus === "nc_generated"
@@ -475,6 +480,8 @@ export default function Nonconformities() {
           factoryId: item.factoryId,
           module: item.module,
           date: item.detectedAt,
+          occurredOn: localDateKey(item.detectedAt),
+          registeredAt: item.detectedAt,
           severity: item.severity,
           status: item.status,
           generatedNonconformity: true,
@@ -553,6 +560,7 @@ export default function Nonconformities() {
     setOccurrenceNumberDraft(selected?.occurrenceNumber ?? "");
     setIncidenceTitleDraft(selected?.title ?? "");
     setIncidenceNotesDraft(selected?.description ?? "");
+    setIncidenceOccurredOnDraft(selected?.occurredOn ?? "");
     setIncidencePhotosDraft(selected?.evidencePhotos ?? []);
     setTreatmentDraft(selected?.treatment ?? emptyIncidenceTreatment());
     setFragileTreatmentReviewDraft(
@@ -906,6 +914,15 @@ export default function Nonconformities() {
               {editingIncidence ? (
                 <div className="space-y-3">
                   <Input
+                    aria-label="Data em que a incidência ocorreu"
+                    type="date"
+                    max={new Date().toISOString().slice(0, 10)}
+                    value={incidenceOccurredOnDraft}
+                    onChange={event =>
+                      setIncidenceOccurredOnDraft(event.target.value)
+                    }
+                  />
+                  <Input
                     aria-label="Título da incidência"
                     value={incidenceTitleDraft}
                     onChange={event =>
@@ -976,6 +993,7 @@ export default function Nonconformities() {
                             id: selected.id,
                             title: incidenceTitleDraft,
                             notes: incidenceNotesDraft,
+                            occurredOn: incidenceOccurredOnDraft,
                             evidencePhotos: incidencePhotosDraft,
                           },
                           {
@@ -1002,6 +1020,7 @@ export default function Nonconformities() {
                       onClick={() => {
                         setEditingIncidence(false);
                         setIncidencePhotosDraft(selected.evidencePhotos);
+                        setIncidenceOccurredOnDraft(selected.occurredOn);
                       }}
                     >
                       Cancelar
@@ -1192,7 +1211,7 @@ export default function Nonconformities() {
                       )}
                     </div>
                     <div className="mt-3 flex flex-wrap gap-2 text-xs text-muted-foreground">
-                      <span>{dateFormat(item.date)}</span>
+                      <span>{item.type === "incidence" ? "Ocorrida em " : "Registada em "}{dateFormat(item.date)}</span>
                       {item.type === "nonconformity" && (
                         <StatusBadge value={item.status as any} />
                       )}
@@ -1247,11 +1266,11 @@ export default function Nonconformities() {
                     </p>
                     <p className="mt-3 text-xs text-muted-foreground">
                       {factoryName(selected.factoryId)} · {selected.area} ·{" "}
-                      {dateFormat(selected.date)}
+                      {selected.type === "incidence" ? `Ocorrida em ${dateFormat(selected.date)}` : dateFormat(selected.date)}
                     </p>
                     {selected.type === "incidence" && (
                       <p className="mt-2 text-xs text-slate-600">
-                        Aberta por:{" "}
+                        Registada em {dateFormat(selected.registeredAt)} por:{" "}
                         <span className="font-medium">
                           {selected.registeredByName ??
                             "Utilizador não identificado"}
@@ -1946,6 +1965,15 @@ export default function Nonconformities() {
                           {editingIncidence ? (
                             <div className="space-y-3">
                               <Input
+                                aria-label="Data em que a incidência ocorreu"
+                                type="date"
+                                max={new Date().toISOString().slice(0, 10)}
+                                value={incidenceOccurredOnDraft}
+                                onChange={event =>
+                                  setIncidenceOccurredOnDraft(event.target.value)
+                                }
+                              />
+                              <Input
                                 value={incidenceTitleDraft}
                                 onChange={event =>
                                   setIncidenceTitleDraft(event.target.value)
@@ -1968,6 +1996,7 @@ export default function Nonconformities() {
                                         id: selected.id,
                                         title: incidenceTitleDraft,
                                         notes: incidenceNotesDraft,
+                                        occurredOn: incidenceOccurredOnDraft,
                                       },
                                       {
                                         onSuccess: () => {
@@ -1989,7 +2018,10 @@ export default function Nonconformities() {
                                   type="button"
                                   size="sm"
                                   variant="outline"
-                                  onClick={() => setEditingIncidence(false)}
+                                  onClick={() => {
+                                    setEditingIncidence(false);
+                                    setIncidenceOccurredOnDraft(selected.occurredOn);
+                                  }}
                                 >
                                   Cancelar
                                 </Button>

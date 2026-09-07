@@ -311,6 +311,21 @@ function localDateKey(date: Date) {
   return `${local.getFullYear()}-${String(local.getMonth() + 1).padStart(2, "0")}-${String(local.getDate()).padStart(2, "0")}`;
 }
 
+function incidenceOccurredOnFromPayload(
+  payload: Record<string, unknown>,
+  fallback: Date
+) {
+  const parsed = incidenceIsoDateSchema.safeParse(payload.occurredOn);
+  return parsed.success && parsed.data ? parsed.data : localDateKey(fallback);
+}
+
+function incidenceOccurredAtFromPayload(
+  payload: Record<string, unknown>,
+  fallback: Date
+) {
+  return new Date(`${incidenceOccurredOnFromPayload(payload, fallback)}T12:00:00`);
+}
+
 function startOfWorkingWeek(date: Date) {
   const result = new Date(date);
   result.setHours(0, 0, 0, 0);
@@ -4638,11 +4653,15 @@ export const qualityRouter = router({
             !Array.isArray(entry.payload)
               ? (entry.payload as Record<string, unknown>)
               : {};
+          const occurredAt = incidenceOccurredAtFromPayload(
+            payload,
+            entry.completedAt
+          );
           return (
             entry.result === "NC" &&
             !payload.deletedAt &&
-            entry.completedAt >= start &&
-            entry.completedAt < end &&
+            occurredAt >= start &&
+            occurredAt < end &&
             (!input?.factoryId || entry.factoryId === input.factoryId)
           );
         })
@@ -4665,8 +4684,13 @@ export const qualityRouter = router({
             generatedNonconformity
           );
           const treatment = incidenceTreatmentFromPayload(payload);
+          const occurredOn = incidenceOccurredOnFromPayload(
+            payload,
+            entry.completedAt
+          );
           return {
             ...entry,
+            occurredOn,
             factoryName: entry.factoryId
               ? (factoryNames.get(entry.factoryId) ??
                 "Fábrica não identificada")
@@ -4888,6 +4912,7 @@ export const qualityRouter = router({
           )
           .max(8)
           .optional(),
+        occurredOn: incidenceIsoDateSchema.optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -5023,6 +5048,7 @@ export const qualityRouter = router({
       }
       if (input.evidencePhotos !== undefined)
         payload.evidencePhotos = input.evidencePhotos;
+      if (input.occurredOn !== undefined) payload.occurredOn = input.occurredOn;
       const history = Array.isArray(payload.editHistory)
         ? payload.editHistory
         : [];
@@ -5206,12 +5232,11 @@ export const qualityRouter = router({
         factoryRows.map(factory => [factory.id, factory.name])
       );
       const incidences = scopeToFactory(entries, input?.factoryId)
-        .filter(
-          entry =>
-            entry.result === "NC" &&
-            entry.completedAt >= start &&
-            entry.completedAt < end
-        )
+        .filter(entry => {
+          const payload = entry.payload && typeof entry.payload === "object" && !Array.isArray(entry.payload) ? (entry.payload as Record<string, unknown>) : {};
+          const occurredAt = incidenceOccurredAtFromPayload(payload, entry.completedAt);
+          return entry.result === "NC" && occurredAt >= start && occurredAt < end;
+        })
         .map(entry => {
           const linked = ncRows.find(nc => nc.sourceEntryId === entry.id);
           const payload =
@@ -5227,9 +5252,11 @@ export const qualityRouter = router({
             generatedNonconformity
           );
           const treatment = incidenceTreatmentFromPayload(payload);
+          const occurredOn = incidenceOccurredOnFromPayload(payload, entry.completedAt);
           return {
             ...entry,
-            detectedAt: entry.completedAt,
+            detectedAt: incidenceOccurredAtFromPayload(payload, entry.completedAt),
+            occurredOn,
             factoryName: entry.factoryId
               ? (factoryNames.get(entry.factoryId) ??
                 "Fábrica não identificada")
@@ -5298,12 +5325,11 @@ export const qualityRouter = router({
         .filter(
           entry => !input.factoryId || entry.factoryId === input.factoryId
         )
-        .filter(
-          entry =>
-            entry.result === "NC" &&
-            entry.completedAt >= start &&
-            entry.completedAt < end
-        );
+        .filter(entry => {
+          const payload = entry.payload && typeof entry.payload === "object" && !Array.isArray(entry.payload) ? (entry.payload as Record<string, unknown>) : {};
+          const occurredAt = incidenceOccurredAtFromPayload(payload, entry.completedAt);
+          return entry.result === "NC" && occurredAt >= start && occurredAt < end;
+        });
       const scopedNcs = ncRows
         .filter(nc => !input.factoryId || nc.factoryId === input.factoryId)
         .filter(nc => nc.detectedAt >= start && nc.detectedAt < end);
@@ -5330,6 +5356,7 @@ export const qualityRouter = router({
           generatedNonconformity
         );
         const treatment = incidenceTreatmentFromPayload(payload);
+        const occurredOn = incidenceOccurredOnFromPayload(payload, entry.completedAt);
         return {
           id: entry.id,
           title: entry.title,
@@ -5340,6 +5367,7 @@ export const qualityRouter = router({
             ? (factoryNames.get(entry.factoryId) ?? "Fábrica não identificada")
             : "Sem fábrica/linha",
           completedAt: entry.completedAt,
+          occurredOn,
           notes: entry.notes,
           registeredByName: entry.registeredByName,
           registeredByTitle: entry.registeredByTitle,

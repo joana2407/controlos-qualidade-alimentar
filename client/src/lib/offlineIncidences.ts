@@ -10,6 +10,7 @@ export type OfflineIncidenceDraft = {
   factoryId: number | null;
   module: string;
   photos: OfflineIncidencePhoto[];
+  occurredOn: string;
   occurredAt: string;
   queuedAt: string;
   authorProfileId: number;

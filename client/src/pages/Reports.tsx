@@ -102,7 +102,7 @@ function displayValue(value: unknown): string {
 }
 
 function humanLabel(value: string): string {
-  const translated = { collaboratorId: "Identificador do colaborador", collaboratorName: "Colaborador inspecionado", criterion: "Critério verificado", criterioLimpeza: "Critério de limpeza", observacao: "Observação", analyst: "Analista", analystProfileId: "Identificador do analista", category: "Categoria", photos: "Fotografias", samples: "Amostras", controlResult: "Resultado do controlo", fileName: "Nome do ficheiro", mimeType: "Tipo de ficheiro", samplePoint: "Ponto de amostragem", product: "Produto", lot: "Lote", result: "Resultado", label: "Designação", test: "Teste", profileLabel: "Perfil", temperatureLimits: "Limites de temperatura", sourceOrderDocument: "Documento da encomenda", orderNumber: "N.º da encomenda", customer: "Cliente", deliveryNote: "Guia de transporte", observations: "Observações", evidencePhotos: "Fotografias de evidência", registeredAheadOfPlannedDate: "Controlo antecipado" }[value];
+  const translated = { collaboratorId: "Identificador do colaborador", collaboratorName: "Colaborador inspecionado", criterion: "Critério verificado", criterioLimpeza: "Critério de limpeza", observacao: "Observação", analyst: "Analista", analystProfileId: "Identificador do analista", category: "Categoria", photos: "Fotografias", samples: "Amostras", controlResult: "Resultado do controlo", fileName: "Nome do ficheiro", mimeType: "Tipo de ficheiro", samplePoint: "Ponto de amostragem", product: "Produto", lot: "Lote", result: "Resultado", label: "Designação", test: "Teste", profileLabel: "Perfil", temperatureLimits: "Limites de temperatura", sourceOrderDocument: "Documento da encomenda", orderNumber: "N.º da encomenda", customer: "Cliente", deliveryNote: "Guia de transporte", observations: "Observações", evidencePhotos: "Fotografias de evidência", occurredOn: "Data de ocorrência", registeredAheadOfPlannedDate: "Controlo antecipado" }[value];
   return translated ?? value.replace(/([A-Z])/g, " $1").replace(/[._]/g, " ").replace(/^./, (letter) => letter.toUpperCase());
 }
 
@@ -190,7 +190,8 @@ function downloadFullWorkbook(entries: any[], incidences: any[], factoryName: (i
   const workbook = XLSX.utils.book_new();
   const rowForEntry = (entry: any, type: string) => ({
     Tipo: type,
-    Data: dateFormat(entry.completedAt),
+    "Data de ocorrência": type === "Incidência" && entry.occurredOn ? dateFormat(`${entry.occurredOn}T12:00:00`) : dateFormat(entry.completedAt),
+    "Data de registo": dateFormat(entry.completedAt),
     "Fábrica / linha": factoryName(entry.factoryId),
     Controlo: moduleLabel(entry.module),
     Área: entry.area,
@@ -217,7 +218,8 @@ function downloadArchivedWorkbook(archive: any) {
   const workbook = XLSX.utils.book_new();
   const operationalDate = archive.operationalDate ? new Date(archive.operationalDate) : new Date();
   const rowForEntry = (entry: any) => ({
-    Data: entry.completedAt ? dateFormat(entry.completedAt) : "",
+    "Data de ocorrência": asRecord(entry.payload).occurredOn ? dateFormat(`${String(asRecord(entry.payload).occurredOn)}T12:00:00`) : entry.completedAt ? dateFormat(entry.completedAt) : "",
+    "Data de registo": entry.completedAt ? dateFormat(entry.completedAt) : "",
     Controlo: moduleLabel(entry.module ?? "not_applicable"),
     "Fábrica / linha": entry.factoryName ?? entry.factory ?? "",
     Área: entry.area ?? "",

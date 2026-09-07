@@ -757,3 +757,9 @@
 - [x] Adicionar um botão explícito para minimizar a lista expandida de Controlos Operacionais.
 - [x] Garantir que a lista pode voltar a ser aberta através do controlo principal, em desktop e telemóvel.
 - [x] Adicionar regressão de interação e acessibilidade para minimizar os Controlos Operacionais.
+- [x] Permitir selecionar a data real de ocorrência ao criar uma incidência.
+- [x] Permitir editar a data real de ocorrência de uma incidência existente.
+- [x] Mostrar e filtrar incidências pela data de ocorrência, preservando a data de registo técnico.
+- [x] Adicionar regressões para criação, edição e consulta por data de ocorrência.
+- [x] Clarificar no Painel Hoje o rótulo «Incidências a aguardar decisão».
+- [x] Adicionar regressão para a designação do indicador de incidências pendentes de decisão.

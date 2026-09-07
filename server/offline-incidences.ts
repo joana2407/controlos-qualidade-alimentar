@@ -13,6 +13,7 @@ export const offlineIncidenceInputSchema = z.object({
   area: z.string().trim().min(2).max(120).optional().default("Não aplicável"),
   module: z.enum(qualityModuleValues),
   photos: z.array(z.object({ fileName: z.string().min(1).max(255), mimeType: z.enum(["image/jpeg", "image/png", "image/webp"]), dataUrl: z.string().min(20).max(7_000_000) })).max(5).optional().default([]),
+  occurredOn: z.string().date().optional(),
   occurredAt: z.string().datetime(),
   queuedAt: z.string().datetime(),
 });
@@ -26,7 +27,7 @@ export async function persistOfflineIncidence(input: OfflineIncidenceInput, oper
   const existing = (await db.select({ id: controlEntries.id }).from(controlEntries).where(eq(controlEntries.offlineSyncId, input.offlineSyncId)).limit(1))[0];
   if (existing) return { id: existing.id, duplicate: true };
 
-  const completedAt = new Date(input.occurredAt);
+  const completedAt = new Date();
   const evidencePhotos = await Promise.all(input.photos.map(async (photo) => {
     const base64 = photo.dataUrl.split(",")[1];
     if (!base64) throw new Error("Uma das fotografias da incidência é inválida.");
@@ -43,6 +44,7 @@ export async function persistOfflineIncidence(input: OfflineIncidenceInput, oper
     notes: input.description,
     payload: {
       offlineManualIncidence: true,
+      occurredOn: input.occurredOn ?? new Date(input.occurredAt).toISOString().slice(0, 10),
       offlineQueuedAt: input.queuedAt,
       offlineSyncId: input.offlineSyncId,
       evidencePhotos,

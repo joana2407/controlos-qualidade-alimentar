@@ -38,7 +38,7 @@ describe("painel Hoje — Plano do Dia", () => {
     expect(screen.getByText("Sem controlos agendados")).toBeTruthy();
     expect(screen.getByText("Sem tarefas agendadas")).toBeTruthy();
     expect(screen.getAllByText("Incidências do dia").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("A aguardar decisão").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Incidências a aguardar decisão").length).toBeGreaterThan(0);
     expect(screen.queryByText("Tarefas atrasadas")).toBeNull();
     expect(screen.queryByText("Quebráveis pendentes")).toBeNull();
     expect(screen.queryByText(/revisões retroativas por consultar/i)).toBeNull();
