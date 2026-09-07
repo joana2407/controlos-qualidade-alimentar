@@ -64,6 +64,8 @@ describe("atalhos laterais dos painéis de controlo", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Plataforma" }));
     expect(setLocation).toHaveBeenLastCalledWith("/plataforma");
+
+    expect(screen.getByRole("button", { name: "I&D" })).toBeTruthy();
   });
 
   it("abre os atalhos e permite navegar para um painel no fluxo de ecrã móvel", async () => {

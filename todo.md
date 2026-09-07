@@ -709,3 +709,6 @@
 - [x] Aplicar uma cor própria para Incidências, distinta da cor de Não Conformidades geradas.
 - [x] Clarificar no gráfico e na legenda a diferença entre resultados de controlo, incidências e NC formais.
 - [x] Adicionar regressões para rótulos e cores não ambíguos no Painel Analítico.
+- [x] Adicionar um atalho externo de I&D para o endereço público Artisan.
+- [x] Abrir o painel externo de I&D numa nova janela com acesso seguro.
+- [x] Adicionar regressão de interface para o acesso externo de I&D.

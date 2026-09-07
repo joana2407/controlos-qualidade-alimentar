@@ -67,6 +67,7 @@ const occurrencePanels = [
 const preparedExternalPanels = [
   { icon: ClipboardList, label: "Gestão de Ocorrências", iconClass: "bg-red-50 text-red-700", url: "https://analiseocorrencias.manus.space/login" },
   { icon: PackageSearch, label: "Gestão de MP", iconClass: "bg-amber-50 text-amber-700", url: "https://gestaomateriasprimas.manus.space/" },
+  { icon: FlaskConical, label: "I&D", iconClass: "bg-cyan-50 text-cyan-700", url: "https://joseloureiro1607.github.io/Artisan/" },
   { icon: Ruler, label: "Plano Calibração", iconClass: "bg-violet-50 text-violet-700", url: "https://planocalibracao.manus.space/" },
   { icon: Wrench, label: "Plano de Manutenção", iconClass: "bg-blue-50 text-blue-700", url: "https://manutencaoprenventiva-as.manus.space/" },
   {
