@@ -721,3 +721,11 @@
 - [x] Exigir conclusões finais obrigatórias no formulário e no servidor antes de fechar um projeto de I&D.
 - [x] Mostrar as conclusões finais no histórico do projeto fechado.
 - [x] Adicionar regressões de permissões e validação de conclusões no fecho de I&D.
+- [x] Retirar o controlo sensorial de I&D do agrupamento Controlos operacionais.
+- [x] Criar ou confirmar uma área autónoma de I&D na navegação lateral.
+- [x] Corrigir a designação da secção para «Controlos Operacionais».
+- [x] Adicionar regressões para a nova organização e acesso de navegação.
+- [x] Permitir pesquisar e selecionar um projeto de I&D já criado no fluxo de avaliação.
+- [x] Permitir associar novas tentativas ou formulações ao projeto de I&D selecionado, preservando o histórico.
+- [x] Adicionar um filtro de seleção por projeto à listagem de projetos de I&D.
+- [x] Adicionar regressões para seleção, filtragem e histórico por projeto de I&D.

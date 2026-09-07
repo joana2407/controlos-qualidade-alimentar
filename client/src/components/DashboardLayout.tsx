@@ -51,9 +51,12 @@ const controlPanels = [
   { icon: Boxes, label: "Quebráveis", path: "/controlos/fragile_items" },
   { icon: Truck, label: "Controlo à expedição", path: "/controlos/dispatch_control" },
   { icon: Microscope, label: "Análises internas", path: "/controlos/internal_analysis" },
-  { icon: Beaker, label: "Sensorial I&D", path: "/id-sensorial" },
   { icon: ThermometerSnowflake, label: "Controlos de Temperatura", path: "/controlos/temperature_controls" },
   { icon: ShieldAlert, label: "Food Defense", path: "/controlos/food_defense" },
+];
+
+const researchDevelopmentPanels = [
+  { icon: Beaker, label: "Controlo sensorial de I&D", path: "/id-sensorial" },
 ];
 
 const occurrencePanels = [
@@ -68,7 +71,7 @@ const occurrencePanels = [
 const preparedExternalPanels = [
   { icon: ClipboardList, label: "Gestão de Ocorrências", iconClass: "bg-red-50 text-red-700", url: "https://analiseocorrencias.manus.space/login" },
   { icon: PackageSearch, label: "Gestão de MP", iconClass: "bg-amber-50 text-amber-700", url: "https://gestaomateriasprimas.manus.space/" },
-  { icon: FlaskConical, label: "I&D", iconClass: "bg-cyan-50 text-cyan-700", url: "https://joseloureiro1607.github.io/Artisan/" },
+  { icon: FlaskConical, label: "I&D · Artisan", iconClass: "bg-cyan-50 text-cyan-700", url: "https://joseloureiro1607.github.io/Artisan/" },
   { icon: Ruler, label: "Plano Calibração", iconClass: "bg-violet-50 text-violet-700", url: "https://planocalibracao.manus.space/" },
   { icon: Wrench, label: "Plano de Manutenção", iconClass: "bg-blue-50 text-blue-700", url: "https://manutencaoprenventiva-as.manus.space/" },
   {
@@ -276,7 +279,14 @@ function DashboardLayoutContent({
                 );
               })}
             </SidebarMenu>
-            {controlsOpen && !isCollapsed && <div className="mx-2 mb-3 rounded-xl border border-slate-700/90 bg-slate-950 p-2 text-slate-100 shadow-lg"><div className="flex items-center justify-between px-1 pb-1"><p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">Controlos operacionais</p><span className="rounded-full bg-slate-800 px-2 py-0.5 text-[10px] font-medium text-slate-300">{controlPanels.length}</span></div><SidebarMenu className="grid grid-cols-2 gap-1 px-0 py-0">{controlPanels.map((panel) => { const panelActive = location === panel.path; return <SidebarMenuItem key={panel.path} className="min-w-0"><SidebarMenuButton isActive={panelActive} onClick={() => setLocation(panel.path)} tooltip={panel.label} className="h-9 min-w-0 px-2 text-xs font-medium text-slate-100 hover:bg-slate-800 hover:text-white data-[active=true]:bg-teal-600 data-[active=true]:text-white"><panel.icon className={`h-3.5 w-3.5 shrink-0 ${panelActive ? "text-white" : "text-teal-200"}`} /><span className="truncate">{panel.label}</span></SidebarMenuButton></SidebarMenuItem>; })}</SidebarMenu><Button type="button" variant="ghost" size="sm" className="mt-1 h-8 w-full text-xs text-teal-200 hover:bg-slate-800 hover:text-white" onClick={() => setLocation("/controlos")}>Ver painel de controlos</Button></div>}
+            {controlsOpen && !isCollapsed && <div className="mx-2 mb-3 rounded-xl border border-slate-700/90 bg-slate-950 p-2 text-slate-100 shadow-lg"><div className="flex items-center justify-between px-1 pb-1"><p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">Controlos Operacionais</p><span className="rounded-full bg-slate-800 px-2 py-0.5 text-[10px] font-medium text-slate-300">{controlPanels.length}</span></div><SidebarMenu className="grid grid-cols-2 gap-1 px-0 py-0">{controlPanels.map((panel) => { const panelActive = location === panel.path; return <SidebarMenuItem key={panel.path} className="min-w-0"><SidebarMenuButton isActive={panelActive} onClick={() => setLocation(panel.path)} tooltip={panel.label} className="h-9 min-w-0 px-2 text-xs font-medium text-slate-100 hover:bg-slate-800 hover:text-white data-[active=true]:bg-teal-600 data-[active=true]:text-white"><panel.icon className={`h-3.5 w-3.5 shrink-0 ${panelActive ? "text-white" : "text-teal-200"}`} /><span className="truncate">{panel.label}</span></SidebarMenuButton></SidebarMenuItem>; })}</SidebarMenu><Button type="button" variant="ghost" size="sm" className="mt-1 h-8 w-full text-xs text-teal-200 hover:bg-slate-800 hover:text-white" onClick={() => setLocation("/controlos")}>Ver painel de controlos</Button></div>}
+            <SidebarMenu className="border-t border-border/70 px-2 py-2">
+              {!isCollapsed && <p className="px-2 pb-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">I&amp;D</p>}
+              {researchDevelopmentPanels.map((panel) => {
+                const panelActive = location === panel.path;
+                return <SidebarMenuItem key={panel.path}><SidebarMenuButton isActive={panelActive} onClick={() => setLocation(panel.path)} tooltip={panel.label} className="h-10 text-muted-foreground transition-all hover:text-foreground"><span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-cyan-50 text-cyan-700"><panel.icon className="h-3.5 w-3.5" /></span><span>{panel.label}</span></SidebarMenuButton></SidebarMenuItem>;
+              })}
+            </SidebarMenu>
             <SidebarMenu className="mt-2 border-t border-border/70 px-2 py-2">
               {!isCollapsed && <p className="px-2 pb-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Painéis externos</p>}
               {preparedExternalPanels.map((panel) => panel.factories ? <SidebarMenuItem key={panel.label}><SidebarMenuButton onClick={() => isCollapsed ? toast.info(`${panel.label}: abra a barra lateral para escolher a fábrica.`) : setProductionBreakdownsOpen((open) => !open)} tooltip={`${panel.label} — selecionar fábrica`} aria-expanded={productionBreakdownsOpen} className="h-10 text-muted-foreground transition-all hover:text-foreground"><span className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-md ${panel.iconClass}`}><panel.icon className="h-3.5 w-3.5" /></span><span>{panel.label}</span>{!isCollapsed && <ChevronDown className={`ml-auto h-4 w-4 transition-transform ${productionBreakdownsOpen ? "rotate-0" : "-rotate-90"}`} />}</SidebarMenuButton>{productionBreakdownsOpen && !isCollapsed && <div className="ml-8 border-l border-border/70 py-1"><SidebarMenu className="px-2 py-0">{panel.factories.map((factory) => <SidebarMenuItem key={factory.label}><SidebarMenuButton onClick={() => window.open(factory.url, "_blank", "noopener,noreferrer")} tooltip={`${factory.label} — abrir painel externo`} className="h-8 text-sm text-muted-foreground transition-all hover:text-foreground"><Factory className={`h-3.5 w-3.5 ${factory.iconClass}`} /><span>{factory.label}</span></SidebarMenuButton></SidebarMenuItem>)}</SidebarMenu></div>}</SidebarMenuItem> : <SidebarMenuItem key={panel.label}><SidebarMenuButton onClick={() => window.open(panel.url, "_blank", "noopener,noreferrer")} tooltip={`${panel.label} — abrir painel externo`} className="h-10 text-muted-foreground transition-all hover:text-foreground"><span className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-md ${panel.iconClass}`}><panel.icon className="h-3.5 w-3.5" /></span><span>{panel.label}</span></SidebarMenuButton></SidebarMenuItem>)}

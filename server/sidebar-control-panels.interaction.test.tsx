@@ -47,10 +47,11 @@ describe("atalhos laterais dos painéis de controlo", () => {
     expect(fragile.getAttribute("data-active")).toBe("true");
     const controls = screen.getByRole("button", { name: "Controlos" });
     expect(controls).toBeTruthy();
-    const controlPanel = screen.getByText("Controlos operacionais").closest(".bg-slate-950");
+    const controlPanel = screen.getByText("Controlos Operacionais").closest(".bg-slate-950");
     expect(controlPanel?.className).toContain("bg-slate-950");
     expect(controlPanel?.querySelector("ul")?.className).toContain("grid-cols-2");
     expect(controlPanel?.contains(screen.getByRole("button", { name: "BPHF" }))).toBe(true);
+    expect(controlPanel?.contains(screen.queryByRole("button", { name: "Controlo sensorial de I&D" }))).toBe(false);
     expect((controlPanel?.compareDocumentPosition(screen.getByText("Painéis externos")) ?? 0) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(screen.getByRole("button", { name: "Ver painel de controlos" })).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "BPHF" }));
@@ -65,7 +66,10 @@ describe("atalhos laterais dos painéis de controlo", () => {
     fireEvent.click(screen.getByRole("button", { name: "Plataforma" }));
     expect(setLocation).toHaveBeenLastCalledWith("/plataforma");
 
-    expect(screen.getByRole("button", { name: "I&D" })).toBeTruthy();
+    expect(screen.getByText("I&D")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Controlo sensorial de I&D" }));
+    expect(setLocation).toHaveBeenLastCalledWith("/id-sensorial");
+    expect(screen.getByRole("button", { name: "I&D · Artisan" })).toBeTruthy();
   });
 
   it("abre os atalhos e permite navegar para um painel no fluxo de ecrã móvel", async () => {
@@ -77,6 +81,8 @@ describe("atalhos laterais dos painéis de controlo", () => {
     ["BPHF", "Detetores de metais", "Controlo sensorial", "Shelf-life", "Checklist mensal", "Caixas de sugestões", "Quebráveis"].forEach((label) => {
       expect(screen.getByRole("button", { name: label })).toBeTruthy();
     });
+    expect(screen.queryByRole("button", { name: "Sensorial I&D" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Controlo sensorial de I&D" })).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Quebráveis" }));
     expect(setLocation).toHaveBeenLastCalledWith("/controlos/fragile_items");
   });

@@ -54,6 +54,9 @@ const formatDate = (value: Date | string | null | undefined) =>
 const formatScore = (value: number | null | undefined) =>
   value === null || value === undefined ? "—" : value.toLocaleString("pt-PT", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
+const normalizeProjectSearch = (value: string) =>
+  value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("pt-PT").trim();
+
 function calculateLifeDay(productionDate: Date | string | null | undefined, evaluatedAt: string) {
   if (!productionDate || !evaluatedAt) return 0;
   const start = new Date(productionDate);
@@ -72,6 +75,7 @@ export default function RDSensory() {
   const { activeProfile, canManage, canOperate } = useQualityAccess();
   const utils = trpc.useUtils();
   const [filter, setFilter] = useState<ProjectFilter>("active");
+  const [projectSearch, setProjectSearch] = useState("");
   const [selectedProjectId, setSelectedProjectId] = useState<number | null>(null);
   const [showProjectForm, setShowProjectForm] = useState(false);
   const [showEvaluationForm, setShowEvaluationForm] = useState(false);
@@ -84,7 +88,10 @@ export default function RDSensory() {
   const [suggestions, setSuggestions] = useState("");
   const [finalAssessment, setFinalAssessment] = useState("");
   const [closingNotes, setClosingNotes] = useState("");
-  const projects = trpc.rdSensory.listProjects.useQuery({ status: filter });
+  const projectListInput = useMemo(() => ({ status: filter }), [filter]);
+  const allProjectsInput = useMemo(() => ({ status: "all" as const }), []);
+  const projects = trpc.rdSensory.listProjects.useQuery(projectListInput);
+  const allProjects = trpc.rdSensory.listProjects.useQuery(allProjectsInput);
   const project = trpc.rdSensory.getProject.useQuery({ projectId: selectedProjectId! }, { enabled: selectedProjectId !== null });
 
   const createProject = trpc.rdSensory.createProject.useMutation({
@@ -129,6 +136,23 @@ export default function RDSensory() {
   }, [activeProfile?.name, tasterName]);
 
   const selected = project.data;
+  const visibleProjects = useMemo(() => {
+    const term = normalizeProjectSearch(projectSearch);
+    if (!term) return projects.data ?? [];
+    return (projects.data ?? []).filter(item => normalizeProjectSearch(`${item.title} ${item.product} ${item.code}`).includes(term));
+  }, [projectSearch, projects.data]);
+  const matchingExistingProject = useMemo(() => {
+    const normalizedTitle = normalizeProjectSearch(projectForm.title);
+    if (normalizedTitle.length < 2) return null;
+    return allProjects.data?.find(item => normalizeProjectSearch(item.title) === normalizedTitle) ?? null;
+  }, [allProjects.data, projectForm.title]);
+  const useExistingProject = () => {
+    if (!matchingExistingProject) return;
+    setSelectedProjectId(matchingExistingProject.id);
+    setShowProjectForm(false);
+    setShowEvaluationForm(matchingExistingProject.status === "active" && canOperate);
+    toast.info(matchingExistingProject.status === "active" ? "Projeto existente selecionado para nova avaliação." : "Projeto fechado selecionado para consulta do histórico.");
+  };
   const latestLifeDay = selected?.evaluations.length
     ? Math.max(...selected.evaluations.map(evaluation => evaluation.lifeDay))
     : null;
@@ -143,22 +167,23 @@ export default function RDSensory() {
       </div>
     </header>
 
-    {showProjectForm && canManage && <Card className="border-cyan-200 bg-cyan-50/50"><CardHeader><CardTitle className="text-lg">Novo projeto de I&D</CardTitle><CardDescription>Crie o projeto e identifique a amostra de referência. As avaliações podem ser acrescentadas por vários provadores ao longo do tempo.</CardDescription></CardHeader><CardContent><form className="grid gap-4 md:grid-cols-2 xl:grid-cols-3" onSubmit={event => { event.preventDefault(); createProject.mutate({ title: projectForm.title, product: projectForm.product, productionLot: projectForm.productionLot || undefined, productionDate: projectForm.productionDate ? new Date(`${projectForm.productionDate}T12:00:00`) : undefined, intendedShelfLifeDays: projectForm.intendedShelfLifeDays ? Number(projectForm.intendedShelfLifeDays) : undefined, intendedExpiryDate: projectForm.intendedExpiryDate ? new Date(`${projectForm.intendedExpiryDate}T12:00:00`) : undefined }); }}>
-      <Field label="Nome do projeto" required><Input value={projectForm.title} onChange={event => setProjectForm(current => ({ ...current, title: event.target.value }))} placeholder="Ex.: Nova formulação pão rústico" required /></Field>
+    {showProjectForm && canManage && <Card className="border-cyan-200 bg-cyan-50/50"><CardHeader><CardTitle className="text-lg">Novo projeto de I&D</CardTitle><CardDescription>Crie o projeto e identifique a amostra de referência. Para uma nova tentativa ou formulação do mesmo projeto, selecione o projeto existente e acrescente uma avaliação, preservando o histórico conjunto.</CardDescription></CardHeader><CardContent><form className="grid gap-4 md:grid-cols-2 xl:grid-cols-3" onSubmit={event => { event.preventDefault(); createProject.mutate({ title: projectForm.title, product: projectForm.product, productionLot: projectForm.productionLot || undefined, productionDate: projectForm.productionDate ? new Date(`${projectForm.productionDate}T12:00:00`) : undefined, intendedShelfLifeDays: projectForm.intendedShelfLifeDays ? Number(projectForm.intendedShelfLifeDays) : undefined, intendedExpiryDate: projectForm.intendedExpiryDate ? new Date(`${projectForm.intendedExpiryDate}T12:00:00`) : undefined }); }}>
+      <Field label="Nome do projeto" required><div className="space-y-2"><Input value={projectForm.title} onChange={event => setProjectForm(current => ({ ...current, title: event.target.value }))} placeholder="Ex.: Nova formulação pão rústico" list="rd-existing-projects" required aria-describedby="existing-project-help" /><datalist id="rd-existing-projects">{allProjects.data?.map(item => <option key={item.id} value={item.title}>{item.code} · {item.product} · {item.status === "active" ? "Em curso" : "Fechado"}</option>)}</datalist><p id="existing-project-help" className="text-xs font-normal leading-5 text-slate-600">Ao escrever, surgem os nomes dos projetos já criados.</p>{matchingExistingProject && <div className="rounded-lg border border-teal-200 bg-teal-50 px-3 py-2 text-xs font-normal text-teal-950"><p>Já existe <b>{matchingExistingProject.code}</b> — {matchingExistingProject.title}.</p><Button type="button" variant="link" className="h-auto px-0 py-1 text-xs text-teal-800" onClick={useExistingProject}>Usar projeto existente</Button></div>}</div></Field>
       <Field label="Produto / amostra" required><Input value={projectForm.product} onChange={event => setProjectForm(current => ({ ...current, product: event.target.value }))} placeholder="Nome da amostra" required /></Field>
       <Field label="Data de produção"><Input type="date" value={projectForm.productionDate} onChange={event => setProjectForm(current => ({ ...current, productionDate: event.target.value }))} /></Field>
       <Field label="Lote"><Input value={projectForm.productionLot} onChange={event => setProjectForm(current => ({ ...current, productionLot: event.target.value }))} placeholder="Lote de produção" /></Field>
       <Field label="Vida útil pretendida (dias)"><Input type="number" min="1" max="999" value={projectForm.intendedShelfLifeDays} onChange={event => setProjectForm(current => ({ ...current, intendedShelfLifeDays: event.target.value }))} /></Field>
       <Field label="Validade pretendida"><Input type="date" value={projectForm.intendedExpiryDate} onChange={event => setProjectForm(current => ({ ...current, intendedExpiryDate: event.target.value }))} /></Field>
-      <div className="flex items-end gap-3 md:col-span-2 xl:col-span-3"><Button type="submit" disabled={createProject.isPending}>{createProject.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Criar projeto</Button><Button type="button" variant="outline" onClick={() => setShowProjectForm(false)}>Cancelar</Button></div>
+      <div className="flex items-end gap-3 md:col-span-2 xl:col-span-3"><Button type="submit" disabled={createProject.isPending || Boolean(matchingExistingProject)}>{createProject.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}{matchingExistingProject ? "Selecione o projeto existente" : "Criar projeto"}</Button><Button type="button" variant="outline" onClick={() => setShowProjectForm(false)}>Cancelar</Button></div>
     </form></CardContent></Card>}
 
-    <div className="flex flex-wrap gap-2" aria-label="Filtro de projetos">
-      {(["active", "closed", "all"] as ProjectFilter[]).map(option => <Button key={option} type="button" size="sm" variant={filter === option ? "default" : "outline"} onClick={() => setFilter(option)}>{option === "active" ? "Em curso" : option === "closed" ? "Fechados" : "Todos"}</Button>)}
+    <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between" aria-label="Filtro de projetos">
+      <div className="flex flex-wrap gap-2">{(["active", "closed", "all"] as ProjectFilter[]).map(option => <Button key={option} type="button" size="sm" variant={filter === option ? "default" : "outline"} onClick={() => setFilter(option)}>{option === "active" ? "Em curso" : option === "closed" ? "Fechados" : "Todos"}</Button>)}</div>
+      <div className="w-full sm:max-w-sm"><Label htmlFor="project-search" className="text-xs font-semibold text-slate-700">Selecionar projeto</Label><Input id="project-search" type="search" value={projectSearch} onChange={event => setProjectSearch(event.target.value)} placeholder="Pesquisar por nome, produto ou código" className="mt-1" /></div>
     </div>
 
     <div className="grid gap-6 xl:grid-cols-[360px_minmax(0,1fr)]">
-      <aside className="space-y-3"><div className="flex items-center justify-between px-1"><h2 className="font-semibold text-slate-900">Projetos</h2><span className="text-sm text-slate-500">{projects.data?.length ?? 0}</span></div>{projects.isLoading ? <Card><CardContent className="flex items-center gap-2 p-5 text-sm text-slate-500"><Loader2 className="h-4 w-4 animate-spin" />A carregar projetos…</CardContent></Card> : projects.data?.length ? projects.data.map(item => <button key={item.id} type="button" onClick={() => setSelectedProjectId(item.id)} className={cn("w-full rounded-2xl border p-4 text-left transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600", selectedProjectId === item.id ? "border-teal-500 bg-teal-50 shadow-sm" : "border-slate-200 bg-white hover:border-teal-300 hover:bg-slate-50")}><div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="truncate text-sm font-semibold text-slate-950">{item.title}</p><p className="mt-1 truncate text-xs text-slate-600">{item.product}</p></div><Badge className={item.status === "active" ? "bg-teal-100 text-teal-800 hover:bg-teal-100" : "bg-slate-200 text-slate-700 hover:bg-slate-200"}>{item.status === "active" ? "Em curso" : "Fechado"}</Badge></div><div className="mt-4 grid grid-cols-2 gap-2 text-xs"><span className="rounded-lg bg-white/80 px-2 py-1.5 text-slate-600"><b className="block text-slate-900">{item.evaluationCount}</b>avaliações</span><span className="rounded-lg bg-white/80 px-2 py-1.5 text-slate-600"><b className="block text-slate-900">{formatScore(item.computedFinalScore)}</b>nota atual</span></div></button>) : <Card><CardContent className="p-6 text-center"><Beaker className="mx-auto h-8 w-8 text-slate-300" /><p className="mt-3 text-sm font-medium text-slate-800">Sem projetos neste filtro</p><p className="mt-1 text-xs leading-5 text-slate-500">A Responsável pode criar um novo projeto de I&D.</p></CardContent></Card>}</aside>
+      <aside className="space-y-3"><div className="flex items-center justify-between px-1"><h2 className="font-semibold text-slate-900">Projetos</h2><span className="text-sm text-slate-500">{visibleProjects.length}{projectSearch ? ` de ${projects.data?.length ?? 0}` : ""}</span></div>{projects.isLoading ? <Card><CardContent className="flex items-center gap-2 p-5 text-sm text-slate-500"><Loader2 className="h-4 w-4 animate-spin" />A carregar projetos…</CardContent></Card> : visibleProjects.length ? visibleProjects.map(item => <button key={item.id} type="button" onClick={() => setSelectedProjectId(item.id)} className={cn("w-full rounded-2xl border p-4 text-left transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600", selectedProjectId === item.id ? "border-teal-500 bg-teal-50 shadow-sm" : "border-slate-200 bg-white hover:border-teal-300 hover:bg-slate-50")}><div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="truncate text-sm font-semibold text-slate-950">{item.title}</p><p className="mt-1 truncate text-xs text-slate-600">{item.product}</p></div><Badge className={item.status === "active" ? "bg-teal-100 text-teal-800 hover:bg-teal-100" : "bg-slate-200 text-slate-700 hover:bg-slate-200"}>{item.status === "active" ? "Em curso" : "Fechado"}</Badge></div><div className="mt-4 grid grid-cols-2 gap-2 text-xs"><span className="rounded-lg bg-white/80 px-2 py-1.5 text-slate-600"><b className="block text-slate-900">{item.evaluationCount}</b>avaliações</span><span className="rounded-lg bg-white/80 px-2 py-1.5 text-slate-600"><b className="block text-slate-900">{formatScore(item.computedFinalScore)}</b>nota atual</span></div></button>) : <Card><CardContent className="p-6 text-center"><Beaker className="mx-auto h-8 w-8 text-slate-300" /><p className="mt-3 text-sm font-medium text-slate-800">Sem projetos neste filtro</p><p className="mt-1 text-xs leading-5 text-slate-500">Ajuste o filtro ou crie um novo projeto de I&D.</p></CardContent></Card>}</aside>
 
       <section className="min-w-0">{project.isLoading ? <Card><CardContent className="flex min-h-72 items-center justify-center gap-2 text-sm text-slate-500"><Loader2 className="h-5 w-5 animate-spin" />A carregar acompanhamento…</CardContent></Card> : selected ? <div className="space-y-6">
         <Card className="overflow-hidden border-slate-200"><CardHeader className="border-b border-slate-100 bg-slate-50/80"><div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between"><div><div className="flex flex-wrap items-center gap-2"><Badge variant="outline" className="border-teal-200 bg-white text-teal-800">{selected.code}</Badge><Badge className={selected.status === "active" ? "bg-teal-100 text-teal-800 hover:bg-teal-100" : "bg-slate-200 text-slate-700 hover:bg-slate-200"}>{selected.status === "active" ? "Projeto em curso" : "Projeto fechado"}</Badge></div><CardTitle className="mt-3 text-2xl">{selected.title}</CardTitle><CardDescription className="mt-1">{selected.product}{selected.productionLot ? ` · Lote ${selected.productionLot}` : ""}</CardDescription></div><div className="flex flex-wrap gap-2">{selected.status === "active" && canOperate && <Button onClick={() => setShowEvaluationForm(open => !open)}><ClipboardPlus className="mr-2 h-4 w-4" />Registar avaliação</Button>}{selected.status === "active" && canManage && <Button variant="outline" onClick={() => setShowCloseForm(open => !open)}><FileCheck2 className="mr-2 h-4 w-4" />Fechar projeto</Button>}</div></div></CardHeader><CardContent className="grid gap-4 p-5 sm:grid-cols-2 xl:grid-cols-4"><Metric icon={CalendarDays} label="Produção" value={formatDate(selected.productionDate)} detail={selected.intendedExpiryDate ? `Validade: ${formatDate(selected.intendedExpiryDate)}` : undefined} /><Metric icon={Clock3} label="Vida útil alvo" value={selected.intendedShelfLifeDays ? `${selected.intendedShelfLifeDays} dias` : "Não definida"} detail={latestLifeDay !== null ? `Avaliado até ao dia ${latestLifeDay}` : undefined} /><Metric icon={UserRound} label="Provadores / avaliações" value={`${selected.evaluations.length}`} detail="Registos individuais" /><Metric icon={Star} label="Nota final" value={formatScore(selected.finalScore ? selected.finalScore / 100 : selected.computedFinalScore)} detail={selected.status === "closed" ? "Fixada no fecho" : "Média ponderada atual"} /></CardContent></Card>
