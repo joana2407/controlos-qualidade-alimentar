@@ -2335,8 +2335,12 @@ export default function ModuleControl() {
     mutate: (input: any) => {
       const datedInput = withRetroactiveJustification(input);
       if (!datedInput) return;
-      const taskInput = authorization.data?.taskId
-        ? { ...datedInput, plannedTaskId: authorization.data.taskId }
+      const taskInput = datedInput.plannedTaskId ?? authorization.data?.taskId
+        ? {
+            ...datedInput,
+            plannedTaskId:
+              datedInput.plannedTaskId ?? authorization.data?.taskId,
+          }
         : datedInput;
       if (isSharedControl) return createEntry.mutate(taskInput);
       if (!factoryId)
@@ -2348,8 +2352,12 @@ export default function ModuleControl() {
     mutateAsync: async (input: any) => {
       const datedInput = withRetroactiveJustification(input);
       if (!datedInput) throw new Error("Justificação retroativa obrigatória");
-      const taskInput = authorization.data?.taskId
-        ? { ...datedInput, plannedTaskId: authorization.data.taskId }
+      const taskInput = datedInput.plannedTaskId ?? authorization.data?.taskId
+        ? {
+            ...datedInput,
+            plannedTaskId:
+              datedInput.plannedTaskId ?? authorization.data?.taskId,
+          }
         : datedInput;
       if (isSharedControl) return createEntry.mutateAsync(taskInput);
       if (!factoryId) {
@@ -2369,6 +2377,7 @@ export default function ModuleControl() {
     plannedTaskId: authorization.data?.taskId,
     referenceDate: authorization.data?.dueAt,
     bphfCriteria: authorization.data?.bphfCriteria,
+    bphfCriterionTaskIds: authorization.data?.bphfCriterionTaskIds,
     metalDetectorLines: authorization.data?.metalDetectorLines,
     foodDefenseEntries:
       module === "food_defense"
@@ -2959,6 +2968,7 @@ export function Bphf({
   plannedTaskId,
   referenceDate,
   bphfCriteria,
+  bphfCriterionTaskIds,
 }: any) {
   const { factoryId } = useControlFactory();
   const employees = trpc.quality.listBphfInspectionEmployees.useQuery();
@@ -3000,6 +3010,17 @@ export function Bphf({
         : [...BPHF_CRITERIA],
     [bphfCriteria]
   );
+  const bphfPlannedTaskIds = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          Object.values(bphfCriterionTaskIds ?? {}).filter(
+            (value): value is number => typeof value === "number"
+          )
+        )
+      ),
+    [bphfCriterionTaskIds]
+  );
   const inspectionInput = useMemo(
     () => ({
       collaboratorId:
@@ -3007,9 +3028,19 @@ export function Bphf({
       factoryId: factoryId ? Number(factoryId) : undefined,
       result: resultFilter === "all" ? undefined : (resultFilter as Result),
       operationalDate,
-      plannedTaskId,
+      plannedTaskIds:
+        bphfPlannedTaskIds.length > 1 ? bphfPlannedTaskIds : undefined,
+      plannedTaskId:
+        bphfPlannedTaskIds.length <= 1 ? plannedTaskId : undefined,
     }),
-    [factoryId, inspectionFilter, operationalDate, plannedTaskId, resultFilter]
+    [
+      bphfPlannedTaskIds,
+      factoryId,
+      inspectionFilter,
+      operationalDate,
+      plannedTaskId,
+      resultFilter,
+    ]
   );
   const inspections = trpc.quality.listBphfCollaboratorInspections.useQuery(
     inspectionInput,
@@ -3088,6 +3119,7 @@ export function Bphf({
       return toast.error("Inclua uma observação para o resultado NC.");
     await createEntry.mutateAsync({
       module: "bphf",
+      plannedTaskId: bphfCriterionTaskIds?.[criterion] ?? plannedTaskId,
       title: criterion,
       area,
       result,
@@ -3140,6 +3172,11 @@ export function Bphf({
             <Badge className="bg-amber-100 text-amber-900 hover:bg-amber-100">
               Área pendente
             </Badge>
+            {bphfPlannedTaskIds.length > 1 && (
+              <Badge className="bg-violet-100 text-violet-800 hover:bg-violet-100">
+                Plano atualizado · {bphfPlannedTaskIds.length - 1} adenda(s) incluída(s)
+              </Badge>
+            )}
             <span className="text-teal-800">
               Os campos ficam sempre vazios até serem escolhidos manualmente.
             </span>

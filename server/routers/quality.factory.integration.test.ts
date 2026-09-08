@@ -1137,7 +1137,13 @@ describe("procedimentos de qualidade por fábrica", () => {
     tasks.push(originalTask, addendumTask);
     entries.push(...bphfEntries);
     try {
-      const dashboard = await qualityRouter.createCaller(createContext()).dashboard({ date: now });
+      const caller = qualityRouter.createCaller(createContext());
+      const dashboard = await caller.dashboard({ date: now });
+      const authorization = await caller.controlAuthorization({
+        module: "bphf",
+        factoryId: 3,
+        plannedTaskId: originalTaskId,
+      });
       const f3Progress = dashboard.moduleProgressByFactory.bphf.find(item => item.factoryId === 3);
       const addendumControl = dashboard.plannedControls.find(item => item.id === addendumTaskId);
 
@@ -1149,6 +1155,17 @@ describe("procedimentos de qualidade por fábrica", () => {
         pendingTaskId: addendumTaskId,
       });
       expect(addendumControl).toMatchObject({ id: addendumTaskId, completed: false, missingVerificationCount: 3 });
+      expect(authorization).toMatchObject({
+        allowed: true,
+        taskId: originalTaskId,
+        bphfCriteria: [...originalCriteria, cacifos],
+        bphfCriterionTaskIds: {
+          [originalCriteria[0]!]: originalTaskId,
+          [originalCriteria[1]!]: originalTaskId,
+          [originalCriteria[2]!]: originalTaskId,
+          [cacifos]: addendumTaskId,
+        },
+      });
     } finally {
       areaRows.splice(0, areaRows.length, ...originalAreas);
       entries.splice(entries.length - bphfEntries.length, bphfEntries.length);

@@ -5,6 +5,8 @@ import { describe, expect, it } from "vitest";
 const controlsPage = fs.readFileSync(path.resolve(process.cwd(), "client/src/pages/Controls.tsx"), "utf8");
 const qualityRouter = fs.readFileSync(path.resolve(process.cwd(), "server/routers/quality.ts"), "utf8");
 const schema = fs.readFileSync(path.resolve(process.cwd(), "drizzle/schema.ts"), "utf8");
+const moduleControl = fs.readFileSync(path.resolve(process.cwd(), "client/src/pages/ModuleControl.tsx"), "utf8");
+const todayDashboard = fs.readFileSync(path.resolve(process.cwd(), "client/src/pages/QualityDashboard.tsx"), "utf8");
 
 describe("adendas aos planos BPHF", () => {
   it("permite abrir uma adenda num plano original e selecionar verificações adicionais", () => {
@@ -39,7 +41,20 @@ describe("adendas aos planos BPHF", () => {
     expect(qualityRouter).toContain("plannedCoverage: buildPlannedCoverage");
     expect(qualityRouter).toContain("if (parent.status === \"cancelled\")");
   });
+
+  it("integra os critérios das adendas no formulário BPHF e associa cada registo à respetiva tarefa", () => {
+    expect(qualityRouter).toContain("const relatedBphfTasks");
+    expect(qualityRouter).toContain("bphfCriterionTaskIds");
+    expect(moduleControl).toContain("Plano atualizado ·");
+    expect(moduleControl).toContain("bphfPlannedTaskIds");
+    expect(moduleControl).toContain("plannedTaskId: bphfCriterionTaskIds?.[criterion] ?? plannedTaskId");
+  });
+
+  it("identifica no Painel Hoje que a tarefa BPHF é uma adenda e mostra o critério acrescentado", () => {
+    expect(todayDashboard).toContain("Adenda ao plano · versão");
+    expect(todayDashboard).toContain("Inclui:");
+    expect(todayDashboard).toContain("control.parentTaskId");
+  });
 });
 
 export {};
-

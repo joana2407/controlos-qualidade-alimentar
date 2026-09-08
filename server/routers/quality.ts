@@ -1128,7 +1128,46 @@ async function assessControlAuthorization(
       : input.profile.role === "manager"
         ? "Preenchimento autorizado como Responsável de Qualidade."
         : "Preenchimento autorizado pelo Plano do Dia.";
-  return { allowed: true, reason, task, isPreviousPending, isFuturePlanned };
+  const relatedBphfTasks =
+    task.module === "bphf"
+      ? (() => {
+          const rootTaskId = task.parentTaskId ?? task.id;
+          const rootTask = tasks.find((item: any) => item.id === rootTaskId) ?? task;
+          const dueDate = localDateKey(new Date(rootTask.dueAt));
+          return tasks.filter(
+            (item: any) =>
+              item.module === "bphf" &&
+              item.area === "Plano do Dia" &&
+              item.factoryId === rootTask.factoryId &&
+              localDateKey(new Date(item.dueAt)) === dueDate &&
+              (item.id === rootTask.id || item.parentTaskId === rootTask.id) &&
+              item.status !== "cancelled"
+          );
+        })()
+      : [];
+  const bphfCriteria = relatedBphfTasks.length
+    ? BPHF_CRITERIA.filter(criterion =>
+        relatedBphfTasks.some((item: any) =>
+          Array.isArray(item.bphfCriteria) && item.bphfCriteria.includes(criterion)
+        )
+      )
+    : task.bphfCriteria ?? null;
+  const bphfCriterionTaskIds = Object.fromEntries(
+    relatedBphfTasks.flatMap((item: any) =>
+      (Array.isArray(item.bphfCriteria) ? item.bphfCriteria : []).map(
+        (criterion: string) => [criterion, item.id]
+      )
+    )
+  );
+  return {
+    allowed: true,
+    reason,
+    task,
+    bphfCriteria,
+    bphfCriterionTaskIds,
+    isPreviousPending,
+    isFuturePlanned,
+  };
 }
 
 async function requireControlAuthorization(
@@ -1714,6 +1753,7 @@ export const qualityRouter = router({
           result: resultSchema.optional(),
           operationalDate: dateInput.optional(),
           plannedTaskId: z.number().int().optional(),
+          plannedTaskIds: z.array(z.number().int()).min(1).max(20).optional(),
         })
         .optional()
     )
@@ -1746,10 +1786,10 @@ export const qualityRouter = router({
         if (input?.collaboratorId && collaboratorId !== input.collaboratorId)
           return [];
         if (input?.result && entry.result !== input.result) return [];
-        if (
-          input?.plannedTaskId &&
-          Number(payload.plannedTaskId) !== input.plannedTaskId
-        )
+        const plannedTaskId = Number(payload.plannedTaskId);
+        if (input?.plannedTaskId && plannedTaskId !== input.plannedTaskId)
+          return [];
+        if (input?.plannedTaskIds && !input.plannedTaskIds.includes(plannedTaskId))
           return [];
         if (
           input?.operationalDate &&
@@ -1801,7 +1841,8 @@ export const qualityRouter = router({
         taskId: access.task?.id ?? null,
         assignedTo: access.task?.responsible ?? null,
         dueAt: access.task?.dueAt ?? null,
-        bphfCriteria: access.task?.bphfCriteria ?? null,
+        bphfCriteria: (access as any).bphfCriteria ?? access.task?.bphfCriteria ?? null,
+        bphfCriterionTaskIds: (access as any).bphfCriterionTaskIds ?? {},
         metalDetectorLines: access.task?.metalDetectorLines ?? null,
         isPreviousPending: access.isPreviousPending ?? false,
         isFuturePlanned: access.isFuturePlanned ?? false,

@@ -835,3 +835,7 @@
 - [x] Permitir às Técnicas de Qualidade criar projetos no controlo sensorial de I&D.
 - [x] Manter o fecho do projeto e as ações de gestão sensível reservados à Responsável de Qualidade.
 - [x] Adicionar regressões para criação por Técnica e bloqueio de fecho sem perfil de Responsável.
+
+- [x] Auditar a visibilidade das adendas no Painel Hoje e no painel do controlo correspondente.
+- [x] Corrigir a agregação e a apresentação de planos originais e adendas sem ocultar tarefas adicionais.
+- [x] Adicionar regressões para confirmar adendas visíveis no Painel Hoje e no BPHF por fábrica e data.
