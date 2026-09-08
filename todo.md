@@ -802,3 +802,7 @@
 - [x] Fazer a mudança do dia operacional à meia-noite de Lisboa, das 00:00 às 23:59, independentemente do fuso do dispositivo ou servidor.
 - [x] Rever lote diário, pendências, planos, filtros e registos para usar consistentemente o dia de Lisboa.
 - [x] Adicionar regressões para os limites 23:59/00:00 e para a hora apresentada ao utilizador.
+
+- [x] Auditar a divergência de 08/09/2026 entre o painel Hoje, a taxa do painel de Controlos e o estado por áreas/fábricas.
+- [x] Corrigir a reconciliação de tarefas e registos para impedir pendências falsas após introdução de dados.
+- [x] Adicionar regressões para completitude por área, fábrica, controlo e data operacional de Lisboa.

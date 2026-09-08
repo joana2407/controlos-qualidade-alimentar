@@ -4,6 +4,7 @@ import {
   isLisbonMidnightBoundary,
   lisbonDateInputValue,
   lisbonDateTimeLabel,
+  lisbonDayBoundsUtc,
   lisbonOperationalDay,
   lisbonTimeLabel,
 } from "../shared/lisbon-time";
@@ -24,6 +25,12 @@ describe("relógio e dia operacional de Lisboa", () => {
     expect(parts.month).toBe(10);
     expect(parts.day).toBe(25);
     expect(lisbonDateInputValue(instant)).toBe("2026-10-25");
+  });
+
+  it("calcula o intervalo UTC do dia de Lisboa sem incluir registos do dia anterior", () => {
+    const { start, end } = lisbonDayBoundsUtc(new Date("2026-09-08T12:00:00.000Z"));
+    expect(start.toISOString()).toBe("2026-09-07T23:00:00.000Z");
+    expect(end.toISOString()).toBe("2026-09-08T23:00:00.000Z");
   });
 
   it("apresenta data e hora em português, independentemente do fuso do dispositivo", () => {

@@ -74,6 +74,7 @@ import {
 import { notifyOwner } from "../_core/notification";
 import { getDispatchProfile } from "../../shared/dispatch-control";
 import { QUALITY_EXTERNAL_PANEL_KEYS, QUALITY_PANEL_KEYS, isQualityExternalPanelKey, isQualityPanelKey, type QualityExternalPanelKey, type QualityPanelKey } from "../../shared/quality-panel-access";
+import { lisbonDateInputValue, lisbonDayBoundsUtc } from "../../shared/lisbon-time";
 
 const qualityModuleSchema = z.enum(qualityModuleValues);
 const resultSchema = z.enum(resultValues);
@@ -299,16 +300,11 @@ const dispatchProductCheckSchema = z.union([
 ]);
 
 function asDateRange(date: Date) {
-  const start = new Date(date);
-  start.setHours(0, 0, 0, 0);
-  const end = new Date(start);
-  end.setDate(end.getDate() + 1);
-  return { start, end };
+  return lisbonDayBoundsUtc(date);
 }
 
 function localDateKey(date: Date) {
-  const local = new Date(date);
-  return `${local.getFullYear()}-${String(local.getMonth() + 1).padStart(2, "0")}-${String(local.getDate()).padStart(2, "0")}`;
+  return lisbonDateInputValue(date);
 }
 
 function incidenceOccurredOnFromPayload(

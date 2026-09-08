@@ -79,6 +79,23 @@ export function lisbonCalendarDateToUtc(dateKey: string) {
   return new Date(Date.UTC(year, month - 1, day, 12, 0, 0));
 }
 
+function lisbonCalendarKeyToUtcStart(dateKey: string) {
+  const [year, month, day] = dateKey.split("-").map(Number);
+  const nominalUtcMidnight = Date.UTC(year, month - 1, day, 0, 0, 0);
+  const local = getLisbonCalendarParts(nominalUtcMidnight);
+  const localAsUtc = Date.UTC(local.year, local.month - 1, local.day, local.hour, local.minute, local.second);
+  const offsetMs = localAsUtc - nominalUtcMidnight;
+  return new Date(nominalUtcMidnight - offsetMs);
+}
+
+export function lisbonDayBoundsUtc(value: Date | number = new Date()) {
+  const key = lisbonOperationalDay(value);
+  const [year, month, day] = key.split("-").map(Number);
+  const nextDate = new Date(Date.UTC(year, month - 1, day + 1, 12, 0, 0));
+  const nextKey = `${nextDate.getUTCFullYear()}-${String(nextDate.getUTCMonth() + 1).padStart(2, "0")}-${String(nextDate.getUTCDate()).padStart(2, "0")}`;
+  return { start: lisbonCalendarKeyToUtcStart(key), end: lisbonCalendarKeyToUtcStart(nextKey) };
+}
+
 export function isLisbonMidnightBoundary(previous: Date | number, current: Date | number) {
   return lisbonOperationalDay(previous) !== lisbonOperationalDay(current);
 }

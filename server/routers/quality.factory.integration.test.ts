@@ -136,6 +136,12 @@ describe("procedimentos de qualidade por fábrica", () => {
     expect(filteredTasks.map((task) => task.id)).toEqual([1, 2]);
   });
 
+  it("associa um registo de 00:32 em Lisboa à tarefa do novo dia, mesmo estando no dia UTC anterior", () => {
+    const task = { id: 509, module: "bphf" as const, factoryId: 1, dueAt: new Date("2026-09-08T12:00:00.000Z") };
+    const entry = { module: "bphf", factoryId: 1, completedAt: new Date("2026-09-07T23:32:39.000Z"), payload: {} };
+    expect(entryMatchesPlannedTask(entry, task)).toBe(true);
+  });
+
   it("não associa um registo eliminado à tarefa planeada para efeitos de completitude", () => {
     const task = {
       id: 501,
@@ -352,8 +358,8 @@ describe("procedimentos de qualidade por fábrica", () => {
       endDate: new Date(2026, 7, 14, 12, 0, 0),
     });
 
-    expect(analytics.periodStart).toEqual(new Date(2026, 7, 14));
-    expect(analytics.periodEnd).toEqual(new Date(2026, 7, 15));
+    expect(analytics.periodStart).toEqual(new Date("2026-08-13T23:00:00.000Z"));
+    expect(analytics.periodEnd).toEqual(new Date("2026-08-14T23:00:00.000Z"));
   });
 
   it("mantém visível um registo BPHF N/A sem colaborador para concluir a área respetiva", async () => {
