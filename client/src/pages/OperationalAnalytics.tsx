@@ -17,6 +17,7 @@ import {
   Target,
   Users,
 } from "lucide-react";
+import { lisbonCalendarDateToUtc, lisbonDateInputValue } from "@shared/lisbon-time";
 import React, { useMemo, useState } from "react";
 import {
   Bar,
@@ -54,13 +55,11 @@ const COLORS = {
 } as const;
 
 function localDateKey(date = new Date()) {
-  const offsetDate = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
-  return offsetDate.toISOString().slice(0, 10);
+  return lisbonDateInputValue(date);
 }
 
 function localDateFromKey(value: string) {
-  const [year, month, day] = value.split("-").map(Number);
-  return new Date(year, month - 1, day, 12);
+  return lisbonCalendarDateToUtc(value);
 }
 
 function rangeForPeriod(period: Exclude<Period, "custom">, referenceDate: string) {

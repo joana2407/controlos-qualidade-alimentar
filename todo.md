@@ -806,3 +806,7 @@
 - [x] Auditar a divergência de 08/09/2026 entre o painel Hoje, a taxa do painel de Controlos e o estado por áreas/fábricas.
 - [x] Corrigir a reconciliação de tarefas e registos para impedir pendências falsas após introdução de dados.
 - [x] Adicionar regressões para completitude por área, fábrica, controlo e data operacional de Lisboa.
+
+- [x] Auditar a análise operacional de agosto e a origem dos controlos apresentados como por concluir.
+- [x] Corrigir a reconciliação dos gráficos com tarefas concluídas, pendentes e canceladas.
+- [x] Adicionar regressões por período, módulo e fábrica contra controlos concluídos sem pendência real.

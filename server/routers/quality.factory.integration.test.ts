@@ -319,10 +319,10 @@ describe("procedimentos de qualidade por fábrica", () => {
       });
 
       expect(analytics.completionByControl).toContainEqual(
-        expect.objectContaining({ module: "bphf", completed: 1, conforming: 3 })
+        expect.objectContaining({ module: "bphf", completed: 3, conforming: 3 })
       );
       expect(analytics.completionByFactory).toContainEqual(
-        expect.objectContaining({ factoryId: 1, completed: 1 })
+        expect.objectContaining({ factoryId: 1, completed: 2 })
       );
       expect(analytics.incidences.byTreatment).toContainEqual({
         status: "in_progress",
@@ -349,6 +349,32 @@ describe("procedimentos de qualidade por fábrica", () => {
     }
   });
 
+  it("não reabre na análise uma tarefa histórica persistida como concluída quando o catálogo atual mudou", async () => {
+    const historicalDate = new Date(2026, 7, 30, 10, 0, 0);
+    const historicalTask = {
+      id: 590,
+      factoryId: 1,
+      status: "completed",
+      dueAt: historicalDate,
+      completedAt: historicalDate,
+      module: "bphf",
+      area: "Plano do Dia",
+      title: "Plano histórico BPHF F1",
+      responsible: "Equipa atribuída",
+      assigneeProfileIds: [1],
+      bphfCriteria: ["Higienização das mãos dos manipuladores"],
+      plannedCoverage: ["bphf:area-antiga:criterion-antigo"],
+    } as any;
+    tasks.push(historicalTask);
+    try {
+      const caller = qualityRouter.createCaller(createContext());
+      const analytics = await caller.operationalAnalytics({ period: "day", referenceDate: historicalDate });
+      expect(analytics.completion).toMatchObject({ total: 1, completed: 1, pending: 0, rate: 100 });
+    } finally {
+      tasks.splice(tasks.findIndex(task => task.id === historicalTask.id), 1);
+    }
+  });
+
   it("aceita um intervalo inclusivo personalizado no painel analítico", async () => {
     const caller = qualityRouter.createCaller(createContext());
     const analytics = await caller.operationalAnalytics({
@@ -360,6 +386,14 @@ describe("procedimentos de qualidade por fábrica", () => {
 
     expect(analytics.periodStart).toEqual(new Date("2026-08-13T23:00:00.000Z"));
     expect(analytics.periodEnd).toEqual(new Date("2026-08-14T23:00:00.000Z"));
+  });
+
+  it("calcula agosto como um mês completo de Lisboa sem perder o último dia", async () => {
+    const caller = qualityRouter.createCaller(createContext());
+    const analytics = await caller.operationalAnalytics({ period: "month", referenceDate: new Date("2026-08-14T12:00:00.000Z") });
+    expect(analytics.periodStart).toEqual(new Date("2026-07-31T23:00:00.000Z"));
+    expect(analytics.periodEnd).toEqual(new Date("2026-08-31T23:00:00.000Z"));
+    expect(analytics.activityTrend).toHaveLength(31);
   });
 
   it("mantém visível um registo BPHF N/A sem colaborador para concluir a área respetiva", async () => {

@@ -74,7 +74,7 @@ import {
 import { notifyOwner } from "../_core/notification";
 import { getDispatchProfile } from "../../shared/dispatch-control";
 import { QUALITY_EXTERNAL_PANEL_KEYS, QUALITY_PANEL_KEYS, isQualityExternalPanelKey, isQualityPanelKey, type QualityExternalPanelKey, type QualityPanelKey } from "../../shared/quality-panel-access";
-import { lisbonDateInputValue, lisbonDayBoundsUtc } from "../../shared/lisbon-time";
+import { lisbonCalendarDateToUtc, lisbonDateInputValue, lisbonDayBoundsUtc } from "../../shared/lisbon-time";
 
 const qualityModuleSchema = z.enum(qualityModuleValues);
 const resultSchema = z.enum(resultValues);
@@ -305,6 +305,35 @@ function asDateRange(date: Date) {
 
 function localDateKey(date: Date) {
   return lisbonDateInputValue(date);
+}
+
+function addCalendarDays(dateKey: string, amount: number) {
+  const [year, month, day] = dateKey.split("-").map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day + amount, 12, 0, 0));
+  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}-${String(date.getUTCDate()).padStart(2, "0")}`;
+}
+
+function calendarDayOfWeek(dateKey: string) {
+  const [year, month, day] = dateKey.split("-").map(Number);
+  return new Date(Date.UTC(year, month - 1, day, 12, 0, 0)).getUTCDay();
+}
+
+function analyticsPeriodBounds(period: "day" | "week" | "month" | "custom", referenceDate: Date, startDate?: Date, endDate?: Date) {
+  const startReferenceKey = lisbonDateInputValue(startDate ?? referenceDate);
+  if (startDate && endDate) {
+    const startKey = startReferenceKey;
+    const endKey = addCalendarDays(lisbonDateInputValue(endDate), 1);
+    return { startKey, endKey, ...lisbonDayBoundsUtc(lisbonCalendarDateToUtc(startKey)), end: lisbonDayBoundsUtc(lisbonCalendarDateToUtc(endKey)).start };
+  }
+  let startKey = startReferenceKey;
+  if (period === "week") {
+    const mondayOffset = (calendarDayOfWeek(startKey) + 6) % 7;
+    startKey = addCalendarDays(startKey, -mondayOffset);
+  } else if (period === "month") {
+    startKey = `${startKey.slice(0, 8)}01`;
+  }
+  const endKey = period === "week" ? addCalendarDays(startKey, 7) : period === "month" ? addCalendarDays(startKey, 32).slice(0, 8) + "01" : addCalendarDays(startKey, 1);
+  return { startKey, endKey, start: lisbonDayBoundsUtc(lisbonCalendarDateToUtc(startKey)).start, end: lisbonDayBoundsUtc(lisbonCalendarDateToUtc(endKey)).start };
 }
 
 function incidenceOccurredOnFromPayload(
@@ -7585,25 +7614,10 @@ export const qualityRouter = router({
         db.select().from(fragileItems),
       ]);
       const period = input?.period ?? "day";
-      const hasExplicitRange = Boolean(input?.startDate && input?.endDate);
       const referenceDate = input?.referenceDate ?? input?.startDate ?? new Date();
-      let periodStart = asDateRange(referenceDate).start;
-      let periodEnd: Date;
-      if (hasExplicitRange) {
-        periodStart = asDateRange(input!.startDate!).start;
-        periodEnd = asDateRange(input!.endDate!).end;
-      } else {
-        if (period === "week") {
-          const weekDay = (periodStart.getDay() + 6) % 7;
-          periodStart.setDate(periodStart.getDate() - weekDay);
-        }
-        if (period === "month") periodStart.setDate(1);
-        periodEnd = new Date(periodStart);
-        if (period === "day" || period === "custom")
-          periodEnd.setDate(periodEnd.getDate() + 1);
-        if (period === "week") periodEnd.setDate(periodEnd.getDate() + 7);
-        if (period === "month") periodEnd.setMonth(periodEnd.getMonth() + 1);
-      }
+      const periodBounds = analyticsPeriodBounds(period, referenceDate, input?.startDate, input?.endDate);
+      const periodStart = periodBounds.start;
+      const periodEnd = periodBounds.end;
       const isWithinPeriod = (date: Date) =>
         date >= periodStart && date < periodEnd;
       const isDeletedEntry = (entry: (typeof entries)[number]) => {
@@ -7625,7 +7639,10 @@ export const qualityRouter = router({
       );
       const analysedTasks = plannedTasks.map(task => ({
         ...task,
-        completed: isHistoricalPlanTaskSatisfied(
+        // Na análise histórica, o estado concluído da tarefa é a fotografia
+        // persistida do fecho operacional. Recalcular contra catálogos atuais
+        // pode reabrir artificialmente tarefas antigas já fechadas.
+        completed: task.status === "completed" || isHistoricalPlanTaskSatisfied(
           task,
           activeEntries,
           areaCatalog,
@@ -7809,15 +7826,11 @@ export const qualityRouter = router({
           };
         })
         .sort((left, right) => right.total - left.total || left.name.localeCompare(right.name));
-      const numberOfDays = Math.max(
-        1,
-        Math.ceil((periodEnd.getTime() - periodStart.getTime()) / 86_400_000)
-      );
+      const numberOfDays = Math.max(1, Math.round((periodEnd.getTime() - periodStart.getTime()) / 86_400_000));
       const activityTrend = Array.from({ length: numberOfDays }, (_, index) => {
-        const dayStart = new Date(periodStart);
-        dayStart.setDate(dayStart.getDate() + index);
-        const dayEnd = new Date(dayStart);
-        dayEnd.setDate(dayEnd.getDate() + 1);
+        const dayKey = addCalendarDays(periodBounds.startKey, index);
+        const dayStart = lisbonDayBoundsUtc(lisbonCalendarDateToUtc(dayKey)).start;
+        const dayEnd = lisbonDayBoundsUtc(lisbonCalendarDateToUtc(addCalendarDays(dayKey, 1))).start;
         const dayEntries = entriesInPeriod.filter(
           entry => entry.completedAt >= dayStart && entry.completedAt < dayEnd
         );
@@ -7825,10 +7838,7 @@ export const qualityRouter = router({
           task => task.dueAt >= dayStart && task.dueAt < dayEnd
         );
         return {
-          label: dayStart.toLocaleDateString("pt-PT", {
-            day: "2-digit",
-            month: "2-digit",
-          }),
+          label: new Intl.DateTimeFormat("pt-PT", { timeZone: "Europe/Lisbon", day: "2-digit", month: "2-digit" }).format(dayStart),
           registrations: dayEntries.length,
           incidences: dayEntries.filter(entry => entry.result === "NC").length,
           generatedNonconformities: ncsInPeriod.filter(
