@@ -1571,7 +1571,7 @@ export default function Controls() {
                           key={task.id}
                         >
                           <div className="min-w-0">
-                            <p className="font-medium">{task.title}</p>
+                            <div className="flex flex-wrap items-center gap-2"><p className="font-medium">{task.title}</p>{task.module === "bphf" && task.area === "Plano do Dia" && <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${task.parentTaskId ? "bg-violet-100 text-violet-800" : "bg-teal-100 text-teal-800"}`}>{task.parentTaskId ? `Adenda · versão ${task.planRevision ?? 2}` : `Plano original · versão ${task.planRevision ?? 1}`}</span>}</div>
                             {task.description && (
                               <p className="mt-1 text-sm text-slate-700">
                                 {task.description}
@@ -1581,6 +1581,7 @@ export default function Controls() {
                               {factoryName(task.factoryId)} · {task.responsible}{" "}
                               · {dateFormat(task.dueAt, false)}
                             </p>
+                            {task.module === "bphf" && task.area === "Plano do Dia" && task.createdAt && <p className="mt-1 text-xs text-violet-700">Publicado em {dateFormat(task.createdAt, true)} · {task.parentTaskId ? "ligada ao plano original" : "base do plano"}</p>}
                             {task.status === "completed" &&
                               task.executionReport && (
                                 <div className="mt-3 rounded-lg bg-emerald-50 p-3 text-sm text-emerald-950">

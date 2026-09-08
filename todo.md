@@ -811,11 +811,11 @@
 - [x] Corrigir a reconciliação dos gráficos com tarefas concluídas, pendentes e canceladas.
 - [x] Adicionar regressões por período, módulo e fábrica contra controlos concluídos sem pendência real.
 
-- [ ] Permitir criar uma adenda a um plano BPHF existente para acrescentar verificações não incluídas no plano original.
-- [ ] Gerar tarefas da adenda apenas para as datas, fábricas e áreas selecionadas, sem duplicar tarefas anteriores.
-- [ ] Mostrar no histórico do plano a versão original e as adendas publicadas, com autoria e data.
-- [ ] Atualizar completitude e pendências para considerar a cobertura final do plano sem reabrir verificações já concluídas.
-- [ ] Adicionar testes de permissões, adenda de cacifos, prevenção de duplicados e rastreabilidade.
+- [x] Permitir criar uma adenda a um plano BPHF existente para acrescentar verificações não incluídas no plano original.
+- [x] Gerar tarefas da adenda apenas para as datas, fábricas e áreas selecionadas, sem duplicar tarefas anteriores.
+- [x] Mostrar no histórico do plano a versão original e as adendas publicadas, com autoria e data.
+- [x] Atualizar completitude e pendências para considerar a cobertura final do plano sem reabrir verificações já concluídas.
+- [x] Adicionar testes de permissões, adenda de cacifos, prevenção de duplicados e rastreabilidade.
 
 - [x] Adicionar operação «Fundir colaboradores» restrita à Responsável de Qualidade.
 - [x] Permitir selecionar o «Colaborador correto» e impedir fusão consigo próprio ou com perfis inativos.
