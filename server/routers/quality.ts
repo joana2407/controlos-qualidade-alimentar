@@ -2506,10 +2506,16 @@ export const qualityRouter = router({
                 { factoryId: factory.id },
                 areaCatalog
               );
-              const plannedCriteria = factoryControls[0]?.bphfCriteria;
-              const expectedCriteria = Array.isArray(plannedCriteria)
-                ? BPHF_CRITERIA.filter(criterion => plannedCriteria.includes(criterion))
-                : BPHF_CRITERIA;
+              const plannedCriteria = new Set(
+                factoryControls.flatMap(task =>
+                  Array.isArray(task.bphfCriteria)
+                    ? task.bphfCriteria
+                    : [...BPHF_CRITERIA]
+                )
+              );
+              const expectedCriteria = BPHF_CRITERIA.filter(criterion =>
+                plannedCriteria.has(criterion)
+              );
               expected = expectedAreas.length * expectedCriteria.length;
               const completedSlots = new Set(
                 factoryEntriesToday.map(

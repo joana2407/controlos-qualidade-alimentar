@@ -827,3 +827,7 @@
 - [x] Reproduzir e corrigir o bloqueio que impede criar adendas em planos BPHF já publicados.
 - [x] Garantir compatibilidade da adenda com planos históricos, concluídos e recentemente criados.
 - [x] Adicionar regressão executável para publicação de uma adenda com o critério Cacifos.
+
+- [x] Auditar a adenda BPHF criada para a Fábrica 3 e a associação ao plano original.
+- [x] Corrigir a atualização imediata do Plano do Dia, lista de tarefas, completitude e pendências após publicar uma adenda.
+- [x] Adicionar regressões para adendas BPHF por fábrica, incluindo Fábrica 3 e o critério Cacifos.

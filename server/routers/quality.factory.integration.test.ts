@@ -1073,6 +1073,90 @@ describe("procedimentos de qualidade por fábrica", () => {
     ]);
   });
 
+  it("agrega uma adenda BPHF de Cacifos no Plano do Dia da Fábrica 3", async () => {
+    const originalAreas = [...areaRows];
+    const bphfAreas = ["Embalagem", "Limpeza", "Produção"].map((name, index) => ({
+      id: 930 + index,
+      name,
+      group: "bphf",
+      factoryId: 3,
+      active: "true",
+    }));
+    const originalTaskId = 931;
+    const addendumTaskId = 932;
+    const originalCriteria = [
+      "Estado de limpeza e conservação do fardamento",
+      "Higienização das mãos dos manipuladores",
+      "Cumprimento geral das regras de BPHF",
+    ];
+    const cacifos = "Estado de limpeza e organização dos cacifos do pessoal e de trabalho";
+    const originalTask = {
+      id: originalTaskId,
+      factoryId: 3,
+      status: "completed",
+      dueAt: now,
+      completedAt: now,
+      module: "bphf",
+      area: "Plano do Dia",
+      title: "Plano do Dia — BPHF F3",
+      responsible: "Sabrina Esteves",
+      assigneeProfileIds: [1],
+      bphfCriteria: originalCriteria,
+      plannedCoverage: [],
+      planRevision: 1,
+    } as any;
+    const addendumTask = {
+      id: addendumTaskId,
+      factoryId: 3,
+      status: "pending",
+      dueAt: now,
+      completedAt: null,
+      module: "bphf",
+      area: "Plano do Dia",
+      title: "Adenda ao Plano do Dia — bphf",
+      responsible: "Sabrina Esteves",
+      assigneeProfileIds: [1],
+      bphfCriteria: [cacifos],
+      plannedCoverage: [],
+      parentTaskId: originalTaskId,
+      planRevision: 2,
+    } as any;
+    const bphfEntries = bphfAreas.flatMap((area, areaIndex) =>
+      originalCriteria.map((criterion, criterionIndex) => ({
+        id: 940 + areaIndex * originalCriteria.length + criterionIndex,
+        factoryId: 3,
+        module: "bphf",
+        area: area.name,
+        title: criterion,
+        result: "C",
+        completedAt: now,
+        payload: { plannedTaskId: originalTaskId, plannedDate: now.toISOString() },
+      }))
+    );
+    areaRows.splice(0, areaRows.length, ...bphfAreas);
+    tasks.push(originalTask, addendumTask);
+    entries.push(...bphfEntries);
+    try {
+      const dashboard = await qualityRouter.createCaller(createContext()).dashboard({ date: now });
+      const f3Progress = dashboard.moduleProgressByFactory.bphf.find(item => item.factoryId === 3);
+      const addendumControl = dashboard.plannedControls.find(item => item.id === addendumTaskId);
+
+      expect(f3Progress).toMatchObject({
+        factoryId: 3,
+        expected: 12,
+        completed: 9,
+        percentage: 75,
+        pendingTaskId: addendumTaskId,
+      });
+      expect(addendumControl).toMatchObject({ id: addendumTaskId, completed: false, missingVerificationCount: 3 });
+    } finally {
+      areaRows.splice(0, areaRows.length, ...originalAreas);
+      entries.splice(entries.length - bphfEntries.length, bphfEntries.length);
+      tasks.splice(tasks.findIndex(task => task.id === originalTaskId), 1);
+      tasks.splice(tasks.findIndex(task => task.id === addendumTaskId), 1);
+    }
+  });
+
   it("filtra NC e agrega os relatórios sem misturar a fábrica 2", async () => {
     const caller = qualityRouter.createCaller(createContext());
     const filteredNcs = await caller.listNcs({ factoryId: 1 });
