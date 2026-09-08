@@ -58,6 +58,17 @@ describe("Configuração de utilizadores e autorizações", () => {
     expect(router).toContain("allowedExternalPanels");
   });
 
+  it("apresenta a fusão segura com colaborador correto, pré-visualização e histórico", () => {
+    expect(page).toContain("Fundir colaboradores");
+    expect(page).toContain("Colaborador correto");
+    expect(page).toContain("Pré-visualização");
+    expect(page).toContain("Confirmar fusão");
+    expect(page).toContain("Histórico de fusões");
+    expect(page).toContain("mergeBphfInspectionEmployees");
+    expect(page).toContain("previewBphfEmployeeMerge");
+    expect(page).toContain("listBphfEmployeeMerges");
+  });
+
   it("protege a gestão do catálogo e elimina logicamente sem apagar o histórico", () => {
     expect(router).toContain("listBphfInspectionEmployeesAdmin: qualityManagerProcedure");
     expect(router).toContain("createBphfInspectionEmployee: qualityManagerProcedure");
@@ -66,5 +77,11 @@ describe("Configuração de utilizadores e autorizações", () => {
     expect(router).toContain('set({ active: "false", updatedAt: new Date() })');
     expect(page).toContain("Pode ser reativado ao criar com o mesmo nome");
     expect(router).toContain("reactivated: true");
+    expect(router).toContain("mergeBphfInspectionEmployees: qualityManagerProcedure");
+    expect(router).toContain("previewBphfEmployeeMerge: qualityManagerProcedure");
+    expect(router).toContain("sourceEmployeeId");
+    expect(router).toContain("targetEmployeeId");
+    expect(router).toContain("bphfEmployeeMerges");
+    expect(router).toContain("collaboratorMerge");
   });
 });

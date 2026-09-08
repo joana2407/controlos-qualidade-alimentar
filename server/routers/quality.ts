@@ -4,6 +4,7 @@ import { z } from "zod";
 import {
   areas,
   bphfInspectionEmployees,
+  bphfEmployeeMerges,
   factories,
   checklistAreas,
   checklistItems,
@@ -1601,6 +1602,70 @@ export const qualityRouter = router({
       if (!target) throw new TRPCError({ code: "NOT_FOUND", message: "Colaborador não encontrado." });
       await db.update(bphfInspectionEmployees).set({ active: "false", updatedAt: new Date() }).where(eq(bphfInspectionEmployees.id, target.id));
       return { success: true, id: target.id };
+    }),
+
+  previewBphfEmployeeMerge: qualityManagerProcedure
+    .input(z.object({ sourceEmployeeId: z.number().int().positive(), targetEmployeeId: z.number().int().positive() }))
+    .query(async ({ input }) => {
+      if (input.sourceEmployeeId === input.targetEmployeeId)
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Escolha dois colaboradores diferentes." });
+      const db = await requireDb();
+      const [source, target] = await Promise.all([
+        db.select().from(bphfInspectionEmployees).where(eq(bphfInspectionEmployees.id, input.sourceEmployeeId)).limit(1),
+        db.select().from(bphfInspectionEmployees).where(eq(bphfInspectionEmployees.id, input.targetEmployeeId)).limit(1),
+      ]);
+      if (!source[0] || !target[0]) throw new TRPCError({ code: "NOT_FOUND", message: "Colaborador não encontrado." });
+      if (source[0].active !== "true" || target[0].active !== "true")
+        throw new TRPCError({ code: "BAD_REQUEST", message: "A fusão requer dois colaboradores ativos." });
+      const entries = await db.select().from(controlEntries);
+      const affected = entries.filter(entry => {
+        const payload = entry.payload as Record<string, unknown>;
+        return payload.collaboratorId === input.sourceEmployeeId;
+      });
+      return {
+        source: { id: source[0].id, name: source[0].name },
+        target: { id: target[0].id, name: target[0].name },
+        affectedEntries: affected.length,
+        byModule: Object.entries(affected.reduce<Record<string, number>>((acc, entry) => { acc[entry.module] = (acc[entry.module] ?? 0) + 1; return acc; }, {})).map(([module, total]) => ({ module, total })),
+        sample: affected.slice(0, 5).map(entry => ({ id: entry.id, module: entry.module, title: entry.title, completedAt: entry.completedAt })),
+      };
+    }),
+
+  listBphfEmployeeMerges: qualityManagerProcedure.query(async () => {
+    const db = await requireDb();
+    return db.select().from(bphfEmployeeMerges).orderBy(desc(bphfEmployeeMerges.mergedAt));
+  }),
+
+  mergeBphfInspectionEmployees: qualityManagerProcedure
+    .input(z.object({ sourceEmployeeId: z.number().int().positive(), targetEmployeeId: z.number().int().positive(), reason: z.string().trim().min(3).max(500) }))
+    .mutation(async ({ ctx, input }) => {
+      if (input.sourceEmployeeId === input.targetEmployeeId)
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Escolha dois colaboradores diferentes." });
+      const db = await requireDb();
+      const [sourceRows, targetRows] = await Promise.all([
+        db.select().from(bphfInspectionEmployees).where(eq(bphfInspectionEmployees.id, input.sourceEmployeeId)).limit(1),
+        db.select().from(bphfInspectionEmployees).where(eq(bphfInspectionEmployees.id, input.targetEmployeeId)).limit(1),
+      ]);
+      const source = sourceRows[0];
+      const target = targetRows[0];
+      if (!source || !target) throw new TRPCError({ code: "NOT_FOUND", message: "Colaborador não encontrado." });
+      if (source.active !== "true" || target.active !== "true")
+        throw new TRPCError({ code: "BAD_REQUEST", message: "A fusão requer dois colaboradores ativos." });
+      const entries = await db.select().from(controlEntries);
+      const affected = entries.filter(entry => (entry.payload as Record<string, unknown>).collaboratorId === source.id);
+      const mergedAt = new Date();
+      for (const entry of affected) {
+        const payload = entry.payload as Record<string, unknown>;
+        await db.update(controlEntries).set({ payload: {
+          ...payload,
+          collaboratorId: target.id,
+          collaboratorName: target.name,
+          collaboratorMerge: { fromId: source.id, fromName: source.name, toId: target.id, toName: target.name, mergedAt: mergedAt.toISOString() },
+        } }).where(eq(controlEntries.id, entry.id));
+      }
+      await db.update(bphfInspectionEmployees).set({ active: "false", updatedAt: mergedAt }).where(eq(bphfInspectionEmployees.id, source.id));
+      const audit = await db.insert(bphfEmployeeMerges).values({ sourceEmployeeId: source.id, targetEmployeeId: target.id, sourceName: source.name, targetName: target.name, reason: input.reason.trim(), affectedEntries: affected.length, mergedBy: ctx.user?.openId ?? `quality-profile-${ctx.operatorProfile!.id}`, mergedAt });
+      return { success: true, auditId: Number(audit[0].insertId), sourceEmployeeId: source.id, targetEmployeeId: target.id, affectedEntries: affected.length };
     }),
 
   addBphfInspectionEmployee: qualityOperatorProcedure
@@ -3408,6 +3473,73 @@ export const qualityRouter = router({
         ),
         dates: dateSummary,
       };
+    }),
+
+  addBphfPlanAddendum: qualityManagerProcedure
+    .input(z.object({
+      parentTaskId: z.number().int(),
+      bphfCriteria: z.array(z.enum(BPHF_CRITERIA)).min(1).max(BPHF_CRITERIA.length),
+      assigneeProfileIds: z.array(z.number().int()).min(1).max(10).optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const db = await requireDb();
+      const parent = (await db.select().from(controlTasks).where(eq(controlTasks.id, input.parentTaskId)).limit(1))[0];
+      if (!parent || parent.area !== "Plano do Dia" || parent.module !== "bphf")
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Selecione um plano BPHF válido para criar a adenda." });
+      if (parent.status === "cancelled")
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Não é possível criar uma adenda a um plano cancelado." });
+      const selectedCriteria = Array.from(new Set(input.bphfCriteria));
+      const relatedTasks = await db.select().from(controlTasks).where(eq(controlTasks.parentTaskId, parent.id));
+      const alreadyPlanned = new Set<string>([
+        ...(Array.isArray(parent.bphfCriteria) ? parent.bphfCriteria : []),
+        ...relatedTasks.flatMap(task => Array.isArray(task.bphfCriteria) ? task.bphfCriteria : []),
+      ]);
+      const additionalCriteria = selectedCriteria.filter(criterion => !alreadyPlanned.has(criterion));
+      if (!additionalCriteria.length)
+        throw new TRPCError({ code: "CONFLICT", message: "As verificações selecionadas já fazem parte deste plano ou de uma adenda anterior." });
+      const assigneeProfileIds = input.assigneeProfileIds ?? parent.assigneeProfileIds ?? [];
+      if (!assigneeProfileIds.length)
+        throw new TRPCError({ code: "BAD_REQUEST", message: "O plano original não tem responsáveis ativos atribuídos." });
+      const profiles = await db.select().from(qualityPinProfiles).where(inArray(qualityPinProfiles.id, assigneeProfileIds)).orderBy(qualityPinProfiles.id);
+      if (profiles.length !== assigneeProfileIds.length || profiles.some(profile => profile.active !== "true"))
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Selecione responsáveis ativos para a adenda." });
+      const [areaCatalog, monthlyItems, monthlyAssignments, factoryCatalog, monthlyAreaAssignments, monthlyAreaRows, fragileCatalog, existingEntries] = await Promise.all([
+        db.select().from(areas).orderBy(areas.name),
+        db.select().from(checklistItems).orderBy(checklistItems.sortOrder),
+        db.select().from(checklistItemFactories).orderBy(checklistItemFactories.factoryId),
+        db.select().from(factories).orderBy(factories.name),
+        db.select().from(checklistItemAreas),
+        db.select().from(checklistAreas),
+        db.select().from(fragileItems).orderBy(fragileItems.sortOrder),
+        db.select().from(controlEntries).orderBy(desc(controlEntries.completedAt)),
+      ]);
+      const planRevision = Math.max(parent.planRevision ?? 1, ...relatedTasks.map(task => task.planRevision ?? 1)) + 1;
+      const addendum = {
+        title: "Adenda ao Plano do Dia — bphf",
+        description: `Adenda ao plano BPHF original #${parent.id}, acrescentando ${additionalCriteria.join(", ")}.`,
+        module: "bphf" as const,
+        area: "Plano do Dia",
+        factoryId: parent.factoryId,
+        dueAt: parent.dueAt,
+        responsible: profiles.map(profile => profile.name).join(", "),
+        assigneeProfileIds,
+        bphfCriteria: additionalCriteria,
+        bphfCriteriaPeriodicities: null,
+        metalDetectorLines: null,
+        temperatureEquipmentIds: null,
+        plannedCoverage: buildPlannedCoverage({ module: "bphf", factoryId: parent.factoryId, dueAt: parent.dueAt, bphfCriteria: additionalCriteria }, existingEntries, areaCatalog, monthlyItems, monthlyAssignments, factoryCatalog, monthlyAreaAssignments, monthlyAreaRows, fragileCatalog),
+        status: "pending" as const,
+        completedAt: null,
+        completedByProfileId: null,
+        completedByName: null,
+        completedByTitle: null,
+        sourceEntryId: null,
+        parentTaskId: parent.id,
+        planRevision,
+        createdBy: ctx.user!.openId,
+      };
+      const inserted = await db.insert(controlTasks).values(addendum);
+      return { success: true, id: Number(inserted[0].insertId), parentTaskId: parent.id, planRevision, bphfCriteria: additionalCriteria };
     }),
 
   updateTask: qualityManagerProcedure

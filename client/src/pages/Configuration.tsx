@@ -58,7 +58,15 @@ function BphfEmployeeSettings() {
   const [newName, setNewName] = useState("");
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editingName, setEditingName] = useState("");
-  const refresh = () => utils.quality.listBphfInspectionEmployeesAdmin.invalidate();
+  const [mergeSourceId, setMergeSourceId] = useState("");
+  const [mergeTargetId, setMergeTargetId] = useState("");
+  const [mergeReason, setMergeReason] = useState("");
+  const refresh = async () => { await utils.quality.listBphfInspectionEmployeesAdmin.invalidate(); await utils.quality.listBphfEmployeeMerges.invalidate(); };
+  const mergePreview = trpc.quality.previewBphfEmployeeMerge.useQuery(
+    { sourceEmployeeId: Number(mergeSourceId) || 1, targetEmployeeId: Number(mergeTargetId) || 1 },
+    { enabled: Boolean(mergeSourceId && mergeTargetId && mergeSourceId !== mergeTargetId) }
+  );
+  const mergeHistory = trpc.quality.listBphfEmployeeMerges.useQuery();
   const createEmployee = trpc.quality.createBphfInspectionEmployee.useMutation({
     onSuccess: result => { setNewName(""); refresh(); toast.success(result.reactivated ? "Colaborador reativado." : "Colaborador criado."); },
     onError: error => toast.error(error.message),
@@ -69,6 +77,10 @@ function BphfEmployeeSettings() {
   });
   const deleteEmployee = trpc.quality.deleteBphfInspectionEmployee.useMutation({
     onSuccess: () => { refresh(); toast.success("Colaborador eliminado da lista ativa. O histórico foi preservado."); },
+    onError: error => toast.error(error.message),
+  });
+  const mergeEmployees = trpc.quality.mergeBphfInspectionEmployees.useMutation({
+    onSuccess: result => { refresh(); setMergeSourceId(""); setMergeTargetId(""); setMergeReason(""); toast.success(`Fusão concluída. ${result.affectedEntries} registo(s) transferido(s) para o colaborador correto.`); },
     onError: error => toast.error(error.message),
   });
   const activeEmployees = (employees.data ?? []).filter(employee => employee.active);
@@ -83,9 +95,28 @@ function BphfEmployeeSettings() {
     event.preventDefault();
     if (editingId !== null && editingName.trim().length >= 2) updateEmployee.mutate({ id: editingId, name: editingName.trim() });
   };
+  const submitMerge = (event: FormEvent) => {
+    event.preventDefault();
+    if (!mergeSourceId || !mergeTargetId || mergeSourceId === mergeTargetId) return toast.error("Selecione o duplicado e um colaborador correto diferente.");
+    if (mergeReason.trim().length < 3) return toast.error("Indique o motivo da fusão.");
+    if (!mergePreview.data) return toast.error("Aguarde a pré-visualização dos registos afetados.");
+    if (window.confirm(`Confirma fundir «${mergePreview.data.source.name}» em «${mergePreview.data.target.name}»? Esta ação transfere ${mergePreview.data.affectedEntries} registo(s), desativa o duplicado e fica registada para auditoria.`)) mergeEmployees.mutate({ sourceEmployeeId: Number(mergeSourceId), targetEmployeeId: Number(mergeTargetId), reason: mergeReason.trim() });
+  };
   return <Card className="border-0 panel-shadow"><CardHeader><CardTitle className="flex items-center gap-2"><UsersRound className="h-5 w-5 text-teal-700" />Colaboradores inspecionados</CardTitle><CardDescription>Catálogo de colaboradores utilizado nas inspeções BPHF e na associação de incidências. Editar ou eliminar mantém o histórico já registado.</CardDescription></CardHeader><CardContent className="space-y-5">
     <form className="flex flex-col gap-2 sm:flex-row" onSubmit={submitCreate}><Label htmlFor="new-bphf-employee" className="sr-only">Nome do novo colaborador</Label><Input id="new-bphf-employee" value={newName} onChange={event => setNewName(event.target.value)} placeholder="Nome completo do colaborador" autoComplete="off" /><Button type="submit" disabled={newName.trim().length < 2 || createEmployee.isPending}><Plus className="mr-2 h-4 w-4" />{createEmployee.isPending ? "A criar…" : "Criar colaborador"}</Button></form>
     <div className="space-y-2" aria-live="polite">{activeEmployees.length ? activeEmployees.map(employee => <div key={employee.id} className="flex flex-col gap-3 rounded-xl border border-slate-100 bg-slate-50 p-3 sm:flex-row sm:items-center sm:justify-between">{editingId === employee.id ? <form className="flex min-w-0 flex-1 flex-col gap-2 sm:flex-row" onSubmit={submitEdit}><Label htmlFor={`edit-bphf-employee-${employee.id}`} className="sr-only">Editar nome de {employee.name}</Label><Input id={`edit-bphf-employee-${employee.id}`} value={editingName} onChange={event => setEditingName(event.target.value)} autoFocus /><Button type="submit" size="sm" disabled={editingName.trim().length < 2 || updateEmployee.isPending}>Guardar</Button><Button type="button" size="sm" variant="outline" onClick={() => setEditingId(null)}>Cancelar</Button></form> : <><div className="min-w-0"><p className="font-medium text-slate-900">{employee.name}</p><p className="text-xs text-slate-500">Disponível para seleção nos controlos BPHF</p></div><div className="flex shrink-0 gap-2"><Button type="button" size="sm" variant="outline" onClick={() => startEdit(employee)}><Pencil className="mr-1.5 h-3.5 w-3.5" />Editar</Button><Button type="button" size="sm" variant="outline" className="text-red-700 hover:bg-red-50 hover:text-red-800" disabled={deleteEmployee.isPending} onClick={() => { if (window.confirm(`Eliminar ${employee.name} da lista ativa? O histórico será preservado.`)) deleteEmployee.mutate({ id: employee.id }); }}><Trash2 className="mr-1.5 h-3.5 w-3.5" />Eliminar</Button></div></>}</div>) : <p className="rounded-xl border border-dashed border-slate-200 p-4 text-sm text-slate-500">Ainda não existem colaboradores ativos no catálogo.</p>}</div>
+    <div className="rounded-2xl border border-violet-100 bg-violet-50/50 p-4 space-y-4">
+      <div><h3 className="font-semibold text-violet-950">Fundir colaboradores</h3><p className="mt-1 text-sm leading-6 text-violet-900">Use esta operação quando existirem dois perfis da mesma pessoa por erro de digitação. Os registos são transferidos pelo ID interno; o duplicado fica inativo e a operação é mantida para auditoria.</p></div>
+      <form className="grid gap-3 md:grid-cols-2" onSubmit={submitMerge}>
+        <div className="space-y-2"><Label>Colaborador duplicado</Label><Select value={mergeSourceId} onValueChange={setMergeSourceId}><SelectTrigger aria-label="Colaborador duplicado"><SelectValue placeholder="Selecionar duplicado" /></SelectTrigger><SelectContent>{activeEmployees.map(employee => <SelectItem key={employee.id} value={String(employee.id)}>{employee.name}</SelectItem>)}</SelectContent></Select></div>
+        <div className="space-y-2"><Label>Colaborador correto</Label><Select value={mergeTargetId} onValueChange={setMergeTargetId}><SelectTrigger aria-label="Colaborador correto"><SelectValue placeholder="Selecionar colaborador correto" /></SelectTrigger><SelectContent>{activeEmployees.filter(employee => String(employee.id) !== mergeSourceId).map(employee => <SelectItem key={employee.id} value={String(employee.id)}>{employee.name}</SelectItem>)}</SelectContent></Select></div>
+        <div className="space-y-2 md:col-span-2"><Label htmlFor="employee-merge-reason">Motivo da fusão</Label><Input id="employee-merge-reason" value={mergeReason} onChange={event => setMergeReason(event.target.value)} placeholder="Ex.: duplicado criado por erro de digitação" maxLength={500} /></div>
+        {mergePreview.isFetching ? <p className="text-sm text-violet-800 md:col-span-2">A calcular os registos afetados…</p> : null}
+        {mergePreview.data ? <div className="rounded-xl border border-violet-200 bg-white p-3 text-sm md:col-span-2"><p className="font-semibold text-violet-950">Pré-visualização</p><p className="mt-1 text-violet-900">«{mergePreview.data.source.name}» será fundido em «{mergePreview.data.target.name}».</p><p className="mt-1 text-violet-900"><strong>{mergePreview.data.affectedEntries}</strong> registo(s) serão transferidos e o nome correto ficará disponível no histórico.</p>{mergePreview.data.byModule.length ? <p className="mt-1 text-xs text-slate-600">{mergePreview.data.byModule.map(item => `${item.total} · ${item.module}`).join("  |  ")}</p> : <p className="mt-1 text-xs text-slate-600">Não foram encontrados registos de controlos associados ao duplicado.</p>}</div> : null}
+        <Button type="submit" className="md:col-span-2" disabled={!mergePreview.data || mergeReason.trim().length < 3 || mergeEmployees.isPending}>{mergeEmployees.isPending ? "A fundir…" : "Confirmar fusão"}</Button>
+      </form>
+    </div>
+    {mergeHistory.data?.length ? <details className="rounded-xl border border-violet-100 bg-white p-3"><summary className="cursor-pointer text-sm font-medium text-violet-900">Histórico de fusões ({mergeHistory.data.length})</summary><div className="mt-3 space-y-2">{mergeHistory.data.map(merge => <div key={merge.id} className="rounded-lg bg-violet-50/60 px-3 py-2 text-sm"><p className="font-medium text-violet-950">{merge.sourceName} → {merge.targetName}</p><p className="mt-1 text-xs text-violet-800">{merge.affectedEntries} registo(s) · {new Date(merge.mergedAt).toLocaleString("pt-PT")} · Motivo: {merge.reason}</p></div>)}</div></details> : null}
     {inactiveEmployees.length ? <details className="rounded-xl border border-slate-200 bg-slate-50 p-3"><summary className="cursor-pointer text-sm font-medium text-slate-700">Colaboradores eliminados ({inactiveEmployees.length})</summary><div className="mt-3 space-y-2">{inactiveEmployees.map(employee => <div key={employee.id} className="flex items-center justify-between rounded-lg bg-white px-3 py-2 text-sm"><span className="text-slate-600">{employee.name}</span><span className="text-xs text-slate-500">Pode ser reativado ao criar com o mesmo nome</span></div>)}</div></details> : null}
   </CardContent></Card>;
 }

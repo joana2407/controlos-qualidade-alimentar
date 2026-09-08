@@ -66,6 +66,18 @@ export const bphfInspectionEmployees = mysqlTable("bphf_inspection_employees", {
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 }, (table) => [index("bphf_employee_active_idx").on(table.active)]);
 
+export const bphfEmployeeMerges = mysqlTable("bphf_employee_merges", {
+  id: int("id").autoincrement().primaryKey(),
+  sourceEmployeeId: int("sourceEmployeeId").notNull(),
+  targetEmployeeId: int("targetEmployeeId").notNull(),
+  sourceName: varchar("sourceName", { length: 160 }).notNull(),
+  targetName: varchar("targetName", { length: 160 }).notNull(),
+  reason: varchar("reason", { length: 500 }).notNull(),
+  affectedEntries: int("affectedEntries").default(0).notNull(),
+  mergedBy: varchar("mergedBy", { length: 64 }).notNull(),
+  mergedAt: timestamp("mergedAt").defaultNow().notNull(),
+}, (table) => [index("bphf_merge_source_idx").on(table.sourceEmployeeId), index("bphf_merge_target_idx").on(table.targetEmployeeId)]);
+
 export const qualityPinSessions = mysqlTable("quality_pin_sessions", {
   id: int("id").autoincrement().primaryKey(),
   profileId: int("profileId").notNull(),
@@ -128,9 +140,11 @@ export const controlTasks = mysqlTable("control_tasks", {
   completedByName: varchar("completedByName", { length: 160 }),
   completedByTitle: varchar("completedByTitle", { length: 160 }),
   sourceEntryId: int("sourceEntryId"),
+  parentTaskId: int("parentTaskId"),
+  planRevision: int("planRevision").default(1).notNull(),
   createdBy: varchar("createdBy", { length: 64 }).notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
-}, (table) => [index("task_due_idx").on(table.dueAt), index("task_module_idx").on(table.module), index("task_factory_idx").on(table.factoryId), index("task_operator_idx").on(table.completedByProfileId), index("task_source_entry_idx").on(table.sourceEntryId)]);
+}, (table) => [index("task_due_idx").on(table.dueAt), index("task_module_idx").on(table.module), index("task_factory_idx").on(table.factoryId), index("task_operator_idx").on(table.completedByProfileId), index("task_source_entry_idx").on(table.sourceEntryId), index("task_parent_idx").on(table.parentTaskId)]);
 
 export const controlEntries = mysqlTable("control_entries", {
   id: int("id").autoincrement().primaryKey(),

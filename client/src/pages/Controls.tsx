@@ -411,6 +411,8 @@ export default function Controls() {
     alreadyPresent: number;
   }> | null>(null);
   const [progressDate, setProgressDate] = useState(currentCalendarDate);
+  const [addendumTask, setAddendumTask] = useState<{ id: number; title: string; criteria: string[] }>({ id: 0, title: "", criteria: [] });
+  const [addendumCriteria, setAddendumCriteria] = useState<string[]>([]);
 
   const taskFilterInput = useMemo(
     () =>
@@ -499,6 +501,15 @@ export default function Controls() {
     },
     onError: error => toast.error(error.message),
   });
+  const addBphfPlanAddendum = trpc.quality.addBphfPlanAddendum.useMutation({
+    onSuccess: result => {
+      invalidateTasks();
+      setAddendumTask({ id: 0, title: "", criteria: [] });
+      setAddendumCriteria([]);
+      toast.success(`Adenda publicada com ${result.bphfCriteria.length} verificação(ões) adicional(is).`);
+    },
+    onError: error => toast.error(error.message),
+  });
   const publishDailyPlan = trpc.quality.publishDailyPlan.useMutation({
     onSuccess: result => {
       invalidateTasks();
@@ -556,6 +567,20 @@ export default function Controls() {
           }
         : current
     );
+  }
+  function openBphfAddendum(task: { id: number; title: string; bphfCriteria?: string[] | null }) {
+    const originalCriteria = Array.isArray(task.bphfCriteria) ? task.bphfCriteria : [];
+    setAddendumTask({ id: task.id, title: task.title, criteria: originalCriteria });
+    setAddendumCriteria(BPHF_PLAN_INSPECTIONS.filter(criterion => !originalCriteria.includes(criterion)));
+  }
+  function toggleAddendumCriterion(criterion: string) {
+    setAddendumCriteria(current => current.includes(criterion) ? current.filter(item => item !== criterion) : [...current, criterion]);
+  }
+  function submitBphfAddendum(event: FormEvent) {
+    event.preventDefault();
+    if (!addendumTask.id) return;
+    if (!addendumCriteria.length) return toast.error("Selecione pelo menos uma verificação BPHF para a adenda.");
+    addBphfPlanAddendum.mutate({ parentTaskId: addendumTask.id, bphfCriteria: addendumCriteria as (typeof BPHF_PLAN_INSPECTIONS)[number][] });
   }
   function togglePlanModule(id: string) {
     setPlanModules(current =>
@@ -1628,6 +1653,18 @@ export default function Controls() {
                                   : "Preencher relatório"}
                               </Button>
                             )}
+                            {canManage && task.module === "bphf" && !task.parentTaskId && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="border-violet-200 text-violet-800 hover:bg-violet-50"
+                                aria-label={`Adicionar verificação ao plano ${task.title}`}
+                                onClick={() => openBphfAddendum(task)}
+                              >
+                                <ClipboardPlus className="mr-1 h-4 w-4" />
+                                Adenda BPHF
+                              </Button>
+                            )}
                             {canManage && task.status === "pending" && (
                               <>
                                 <Button
@@ -1802,6 +1839,41 @@ export default function Controls() {
                 {completeTask.isPending
                   ? "A guardar…"
                   : "Registar relatório e concluir tarefa"}
+              </Button>
+            </form>
+          </DialogContent>
+        </Dialog>
+
+        <Dialog
+          open={Boolean(addendumTask.id)}
+          onOpenChange={nextOpen => !nextOpen && setAddendumTask({ id: 0, title: "", criteria: [] })}
+        >
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Adicionar verificação ao plano BPHF</DialogTitle>
+              <DialogDescription>
+                Crie uma adenda ao plano «{addendumTask.title}». O plano original e os registos já efetuados permanecem intactos; apenas serão acrescentadas as verificações selecionadas para a mesma fábrica e data.
+              </DialogDescription>
+            </DialogHeader>
+            <form className="space-y-4" onSubmit={submitBphfAddendum}>
+              <div className="rounded-lg border border-violet-100 bg-violet-50/60 p-3 text-sm text-violet-950">
+                <p className="font-semibold">Verificações já incluídas</p>
+                <p className="mt-1">{addendumTask.criteria.length ? addendumTask.criteria.join(" · ") : "Consultar cobertura do plano original"}</p>
+              </div>
+              <fieldset className="space-y-2">
+                <legend className="text-sm font-medium">Verificações adicionais</legend>
+                {BPHF_PLAN_INSPECTIONS.map(criterion => {
+                  const alreadyIncluded = addendumTask.criteria.includes(criterion);
+                  return (
+                    <label key={criterion} className={`flex items-start gap-3 rounded-lg border p-3 text-sm ${alreadyIncluded ? "border-slate-100 bg-slate-50 text-slate-400" : "border-slate-200 bg-white"}`}>
+                      <Checkbox checked={alreadyIncluded || addendumCriteria.includes(criterion)} disabled={alreadyIncluded} onCheckedChange={() => !alreadyIncluded && toggleAddendumCriterion(criterion)} aria-label={`Selecionar ${criterion} para a adenda`} />
+                      <span>{criterion}{alreadyIncluded ? " · já incluída" : ""}</span>
+                    </label>
+                  );
+                })}
+              </fieldset>
+              <Button className="w-full" type="submit" disabled={addBphfPlanAddendum.isPending || !addendumCriteria.length}>
+                {addBphfPlanAddendum.isPending ? "A publicar adenda…" : "Publicar adenda BPHF"}
               </Button>
             </form>
           </DialogContent>
