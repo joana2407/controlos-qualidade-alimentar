@@ -823,3 +823,7 @@
 - [x] Transferir referências pelo ID interno, manter o nome correto nos registos e desativar o duplicado sem apagar dados.
 - [x] Guardar rastreabilidade da fusão com colaborador original, colaborador correto, utilizador, data, motivo e contagens afetadas.
 - [x] Adicionar regressões para permissões, pré-visualização, transferência, auditoria e prevenção de fusões inválidas.
+
+- [x] Reproduzir e corrigir o bloqueio que impede criar adendas em planos BPHF já publicados.
+- [x] Garantir compatibilidade da adenda com planos históricos, concluídos e recentemente criados.
+- [x] Adicionar regressão executável para publicação de uma adenda com o critério Cacifos.

@@ -3327,10 +3327,7 @@ export const qualityRouter = router({
         });
       const [existing, areaCatalog, monthlyItems, monthlyAssignments, factoryCatalog, monthlyAreaAssignments, monthlyAreaRows, fragileCatalog, existingEntries] =
         await Promise.all([
-          db
-            .select()
-            .from(controlTasks)
-            .where(eq(controlTasks.status, "pending")),
+          db.select().from(controlTasks),
           db.select().from(areas).orderBy(areas.name),
           db.select().from(checklistItems).orderBy(checklistItems.sortOrder),
           db
@@ -3394,6 +3391,7 @@ export const qualityRouter = router({
       const existingPlans = existing.filter(
         task =>
           task.area === "Plano do Dia" &&
+          task.status !== "cancelled" &&
           plannedDateKeys.has(localDateKey(new Date(task.dueAt)))
       );
       const controlsByDate = selectedDates.map(date => {
@@ -3457,8 +3455,49 @@ export const qualityRouter = router({
             createdBy: ctx.user!.openId,
         }))
       );
-      if (controlsToCreate.length)
-        await db.insert(controlTasks).values(controlsToCreate);
+      const bphfAddendaToCreate = input.modules.includes("bphf") && plannedBphfCriteria
+        ? selectedDates.flatMap(date => selectedFactories.flatMap(factoryId => {
+            const sameScopePlans = existingPlans.filter(task =>
+              task.module === "bphf" &&
+              task.factoryId === factoryId &&
+              localDateKey(new Date(task.dueAt)) === localDateKey(date)
+            );
+            const originalPlan = sameScopePlans.find(task => !task.parentTaskId);
+            if (!originalPlan) return [];
+            const relatedPlans = sameScopePlans.filter(task => task.id === originalPlan.id || task.parentTaskId === originalPlan.id);
+            const alreadyPlanned = new Set(relatedPlans.flatMap(task => Array.isArray(task.bphfCriteria) ? task.bphfCriteria : []));
+            const additionalCriteria = plannedBphfCriteria.filter(criterion => !alreadyPlanned.has(criterion));
+            if (!additionalCriteria.length) return [];
+            const planRevision = Math.max(...relatedPlans.map(task => task.planRevision ?? 1)) + 1;
+            return [{
+              title: "Adenda ao Plano do Dia — bphf",
+              description: `Adenda automática ao plano BPHF original #${originalPlan.id}, acrescentando ${additionalCriteria.join(", ")}.`,
+              module: "bphf" as const,
+              area: "Plano do Dia",
+              factoryId,
+              dueAt: date,
+              responsible: profiles.map(profile => profile.name).join(", "),
+              assigneeProfileIds: input.assigneeProfileIds,
+              bphfCriteria: additionalCriteria,
+              bphfCriteriaPeriodicities: null,
+              metalDetectorLines: null,
+              temperatureEquipmentIds: null,
+              plannedCoverage: buildPlannedCoverage({ module: "bphf", factoryId, dueAt: date, bphfCriteria: additionalCriteria }, existingEntries, areaCatalog, monthlyItems, monthlyAssignments, factoryCatalog, monthlyAreaAssignments, monthlyAreaRows, fragileCatalog),
+              status: "pending" as const,
+              completedAt: null,
+              completedByProfileId: null,
+              completedByName: null,
+              completedByTitle: null,
+              sourceEntryId: null,
+              parentTaskId: originalPlan.id,
+              planRevision,
+              createdBy: ctx.user!.openId,
+            }];
+          }))
+        : [];
+      const allControlsToCreate = [...controlsToCreate, ...bphfAddendaToCreate];
+      if (allControlsToCreate.length)
+        await db.insert(controlTasks).values(allControlsToCreate);
       const dateSummary = controlsByDate.map(({ date, controls }) => ({
         date: localDateKey(date),
         created: controls.length,
@@ -3466,7 +3505,8 @@ export const qualityRouter = router({
       }));
       return {
         success: true,
-        created: controlsToCreate.length,
+        created: allControlsToCreate.length,
+        addendaCreated: bphfAddendaToCreate.length,
         alreadyPresent: dateSummary.reduce(
           (total, item) => total + item.alreadyPresent,
           0

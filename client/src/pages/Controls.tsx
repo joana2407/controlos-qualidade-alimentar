@@ -520,7 +520,7 @@ export default function Controls() {
       setLastPlanPublication(result.dates ?? null);
       setPlanOpen(false);
       toast.success(
-        `Planos do Dia publicados: ${result.created} controlo(s) criado(s)${result.alreadyPresent ? ` · ${result.alreadyPresent} já existente(s)` : ""}.`
+        `Planos do Dia publicados: ${result.created} controlo(s) criado(s)${result.addendaCreated ? ` · ${result.addendaCreated} adenda(s) BPHF criada(s)` : ""}${result.alreadyPresent ? ` · ${result.alreadyPresent} já existente(s)` : ""}.`
       );
     },
     onError: error => toast.error(error.message),

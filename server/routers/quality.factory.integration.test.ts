@@ -543,6 +543,53 @@ describe("procedimentos de qualidade por fábrica", () => {
     );
   });
 
+  it("cria uma adenda de Cacifos quando é publicado BPHF para um plano já existente", async () => {
+    const originalPlan = {
+      id: 890,
+      factoryId: 1,
+      status: "completed",
+      dueAt: now,
+      completedAt: now,
+      module: "bphf",
+      area: "Plano do Dia",
+      title: "Plano do Dia — BPHF F1",
+      responsible: "Sabrina Esteves",
+      assigneeProfileIds: [1, 2, 3],
+      bphfCriteria: [
+        "Estado de limpeza e conservação do fardamento",
+        "Higienização das mãos dos manipuladores",
+        "Cumprimento geral das regras de BPHF",
+      ],
+      plannedCoverage: [],
+      planRevision: 1,
+      createdAt: now,
+    } as any;
+    tasks.push(originalPlan);
+    try {
+      const result = await qualityRouter.createCaller(createContext()).publishDailyPlan({
+        date: now,
+        factoryIds: [1],
+        assigneeProfileIds: [1, 2, 3],
+        modules: ["bphf"],
+        bphfCriteria: ["Estado de limpeza e organização dos cacifos do pessoal e de trabalho"],
+      });
+
+      expect(result).toMatchObject({ success: true, created: 1, addendaCreated: 1, alreadyPresent: 1 });
+      expect(dbInserts.at(-1)).toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          module: "bphf",
+          area: "Plano do Dia",
+          parentTaskId: originalPlan.id,
+          planRevision: 2,
+          bphfCriteria: ["Estado de limpeza e organização dos cacifos do pessoal e de trabalho"],
+          status: "pending",
+        }),
+      ]));
+    } finally {
+      tasks.splice(tasks.findIndex(task => task.id === originalPlan.id), 1);
+    }
+  });
+
   it("guarda no Plano do Dia apenas as linhas de Detetores selecionadas por fábrica", async () => {
     const metalAreas = [
       { id: 901, name: "Linha 1", group: "metal", factoryId: 1, active: "true" },
