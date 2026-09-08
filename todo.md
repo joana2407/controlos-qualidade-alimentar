@@ -831,3 +831,7 @@
 - [x] Auditar a adenda BPHF criada para a Fábrica 3 e a associação ao plano original.
 - [x] Corrigir a atualização imediata do Plano do Dia, lista de tarefas, completitude e pendências após publicar uma adenda.
 - [x] Adicionar regressões para adendas BPHF por fábrica, incluindo Fábrica 3 e o critério Cacifos.
+
+- [x] Permitir às Técnicas de Qualidade criar projetos no controlo sensorial de I&D.
+- [x] Manter o fecho do projeto e as ações de gestão sensível reservados à Responsável de Qualidade.
+- [x] Adicionar regressões para criação por Técnica e bloqueio de fecho sem perfil de Responsável.

@@ -32,11 +32,18 @@ describe("interface de avaliação sensorial de I&D", () => {
   });
 
   it("protege no servidor anexos, edição e eliminação através do perfil de Qualidade", () => {
+    expect(router).toContain("createProject: qualityOperatorProcedure");
     expect(router).toContain("uploadEvaluationPhoto: qualityOperatorProcedure");
     expect(router).toContain("updateProject: qualityManagerProcedure");
     expect(router).toContain("updateEvaluation: qualityManagerProcedure");
     expect(router).toContain("deleteProject: qualityManagerProcedure");
     expect(router).toContain("deleteEvaluation: qualityManagerProcedure");
     expect(router).toContain("deletedAt");
+  });
+
+  it("mostra a criação de projetos às Técnicas sem lhes atribuir ações de gestão", () => {
+    expect(page).toContain("{canOperate && <Button");
+    expect(page).toContain("showProjectForm && (canOperate || (editingProjectId !== null && canManage))");
+    expect(page).toContain("selected.status === \"active\" && canManage");
   });
 });

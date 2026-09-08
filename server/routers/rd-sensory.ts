@@ -160,7 +160,7 @@ export const rdSensoryRouter = router({
     .input(z.object({ projectId: z.number().int() }))
     .query(async ({ input }) => projectDetail(await requireDb(), input.projectId)),
 
-  createProject: qualityManagerProcedure
+  createProject: qualityOperatorProcedure
     .input(projectInput)
     .mutation(async ({ ctx, input }) => {
       const db = await requireDb();

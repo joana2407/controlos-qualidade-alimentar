@@ -5,6 +5,10 @@ import path from "node:path";
 const routerSource = fs.readFileSync(path.resolve(process.cwd(), "server/routers/rd-sensory.ts"), "utf8");
 
 describe("fecho de projetos sensoriais de I&D", () => {
+  it("permite que Técnicas de Qualidade criem projetos", () => {
+    expect(routerSource).toMatch(/createProject:\s*qualityOperatorProcedure/);
+  });
+
   it("reserva o fecho à Responsável de Qualidade", () => {
     expect(routerSource).toMatch(/closeProject:\s*qualityManagerProcedure/);
   });
