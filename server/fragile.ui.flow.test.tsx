@@ -14,6 +14,7 @@ const deleteAreaMutate = vi.fn();
 const uploadMutate = vi.fn();
 const uploadDamageMutate = vi.fn();
 const invalidate = vi.fn();
+let fragilePendingInput: unknown;
 
 vi.mock("@/lib/trpc", () => ({
   trpc: {
@@ -22,7 +23,7 @@ vi.mock("@/lib/trpc", () => ({
       metadata: { useQuery: () => ({ data: { factories: [{ id: 1, name: "Fábrica 1 (Fatiado)" }, { id: 2, name: "Fábrica 2 (granel)" }] } }) },
       listFragileItems: { useQuery: () => ({ data: [{ id: 9, name: "Proteção acrílica", location: "Embalamento", factoryId: 1, periodicity: "S", itemType: "Plástico rígido", referenceImageUrl: null }, { id: 11, name: "Janela de produção", location: "Produção", factoryId: 1, periodicity: "D", itemType: "Vidro", referenceImageUrl: null }, { id: 10, name: "Janelas exterior", location: "Expedição", factoryId: 2, periodicity: "M", itemType: "Vidro", referenceImageUrl: null }] }) },
       listFragileAreas: { useQuery: () => ({ data: [{ id: 1, factoryId: 1, name: "Embalamento", active: "true" }, { id: 2, factoryId: 1, name: "Produção", active: "true" }, { id: 3, factoryId: 2, name: "Expedição", active: "true" }] }) },
-      fragilePending: { useQuery: () => ({ isLoading: false, data: [{ id: 9, name: "Proteção acrílica", location: "Embalamento", factoryId: 1, periodicity: "S", itemType: "Plástico rígido", referenceImageUrl: "/manus-storage/protecao-acrilica.png", referenceImageName: "protecao-acrilica.png", lastInspectionAt: null }] }) },
+      fragilePending: { useQuery: (input: unknown) => { fragilePendingInput = input; return { isLoading: false, data: [{ id: 9, name: "Proteção acrílica", location: "Embalamento", factoryId: 1, periodicity: "S", itemType: "Plástico rígido", referenceImageUrl: "/manus-storage/protecao-acrilica.png", referenceImageName: "protecao-acrilica.png", lastInspectionAt: null }] }; } },
       fragileInspectionHistory: { useQuery: () => ({ isLoading: false, data: [{ id: 77, state: "Íntegro", result: "C", notes: "Sem alterações na verificação anterior.", completedAt: new Date("2026-08-27T09:15:00Z"), registeredByName: "Sabrina Esteves", registeredByTitle: "Tec. Qualidade", evidencePhotos: [] }] }) },
       addFragileItem: { useMutation: (options?: { onSuccess?: () => void }) => ({ isPending: false, mutate: (input: unknown) => { addMutate(input); options?.onSuccess?.(); } }) },
       updateFragileItem: { useMutation: (options?: { onSuccess?: () => void }) => ({ isPending: false, mutate: (input: unknown, mutationOptions?: { onSuccess?: () => void }) => { updateMutate(input); options?.onSuccess?.(); mutationOptions?.onSuccess?.(); } }) },
@@ -45,7 +46,7 @@ import { FragileOperationsPanel } from "../client/src/components/quality/Fragile
 describe("fluxo de interface de pontos de controlo de quebráveis", () => {
   beforeEach(() => {
     cleanup();
-    addMutate.mockClear(); updateMutate.mockClear(); deleteMutate.mockClear(); renameAreaMutate.mockClear(); mergeAreasMutate.mockClear(); createAreaMutate.mockClear(); deleteAreaMutate.mockClear(); uploadMutate.mockClear(); uploadDamageMutate.mockClear(); invalidate.mockClear();
+    addMutate.mockClear(); updateMutate.mockClear(); deleteMutate.mockClear(); renameAreaMutate.mockClear(); mergeAreasMutate.mockClear(); createAreaMutate.mockClear(); deleteAreaMutate.mockClear(); uploadMutate.mockClear(); uploadDamageMutate.mockClear(); invalidate.mockClear(); fragilePendingInput = undefined;
     Object.defineProperty(HTMLElement.prototype, "hasPointerCapture", { configurable: true, value: () => false });
     Object.defineProperty(HTMLElement.prototype, "setPointerCapture", { configurable: true, value: () => undefined });
     Object.defineProperty(HTMLElement.prototype, "releasePointerCapture", { configurable: true, value: () => undefined });
@@ -90,6 +91,11 @@ describe("fluxo de interface de pontos de controlo de quebráveis", () => {
     await user.click(screen.getByRole("option", { name: /nível 3 · elevado · diário/i }));
 
     expect(screen.getByText("Sugestão: Diário (D)")).toBeTruthy();
+  });
+
+  it("usa a data operacional selecionada ao calcular as pendências", () => {
+    render(<FragileOperationsPanel createEntry={{ mutate: vi.fn(), isPending: false }} factoryId="1" referenceDate="2026-09-08" />);
+    expect(fragilePendingInput).toEqual({ factoryId: 1, referenceDate: new Date("2026-09-08") });
   });
 
   it("abre a pendência selecionada num painel próprio de inspeção", () => {

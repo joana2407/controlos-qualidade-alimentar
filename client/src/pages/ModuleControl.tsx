@@ -2542,6 +2542,7 @@ export default function ModuleControl() {
                 <FragileOperationsPanel
                   {...props}
                   factoryId={factoryId}
+                  referenceDate={progressDateInput}
                   showHeader={false}
                 />
               </>

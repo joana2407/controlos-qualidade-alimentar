@@ -839,3 +839,13 @@
 - [x] Auditar a visibilidade das adendas no Painel Hoje e no painel do controlo correspondente.
 - [x] Corrigir a agregação e a apresentação de planos originais e adendas sem ocultar tarefas adicionais.
 - [x] Adicionar regressões para confirmar adendas visíveis no Painel Hoje e no BPHF por fábrica e data.
+
+- [x] Auditar pendências falsas de Quebráveis nas verificações da Fábrica 3 dos dias 01/09 e 07/09.
+- [x] Corrigir a associação entre o registo efetuado, o ponto de Quebráveis e a periodicidade que determina a próxima inspeção.
+- [x] Impedir a repetição involuntária de registos para o mesmo ponto e inspeção no mesmo dia, com atualização imediata da lista.
+- [x] Adicionar regressões de Quebráveis por ponto, fábrica, data e periodicidade para impedir o regresso de pendências falsas.
+
+- [x] Auditar as pendências de Quebráveis da Fábrica 3 nos dias 07/09 e 08/09, comparando cada ponto previsto com os registos efetivos.
+- [x] Corrigir falsos pendentes causados por periodicidade, data operacional, fábrica ou associação incorreta do ponto.
+- [x] Impedir que um ponto já registado continue disponível ou seja contado várias vezes na mesma inspeção.
+- [x] Adicionar regressões para os dias 07/09 e 08/09, atualização após guardar e prevenção de duplicados.

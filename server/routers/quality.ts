@@ -4297,6 +4297,41 @@ export const qualityRouter = router({
           code: "BAD_REQUEST",
           message: "Indique a justificação para a opção selecionada.",
         });
+      if (input.module === "fragile_items") {
+        const fragileItemId = input.payload.fragileItemId;
+        if (typeof fragileItemId === "number" && input.factoryId) {
+          const targetOperationalDate =
+            input.performedAt ?? plannedDateKey ?? todayKey;
+          const existingFragileEntries = await db
+            .select()
+            .from(controlEntries)
+            .where(
+              and(
+                eq(controlEntries.module, "fragile_items"),
+                eq(controlEntries.factoryId, input.factoryId)
+              )
+            )
+            .orderBy(desc(controlEntries.completedAt));
+          const alreadyRegistered = existingFragileEntries.some(entry => {
+            if (isDeletedControlEntry(entry)) return false;
+            const payload = entryPayload(entry);
+            const registeredItemId = payload.fragileItemId;
+            if (registeredItemId !== fragileItemId) return false;
+            const actualDate = payload.actualVerificationDate;
+            const registeredOperationalDate =
+              typeof actualDate === "string" && /^\d{4}-\d{2}-\d{2}$/.test(actualDate)
+                ? actualDate
+                : entryOperationalDate(entry);
+            return registeredOperationalDate === targetOperationalDate;
+          });
+          if (alreadyRegistered)
+            throw new TRPCError({
+              code: "CONFLICT",
+              message:
+                "Este ponto de Quebráveis já foi verificado na data selecionada.",
+            });
+        }
+      }
       const completedAt = input.performedAt
         ? new Date(`${input.performedAt}T12:00:00`)
         : new Date();
