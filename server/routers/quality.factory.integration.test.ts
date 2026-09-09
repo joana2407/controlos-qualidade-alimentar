@@ -2141,6 +2141,66 @@ describe("procedimentos de qualidade por fábrica", () => {
     expect(dbInserts).toHaveLength(1);
   });
 
+  it("mantém a Expedição acessível para uma segunda encomenda depois de cumprir a completitude mínima do dia", async () => {
+    const plannedTaskId = 713;
+    tasks.push({
+      id: plannedTaskId,
+      factoryId: null,
+      status: "pending",
+      dueAt: now,
+      completedAt: null,
+      module: "dispatch_control",
+      area: "Plano do Dia",
+      title: "Plano do Dia — Expedição",
+      responsible: "Sabrina Esteves",
+      assigneeProfileIds: [1],
+    });
+    persistInsertedControlEntries = true;
+    const initialEntryCount = entries.length;
+    try {
+      const caller = qualityRouter.createCaller(
+        createContext({
+          id: 1,
+          name: "Sabrina Esteves",
+          title: "Tec. Qualidade",
+          role: "technician",
+        })
+      );
+      const baseInput = {
+        plannedTaskId,
+        profile: "ambiente" as const,
+        customer: "Cliente Norte",
+        product: "Pão de forma",
+        lot: "L-EXP",
+        orderedBoxes: 12,
+        dispatchedBoxes: 12,
+        productLabelResult: "C" as const,
+        boxLabelResult: "C" as const,
+        productTemperature: 20,
+        vehicleTemperature: 20,
+      };
+
+      await caller.registerDispatchControl({ ...baseInput, orderNumber: "ENC-201" });
+      const afterFirstOrder = await caller.controlAuthorization({
+        module: "dispatch_control",
+        plannedTaskId,
+      });
+      await caller.registerDispatchControl({ ...baseInput, orderNumber: "ENC-202", lot: "L-EXP-2" });
+
+      const dispatchEntries = entries.filter(
+        entry => entry.module === "dispatch_control" && (entry as any).payload?.plannedTaskId === plannedTaskId
+      );
+      expect(afterFirstOrder).toMatchObject({ allowed: true, taskId: plannedTaskId });
+      expect(dispatchEntries).toHaveLength(2);
+      expect(dispatchEntries.map(entry => (entry as any).payload.orderNumber)).toEqual(["ENC-201", "ENC-202"]);
+      expect(dbInserts.filter(entry => entry.module === "dispatch_control")).toHaveLength(2);
+    } finally {
+      persistInsertedControlEntries = false;
+      entries.splice(initialEntryCount);
+      tasks.splice(tasks.findIndex(task => task.id === plannedTaskId), 1);
+    }
+  });
+
   it("associa uma pendência de Expedição à data prevista, mesmo quando é registada mais tarde", async () => {
     const previousDueAt = new Date(2026, 7, 13, 11, 0, 0);
     const plannedTaskId = 714;

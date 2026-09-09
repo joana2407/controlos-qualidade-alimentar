@@ -859,3 +859,8 @@
 - [x] Uniformizar a completitude e o fecho de tarefas para todos os perfis, independentemente de quem realizou a verificação.
 - [x] Reconciliar tarefas históricas pendentes que já tenham cobertura completa, sem alterar ou apagar registos.
 - [x] Adicionar proteção transversal e regressões por módulo, fábrica, tarefa, data e utilizador.
+
+- [x] Permitir adicionar novas encomendas à verificação de Expedição após o primeiro registo do dia.
+- [x] Manter uma encomenda registada como requisito mínimo para concluir a tarefa planeada do dia.
+- [x] Preservar produtos, lotes, resultados, evidências e incidências separados por encomenda adicional.
+- [x] Adicionar regressões para múltiplas encomendas no mesmo dia e para a completitude mínima de Expedição.

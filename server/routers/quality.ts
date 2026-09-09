@@ -1085,7 +1085,8 @@ async function assessControlAuthorization(
     input.module === "temperature_controls" ||
     input.module === "sensory" ||
     input.module === "suggestion_boxes" ||
-    input.module === "metal_detectors";
+    input.module === "metal_detectors" ||
+    input.module === "dispatch_control";
   const eligibleTasks = tasks.filter((item: any) => {
     const isCurrentDay = localDateKey(new Date(item.dueAt)) === today;
     const plannedCoverageSatisfied =
@@ -1102,10 +1103,12 @@ async function assessControlAuthorization(
         fragileCatalog
       );
     const hasIncompletePlannedCoverage = !plannedCoverageSatisfied;
+    const isExplicitDispatchSupplement =
+      input.module === "dispatch_control" && Boolean(input.plannedTaskId);
     const isCompletedPlanOpenForSupplement =
       allowsSupplementaryDailyEntries &&
       plannedCoverageSatisfied &&
-      isCurrentDay;
+      (isCurrentDay || isExplicitDispatchSupplement);
     return (
       (hasIncompletePlannedCoverage || isCompletedPlanOpenForSupplement) &&
       item.area === "Plano do Dia" &&

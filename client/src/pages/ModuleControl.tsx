@@ -4468,6 +4468,8 @@ export function DispatchControl({
   const register = trpc.quality.registerDispatchControl.useMutation({
     onSuccess: data => {
       utils.quality.dashboard.invalidate();
+      utils.quality.dailyControlResults.invalidate();
+      utils.quality.controlAuthorization.invalidate();
       utils.quality.reports.invalidate();
       utils.quality.listNcs.invalidate();
       toast[data.conformity.result === "NC" ? "error" : "success"](
