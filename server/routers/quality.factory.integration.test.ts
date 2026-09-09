@@ -1990,6 +1990,69 @@ describe("procedimentos de qualidade por fábrica", () => {
     expect(dbInserts).toHaveLength(1);
   });
 
+  it("associa uma pendência de Expedição à data prevista, mesmo quando é registada mais tarde", async () => {
+    const previousDueAt = new Date(2026, 7, 13, 11, 0, 0);
+    const plannedTaskId = 714;
+    tasks.push({
+      id: plannedTaskId,
+      factoryId: null,
+      status: "pending",
+      dueAt: previousDueAt,
+      completedAt: null,
+      module: "dispatch_control",
+      area: "Plano do Dia",
+      title: "Plano do Dia — dispatch_control",
+      responsible: "Sabrina Esteves",
+      assigneeProfileIds: [1],
+    });
+    persistInsertedControlEntries = true;
+    try {
+      const caller = qualityRouter.createCaller(
+        createContext({
+          id: 1,
+          name: "Sabrina Esteves",
+          title: "Tec. Qualidade",
+          role: "technician",
+        })
+      );
+      await caller.registerDispatchControl({
+        plannedTaskId,
+        performedAt: "2026-08-13",
+        retroactiveReason: "verified_not_registered",
+        profile: "ambiente",
+        orderNumber: "ENC-RETRO-1",
+        customer: "Cliente Retroativo",
+        product: "Pão de forma",
+        lot: "L-RETRO-1",
+        orderedBoxes: 12,
+        dispatchedBoxes: 12,
+        productLabelResult: "C",
+        boxLabelResult: "C",
+        productTemperature: 20,
+        vehicleTemperature: 20,
+      });
+
+      expect(dbInserts.at(-1)).toMatchObject({
+        module: "dispatch_control",
+        completedAt: new Date("2026-08-13T12:00:00"),
+        payload: expect.objectContaining({
+          plannedTaskId,
+          plannedDate: previousDueAt.toISOString(),
+          registeredAgainstPreviousPlan: true,
+          actualVerificationDate: "2026-08-13",
+          retroactiveJustification: expect.objectContaining({
+            code: "verified_not_registered",
+          }),
+        }),
+      });
+    } finally {
+      persistInsertedControlEntries = false;
+      const taskIndex = tasks.findIndex(task => task.id === plannedTaskId);
+      if (taskIndex >= 0) tasks.splice(taskIndex, 1);
+      entries.splice(4);
+    }
+  });
+
   it("regista desvios de expedição sem criar NC automática", async () => {
     addPublishedControlTask("dispatch_control", null, [3]);
     const caller = qualityRouter.createCaller(createContext());

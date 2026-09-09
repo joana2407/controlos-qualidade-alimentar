@@ -4779,15 +4779,63 @@ export const qualityRouter = router({
             url: z.string().startsWith("/manus-storage/"),
           })
           .optional(),
+        plannedTaskId: z.number().int().optional(),
+        performedAt: z
+          .string()
+          .regex(/^\d{4}-\d{2}-\d{2}$/)
+          .optional(),
+        retroactiveReason: retroactiveReasonSchema.optional(),
+        retroactiveJustification: z.string().trim().max(1500).optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
       const db = await requireDb();
-      await requireControlAuthorization(db, {
+      const authorization = await requireControlAuthorization(db, {
         module: "dispatch_control",
         factoryId: null,
+        plannedTaskId: input.plannedTaskId,
         profile: ctx.operatorProfile!,
       });
+      const plannedDateKey = authorization.task?.dueAt
+        ? localDateKey(new Date(authorization.task.dueAt))
+        : null;
+      const todayKey = localDateKey(new Date());
+      if (
+        input.performedAt &&
+        (!plannedDateKey ||
+          input.performedAt > todayKey ||
+          (authorization.isPreviousPending && input.performedAt < plannedDateKey))
+      )
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message:
+            "A data de realização deve situar-se entre a data prevista do controlo e hoje.",
+        });
+      if (authorization.isPreviousPending && !input.retroactiveReason)
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message:
+            "Selecione a justificação do preenchimento fora da data prevista.",
+        });
+      if (
+        authorization.isPreviousPending &&
+        input.retroactiveReason === "technical_unavailability" &&
+        !input.performedAt
+      )
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message:
+            "Indique a data real da verificação efetuada após a indisponibilidade técnica.",
+        });
+      if (
+        authorization.isPreviousPending &&
+        input.retroactiveReason === "other" &&
+        !input.retroactiveJustification?.trim()
+      )
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Indique a justificação para a opção selecionada.",
+        });
       const profile = getDispatchProfile(input.profile);
       const limits = {
         product: profile.productTemperatureLimit,
@@ -4907,11 +4955,32 @@ export const qualityRouter = router({
           message:
             "A observação geral é obrigatória quando a temperatura do veículo não está conforme.",
         });
-      const completedAt = new Date();
+      const completedAt = input.performedAt
+        ? new Date(`${input.performedAt}T12:00:00`)
+        : new Date();
       const title = `Expedição ${input.orderNumber} — ${input.customer}`;
       const area = `Expedição ${input.profile}`;
       const payload = {
         ...input,
+        plannedTaskId: authorization.task?.id ?? null,
+        plannedDate: authorization.task?.dueAt
+          ? new Date(authorization.task.dueAt).toISOString()
+          : null,
+        registeredAgainstPreviousPlan:
+          authorization.isPreviousPending ?? false,
+        registeredAheadOfPlannedDate: authorization.isFuturePlanned ?? false,
+        actualVerificationDate: input.performedAt ?? localDateKey(completedAt),
+        retroactiveJustification:
+          authorization.isPreviousPending && input.retroactiveReason
+            ? {
+                code: input.retroactiveReason,
+                label: retroactiveReasonLabels[input.retroactiveReason],
+                details:
+                  input.retroactiveReason === "other"
+                    ? (input.retroactiveJustification?.trim() ?? null)
+                    : null,
+              }
+            : null,
         productChecks: productValidations,
         profileLabel: profile.label,
         temperatureLimits: limits,
@@ -4933,6 +5002,7 @@ export const qualityRouter = router({
           registeredByTitle: ctx.operatorProfile!.title,
           createdBy: ctx.user!.openId,
         });
+      await reconcilePlannedControlTaskStatus(db, authorization.task?.id);
       return {
         success: true,
         conformity,

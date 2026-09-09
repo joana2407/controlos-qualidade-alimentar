@@ -849,3 +849,7 @@
 - [x] Corrigir falsos pendentes causados por periodicidade, data operacional, fábrica ou associação incorreta do ponto.
 - [x] Impedir que um ponto já registado continue disponível ou seja contado várias vezes na mesma inspeção.
 - [x] Adicionar regressões para os dias 07/09 e 08/09, atualização após guardar e prevenção de duplicados.
+
+- [x] Corrigir o controlo à Expedição para guardar pendências na data prevista da tarefa e não na data de hoje.
+- [x] Preservar a justificação retroativa, a data real de verificação e a associação ao plano de origem.
+- [x] Adicionar regressões para preenchimento retroativo de Expedição por data selecionada.

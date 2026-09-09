@@ -2547,7 +2547,19 @@ export default function ModuleControl() {
                 />
               </>
             )}
-            {module === "dispatch_control" && <DispatchControl />}
+            {module === "dispatch_control" && (
+              <DispatchControl
+                plannedTaskId={authorization.data?.taskId}
+                isPreviousPending={Boolean(authorization.data?.isPreviousPending)}
+                performedAt={
+                  authorization.data?.isPreviousPending
+                    ? performedDate
+                    : undefined
+                }
+                retroactiveReason={retroactiveReason}
+                retroactiveJustification={retroactiveJustification}
+              />
+            )}
             {module === "internal_analysis" && <InternalAnalysis {...props} />}
             {module === "temperature_controls" && (
               <TemperatureControls {...props} />
@@ -4333,7 +4345,19 @@ const newDispatchProduct = (
   observations: "",
 });
 
-export function DispatchControl() {
+export function DispatchControl({
+  plannedTaskId,
+  isPreviousPending = false,
+  performedAt,
+  retroactiveReason,
+  retroactiveJustification,
+}: {
+  plannedTaskId?: number;
+  isPreviousPending?: boolean;
+  performedAt?: string;
+  retroactiveReason?: RetroactiveReason | "";
+  retroactiveJustification?: string;
+} = {}) {
   const utils = trpc.useUtils();
   const [profile, setProfile] = useState<"ambiente" | "congelado">("ambiente");
   const [orderNumber, setOrderNumber] = useState("");
@@ -4545,6 +4569,15 @@ export function DispatchControl() {
       ),
       evidencePhotos,
       sourceOrderDocument: importedOrder?.document,
+      plannedTaskId,
+      performedAt: isPreviousPending ? performedAt : undefined,
+      retroactiveReason: isPreviousPending
+        ? retroactiveReason || undefined
+        : undefined,
+      retroactiveJustification:
+        isPreviousPending && retroactiveReason === "other"
+          ? retroactiveJustification?.trim() || undefined
+          : undefined,
     });
   }
   async function importOrderPdf(file?: File) {
