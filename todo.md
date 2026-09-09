@@ -853,3 +853,9 @@
 - [x] Corrigir o controlo à Expedição para guardar pendências na data prevista da tarefa e não na data de hoje.
 - [x] Preservar a justificação retroativa, a data real de verificação e a associação ao plano de origem.
 - [x] Adicionar regressões para preenchimento retroativo de Expedição por data selecionada.
+
+- [x] Auditar pendências falsas em todos os controlos, fábricas, datas e perfis de utilizador.
+- [x] Investigar o caso BPHF da Fábrica 2 em 04/09 visível apenas para Sabrina Esteves apesar de 100% concluído.
+- [x] Uniformizar a completitude e o fecho de tarefas para todos os perfis, independentemente de quem realizou a verificação.
+- [x] Reconciliar tarefas históricas pendentes que já tenham cobertura completa, sem alterar ou apagar registos.
+- [x] Adicionar proteção transversal e regressões por módulo, fábrica, tarefa, data e utilizador.

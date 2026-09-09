@@ -371,7 +371,7 @@ function FactoryProgressSummary({
 }
 
 export default function Controls() {
-  const { canManage } = useQualityAccess();
+  const { canManage, activeProfile } = useQualityAccess();
   const [, setLocation] = useLocation();
   const utils = trpc.useUtils();
   const meta = trpc.quality.metadata.useQuery();
@@ -416,8 +416,11 @@ export default function Controls() {
 
   const taskFilterInput = useMemo(
     () =>
-      taskFactoryFilter ? { factoryId: Number(taskFactoryFilter) } : undefined,
-    [taskFactoryFilter]
+      ({
+        factoryId: taskFactoryFilter ? Number(taskFactoryFilter) : undefined,
+        viewerProfileId: activeProfile?.id,
+      }),
+    [activeProfile?.id, taskFactoryFilter]
   );
   const progressDateInput = useMemo(
     () => new Date(`${progressDate}T12:00:00`),
@@ -445,6 +448,7 @@ export default function Controls() {
   );
   const dashboard = trpc.quality.dashboard.useQuery({
     date: progressDateInput,
+    viewerProfileId: activeProfile?.id,
   });
   const observationInput = useMemo(
     () => ({

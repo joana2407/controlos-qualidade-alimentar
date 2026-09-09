@@ -2129,6 +2129,7 @@ function AnticipatedPlanNotice({
 export default function ModuleControl() {
   const [, params] = useRoute("/controlos/:module");
   const module = params?.module ?? "bphf";
+  const { activeProfile } = useQualityAccess();
   const search = useSearch();
   const queryParams = useMemo(() => new URLSearchParams(search), [search]);
   const config = MODULES.find(item => item.id === module);
@@ -2189,6 +2190,7 @@ export default function ModuleControl() {
         : undefined,
     plannedTaskId,
     plannedDate,
+    viewerProfileId: activeProfile?.id,
   }) ?? { data: undefined, isLoading: false };
   const progressDateInput = useMemo(() => {
     const dueAt =
@@ -2264,8 +2266,9 @@ export default function ModuleControl() {
         : factoryId
           ? Number(factoryId)
           : undefined,
+      viewerProfileId: activeProfile?.id,
     }),
-    [config?.id, factoryId, isSharedControl]
+    [activeProfile?.id, config?.id, factoryId, isSharedControl]
   );
   const pendingTasks = trpc.quality.pendingControlTasks?.useQuery?.(
     pendingTasksInput,
@@ -2297,6 +2300,8 @@ export default function ModuleControl() {
       utils.quality.fragilePending.invalidate();
       utils.quality.temperatureHistory.invalidate();
       utils.quality.controlAuthorization.invalidate();
+      utils.quality.pendingControlTasks.invalidate();
+      utils.quality.listTasks.invalidate();
       utils.quality.dailyControlResults?.invalidate?.();
       utils.quality.fragileInspectionHistory?.invalidate?.();
       toast[data.critical ? "error" : "success"](

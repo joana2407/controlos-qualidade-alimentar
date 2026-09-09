@@ -995,6 +995,44 @@ export function isHistoricalPlanTaskSatisfied(
   return oneSubmissionPlanModules.has(task.module) && taskEntries.length > 0;
 }
 
+function isPlanTaskResolved(
+  task: {
+    status?: string | null;
+    id: number;
+    module: (typeof qualityModuleValues)[number];
+    factoryId: number | null;
+    dueAt: Date;
+    bphfCriteria?: string[] | null;
+    metalDetectorLines?: string[] | null;
+    temperatureEquipmentIds?: string[] | null;
+    plannedCoverage?: string[] | null;
+  },
+  entries: Parameters<typeof isHistoricalPlanTaskSatisfied>[1],
+  areaCatalog: Parameters<typeof isHistoricalPlanTaskSatisfied>[2],
+  monthlyItems: Parameters<typeof isHistoricalPlanTaskSatisfied>[3],
+  monthlyAssignments: Parameters<typeof isHistoricalPlanTaskSatisfied>[4],
+  factoryCatalog: Parameters<typeof isHistoricalPlanTaskSatisfied>[5],
+  monthlyAreaAssignments: Parameters<typeof isHistoricalPlanTaskSatisfied>[6],
+  monthlyAreaRows: Parameters<typeof isHistoricalPlanTaskSatisfied>[7],
+  fragileCatalog: Parameters<typeof isHistoricalPlanTaskSatisfied>[8]
+) {
+  const isHistoricalTask = localDateKey(new Date(task.dueAt)) < localDateKey(new Date());
+  return (
+    (task.status === "completed" && isHistoricalTask) ||
+    isHistoricalPlanTaskSatisfied(
+    task,
+    entries,
+    areaCatalog,
+    monthlyItems,
+    monthlyAssignments,
+    factoryCatalog,
+    monthlyAreaAssignments,
+    monthlyAreaRows,
+    fragileCatalog
+    )
+  );
+}
+
 async function assessControlAuthorization(
   db: any,
   input: {
@@ -1052,7 +1090,7 @@ async function assessControlAuthorization(
     const isCurrentDay = localDateKey(new Date(item.dueAt)) === today;
     const plannedCoverageSatisfied =
       item.status !== "cancelled" &&
-      isHistoricalPlanTaskSatisfied(
+      isPlanTaskResolved(
         item,
         entries,
         areaCatalog,
@@ -1072,6 +1110,7 @@ async function assessControlAuthorization(
       (hasIncompletePlannedCoverage || isCompletedPlanOpenForSupplement) &&
       item.area === "Plano do Dia" &&
       item.module === input.module &&
+      item.status !== "cancelled" &&
       isBusinessDay(new Date(item.dueAt)) &&
       (isShared
         ? item.factoryId === null
@@ -1824,6 +1863,7 @@ export const qualityRouter = router({
         factoryId: z.number().int().optional(),
         plannedTaskId: z.number().int().optional(),
         plannedDate: z.date().optional(),
+        viewerProfileId: z.number().int().optional(),
       })
     )
     .query(async ({ ctx, input }) => {
@@ -1854,6 +1894,7 @@ export const qualityRouter = router({
       z.object({
         module: qualityModuleSchema,
         factoryId: z.number().int().nullable().optional(),
+        viewerProfileId: z.number().int().optional(),
       })
     )
     .query(async ({ ctx, input }) => {
@@ -1904,7 +1945,7 @@ export const qualityRouter = router({
             inScope &&
             taskDate < today &&
             isBusinessDay(new Date(task.dueAt)) &&
-            !isHistoricalPlanTaskSatisfied(
+            !isPlanTaskResolved(
               task,
               entries,
               areaCatalog,
@@ -2103,10 +2144,11 @@ export const qualityRouter = router({
   dashboard: qualitySessionProcedure
     .input(
       z
-        .object({
-          factoryId: z.number().int().optional(),
-          date: dateInput.optional(),
-        })
+          .object({
+            factoryId: z.number().int().optional(),
+            date: dateInput.optional(),
+            viewerProfileId: z.number().int().optional(),
+          })
         .optional()
     )
     .query(async ({ input }) => {
@@ -2242,7 +2284,7 @@ export const qualityRouter = router({
       const isPlannedControlCompleted = (
         task: (typeof plannedControls)[number]
       ) =>
-        isHistoricalPlanTaskSatisfied(
+        isPlanTaskResolved(
           task,
           entries,
           areaCatalog,
@@ -3036,7 +3078,14 @@ export const qualityRouter = router({
     }),
 
   listTasks: qualitySessionProcedure
-    .input(z.object({ factoryId: z.number().int().optional() }).optional())
+    .input(
+      z
+        .object({
+          factoryId: z.number().int().optional(),
+          viewerProfileId: z.number().int().optional(),
+        })
+        .optional()
+    )
     .query(async ({ ctx, input }) => {
       const db = await requireDb();
       const [
@@ -3074,7 +3123,7 @@ export const qualityRouter = router({
             : [];
           const completedFromPreviousRegistration =
             task.area === "Plano do Dia" &&
-            isHistoricalPlanTaskSatisfied(
+            isPlanTaskResolved(
               task,
               entries,
               areaCatalog,
@@ -3095,7 +3144,7 @@ export const qualityRouter = router({
         .map(task => {
           const completedFromRegisteredControls =
             task.area === "Plano do Dia" &&
-            isHistoricalPlanTaskSatisfied(
+            isPlanTaskResolved(
               task,
               entries,
               areaCatalog,

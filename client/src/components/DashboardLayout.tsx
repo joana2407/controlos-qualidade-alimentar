@@ -142,7 +142,18 @@ function OccurrencesWorkspaceContent({ children }: { children: React.ReactNode }
   const { activeProfile } = useQualityAccess();
   const utils = trpc.useUtils();
   const access = trpc.occurrences.access.useQuery();
-  const deactivate = trpc.quality.deactivatePinProfile.useMutation({ onSuccess: () => utils.quality.accessStatus.invalidate() });
+  const deactivate = trpc.quality.deactivatePinProfile.useMutation({
+    onSuccess: async () => {
+      await Promise.all([
+        utils.quality.accessStatus.invalidate(),
+        utils.quality.dashboard.invalidate(),
+        utils.quality.listTasks.invalidate(),
+        utils.quality.pendingControlTasks.invalidate(),
+        utils.quality.controlAuthorization.invalidate(),
+        utils.quality.dailyControlResults.invalidate(),
+      ]);
+    },
+  });
   const panels = access.data?.scope === "reclamacoes" ? occurrencePanels.filter((panel) => panel.path.startsWith("/reclamacoes")) : occurrencePanels;
 
   return <>
@@ -204,7 +215,18 @@ function DashboardLayoutContent({
   const isMobile = useIsMobile();
   const { activeProfile, canManage, canOperate } = useQualityAccess();
   const utils = trpc.useUtils();
-  const deactivate = trpc.quality.deactivatePinProfile.useMutation({ onSuccess: () => utils.quality.accessStatus.invalidate() });
+  const deactivate = trpc.quality.deactivatePinProfile.useMutation({
+    onSuccess: async () => {
+      await Promise.all([
+        utils.quality.accessStatus.invalidate(),
+        utils.quality.dashboard.invalidate(),
+        utils.quality.listTasks.invalidate(),
+        utils.quality.pendingControlTasks.invalidate(),
+        utils.quality.controlAuthorization.invalidate(),
+        utils.quality.dailyControlResults.invalidate(),
+      ]);
+    },
+  });
   const canAccessPanelPath = (path: string) => hasQualityPanelAccess(activeProfile!.role, activeProfile!.panelAccess, panelsForQualityPath(path));
   const visibleMenuItems = menuItems.filter((item) => (item.path !== "/configuracao" || canManage) && canAccessPanelPath(item.path));
   const visibleControlPanels = controlPanels.filter(panel => canAccessPanelPath(panel.path));

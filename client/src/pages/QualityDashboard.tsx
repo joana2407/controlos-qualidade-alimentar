@@ -39,7 +39,7 @@ export function productionLotForDate(date: Date | string) {
 
 export default function QualityDashboard() {
   const [, navigate] = useLocation();
-  const { canManage } = useQualityAccess();
+  const { canManage, activeProfile } = useQualityAccess();
   const utils = trpc.useUtils();
   const [factoryId, setFactoryId] = useState("");
   const [selectedDate, setSelectedDate] = useState(() => localDateInputValue());
@@ -47,7 +47,7 @@ export default function QualityDashboard() {
   const [controlToDelete, setControlToDelete] = useState<{ id: number; label: string } | null>(null);
   const metadata = trpc.quality.metadata.useQuery();
   const selectedDateValue = useMemo(() => lisbonCalendarDateToUtc(selectedDate), [selectedDate]);
-  const dashboardInput = useMemo(() => ({ factoryId: factoryId ? Number(factoryId) : undefined, date: selectedDateValue }), [factoryId, selectedDateValue]);
+  const dashboardInput = useMemo(() => ({ factoryId: factoryId ? Number(factoryId) : undefined, date: selectedDateValue, viewerProfileId: activeProfile?.id }), [activeProfile?.id, factoryId, selectedDateValue]);
   const dashboard = trpc.quality.dashboard.useQuery(dashboardInput);
   const deleteTask = trpc.quality.deleteTask.useMutation({
     onSuccess: () => {

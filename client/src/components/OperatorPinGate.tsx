@@ -16,15 +16,26 @@ function pinIsValid(pin: string) {
 
 export function OperatorPinGate({ access }: { access: Access }) {
   const utils = trpc.useUtils();
+  const refreshProfileScopedData = async () => {
+    await Promise.all([
+      utils.quality.accessStatus.invalidate(),
+      utils.quality.dashboard.invalidate(),
+      utils.quality.listTasks.invalidate(),
+      utils.quality.pendingControlTasks.invalidate(),
+      utils.quality.controlAuthorization.invalidate(),
+      utils.quality.dailyControlResults.invalidate(),
+      utils.quality.fragilePending.invalidate(),
+    ]);
+  };
   const [selectedProfileId, setSelectedProfileId] = useState<number | null>(null);
   const [pin, setPin] = useState("");
   const [setupPins, setSetupPins] = useState<Record<string, string>>({});
   const activate = trpc.quality.activatePinProfile.useMutation({
-    onSuccess: async () => { await utils.quality.accessStatus.invalidate(); toast.success("Perfil operacional ativado."); },
+    onSuccess: async () => { await refreshProfileScopedData(); toast.success("Perfil operacional ativado."); },
     onError: (error) => toast.error(error.message),
   });
   const configure = trpc.quality.configureTeamPins.useMutation({
-    onSuccess: async () => { await utils.quality.accessStatus.invalidate(); toast.success("PINs definidos. Selecione o seu perfil para continuar."); },
+    onSuccess: async () => { await refreshProfileScopedData(); toast.success("PINs definidos. Selecione o seu perfil para continuar."); },
     onError: (error) => toast.error(error.message),
   });
 

@@ -808,6 +808,157 @@ describe("procedimentos de qualidade por fábrica", () => {
     }
   });
 
+  it("não mostra a Sabrina nem à Joana uma pendência BPHF já concluída quando existe um plano cancelado anterior", async () => {
+    const previousDate = new Date(2026, 7, 13, 11, 0, 0);
+    const cancelledTaskId = 522;
+    const completedTaskId = 523;
+    const criteria = [
+      "Estado de limpeza e conservação do fardamento",
+      "Higienização das mãos dos manipuladores",
+      "Cumprimento geral das regras de BPHF",
+    ];
+    tasks.push(
+      {
+        id: cancelledTaskId,
+        factoryId: 2,
+        status: "cancelled",
+        dueAt: previousDate,
+        completedAt: null,
+        module: "bphf",
+        area: "Plano do Dia",
+        title: "Plano BPHF F2 cancelado",
+        responsible: "Sabrina Esteves, Joana Pina",
+        assigneeProfileIds: [1, 3],
+        bphfCriteria: [...criteria, "Estado de limpeza e organização dos cacifos do pessoal e de trabalho"],
+      },
+      {
+        id: completedTaskId,
+        factoryId: 2,
+        status: "completed",
+        dueAt: previousDate,
+        completedAt: now,
+        module: "bphf",
+        area: "Plano do Dia",
+        title: "Plano BPHF F2 concluído",
+        responsible: "Sabrina Esteves, Joana Pina",
+        assigneeProfileIds: [1, 3],
+        bphfCriteria: criteria,
+      }
+    );
+    entries.push(
+      ...["Embalagem", "Limpeza", "Produção"].flatMap((area, areaIndex) =>
+        criteria.map((criterion, criterionIndex) => ({
+          id: 5220 + areaIndex * criteria.length + criterionIndex,
+          factoryId: 2,
+          module: "bphf",
+          area,
+          title: criterion,
+          result: "C",
+          completedAt: now,
+          payload: { plannedTaskId: completedTaskId, plannedDate: previousDate.toISOString() },
+        } as any))
+      )
+    );
+    try {
+      const sabrina = qualityRouter.createCaller(
+        createContext({ id: 1, name: "Sabrina Esteves", title: "Tec. Qualidade", role: "technician" })
+      );
+      const joana = qualityRouter.createCaller(
+        createContext({ id: 3, name: "Joana Pina", title: "Resp. Qualidade", role: "manager" })
+      );
+
+      const [sabrinaPending, joanaPending, sabrinaTasks, joanaTasks, dashboard] = await Promise.all([
+        sabrina.pendingControlTasks({ module: "bphf", factoryId: 2, viewerProfileId: 1 }),
+        joana.pendingControlTasks({ module: "bphf", factoryId: 2, viewerProfileId: 3 }),
+        sabrina.listTasks({ factoryId: 2, viewerProfileId: 1 }),
+        joana.listTasks({ factoryId: 2, viewerProfileId: 3 }),
+        sabrina.dashboard({ date: previousDate, viewerProfileId: 1 }),
+      ]);
+
+      [sabrinaPending, joanaPending].forEach(taskList => {
+        expect(taskList.map(task => task.id)).not.toContain(cancelledTaskId);
+        expect(taskList.map(task => task.id)).not.toContain(completedTaskId);
+      });
+      [sabrinaTasks, joanaTasks].forEach(taskList => {
+        expect(taskList.map(task => task.id)).not.toContain(cancelledTaskId);
+        expect(taskList.filter(task => task.id === completedTaskId)).toEqual(
+          expect.arrayContaining([expect.objectContaining({ status: "completed" })])
+        );
+      });
+      expect(dashboard.plannedControls).toEqual(
+        expect.arrayContaining([expect.objectContaining({ id: completedTaskId, completed: true })])
+      );
+      expect(dashboard.plannedControls.map(task => task.id)).not.toContain(cancelledTaskId);
+    } finally {
+      entries.splice(-9, 9);
+      tasks.splice(-2, 2);
+    }
+  });
+
+  it("aplica a mesma ausência de pendência a técnicas, responsáveis e perfil de consulta", async () => {
+    const previousDate = new Date(2026, 7, 13, 11, 0, 0);
+    const cancelledTaskId = 524;
+    const completedTaskId = 525;
+    tasks.push(
+      {
+        id: cancelledTaskId,
+        factoryId: 2,
+        status: "cancelled",
+        dueAt: previousDate,
+        completedAt: null,
+        module: "bphf",
+        area: "Plano do Dia",
+        title: "Plano BPHF F2 cancelado para todos os perfis",
+        responsible: "Equipa",
+        assigneeProfileIds: [1, 2, 3, 60001, 90001],
+      },
+      {
+        id: completedTaskId,
+        factoryId: 2,
+        status: "completed",
+        dueAt: previousDate,
+        completedAt: now,
+        module: "bphf",
+        area: "Plano do Dia",
+        title: "Plano BPHF F2 concluído para todos os perfis",
+        responsible: "Equipa",
+        assigneeProfileIds: [1, 2, 3, 60001, 90001],
+      }
+    );
+    const profiles = [
+      { id: 1, name: "Sabrina Esteves", title: "Tec. Qualidade", role: "technician" as const },
+      { id: 2, name: "Neuza Antunes", title: "Tec. Qualidade", role: "technician" as const },
+      { id: 3, name: "Joana Pina", title: "Resp. Qualidade", role: "manager" as const },
+      { id: 60001, name: "Gestão", title: "Consulta", role: "viewer" as const },
+      { id: 90001, name: "Sabrina Almeida Esteves", title: "Resp. Qualidade", role: "manager" as const },
+    ];
+    try {
+      const pendingByProfile = await Promise.all(
+        profiles.map(profile =>
+          qualityRouter
+            .createCaller(createContext(profile))
+            .pendingControlTasks({ module: "bphf", factoryId: 2, viewerProfileId: profile.id })
+        )
+      );
+      const cancelledAuthorization = await qualityRouter
+        .createCaller(createContext(profiles[0]))
+        .controlAuthorization({
+          module: "bphf",
+          factoryId: 2,
+          plannedTaskId: cancelledTaskId,
+          viewerProfileId: profiles[0].id,
+        });
+
+      pendingByProfile.forEach(pending => {
+        expect(pending.map(task => task.id)).not.toContain(cancelledTaskId);
+        expect(pending.map(task => task.id)).not.toContain(completedTaskId);
+      });
+      expect(cancelledAuthorization).toMatchObject({ allowed: false, taskId: null });
+    } finally {
+      tasks.splice(-2, 2);
+    }
+  });
+
   it("mantém o Controlo sensorial do dia acessível para validar produtos adicionais", async () => {
     tasks.push({ id: 514, factoryId: 1, status: "completed", dueAt: now, completedAt: now, module: "sensory", area: "Plano do Dia", title: "Plano do Dia — Controlo sensorial F1", responsible: "Sabrina Esteves", assigneeProfileIds: [1] });
     try {
