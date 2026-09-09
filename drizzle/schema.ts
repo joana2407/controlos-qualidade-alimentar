@@ -170,6 +170,7 @@ export const rdSensoryProjects = mysqlTable("rd_sensory_projects", {
   code: varchar("code", { length: 64 }).notNull().unique(),
   title: varchar("title", { length: 180 }).notNull(),
   product: varchar("product", { length: 180 }).notNull(),
+  factoryId: int("factoryId"),
   productionLot: varchar("productionLot", { length: 100 }),
   productionDate: date("productionDate"),
   intendedShelfLifeDays: int("intendedShelfLifeDays"),
@@ -193,6 +194,7 @@ export const rdSensoryProjects = mysqlTable("rd_sensory_projects", {
 }, (table) => [
   index("rd_sensory_project_status_idx").on(table.status),
   index("rd_sensory_project_product_idx").on(table.product),
+  index("rd_sensory_project_factory_idx").on(table.factoryId),
   index("rd_sensory_project_created_idx").on(table.createdAt),
 ]);
 
@@ -218,6 +220,9 @@ export const rdSensoryEvaluations = mysqlTable("rd_sensory_evaluations", {
   createdByName: varchar("createdByName", { length: 160 }).notNull(),
   createdBy: varchar("createdBy", { length: 64 }).notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  updatedByProfileId: int("updatedByProfileId"),
+  updatedByName: varchar("updatedByName", { length: 160 }),
   deletedAt: timestamp("deletedAt"),
   deletedByProfileId: int("deletedByProfileId"),
   deletedByName: varchar("deletedByName", { length: 160 }),

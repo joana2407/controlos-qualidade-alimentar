@@ -309,6 +309,20 @@
       "when": 1788865103962,
       "tag": "0044_violet_king_bedlam",
       "breakpoints": true
+    },
+    {
+      "idx": 45,
+      "version": "5",
+      "when": 1788949785874,
+      "tag": "0045_clean_solo",
+      "breakpoints": true
+    },
+    {
+      "idx": 46,
+      "version": "5",
+      "when": 1788949929541,
+      "tag": "0046_secret_power_pack",
+      "breakpoints": true
     }
   ]
 }

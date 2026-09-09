@@ -24,6 +24,10 @@ describe("interface de avaliação sensorial de I&D", () => {
     expect(page).toContain("Editar projeto de I&D");
     expect(page).toContain("Eliminar este projeto de I&amp;D?");
     expect(page).toContain("Eliminar esta avaliação?");
+    expect(page).toContain('id="rd-project-factory"');
+    expect(page).toContain("Fábrica / linha");
+    expect(page).toContain("Editar a minha avaliação");
+    expect(page).toContain("As minhas avaliações");
     expect(page).toContain("XLSX.writeFile");
   });
 
@@ -31,11 +35,12 @@ describe("interface de avaliação sensorial de I&D", () => {
     expect(routes).toContain('path={"/id-sensorial"}');
   });
 
-  it("protege no servidor anexos, edição e eliminação através do perfil de Qualidade", () => {
+  it("protege no servidor anexos, gestão sensível e edição de avaliações", () => {
     expect(router).toContain("createProject: qualityOperatorProcedure");
     expect(router).toContain("uploadEvaluationPhoto: qualityOperatorProcedure");
     expect(router).toContain("updateProject: qualityManagerProcedure");
-    expect(router).toContain("updateEvaluation: qualityManagerProcedure");
+    expect(router).toContain("updateEvaluation: qualityOperatorProcedure");
+    expect(router).toContain("evaluation.createdByProfileId === profile.id");
     expect(router).toContain("deleteProject: qualityManagerProcedure");
     expect(router).toContain("deleteEvaluation: qualityManagerProcedure");
     expect(router).toContain("deletedAt");

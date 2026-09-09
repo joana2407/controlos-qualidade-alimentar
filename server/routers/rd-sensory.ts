@@ -2,6 +2,7 @@ import { TRPCError } from "@trpc/server";
 import { and, desc, eq, isNull } from "drizzle-orm";
 import { z } from "zod";
 import {
+  factories,
   rdSensoryEvaluations,
   rdSensoryProjects,
 } from "../../drizzle/schema";
@@ -39,6 +40,7 @@ const evaluationInput = z.object({
 const projectInput = z.object({
   title: z.string().trim().min(3).max(180),
   product: z.string().trim().min(2).max(180),
+  factoryId: z.number().int().positive().nullable().optional(),
   productionLot: z.string().trim().max(100).optional(),
   productionDate: z.coerce.date().optional(),
   intendedShelfLifeDays: z.number().int().min(1).max(999).optional(),
@@ -165,6 +167,10 @@ export const rdSensoryRouter = router({
     .mutation(async ({ ctx, input }) => {
       const db = await requireDb();
       const profile = ctx.operatorProfile!;
+      if (input.factoryId) {
+        const factory = (await db.select().from(factories).where(eq(factories.id, input.factoryId)).limit(1))[0];
+        if (!factory) throw new TRPCError({ code: "BAD_REQUEST", message: "A fábrica selecionada não existe." });
+      }
       const code = `ID-${new Date().getFullYear()}-${Date.now().toString(36).toUpperCase()}`;
       const inserted = await db.insert(rdSensoryProjects).values({
         ...input,
@@ -220,19 +226,36 @@ export const rdSensoryRouter = router({
     .mutation(async ({ input }) => {
       const db = await requireDb();
       await projectDetail(db, input.projectId);
+      if (input.factoryId) {
+        const factory = (await db.select().from(factories).where(eq(factories.id, input.factoryId)).limit(1))[0];
+        if (!factory) throw new TRPCError({ code: "BAD_REQUEST", message: "A fábrica selecionada não existe." });
+      }
       const { projectId, ...changes } = input;
       await db.update(rdSensoryProjects).set(changes).where(eq(rdSensoryProjects.id, projectId));
       return projectDetail(db, projectId);
     }),
 
-  updateEvaluation: qualityManagerProcedure
+  updateEvaluation: qualityOperatorProcedure
     .input(evaluationInput.extend({ evaluationId: z.number().int() }).omit({ projectId: true }))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ ctx, input }) => {
       const db = await requireDb();
       const evaluation = (await db.select().from(rdSensoryEvaluations).where(and(eq(rdSensoryEvaluations.id, input.evaluationId), isNull(rdSensoryEvaluations.deletedAt))).limit(1))[0];
       if (!evaluation) throw new TRPCError({ code: "NOT_FOUND", message: "Avaliação de I&D não encontrada." });
+      const project = (await db.select().from(rdSensoryProjects).where(and(eq(rdSensoryProjects.id, evaluation.projectId), isNull(rdSensoryProjects.deletedAt))).limit(1))[0];
+      if (!project) throw new TRPCError({ code: "NOT_FOUND", message: "Projeto de I&D não encontrado." });
+      const profile = ctx.operatorProfile!;
+      const isAuthor = evaluation.createdByProfileId === profile.id;
+      if (profile.role !== "manager" && !isAuthor)
+        throw new TRPCError({ code: "FORBIDDEN", message: "Apenas a Técnica que registou esta avaliação pode editá-la." });
+      if (project.status === "closed" && profile.role !== "manager")
+        throw new TRPCError({ code: "FORBIDDEN", message: "Um projeto fechado só pode ser alterado pela Responsável de Qualidade." });
       const { evaluationId, ...changes } = input;
-      await db.update(rdSensoryEvaluations).set({ ...changes, weightedScore: calculateRDSensoryWeightedScore({ ...changes, projectId: evaluation.projectId }) }).where(eq(rdSensoryEvaluations.id, evaluationId));
+      await db.update(rdSensoryEvaluations).set({
+        ...changes,
+        weightedScore: calculateRDSensoryWeightedScore({ ...changes, projectId: evaluation.projectId }),
+        updatedByProfileId: profile.id,
+        updatedByName: profile.name,
+      }).where(eq(rdSensoryEvaluations.id, evaluationId));
       return projectDetail(db, evaluation.projectId);
     }),
 

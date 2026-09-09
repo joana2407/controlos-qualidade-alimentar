@@ -864,3 +864,9 @@
 - [x] Manter uma encomenda registada como requisito mínimo para concluir a tarefa planeada do dia.
 - [x] Preservar produtos, lotes, resultados, evidências e incidências separados por encomenda adicional.
 - [x] Adicionar regressões para múltiplas encomendas no mesmo dia e para a completitude mínima de Expedição.
+
+- [x] Permitir atribuir uma fábrica ao criar ou editar um projeto de Avaliação Sensorial de I&D.
+- [x] Mostrar a fábrica associada no projeto, no histórico, no detalhe e na exportação de I&D.
+- [x] Permitir à Técnica de Qualidade autora editar a sua própria avaliação sensorial de I&D.
+- [x] Manter a edição de avaliações de terceiros e o fecho de projetos restritos à Responsável de Qualidade.
+- [x] Registar autoria e atualização das avaliações I&D e adicionar regressões de fábrica e permissões de edição.
