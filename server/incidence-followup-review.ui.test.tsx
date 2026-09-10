@@ -78,6 +78,11 @@ afterEach(cleanup);
 describe("alerta de revisão após seguimento", () => {
   it("mostra o alerta junto do tratamento, com o resultado, autoria e acesso à revisão", () => {
     render(<Nonconformities />);
+    expect(
+      screen.getByRole("button", {
+        name: /Quebrável — Lamelas Zona Lavagem/i,
+      }).textContent
+    ).toMatch(/1 seguimento a rever/i);
     fireEvent.click(
       screen.getByRole("button", {
         name: /Quebrável — Lamelas Zona Lavagem/i,

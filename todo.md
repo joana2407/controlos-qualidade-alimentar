@@ -893,3 +893,7 @@
 - [x] Expor o resultado, data, técnico e observações do seguimento no alerta da incidência
 - [x] Limpar o alerta apenas quando a Responsável guardar uma revisão do tratamento da incidência
 - [x] Adicionar regressões e validar o alerta para situações históricas e futuras
+
+- [x] Reproduzir e corrigir a ausência do alerta de revisão na incidência após seguimento concluído
+- [x] Validar a incidência histórica de Quebráveis associada ao seguimento de 08/09
+- [x] Adicionar regressão para a renderização real do alerta e publicar a correção

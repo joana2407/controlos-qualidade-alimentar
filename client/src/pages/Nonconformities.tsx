@@ -1325,6 +1325,14 @@ export default function Nonconformities() {
                             <Badge className={`mt-2 ${treatmentTone(item.treatment.status)}`}>
                               {treatmentLabel(item.treatment.status)}
                             </Badge>
+                            {item.followUpReviewAlerts.length ? (
+                              <Badge className="mt-2 bg-amber-200 text-amber-950 hover:bg-amber-200">
+                                <AlertTriangle className="mr-1 h-3 w-3" />
+                                {item.followUpReviewAlerts.length === 1
+                                  ? "1 seguimento a rever"
+                                  : `${item.followUpReviewAlerts.length} seguimentos a rever`}
+                              </Badge>
+                            ) : null}
                             <p className="mt-2 text-xs text-slate-600">
                               Registada por:{" "}
                               <span className="font-medium">
