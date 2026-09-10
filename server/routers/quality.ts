@@ -156,9 +156,35 @@ const incidenceTreatmentSchema = z.object({
     .max(8)
     .optional(),
 });
+const followUpReviewAlertSchema = z.object({
+  followUpTaskId: z.number().int(),
+  title: z.string().min(1).max(180),
+  result: resultSchema,
+  notes: z.string().max(3000),
+  completedAt: z.string().datetime(),
+  registeredByProfileId: z.number().int(),
+  registeredByName: z.string().min(1).max(160),
+  registeredByTitle: z.string().min(1).max(120),
+});
 function incidenceTreatmentFromPayload(payload: Record<string, unknown>) {
   const parsed = incidenceTreatmentSchema.safeParse(payload.incidenceTreatment);
   return parsed.success ? parsed.data : { status: "pending" as const };
+}
+function followUpReviewAlertsFromPayload(payload: Record<string, unknown>) {
+  const parsed = z.array(followUpReviewAlertSchema).safeParse(
+    payload.followUpReviewAlerts
+  );
+  return parsed.success ? parsed.data : [];
+}
+function pendingFollowUpReviewAlertsFromPayload(payload: Record<string, unknown>) {
+  const acknowledgedAt =
+    typeof payload.followUpReviewAcknowledgedAt === "string" &&
+    !Number.isNaN(new Date(payload.followUpReviewAcknowledgedAt).getTime())
+      ? new Date(payload.followUpReviewAcknowledgedAt)
+      : null;
+  return followUpReviewAlertsFromPayload(payload).filter(
+    alert => !acknowledgedAt || new Date(alert.completedAt) > acknowledgedAt
+  );
 }
 function incidenceDecisionFromPayload(
   payload: Record<string, unknown>,
@@ -3963,6 +3989,46 @@ export const qualityRouter = router({
         createdBy: ctx.user!.openId,
       });
       const isFollowUpTask = Boolean(task.sourceEntryId);
+      let incidenceReviewRequired = false;
+      if (task.sourceEntryId) {
+        const sourceEntry = (
+          await db
+            .select()
+            .from(controlEntries)
+            .where(eq(controlEntries.id, task.sourceEntryId))
+            .limit(1)
+        )[0];
+        if (sourceEntry && sourceEntry.result === "NC" && !isDeletedControlEntry(sourceEntry)) {
+          const sourcePayload = entryPayload(sourceEntry);
+          const completedFollowUps = followUpReviewAlertsFromPayload(sourcePayload)
+            .filter(alert => alert.followUpTaskId !== task.id);
+          sourcePayload.followUpReviewAlerts = [
+            ...completedFollowUps,
+            {
+              followUpTaskId: task.id,
+              title: task.title,
+              result: input.result,
+              notes: input.notes,
+              completedAt: completedAt.toISOString(),
+              registeredByProfileId: ctx.operatorProfile!.id,
+              registeredByName: ctx.operatorProfile!.name,
+              registeredByTitle: ctx.operatorProfile!.title,
+            },
+          ];
+          await db
+            .update(controlEntries)
+            .set({ payload: sourcePayload })
+            .where(eq(controlEntries.id, sourceEntry.id));
+          const sourcePlannedTaskId = Number(sourcePayload.plannedTaskId);
+          await reconcilePlannedControlTaskStatus(
+            db,
+            Number.isInteger(sourcePlannedTaskId) && sourcePlannedTaskId > 0
+              ? sourcePlannedTaskId
+              : null
+          );
+          incidenceReviewRequired = true;
+        }
+      }
       const managerAlerted =
         isFollowUpTask && ctx.operatorProfile!.role !== "manager"
           ? await notifyOwner({
@@ -3975,6 +4041,7 @@ export const qualityRouter = router({
         critical: shouldCreateCriticalMetalAlert(task.module, input.result),
         incidence: input.result === "NC",
         followUpCompleted: isFollowUpTask,
+        incidenceReviewRequired,
         managerAlerted,
       };
     }),
@@ -5128,7 +5195,7 @@ export const qualityRouter = router({
         : input?.date
           ? defaultRange.end
           : new Date("9999-12-31T23:59:59.999Z");
-      const [entries, factoryRows, ncRows] = await Promise.all([
+      const [entries, factoryRows, ncRows, followUpTasks] = await Promise.all([
         db
           .select()
           .from(controlEntries)
@@ -5138,10 +5205,78 @@ export const qualityRouter = router({
           .select()
           .from(nonconformities)
           .orderBy(desc(nonconformities.detectedAt)),
+        db.select().from(controlTasks).orderBy(desc(controlTasks.completedAt)),
       ]);
       const factoryNames = new Map(
         factoryRows.map(factory => [factory.id, factory.name])
       );
+      const followUpReportsByTaskId = new Map(
+        entries
+          .map(entry => {
+            const taskId = Number(entryPayload(entry).taskId);
+            return Number.isInteger(taskId) && taskId > 0
+              ? ([taskId, entry] as const)
+              : null;
+          })
+          .filter(
+            (item): item is readonly [number, (typeof entries)[number]] =>
+              Boolean(item)
+          )
+      );
+      const followUpReviewAlertsFor = (
+        sourceEntry: (typeof entries)[number],
+        payload: Record<string, unknown>
+      ) => {
+        const persisted = pendingFollowUpReviewAlertsFromPayload(payload);
+        const persistedIds = new Set(
+          persisted.map(alert => alert.followUpTaskId)
+        );
+        const acknowledgedAt =
+          typeof payload.followUpReviewAcknowledgedAt === "string" &&
+          !Number.isNaN(
+            new Date(payload.followUpReviewAcknowledgedAt).getTime()
+          )
+            ? new Date(payload.followUpReviewAcknowledgedAt)
+            : null;
+        const historical = followUpTasks
+          .filter(
+            task =>
+              task.sourceEntryId === sourceEntry.id &&
+              task.status === "completed" &&
+              !persistedIds.has(task.id) &&
+              Boolean(task.completedAt) &&
+              (!acknowledgedAt || task.completedAt! > acknowledgedAt)
+          )
+          .map(task => {
+            const report = followUpReportsByTaskId.get(task.id);
+            return {
+              followUpTaskId: task.id,
+              title: task.title,
+              result: report?.result ?? "C",
+              notes:
+                report?.notes ??
+                "Seguimento concluído sem observações adicionais.",
+              completedAt: (
+                report?.completedAt ?? task.completedAt!
+              ).toISOString(),
+              registeredByProfileId:
+                report?.registeredByProfileId ??
+                task.completedByProfileId ??
+                0,
+              registeredByName:
+                report?.registeredByName ??
+                task.completedByName ??
+                "Utilizador não identificado",
+              registeredByTitle:
+                report?.registeredByTitle ?? task.completedByTitle ?? "",
+            };
+          });
+        return [...persisted, ...historical].sort(
+          (left, right) =>
+            new Date(right.completedAt).getTime() -
+            new Date(left.completedAt).getTime()
+        );
+      };
       return entries
         .filter(entry => {
           const payload =
@@ -5183,6 +5318,7 @@ export const qualityRouter = router({
             generatedNonconformity
           );
           const treatment = incidenceTreatmentFromPayload(payload);
+          const followUpReviewAlerts = followUpReviewAlertsFor(entry, payload);
           const occurredOn = incidenceOccurredOnFromPayload(
             payload,
             entry.completedAt
@@ -5198,6 +5334,7 @@ export const qualityRouter = router({
             treatmentStatus: treatmentDecision,
             treatmentProgress: treatment.status,
             treatment,
+            followUpReviewAlerts,
             nonconformityId: linked?.id ?? null,
             occurrenceNumber,
           };
@@ -5457,6 +5594,21 @@ export const qualityRouter = router({
         !Array.isArray(entry.payload)
           ? ({ ...entry.payload } as Record<string, unknown>)
           : {};
+      const followUpTasks = await db
+        .select()
+        .from(controlTasks)
+        .where(eq(controlTasks.sourceEntryId, entry.id));
+      const acknowledgedAt =
+        typeof payload.followUpReviewAcknowledgedAt === "string" &&
+        !Number.isNaN(new Date(payload.followUpReviewAcknowledgedAt).getTime())
+          ? new Date(payload.followUpReviewAcknowledgedAt)
+          : null;
+      const hasCompletedFollowUpRequiringReview = followUpTasks.some(
+        task =>
+          task.status === "completed" &&
+          Boolean(task.completedAt) &&
+          (!acknowledgedAt || task.completedAt! > acknowledgedAt)
+      );
       if (input.collaboratorId !== undefined) {
         if (input.collaboratorId === null) {
           delete payload.collaboratorId;
@@ -5536,6 +5688,16 @@ export const qualityRouter = router({
           .where(eq(fragileItems.id, fragileItem.id));
       }
       if (input.treatment !== undefined) {
+        if (
+          !isManager &&
+          (pendingFollowUpReviewAlertsFromPayload(payload).length ||
+            hasCompletedFollowUpRequiringReview)
+        )
+          throw new TRPCError({
+            code: "FORBIDDEN",
+            message:
+              "A revisão do tratamento após um seguimento concluído é da responsabilidade da Responsável de Qualidade.",
+          });
         const correction = input.treatment.correction?.trim() || "";
         const responsible = input.treatment.responsible?.trim() || "";
         if (
@@ -5566,6 +5728,16 @@ export const qualityRouter = router({
           updatedByProfileId: ctx.operatorProfile!.id,
           updatedByName: ctx.operatorProfile!.name,
         };
+        if (
+          pendingFollowUpReviewAlertsFromPayload(payload).length ||
+          hasCompletedFollowUpRequiringReview
+        ) {
+          payload.followUpReviewAcknowledgedAt = new Date().toISOString();
+          payload.followUpReviewAcknowledgedByProfileId =
+            ctx.operatorProfile!.id;
+          payload.followUpReviewAcknowledgedByName =
+            ctx.operatorProfile!.name;
+        }
       }
       if (input.evidencePhotos !== undefined)
         payload.evidencePhotos = input.evidencePhotos;
@@ -5773,6 +5945,8 @@ export const qualityRouter = router({
             generatedNonconformity
           );
           const treatment = incidenceTreatmentFromPayload(payload);
+          const followUpReviewAlerts =
+            pendingFollowUpReviewAlertsFromPayload(payload);
           const occurredOn = incidenceOccurredOnFromPayload(payload, entry.completedAt);
           return {
             ...entry,
@@ -5786,6 +5960,7 @@ export const qualityRouter = router({
             treatmentStatus: treatmentDecision,
             treatmentProgress: treatment.status,
             treatment,
+            followUpReviewAlerts,
             nonconformityId: linked?.id ?? null,
           };
         });

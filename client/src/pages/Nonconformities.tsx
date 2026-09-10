@@ -101,6 +101,16 @@ type OccurrenceItem = {
     mimeType: "image/jpeg" | "image/png" | "image/webp";
   }>;
   treatment: IncidenceTreatment;
+  followUpReviewAlerts: Array<{
+    followUpTaskId: number;
+    title: string;
+    result: string;
+    notes: string;
+    completedAt: string;
+    registeredByProfileId: number;
+    registeredByName: string;
+    registeredByTitle: string;
+  }>;
   fragileTreatmentReview: FragileTreatmentReview | null;
   pointKey: string;
   plannedTaskId: number | null;
@@ -509,6 +519,11 @@ export default function Nonconformities() {
               (item as any).treatment ??
                 (item.payload as any)?.incidenceTreatment
             ),
+            followUpReviewAlerts: Array.isArray(
+              (item as any).followUpReviewAlerts
+            )
+              ? (item as any).followUpReviewAlerts
+              : [],
             fragileTreatmentReview: fragileTreatmentReviewFrom(item.payload),
             plannedTaskId:
               Number((item.payload as Record<string, unknown>)?.plannedTaskId) ||
@@ -556,6 +571,7 @@ export default function Nonconformities() {
             ...emptyIncidenceTreatment(),
             status: "completed" as const,
           },
+          followUpReviewAlerts: [],
           fragileTreatmentReview: null,
           plannedTaskId: null,
           plannedDate: null,
@@ -1620,6 +1636,61 @@ export default function Nonconformities() {
                             {treatmentLabel(selected.treatment.status)}
                           </Badge>
                         </div>
+                        {selected.followUpReviewAlerts.length ? (
+                          <div
+                            className="space-y-3 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950"
+                            role="alert"
+                          >
+                            <div className="flex items-start gap-2">
+                              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                              <div>
+                                <p className="font-semibold">
+                                  Revisão do tratamento necessária
+                                </p>
+                                <p className="mt-1 text-xs text-amber-900">
+                                  Um seguimento associado foi concluído. Reveja e
+                                  guarde o tratamento desta incidência para confirmar
+                                  a decisão tomada.
+                                </p>
+                              </div>
+                            </div>
+                            <div className="space-y-2">
+                              {selected.followUpReviewAlerts.map(alert => (
+                                <div
+                                  key={alert.followUpTaskId}
+                                  className="rounded-md border border-amber-200 bg-white/70 p-2 text-xs"
+                                >
+                                  <p className="font-medium">{alert.title}</p>
+                                  <p className="mt-1">
+                                    Resultado: <strong>{alert.result}</strong> · {new Date(alert.completedAt).toLocaleString("pt-PT")}
+                                  </p>
+                                  <p>
+                                    Registado por {alert.registeredByName} · {alert.registeredByTitle}
+                                  </p>
+                                  <p className="mt-1 text-amber-900">
+                                    {alert.notes}
+                                  </p>
+                                </div>
+                              ))}
+                            </div>
+                            {canManage ? (
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                className="border-amber-300 bg-white text-amber-950 hover:bg-amber-100"
+                                onClick={() => setEditingTreatment(true)}
+                              >
+                                <Pencil className="mr-2 h-4 w-4" />
+                                Rever tratamento
+                              </Button>
+                            ) : (
+                              <p className="text-xs text-amber-900">
+                                A Responsável de Qualidade deve rever o tratamento.
+                              </p>
+                            )}
+                          </div>
+                        ) : null}
                         {editingTreatment ? (
                           <div className="space-y-4">
                             <div className="grid gap-4 sm:grid-cols-2">

@@ -878,3 +878,18 @@
 - [x] Auditar e corrigir pendências falsas de Quebráveis na Fábrica 3 após preenchimentos retroativos de 08/09 e 09/09
 - [x] Adicionar regressões para reconciliação por data operacional, tarefa e ponto de Quebráveis
 - [x] Validar a correção em todos os perfis e no painel geral antes de retomar a otimização de desempenho
+
+- [x] Auditar a ligação entre o seguimento de Quebráveis concluído em 08/09 e a pendência principal do Plano do Dia
+- [x] Corrigir o fecho da pendência principal quando o seguimento associado for concluído, preservando a distinção entre inspeção e seguimento
+- [x] Adicionar regressões por incidência, tarefa de seguimento, tarefa principal, data operacional e perfil
+- [x] Validar no painel de Quebráveis e publicar a correção
+
+- [x] Auditar todas as ligações históricas entre seguimentos de Quebráveis, incidências e pendências principais
+- [x] Corrigir a reconciliação para situações passadas e futuras sem apagar nem falsear o histórico
+- [x] Adicionar regressões para seguimentos concluídos, várias fábricas, datas e perfis
+- [x] Validar painéis, pendências e publicação da correção transversal
+
+- [x] Criar alerta persistente de revisão do tratamento na incidência de origem após a conclusão de qualquer seguimento
+- [x] Expor o resultado, data, técnico e observações do seguimento no alerta da incidência
+- [x] Limpar o alerta apenas quando a Responsável guardar uma revisão do tratamento da incidência
+- [x] Adicionar regressões e validar o alerta para situações históricas e futuras

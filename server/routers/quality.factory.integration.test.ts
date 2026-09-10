@@ -1835,6 +1835,160 @@ describe("procedimentos de qualidade por fábrica", () => {
     }
   });
 
+  it("assinala a incidência de origem para revisão quando um seguimento é concluído", async () => {
+    const task = tasks[0]!;
+    const sourceEntry = entries[0]!;
+    const originalTask = { ...task, assigneeProfileIds: [...task.assigneeProfileIds] };
+    const originalSource = { ...sourceEntry, payload: sourceEntry.payload };
+    Object.assign(task, {
+      status: "pending",
+      assigneeProfileIds: [2],
+      sourceEntryId: sourceEntry.id,
+      title: "Repetir inspeção ao ponto de Quebráveis",
+    });
+    Object.assign(sourceEntry, {
+      result: "NC",
+      payload: { plannedTaskId: 999, fragileItemId: 80 },
+    });
+    try {
+      const caller = qualityRouter.createCaller(
+        createContext({
+          id: 2,
+          name: "Neuza Antunes",
+          title: "Tec. Qualidade",
+          role: "technician",
+        })
+      );
+      await expect(
+        caller.completeTask({
+          id: task.id,
+          result: "C",
+          notes: "Ponto substituído e verificado como conforme.",
+        })
+      ).resolves.toMatchObject({
+        followUpCompleted: true,
+        incidenceReviewRequired: true,
+      });
+      expect(dbUpdates).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            payload: expect.objectContaining({
+              followUpReviewAlerts: [
+                expect.objectContaining({
+                  followUpTaskId: task.id,
+                  result: "C",
+                  registeredByName: "Neuza Antunes",
+                }),
+              ],
+            }),
+          }),
+        ])
+      );
+    } finally {
+      Object.assign(task, originalTask);
+      Object.assign(sourceEntry, originalSource);
+    }
+  });
+
+  it("mostra um alerta de revisão para seguimentos concluídos antes desta atualização", async () => {
+    const task = tasks[0]!;
+    const sourceEntry = entries[0]!;
+    const originalTask = { ...task, assigneeProfileIds: [...task.assigneeProfileIds] };
+    const originalSource = { ...sourceEntry, payload: sourceEntry.payload };
+    Object.assign(task, {
+      status: "completed",
+      completedAt: new Date("2026-08-14T11:00:00.000Z"),
+      sourceEntryId: sourceEntry.id,
+      title: "Seguimento histórico concluído",
+      completedByProfileId: 2,
+      completedByName: "Neuza Antunes",
+      completedByTitle: "Tec. Qualidade",
+    });
+    Object.assign(sourceEntry, {
+      result: "NC",
+      payload: {},
+    });
+    try {
+      const incidences = await qualityRouter
+        .createCaller(createContext())
+        .listIncidences();
+      const incidence = incidences.find(item => item.id === sourceEntry.id);
+      expect(incidence?.followUpReviewAlerts).toEqual([
+        expect.objectContaining({
+          followUpTaskId: task.id,
+          title: "Seguimento histórico concluído",
+          registeredByName: "Neuza Antunes",
+        }),
+      ]);
+    } finally {
+      Object.assign(task, originalTask);
+      delete (task as any).sourceEntryId;
+      Object.assign(sourceEntry, originalSource);
+    }
+  });
+
+  it("reserva o reconhecimento de um alerta de seguimento à Responsável de Qualidade", async () => {
+    const entry = entries[0]!;
+    const originalEntry = { ...entry, payload: entry.payload };
+    Object.assign(entry, {
+      result: "NC",
+      payload: {
+        followUpReviewAlerts: [
+          {
+            followUpTaskId: 801,
+            title: "Seguimento concluído",
+            result: "C",
+            notes: "Resultado conforme.",
+            completedAt: "2026-08-14T10:00:00.000Z",
+            registeredByProfileId: 2,
+            registeredByName: "Neuza Antunes",
+            registeredByTitle: "Tec. Qualidade",
+          },
+        ],
+      },
+    });
+    const treatment = {
+      status: "in_progress" as const,
+      correction: "Tratamento revisto.",
+      responsible: "Joana Pina",
+      dueDate: "2026-08-21",
+      completedAt: "",
+      notes: "A acompanhar.",
+      evidencePhotos: [],
+    };
+    try {
+      await expect(
+        qualityRouter
+          .createCaller(
+            createContext({
+              id: 1,
+              name: "Sabrina Esteves",
+              title: "Tec. Qualidade",
+              role: "technician",
+            })
+          )
+          .updateIncidence({ id: entry.id, treatment })
+      ).rejects.toMatchObject({ code: "FORBIDDEN" });
+      await expect(
+        qualityRouter.createCaller(createContext()).updateIncidence({
+          id: entry.id,
+          treatment,
+        })
+      ).resolves.toEqual({ success: true });
+      expect(dbUpdates).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            payload: expect.objectContaining({
+              followUpReviewAcknowledgedByName: "Joana Pina",
+            }),
+          }),
+        ])
+      );
+    } finally {
+      Object.assign(entry, originalEntry);
+    }
+  });
+
   it("aceita evidência fotográfica apenas do responsável atribuído ou da Responsável", async () => {
     const originalStatus = tasks[0]!.status;
     const originalAssignees = tasks[0]!.assigneeProfileIds;
