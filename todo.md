@@ -870,3 +870,11 @@
 - [x] Permitir à Técnica de Qualidade autora editar a sua própria avaliação sensorial de I&D.
 - [x] Manter a edição de avaliações de terceiros e o fecho de projetos restritos à Responsável de Qualidade.
 - [x] Registar autoria e atualização das avaliações I&D e adicionar regressões de fábrica e permissões de edição.
+- [ ] Medir a lentidão real da aplicação por página, consulta, volume de dados e tamanho do carregamento inicial.
+- [ ] Avaliar o impacto dos backups na base de dados e no carregamento sem eliminar arquivos de rastreabilidade.
+- [ ] Otimizar de forma segura as consultas e os componentes que constituem o principal bloqueio de desempenho.
+- [ ] Adicionar regressões de desempenho e validar os fluxos operacionais após as otimizações.
+
+- [x] Auditar e corrigir pendências falsas de Quebráveis na Fábrica 3 após preenchimentos retroativos de 08/09 e 09/09
+- [x] Adicionar regressões para reconciliação por data operacional, tarefa e ponto de Quebráveis
+- [x] Validar a correção em todos os perfis e no painel geral antes de retomar a otimização de desempenho

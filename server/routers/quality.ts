@@ -398,11 +398,38 @@ function entryPayload(entry: { payload?: unknown }) {
 }
 
 function entryOperationalDate(entry: { completedAt: Date; payload?: unknown }) {
-  const plannedDate = entryPayload(entry).plannedDate;
-  return typeof plannedDate === "string" &&
+  const payload = entryPayload(entry);
+  const plannedDate = payload.plannedDate;
+  if (
+    typeof plannedDate === "string" &&
     !Number.isNaN(new Date(plannedDate).getTime())
-    ? localDateKey(new Date(plannedDate))
-    : localDateKey(new Date(entry.completedAt));
+  )
+    return localDateKey(new Date(plannedDate));
+  const actualDate = payload.actualVerificationDate;
+  if (typeof actualDate === "string" && /^\d{4}-\d{2}-\d{2}$/.test(actualDate))
+    return actualDate;
+  return localDateKey(new Date(entry.completedAt));
+}
+
+/**
+ * Data do calendário em que o ponto de Quebráveis foi efetivamente verificado.
+ *
+ * `plannedDate` identifica a tarefa a que o registo pertence; já
+ * `actualVerificationDate` é a fonte correta para calcular o próximo ciclo,
+ * sobretudo quando o registo foi lançado retroativamente.
+ */
+function fragileInspectionOperationalDate(entry: {
+  completedAt: Date;
+  payload?: unknown;
+}) {
+  const actualDate = entryPayload(entry).actualVerificationDate;
+  if (typeof actualDate === "string" && /^\d{4}-\d{2}-\d{2}$/.test(actualDate))
+    return actualDate;
+  return entryOperationalDate(entry);
+}
+
+function fragileInspectionAt(entry: { completedAt: Date; payload?: unknown }) {
+  return lisbonCalendarDateToUtc(fragileInspectionOperationalDate(entry));
 }
 
 function isDeletedControlEntry(entry: { payload?: unknown }) {
@@ -768,12 +795,12 @@ function fragileItemsTaskComplete(
       entry =>
         entry.module === "fragile_items" &&
         entry.factoryId === task.factoryId &&
-        entryOperationalDate(entry) < dueDateKey
+        fragileInspectionOperationalDate(entry) < dueDateKey
     )
     .forEach(entry => {
       const itemId = entryPayload(entry).fragileItemId;
       if (typeof itemId === "number" && !lastInspectionsBeforePlan.has(itemId))
-        lastInspectionsBeforePlan.set(itemId, entry.completedAt);
+        lastInspectionsBeforePlan.set(itemId, fragileInspectionAt(entry));
     });
   const expectedItemIds = items
     .filter(
@@ -787,7 +814,10 @@ function fragileItemsTaskComplete(
         )
     )
     .map(item => item.id);
-  if (!expectedItemIds.length) return false;
+  // Uma tarefa pode existir no Plano do Dia sem pontos aplicáveis, por exemplo
+  // quando um ponto semanal/mensal não vence nesse dia. Essa tarefa não deve
+  // transformar um ciclo não aplicável numa pendência histórica.
+  if (!expectedItemIds.length) return true;
   const completedItemIds = new Set(
     taskEntries
       .map(entry => entryPayload(entry).fragileItemId)
@@ -899,12 +929,12 @@ export function buildPlannedCoverage(
           !isDeletedControlEntry(entry) &&
           entry.module === "fragile_items" &&
           entry.factoryId === task.factoryId &&
-          entryOperationalDate(entry) < dueDateKey
+          fragileInspectionOperationalDate(entry) < dueDateKey
       )
       .forEach(entry => {
         const itemId = entryPayload(entry).fragileItemId;
         if (typeof itemId === "number" && !lastInspectionsBeforePlan.has(itemId))
-          lastInspectionsBeforePlan.set(itemId, entry.completedAt);
+          lastInspectionsBeforePlan.set(itemId, fragileInspectionAt(entry));
       });
     return fragileCatalog
       .filter(
@@ -2271,17 +2301,18 @@ export const qualityRouter = router({
             payload && typeof payload === "object" && !Array.isArray(payload)
               ? (payload as { fragileItemId?: unknown }).fragileItemId
               : null;
-          if (typeof fragileItemId === "number") {
-            if (!lastFragileInspections.has(fragileItemId))
-              lastFragileInspections.set(fragileItemId, entry.completedAt);
+          if (typeof fragileItemId === "number" && !isDeletedControlEntry(entry)) {
+            const inspectionDate = fragileInspectionOperationalDate(entry);
+            const inspectionAt = fragileInspectionAt(entry);
+            const latestInspection = lastFragileInspections.get(fragileItemId);
+            if (!latestInspection || inspectionAt > latestInspection)
+              lastFragileInspections.set(fragileItemId, inspectionAt);
             if (
-              entry.completedAt < start &&
-              !lastFragileInspectionsBeforeDay.has(fragileItemId)
+              inspectionDate < localDateKey(operationalDate) &&
+              (!lastFragileInspectionsBeforeDay.has(fragileItemId) ||
+                inspectionAt > lastFragileInspectionsBeforeDay.get(fragileItemId)!)
             )
-              lastFragileInspectionsBeforeDay.set(
-                fragileItemId,
-                entry.completedAt
-              );
+              lastFragileInspectionsBeforeDay.set(fragileItemId, inspectionAt);
           }
         });
       const isPlannedControlCompleted = (
@@ -6506,8 +6537,12 @@ export const qualityRouter = router({
           payload && typeof payload === "object" && !Array.isArray(payload)
             ? (payload as { fragileItemId?: unknown }).fragileItemId
             : null;
-        if (typeof itemId === "number" && !lastInspections.has(itemId))
-          lastInspections.set(itemId, entry.completedAt);
+        if (typeof itemId === "number" && !isDeletedControlEntry(entry)) {
+          const inspectionAt = fragileInspectionAt(entry);
+          const latestInspection = lastInspections.get(itemId);
+          if (!latestInspection || inspectionAt > latestInspection)
+            lastInspections.set(itemId, inspectionAt);
+        }
       });
       const now = new Date();
       return items
@@ -6568,11 +6603,12 @@ export const qualityRouter = router({
           payload && typeof payload === "object" && !Array.isArray(payload)
             ? (payload as { fragileItemId?: unknown }).fragileItemId
             : null;
-        if (
-          typeof fragileItemId === "number" &&
-          !lastInspections.has(fragileItemId)
-        )
-          lastInspections.set(fragileItemId, entry.completedAt);
+        if (typeof fragileItemId === "number" && !isDeletedControlEntry(entry)) {
+          const inspectionAt = fragileInspectionAt(entry);
+          const latestInspection = lastInspections.get(fragileItemId);
+          if (!latestInspection || inspectionAt > latestInspection)
+            lastInspections.set(fragileItemId, inspectionAt);
+        }
       });
       const referenceDate = input?.referenceDate ?? new Date();
       return items

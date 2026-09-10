@@ -162,6 +162,41 @@ describe("procedimentos de qualidade por fábrica", () => {
     expect(entryMatchesPlannedTask(deletedEntry, task)).toBe(false);
   });
 
+  it("reconcilia uma inspeção de Quebráveis retroativa mesmo quando o registo legado só tem actualVerificationDate", () => {
+    const task = {
+      id: 1500004,
+      module: "fragile_items" as const,
+      factoryId: 3,
+      dueAt: new Date("2026-09-08T11:00:00.000Z"),
+      plannedCoverage: ['["fragile",80]'],
+    };
+    const entry = {
+      module: "fragile_items",
+      factoryId: 3,
+      completedAt: new Date("2026-09-10T10:00:00.000Z"),
+      area: "Produção+lavagem SG",
+      payload: {
+        fragileItemId: 80,
+        actualVerificationDate: "2026-09-08",
+      },
+    };
+
+    expect(entryMatchesPlannedTask(entry, task)).toBe(true);
+    expect(
+      isHistoricalPlanTaskSatisfied(
+        task,
+        [entry],
+        [],
+        [],
+        [],
+        [],
+        [],
+        [],
+        [{ id: 80, factoryId: 3, periodicity: "S", status: "active" }],
+      ),
+    ).toBe(true);
+  });
+
   it("mantém a completitude estável pela cobertura planeada em todos os tipos de controlo", () => {
     const slot = (type: string, ...parts: Array<string | number>) =>
       JSON.stringify([type, ...parts]);
@@ -1889,6 +1924,37 @@ describe("procedimentos de qualidade por fábrica", () => {
     expect(weeklyPoint?.nextInspectionAt.toISOString().slice(0, 10)).toBe("2026-08-14");
   });
 
+  it("calcula o próximo ciclo pela data efetiva de uma inspeção retroativa, e não pela hora de gravação", async () => {
+    const retroactivePoint = {
+      id: 700,
+      factoryId: 1,
+      periodicity: "S",
+      location: "Produção T",
+      name: "Ponto retroativo",
+      status: "active",
+    };
+    const retroactiveEntry = {
+      id: 701,
+      factoryId: 1,
+      module: "fragile_items",
+      area: "Produção T",
+      result: "C",
+      completedAt: new Date("2026-08-17T10:00:00.000Z"),
+      payload: { fragileItemId: 700, actualVerificationDate: "2026-08-14" },
+    };
+    fragile.push(retroactivePoint);
+    entries.push(retroactiveEntry);
+    try {
+      const caller = qualityRouter.createCaller(createContext());
+      const point = (await caller.listFragileItems({ factoryId: 1 })).find((item) => item.id === 700);
+      expect(point?.lastInspectionAt?.toISOString().slice(0, 10)).toBe("2026-08-14");
+      expect(point?.nextInspectionAt.toISOString().slice(0, 10)).toBe("2026-08-21");
+    } finally {
+      entries.pop();
+      fragile.pop();
+    }
+  });
+
   it("calcula as pendências de quebráveis a partir da última inspeção de cada ponto", async () => {
     const caller = qualityRouter.createCaller(createContext());
     const factoryOne = await caller.fragilePending({ factoryId: 1 });
@@ -1929,6 +1995,75 @@ describe("procedimentos de qualidade por fábrica", () => {
     const pendingTasks = await caller.pendingControlTasks({ module: "metal_detectors", factoryId: 1 });
 
     expect(pendingTasks).toEqual([expect.objectContaining({ id: 99, factoryId: 1 })]);
+  });
+
+  it("remove uma pendência histórica de Quebráveis quando o ponto foi registado retroativamente na data prevista", async () => {
+    const task = {
+      id: 1001,
+      factoryId: 3,
+      status: "pending",
+      dueAt: new Date(2026, 7, 13, 10, 0, 0),
+      completedAt: null,
+      module: "fragile_items" as const,
+      area: "Plano do Dia",
+      title: "Plano do Dia — Quebráveis F3",
+      responsible: "Sabrina Esteves, Neuza Antunes",
+      assigneeProfileIds: [1, 2],
+      plannedCoverage: ['["fragile",700]'],
+    };
+    const point = {
+      id: 700,
+      factoryId: 3,
+      periodicity: "S",
+      location: "Produção SG",
+      name: "Ponto retroativo F3",
+      status: "active",
+    };
+    const entry = {
+      id: 1002,
+      factoryId: 3,
+      module: "fragile_items",
+      area: "Produção SG",
+      result: "C",
+      completedAt: new Date(2026, 7, 14, 10, 0, 0),
+      payload: { fragileItemId: 700, actualVerificationDate: "2026-08-13" },
+    };
+    tasks.push(task);
+    fragile.push(point);
+    entries.push(entry);
+    try {
+      const caller = qualityRouter.createCaller(createContext({ id: 1, name: "Sabrina Esteves", title: "Tec. Qualidade", role: "technician" }));
+      const pendingTasks = await caller.pendingControlTasks({ module: "fragile_items", factoryId: 3 });
+      expect(pendingTasks.some((pending) => pending.id === task.id)).toBe(false);
+    } finally {
+      entries.pop();
+      fragile.pop();
+      tasks.pop();
+    }
+  });
+
+  it("não apresenta como pendente uma tarefa de Quebráveis sem pontos aplicáveis nesse dia", async () => {
+    const task = {
+      id: 1003,
+      factoryId: 3,
+      status: "pending",
+      dueAt: new Date(2026, 7, 13, 10, 0, 0),
+      completedAt: null,
+      module: "fragile_items" as const,
+      area: "Plano do Dia",
+      title: "Plano do Dia — Quebráveis sem pontos vencidos",
+      responsible: "Sabrina Esteves",
+      assigneeProfileIds: [1],
+      plannedCoverage: [],
+    };
+    tasks.push(task);
+    try {
+      const caller = qualityRouter.createCaller(createContext({ id: 1, name: "Sabrina Esteves", title: "Tec. Qualidade", role: "technician" }));
+      const pendingTasks = await caller.pendingControlTasks({ module: "fragile_items", factoryId: 3 });
+      expect(pendingTasks.some((pending) => pending.id === task.id)).toBe(false);
+    } finally {
+      tasks.pop();
+    }
   });
 
   it("mantém BPHF pendente quando falta um critério numa área e só fecha com todos os critérios", async () => {
