@@ -900,3 +900,6 @@
 
 - [x] Adicionar ícone vermelho de aviso junto ao texto da incidência quando existir revisão de tratamento pendente
 - [x] Validar que o ícone aparece na lista e no detalhe da incidência de forma acessível
+
+- [x] Adicionar ao filtro de tratamento a opção para mostrar apenas incidências com revisão pendente após seguimento concluído
+- [x] Validar a filtragem e publicar a alteração

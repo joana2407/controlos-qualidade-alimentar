@@ -381,7 +381,7 @@ export default function Nonconformities() {
   const [similarFilter, setSimilarFilter] =
     useState<SimilarIncidenceFilter | null>(null);
   const [treatmentFilter, setTreatmentFilter] = useState<
-    IncidenceTreatment["status"] | "all"
+    IncidenceTreatment["status"] | "all" | "follow_up_review_pending"
   >("all");
   const [openNcOnly, setOpenNcOnly] = useState(false);
   const [creatingFollowUpTask, setCreatingFollowUpTask] = useState(false);
@@ -460,6 +460,9 @@ export default function Nonconformities() {
             const treatment = incidenceTreatmentFrom(
               (item as any).treatment ?? payload.incidenceTreatment
             );
+            const hasFollowUpReviewPending = Array.isArray(
+              (item as any).followUpReviewAlerts
+            ) && (item as any).followUpReviewAlerts.length > 0;
             const matchesSameCollaborator = similarFilter?.collaboratorId
               ? Number(payload.collaboratorId) === similarFilter.collaboratorId
               : similarFilter?.pointKey
@@ -479,7 +482,9 @@ export default function Nonconformities() {
             return (
               matchesSimilar &&
               (treatmentFilter === "all" ||
-                treatment.status === treatmentFilter)
+                (treatmentFilter === "follow_up_review_pending"
+                  ? hasFollowUpReviewPending
+                  : treatment.status === treatmentFilter))
             );
           })
           .map(item => ({
@@ -916,7 +921,10 @@ export default function Nonconformities() {
               value={treatmentFilter}
               onValueChange={value => {
                 setTreatmentFilter(
-                  value as IncidenceTreatment["status"] | "all"
+                  value as
+                    | IncidenceTreatment["status"]
+                    | "all"
+                    | "follow_up_review_pending"
                 );
                 setSelectedKey("");
               }}
@@ -934,6 +942,9 @@ export default function Nonconformities() {
                 <SelectItem value="pending">Pendentes</SelectItem>
                 <SelectItem value="in_progress">Em curso</SelectItem>
                 <SelectItem value="completed">Concluídos</SelectItem>
+                <SelectItem value="follow_up_review_pending">
+                  Revisão de tratamento pendente
+                </SelectItem>
               </SelectContent>
             </Select>
           </CardHeader>

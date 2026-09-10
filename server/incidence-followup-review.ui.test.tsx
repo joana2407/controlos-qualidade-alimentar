@@ -56,6 +56,24 @@ vi.mock("@/lib/trpc", () => ({
               ],
               payload: { incidenceTreatment: { status: "completed" } },
             },
+            {
+              id: 81,
+              title: "Incidência sem revisão pendente",
+              notes: "Sem seguimentos por rever.",
+              area: "Produção+lavagem SG",
+              factoryId: 3,
+              module: "fragile_items",
+              completedAt: new Date("2026-08-29T13:24:22.000Z"),
+              occurredOn: "2026-08-29",
+              generatedNonconformity: false,
+              nonconformityId: null,
+              occurrenceNumber: null,
+              registeredByProfileId: 3,
+              registeredByName: "Joana Pina",
+              registeredByTitle: "Resp. Qualidade",
+              followUpReviewAlerts: [],
+              payload: { incidenceTreatment: { status: "in_progress" } },
+            },
           ],
         }),
       },
@@ -102,5 +120,30 @@ describe("alerta de revisão após seguimento", () => {
     expect(alert.textContent).toMatch(/Lamelas substituídas/i);
     expect(alert.textContent).toMatch(/Joana Pina/i);
     expect(screen.getByRole("button", { name: "Rever tratamento" })).toBeTruthy();
+  });
+
+  it("filtra a lista para mostrar apenas as incidências com revisão de tratamento pendente", () => {
+    render(<Nonconformities />);
+    fireEvent.click(
+      screen.getByRole("combobox", {
+        name: "Filtrar incidências por estado de tratamento",
+      })
+    );
+    fireEvent.click(
+      screen.getByRole("option", {
+        name: "Revisão de tratamento pendente",
+      })
+    );
+
+    expect(
+      screen.getByRole("button", {
+        name: /Quebrável — Lamelas Zona Lavagem/i,
+      })
+    ).toBeTruthy();
+    expect(
+      screen.queryByRole("button", {
+        name: /Incidência sem revisão pendente/i,
+      })
+    ).toBeNull();
   });
 });
