@@ -6,21 +6,28 @@ import React from "react";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { ThemeProvider } from "./contexts/ThemeContext";
 import DashboardLayout from "./components/DashboardLayout";
-import Controls from "./pages/Controls";
-import ModuleControl from "./pages/ModuleControl";
-import Nonconformities from "./pages/Nonconformities";
-import QualityDashboard from "./pages/QualityDashboard";
-import Reports from "./pages/Reports";
-import Configuration from "./pages/Configuration";
+const Controls = React.lazy(() => import("./pages/Controls"));
+const ModuleControl = React.lazy(() => import("./pages/ModuleControl"));
+const Nonconformities = React.lazy(() => import("./pages/Nonconformities"));
+const QualityDashboard = React.lazy(() => import("./pages/QualityDashboard"));
+const Reports = React.lazy(() => import("./pages/Reports"));
+const Configuration = React.lazy(() => import("./pages/Configuration"));
 import PlatformOverview from "./pages/PlatformOverview";
-import DailyBackups from "./pages/DailyBackups";
-import OperationalAnalytics from "./pages/OperationalAnalytics";
-import RDSensory from "./pages/RDSensory";
+const DailyBackups = React.lazy(() => import("./pages/DailyBackups"));
+const OperationalAnalytics = React.lazy(() => import("./pages/OperationalAnalytics"));
+const RDSensory = React.lazy(() => import("./pages/RDSensory"));
 
 function Router() {
   // make sure to consider if you need authentication for certain routes
   return (
-    <Switch>
+    <React.Suspense
+      fallback={
+        <div className="flex min-h-[40vh] items-center justify-center text-sm text-muted-foreground">
+          A carregar o painel…
+        </div>
+      }
+    >
+      <Switch>
       <Route path={"/"} component={QualityDashboard} />
       <Route path={"/qualicontrol"} component={QualityDashboard} />
       <Route path={"/plataforma"} component={PlatformOverview} />
@@ -35,9 +42,10 @@ function Router() {
       <Route path={"/backups-diarios"} component={DailyBackups} />
       <Route path={"/configuracao"} component={Configuration} />
       <Route path={"/404"} component={NotFound} />
-      {/* Final fallback route */}
-      <Route component={NotFound} />
-    </Switch>
+        {/* Final fallback route */}
+        <Route component={NotFound} />
+      </Switch>
+    </React.Suspense>
   );
 }
 

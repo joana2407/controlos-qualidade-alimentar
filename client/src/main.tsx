@@ -43,7 +43,18 @@ if (typeof window !== "undefined") {
   }
 }
 
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      // Os painéis operacionais invalidam explicitamente estas queries após
+      // mutações; entre navegações não é necessário repetir leituras estáveis.
+      staleTime: 30_000,
+      gcTime: 10 * 60_000,
+      refetchOnWindowFocus: false,
+      retry: 1,
+    },
+  },
+});
 
 const redirectToLoginIfUnauthorized = (error: unknown) => {
   if (!(error instanceof TRPCClientError)) return;
