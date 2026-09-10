@@ -1301,6 +1301,17 @@ export default function Nonconformities() {
                           <p className="font-medium text-slate-900">
                             {item.title}
                           </p>
+                          {item.type === "incidence" &&
+                          item.followUpReviewAlerts.length ? (
+                            <span
+                              role="img"
+                              aria-label="Aviso: revisão do tratamento pendente"
+                              title="Revisão do tratamento pendente"
+                              className="inline-flex text-red-600"
+                            >
+                              <AlertTriangle className="h-4 w-4" />
+                            </span>
+                          ) : null}
                           <Badge
                             className={
                               item.type === "incidence"
@@ -1650,7 +1661,7 @@ export default function Nonconformities() {
                             role="alert"
                           >
                             <div className="flex items-start gap-2">
-                              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-red-600" />
                               <div>
                                 <p className="font-semibold">
                                   Revisão do tratamento necessária

@@ -897,3 +897,6 @@
 - [x] Reproduzir e corrigir a ausência do alerta de revisão na incidência após seguimento concluído
 - [x] Validar a incidência histórica de Quebráveis associada ao seguimento de 08/09
 - [x] Adicionar regressão para a renderização real do alerta e publicar a correção
+
+- [x] Adicionar ícone vermelho de aviso junto ao texto da incidência quando existir revisão de tratamento pendente
+- [x] Validar que o ícone aparece na lista e no detalhe da incidência de forma acessível

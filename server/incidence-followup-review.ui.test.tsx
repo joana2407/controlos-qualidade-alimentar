@@ -83,6 +83,11 @@ describe("alerta de revisão após seguimento", () => {
         name: /Quebrável — Lamelas Zona Lavagem/i,
       }).textContent
     ).toMatch(/1 seguimento a rever/i);
+    expect(
+      screen.getByRole("img", {
+        name: "Aviso: revisão do tratamento pendente",
+      })
+    ).toBeTruthy();
     fireEvent.click(
       screen.getByRole("button", {
         name: /Quebrável — Lamelas Zona Lavagem/i,
@@ -91,6 +96,9 @@ describe("alerta de revisão após seguimento", () => {
 
     const alert = screen.getByRole("alert");
     expect(alert.textContent).toMatch(/Revisão do tratamento necessária/i);
+    expect(
+      alert.querySelector("svg")?.className.baseVal
+    ).toMatch(/text-red-600/);
     expect(alert.textContent).toMatch(/Lamelas substituídas/i);
     expect(alert.textContent).toMatch(/Joana Pina/i);
     expect(screen.getByRole("button", { name: "Rever tratamento" })).toBeTruthy();
