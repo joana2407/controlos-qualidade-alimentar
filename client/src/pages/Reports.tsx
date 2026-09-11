@@ -1076,6 +1076,11 @@ export default function Reports() {
       area: entry.area ?? "",
       result: entry.result ?? "C",
       notes: entry.notes ?? "",
+      collaboratorId:
+        Number.isInteger(Number(entry.payload?.collaboratorId)) &&
+        Number(entry.payload?.collaboratorId) > 0
+          ? Number(entry.payload?.collaboratorId)
+          : null,
     });
   const submitEdit = (event: React.FormEvent) => {
     event.preventDefault();
@@ -1086,6 +1091,10 @@ export default function Reports() {
       area: editingEntry.area,
       result: editingEntry.result,
       notes: editingEntry.notes,
+      collaboratorId:
+        editingEntry.module === "bphf"
+          ? editingEntry.collaboratorId ?? null
+          : undefined,
     });
   };
   const resetFilters = () => {
@@ -2145,6 +2154,50 @@ export default function Reports() {
                   }
                 />
               </div>
+              {editingEntry?.module === "bphf" && (
+                <div className="space-y-2">
+                  <label
+                    className="text-sm font-medium"
+                    htmlFor="report-entry-bphf-collaborator"
+                  >
+                    Colaborador inspecionado
+                  </label>
+                  <Select
+                    value={String(editingEntry?.collaboratorId ?? "none")}
+                    onValueChange={value =>
+                      setEditingEntry((entry: any) =>
+                        entry
+                          ? {
+                              ...entry,
+                              collaboratorId:
+                                value === "none" ? null : Number(value),
+                            }
+                          : entry
+                      )
+                    }
+                  >
+                    <SelectTrigger
+                      id="report-entry-bphf-collaborator"
+                      aria-label="Colaborador inspecionado"
+                    >
+                      <SelectValue placeholder="Selecione o colaborador" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">
+                        Sem colaborador / não aplicável
+                      </SelectItem>
+                      {(bphfEmployees.data ?? []).map(collaborator => (
+                        <SelectItem
+                          key={collaborator.id}
+                          value={String(collaborator.id)}
+                        >
+                          {collaborator.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-2">
                   <label className="text-sm font-medium">Área</label>

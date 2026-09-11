@@ -439,6 +439,10 @@ function DailyControlResults({
   };
   const { activeProfile, canManage } = useQualityAccess();
   const { factories } = useControlFactory();
+  const bphfEmployees = trpc.quality.listBphfInspectionEmployees.useQuery(
+    undefined,
+    { enabled: isBphf }
+  );
   const utils = trpc.useUtils();
   const [selectedEntry, setSelectedEntry] = useState<DailyControlEntry | null>(
     null
@@ -462,6 +466,7 @@ function DailyControlResults({
         productName: string;
         lot: string;
         validity: string;
+        collaboratorId: number | null;
       })
     | null
   >(null);
@@ -492,6 +497,11 @@ function DailyControlResults({
         typeof entry.payload?.validity === "string"
           ? entry.payload.validity
           : "",
+      collaboratorId:
+        Number.isInteger(Number(entry.payload?.collaboratorId)) &&
+        Number(entry.payload?.collaboratorId) > 0
+          ? Number(entry.payload?.collaboratorId)
+          : null,
     });
   };
   const handledFocusedEntry = useRef<string | null>(null);
@@ -612,6 +622,7 @@ function DailyControlResults({
         : undefined,
       lot: supportsProductDetails ? editingEntry.lot : undefined,
       validity: supportsProductDetails ? editingEntry.validity : undefined,
+      collaboratorId: isBphf ? editingEntry.collaboratorId : undefined,
       dispatchProductChecks: isDispatch
         ? dispatchReferences.map(reference =>
             reference.verificationStatus === "not_verified"
@@ -1237,6 +1248,48 @@ function DailyControlResults({
                 />
               </div>
             </div>
+            {isBphf && (
+              <div className="space-y-2">
+                <Label htmlFor="daily-entry-bphf-collaborator">
+                  Colaborador inspecionado
+                </Label>
+                <Select
+                  value={String(editingEntry?.collaboratorId ?? "none")}
+                  onValueChange={value =>
+                    setEditingEntry(current =>
+                      current
+                        ? {
+                            ...current,
+                            collaboratorId:
+                              value === "none" ? null : Number(value),
+                          }
+                        : current
+                    )
+                  }
+                >
+                  <SelectTrigger
+                    id="daily-entry-bphf-collaborator"
+                    aria-label="Colaborador inspecionado"
+                  >
+                    <SelectValue placeholder="Selecione o colaborador" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Sem colaborador / não aplicável</SelectItem>
+                    {(bphfEmployees.data ?? []).map(collaborator => (
+                      <SelectItem
+                        key={collaborator.id}
+                        value={String(collaborator.id)}
+                      >
+                        {collaborator.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-slate-500">
+                  Selecione o colaborador observado neste registo BPHF. A alteração ficará no histórico.
+                </p>
+              </div>
+            )}
             {supportsProductDetails && (
               <div className="grid gap-4 sm:grid-cols-3">
                 <div className="space-y-2 sm:col-span-3">

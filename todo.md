@@ -903,3 +903,7 @@
 
 - [x] Adicionar ao filtro de tratamento a opção para mostrar apenas incidências com revisão pendente após seguimento concluído
 - [x] Validar a filtragem e publicar a alteração
+
+- [x] Auditar o modelo e o formulário de edição dos registos BPHF para identificar o campo de colaborador inspecionado
+- [x] Adicionar seleção e gravação do colaborador no painel de edição BPHF, mantendo rastreabilidade
+- [x] Adicionar regressões e validar permissões, histórico e apresentação do colaborador editado

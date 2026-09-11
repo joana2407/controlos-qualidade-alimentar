@@ -4058,6 +4058,7 @@ export const qualityRouter = router({
         productName: z.string().trim().max(180).optional(),
         lot: z.string().trim().max(120).optional(),
         validity: z.string().trim().max(40).optional(),
+        collaboratorId: z.number().int().positive().nullable().optional(),
         dispatchProductChecks: z.array(dispatchProductCheckSchema).min(1).max(30).optional(),
         dispatchVehicleTemperature: z.number().min(-100).max(100).optional(),
         dispatchVehicleObservations: z.string().trim().max(3000).optional(),
@@ -4099,6 +4100,47 @@ export const qualityRouter = router({
         : [];
       const editedAt = new Date().toISOString();
       const nextPayload = { ...payload };
+      const previousCollaboratorId = Number(payload.collaboratorId);
+      const previousCollaboratorName =
+        typeof payload.collaboratorName === "string"
+          ? payload.collaboratorName
+          : null;
+      let nextCollaboratorId =
+        Number.isInteger(previousCollaboratorId) && previousCollaboratorId > 0
+          ? previousCollaboratorId
+          : null;
+      let nextCollaboratorName = previousCollaboratorName;
+      if (input.collaboratorId !== undefined) {
+        if (entry.module !== "bphf")
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message:
+              "O colaborador inspecionado só pode ser editado em registos BPHF.",
+          });
+        if (input.collaboratorId === null) {
+          delete nextPayload.collaboratorId;
+          delete nextPayload.collaboratorName;
+          nextCollaboratorId = null;
+          nextCollaboratorName = null;
+        } else {
+          const collaborator = (
+            await db
+              .select()
+              .from(bphfInspectionEmployees)
+              .where(eq(bphfInspectionEmployees.id, input.collaboratorId))
+              .limit(1)
+          )[0];
+          if (!collaborator)
+            throw new TRPCError({
+              code: "NOT_FOUND",
+              message: "O colaborador selecionado já não existe no catálogo BPHF.",
+            });
+          nextPayload.collaboratorId = collaborator.id;
+          nextPayload.collaboratorName = collaborator.name;
+          nextCollaboratorId = collaborator.id;
+          nextCollaboratorName = collaborator.name;
+        }
+      }
       if (input.productName !== undefined) {
         if (input.productName.trim())
           nextPayload.product = input.productName.trim();
@@ -4274,6 +4316,18 @@ export const qualityRouter = router({
                 result: effectiveResult,
                 incidenceResolved:
                   entry.result === "NC" && effectiveResult === "C",
+                ...(input.collaboratorId !== undefined
+                  ? {
+                      previousCollaboratorId:
+                        Number.isInteger(previousCollaboratorId) &&
+                        previousCollaboratorId > 0
+                          ? previousCollaboratorId
+                          : null,
+                      previousCollaboratorName,
+                      collaboratorId: nextCollaboratorId,
+                      collaboratorName: nextCollaboratorName,
+                    }
+                  : {}),
               },
             ],
           },
