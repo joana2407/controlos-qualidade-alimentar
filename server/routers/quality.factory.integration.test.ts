@@ -1689,6 +1689,73 @@ describe("procedimentos de qualidade por fábrica", () => {
     }
   });
 
+  it("sincroniza todos os dados de Quebráveis quando o estado passa de Danificado para Íntegro", async () => {
+    const sourceEntry = entries[0]!;
+    const originalSourceEntry = { ...sourceEntry };
+    Object.assign(sourceEntry, {
+      module: "fragile_items",
+      factoryId: 3,
+      area: "Z. PREPARAÇÃO DE MASSAS",
+      result: "NC",
+      registeredByProfileId: 3,
+      registeredByName: "Joana Pina",
+      payload: {
+        fragileItemId: 254,
+        state: "Danificado",
+        containmentAction: "Plástico a descolar-se.",
+        periodicity: "S",
+        referenceImageUrl: "/manus-storage/frágil.jpg",
+        evidencePhotos: [
+          {
+            key: "fragile-evidence/254/dano.jpg",
+            url: "/manus-storage/dano.jpg",
+            fileName: "dano.jpg",
+            mimeType: "image/jpeg",
+          },
+        ],
+      },
+    });
+    try {
+      await expect(
+        qualityRouter.createCaller(createContext()).updateControlEntry({
+          id: sourceEntry.id,
+          title: "Quebrável — Painel de Comandos Doseador Água",
+          area: "Z. PREPARAÇÃO DE MASSAS",
+          factoryId: 3,
+          result: "C",
+          notes: "Verificação revista e conforme.",
+          fragileState: "Íntegro",
+          fragileContainmentAction: "",
+          fragilePeriodicity: "S",
+          fragileEvidencePhotos: [],
+        })
+      ).resolves.toMatchObject({ success: true, incidenciaResolvida: true });
+      expect(dbUpdates).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            result: "C",
+            payload: expect.objectContaining({
+              fragileItemId: 254,
+              state: "Íntegro",
+              periodicity: "S",
+              evidencePhotos: [],
+            }),
+          }),
+        ])
+      );
+      const updatedEntry = dbUpdates.find(
+        update =>
+          update.result === "C" &&
+          update.payload &&
+          typeof update.payload === "object" &&
+          (update.payload as Record<string, unknown>).fragileItemId === 254
+      );
+      expect(updatedEntry?.payload).not.toHaveProperty("containmentAction");
+    } finally {
+      Object.assign(sourceEntry, originalSourceEntry);
+    }
+  });
+
   it("cancela o seguimento de Quebráveis quando a verificação de origem é corrigida para Conforme", async () => {
     const sourceEntry = entries[0]!;
     const originalSourceEntry = { ...sourceEntry };

@@ -240,6 +240,9 @@ function dailyResultContext(entry: DailyControlEntry) {
   textValue("validity", "Validade");
   textValue("collaboratorName", "Colaborador");
   textValue("state", "Estado");
+  textValue("containmentAction", "Ação de contenção");
+  textValue("periodicity", "Periodicidade");
+  textValue("referenceImageUrl", "Imagem de referência");
   textValue("orderNumber", "Encomenda");
   textValue("customer", "Cliente");
   const verificationSummary = payload.verificationSummary;
@@ -328,6 +331,33 @@ function dispatchVehicleFromPayload(payload: Record<string, unknown>) {
   };
 }
 
+function verificationEvidencePhotosFromPayload(
+  payload: Record<string, unknown>
+): VerificationEvidencePhoto[] {
+  if (!Array.isArray(payload.evidencePhotos)) return [];
+  return payload.evidencePhotos.flatMap(photo => {
+    if (!photo || typeof photo !== "object" || Array.isArray(photo)) return [];
+    const record = photo as Record<string, unknown>;
+    if (
+      typeof record.key !== "string" ||
+      typeof record.url !== "string" ||
+      typeof record.fileName !== "string" ||
+      !["image/jpeg", "image/png", "image/webp"].includes(
+        String(record.mimeType)
+      )
+    )
+      return [];
+    return [
+      {
+        key: record.key,
+        url: record.url,
+        fileName: record.fileName,
+        mimeType: record.mimeType as VerificationEvidencePhoto["mimeType"],
+      },
+    ];
+  });
+}
+
 function internalAnalysisSampleSummary(entry: DailyControlEntry) {
   const samples = Array.isArray(entry.payload?.samples)
     ? entry.payload.samples
@@ -379,6 +409,7 @@ function DailyControlResults({
   const isBphf = module === "bphf";
   const isInternalAnalysis = module === "internal_analysis";
   const isDispatch = module === "dispatch_control";
+  const isFragile = module === "fragile_items";
   const [productFilter, setProductFilter] = useState("");
   const [lotFilter, setLotFilter] = useState("");
   const [criterionFilter, setCriterionFilter] = useState("all");
@@ -467,6 +498,11 @@ function DailyControlResults({
         lot: string;
         validity: string;
         collaboratorId: number | null;
+        fragileState: "Íntegro" | "Danificado" | "Em falta";
+        fragileContainmentAction: string;
+        fragilePeriodicity: "D" | "S" | "Q" | "M";
+        fragileReferenceImageUrl: string | null;
+        fragileEvidencePhotos: VerificationEvidencePhoto[];
       })
     | null
   >(null);
@@ -502,6 +538,26 @@ function DailyControlResults({
         Number(entry.payload?.collaboratorId) > 0
           ? Number(entry.payload?.collaboratorId)
           : null,
+      fragileState:
+        entry.payload?.state === "Danificado" || entry.payload?.state === "Em falta"
+          ? entry.payload.state
+          : "Íntegro",
+      fragileContainmentAction:
+        typeof entry.payload?.containmentAction === "string"
+          ? entry.payload.containmentAction
+          : entry.notes ?? "",
+      fragilePeriodicity:
+        entry.payload?.periodicity === "D" ||
+        entry.payload?.periodicity === "S" ||
+        entry.payload?.periodicity === "Q" ||
+        entry.payload?.periodicity === "M"
+          ? entry.payload.periodicity
+          : "M",
+      fragileReferenceImageUrl:
+        typeof entry.payload?.referenceImageUrl === "string"
+          ? entry.payload.referenceImageUrl
+          : null,
+      fragileEvidencePhotos: verificationEvidencePhotosFromPayload(entry.payload),
     });
   };
   const handledFocusedEntry = useRef<string | null>(null);
@@ -534,6 +590,70 @@ function DailyControlResults({
     },
     onError: error => toast.error(error.message),
   });
+  const uploadFragileEditEvidence =
+    trpc.quality.uploadVerificationEvidence.useMutation({
+      onError: error => toast.error(error.message),
+    });
+  const uploadFragileEditPhoto = async (file?: File) => {
+    if (!file || !editingEntry || !isFragile) return;
+    const photos = editingEntry.fragileEvidencePhotos;
+    if (photos.length >= 8)
+      return toast.error("Pode anexar no máximo 8 fotografias.");
+    if (!file.type.match(/^image\/(jpeg|png|webp)$/))
+      return toast.error("Use uma imagem JPG, PNG ou WEBP.");
+    if (file.size > 4_500_000)
+      return toast.error("A fotografia deve ter no máximo 4,5 MB.");
+    try {
+      const dataUrl = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result));
+        reader.onerror = () => reject(new Error("Não foi possível ler a fotografia."));
+        reader.readAsDataURL(file);
+      });
+      uploadFragileEditEvidence.mutate(
+        {
+          module: "fragile_items",
+          factoryId: editingEntry.factoryId ?? null,
+          fileName: file.name,
+          mimeType: file.type as VerificationEvidencePhoto["mimeType"],
+          dataUrl,
+        },
+        {
+          onSuccess: photo => {
+            setEditingEntry(current =>
+              current
+                ? {
+                    ...current,
+                    fragileEvidencePhotos: [
+                      ...current.fragileEvidencePhotos,
+                      photo,
+                    ],
+                  }
+                : current
+            );
+            toast.success("Fotografia da verificação adicionada.");
+          },
+        }
+      );
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Não foi possível carregar a fotografia."
+      );
+    }
+  };
+  const removeFragileEditPhoto = (key: string) =>
+    setEditingEntry(current =>
+      current
+        ? {
+            ...current,
+            fragileEvidencePhotos: current.fragileEvidencePhotos.filter(
+              photo => photo.key !== key
+            ),
+          }
+        : current
+    );
   const deleteControlEntry = trpc.quality.deleteControlEntry.useMutation({
     onSuccess: () => {
       utils.quality.dashboard.invalidate();
@@ -623,6 +743,19 @@ function DailyControlResults({
       lot: supportsProductDetails ? editingEntry.lot : undefined,
       validity: supportsProductDetails ? editingEntry.validity : undefined,
       collaboratorId: isBphf ? editingEntry.collaboratorId : undefined,
+      fragileState: isFragile ? editingEntry.fragileState : undefined,
+      fragileContainmentAction: isFragile
+        ? editingEntry.fragileContainmentAction
+        : undefined,
+      fragilePeriodicity: isFragile
+        ? editingEntry.fragilePeriodicity
+        : undefined,
+      fragileReferenceImageUrl: isFragile
+        ? editingEntry.fragileReferenceImageUrl
+        : undefined,
+      fragileEvidencePhotos: isFragile
+        ? editingEntry.fragileEvidencePhotos
+        : undefined,
       dispatchProductChecks: isDispatch
         ? dispatchReferences.map(reference =>
             reference.verificationStatus === "not_verified"
@@ -1248,6 +1381,180 @@ function DailyControlResults({
                 />
               </div>
             </div>
+            {isFragile && (
+              <section
+                className="space-y-4 rounded-xl border border-amber-200 bg-amber-50/60 p-4"
+                aria-label="Dados específicos da verificação de Quebráveis"
+              >
+                <div>
+                  <p className="font-semibold text-amber-950">
+                    Dados da verificação de Quebráveis
+                  </p>
+                  <p className="mt-1 text-xs text-amber-900">
+                    A alteração sincroniza o resultado, o estado do ponto, a ação de contenção e as evidências da verificação.
+                  </p>
+                </div>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label htmlFor="daily-entry-fragile-state">Estado da verificação</Label>
+                    <Select
+                      value={editingEntry?.fragileState ?? "Íntegro"}
+                      onValueChange={value =>
+                        setEditingEntry(current =>
+                          current
+                            ? {
+                                ...current,
+                                fragileState: value as
+                                  | "Íntegro"
+                                  | "Danificado"
+                                  | "Em falta",
+                                result: value === "Íntegro" ? "C" : "NC",
+                                fragileContainmentAction:
+                                  value === "Íntegro"
+                                    ? ""
+                                    : current.fragileContainmentAction,
+                                notes:
+                                  value === "Íntegro"
+                                    ? ""
+                                    : current.notes,
+                              }
+                            : current
+                        )
+                      }
+                    >
+                      <SelectTrigger
+                        id="daily-entry-fragile-state"
+                        aria-label="Estado da verificação de Quebráveis"
+                      >
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="Íntegro">Íntegro</SelectItem>
+                        <SelectItem value="Danificado">Danificado</SelectItem>
+                        <SelectItem value="Em falta">Em falta</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="daily-entry-fragile-periodicity">Periodicidade registada</Label>
+                    <Select
+                      value={editingEntry?.fragilePeriodicity ?? "M"}
+                      onValueChange={value =>
+                        setEditingEntry(current =>
+                          current
+                            ? {
+                                ...current,
+                                fragilePeriodicity: value as "D" | "S" | "Q" | "M",
+                              }
+                            : current
+                        )
+                      }
+                    >
+                      <SelectTrigger
+                        id="daily-entry-fragile-periodicity"
+                        aria-label="Periodicidade registada de Quebráveis"
+                      >
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="D">D — Diária</SelectItem>
+                        <SelectItem value="S">S — Semanal</SelectItem>
+                        <SelectItem value="Q">Q — Quinzenal</SelectItem>
+                        <SelectItem value="M">M — Mensal</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="daily-entry-fragile-containment">
+                    Ação de contenção / observações do desvio
+                  </Label>
+                  <Textarea
+                    id="daily-entry-fragile-containment"
+                    value={editingEntry?.fragileContainmentAction ?? ""}
+                    required={editingEntry?.fragileState !== "Íntegro"}
+                    onChange={event =>
+                      setEditingEntry(current =>
+                        current
+                          ? {
+                              ...current,
+                              fragileContainmentAction: event.target.value,
+                              notes: event.target.value,
+                            }
+                          : current
+                      )
+                    }
+                    placeholder="Obrigatório quando o quebrável está danificado ou em falta."
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="daily-entry-fragile-reference-image">
+                    Imagem de referência
+                  </Label>
+                  <Input
+                    id="daily-entry-fragile-reference-image"
+                    value={editingEntry?.fragileReferenceImageUrl ?? ""}
+                    onChange={event =>
+                      setEditingEntry(current =>
+                        current
+                          ? {
+                              ...current,
+                              fragileReferenceImageUrl: event.target.value || null,
+                            }
+                          : current
+                      )
+                    }
+                    placeholder="/manus-storage/..."
+                  />
+                </div>
+                <div className="space-y-3 rounded-lg border border-amber-200 bg-white p-3">
+                  <div>
+                    <Label htmlFor="daily-entry-fragile-evidence">
+                      Fotografias da verificação
+                    </Label>
+                    <p className="mt-1 text-xs text-slate-600">
+                      Pode manter, remover ou adicionar fotografias. O histórico da edição fica preservado.
+                    </p>
+                  </div>
+                  {editingEntry?.fragileEvidencePhotos.length ? (
+                    <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                      {editingEntry.fragileEvidencePhotos.map(photo => (
+                        <div key={photo.key} className="relative rounded-lg border border-slate-200 p-1">
+                          <img
+                            src={photo.url}
+                            alt={`Evidência: ${photo.fileName}`}
+                            className="h-20 w-full rounded object-cover"
+                          />
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="mt-1 h-7 w-full text-xs text-red-700 hover:text-red-800"
+                            onClick={() => removeFragileEditPhoto(photo.key)}
+                          >
+                            Remover
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="rounded-md border border-dashed border-slate-300 p-2 text-xs text-slate-600">
+                      Sem fotografias associadas.
+                    </p>
+                  )}
+                  <Input
+                    id="daily-entry-fragile-evidence"
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp"
+                    disabled={uploadFragileEditEvidence.isPending}
+                    onChange={event => {
+                      void uploadFragileEditPhoto(event.target.files?.[0]);
+                      event.target.value = "";
+                    }}
+                  />
+                </div>
+              </section>
+            )}
             {isBphf && (
               <div className="space-y-2">
                 <Label htmlFor="daily-entry-bphf-collaborator">
@@ -1342,11 +1649,29 @@ function DailyControlResults({
               <Label>Resultado</Label>
               <Select
                 value={editingEntry?.result ?? "C"}
-                onValueChange={value =>
-                  setEditingEntry(current =>
-                    current ? { ...current, result: value } : current
-                  )
-                }
+                  onValueChange={value =>
+                    setEditingEntry(current =>
+                      current
+                        ? {
+                            ...current,
+                            result: value,
+                            ...(isFragile && value === "C"
+                              ? {
+                                  fragileState: "Íntegro" as const,
+                                  fragileContainmentAction: "",
+                                  notes: "",
+                                }
+                              : isFragile &&
+                                  value === "NC" &&
+                                  current.fragileState === "Íntegro"
+                                ? {
+                                    fragileState: "Danificado" as const,
+                                  }
+                                : {}),
+                          }
+                        : current
+                    )
+                  }
               >
                 <SelectTrigger>
                   <SelectValue />

@@ -907,3 +907,8 @@
 - [x] Auditar o modelo e o formulário de edição dos registos BPHF para identificar o campo de colaborador inspecionado
 - [x] Adicionar seleção e gravação do colaborador no painel de edição BPHF, mantendo rastreabilidade
 - [x] Adicionar regressões e validar permissões, histórico e apresentação do colaborador editado
+
+- [x] Auditar o payload de Quebráveis, o detalhe histórico e as incidências relacionadas quando o resultado é alterado
+- [x] Permitir editar toda a informação associada à verificação de Quebráveis e sincronizar o estado do ponto
+- [x] Reconciliar incidências relacionadas quando uma verificação de Quebráveis passa para C, NC ou N/A
+- [x] Adicionar regressões para histórico, incidências e alterações de C/NC, e validar a compilação

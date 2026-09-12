@@ -4059,6 +4059,21 @@ export const qualityRouter = router({
         lot: z.string().trim().max(120).optional(),
         validity: z.string().trim().max(40).optional(),
         collaboratorId: z.number().int().positive().nullable().optional(),
+        fragileState: z.enum(["Íntegro", "Danificado", "Em falta"]).optional(),
+        fragileContainmentAction: z.string().trim().max(3000).optional(),
+        fragilePeriodicity: z.enum(["D", "S", "Q", "M"]).optional(),
+        fragileReferenceImageUrl: z.string().max(1024).nullable().optional(),
+        fragileEvidencePhotos: z
+          .array(
+            z.object({
+              key: z.string().min(1),
+              url: z.string().startsWith("/manus-storage/"),
+              fileName: z.string().min(1).max(255),
+              mimeType: z.enum(["image/jpeg", "image/png", "image/webp"]),
+            })
+          )
+          .max(8)
+          .optional(),
         dispatchProductChecks: z.array(dispatchProductCheckSchema).min(1).max(30).optional(),
         dispatchVehicleTemperature: z.number().min(-100).max(100).optional(),
         dispatchVehicleObservations: z.string().trim().max(3000).optional(),
@@ -4110,6 +4125,94 @@ export const qualityRouter = router({
           ? previousCollaboratorId
           : null;
       let nextCollaboratorName = previousCollaboratorName;
+      const previousFragileState =
+        typeof payload.state === "string" ? payload.state : null;
+      const previousFragileContainmentAction =
+        typeof payload.containmentAction === "string"
+          ? payload.containmentAction
+          : null;
+      const previousFragilePeriodicity =
+        typeof payload.periodicity === "string" ? payload.periodicity : null;
+      const previousFragileReferenceImageUrl =
+        typeof payload.referenceImageUrl === "string"
+          ? payload.referenceImageUrl
+          : null;
+      const previousFragileEvidencePhotos = Array.isArray(
+        payload.evidencePhotos
+      )
+        ? payload.evidencePhotos
+        : [];
+      let nextFragileState = previousFragileState;
+      let nextFragileContainmentAction = previousFragileContainmentAction;
+      let nextFragilePeriodicity = previousFragilePeriodicity;
+      let nextFragileReferenceImageUrl = previousFragileReferenceImageUrl;
+      let nextFragileEvidencePhotos = previousFragileEvidencePhotos;
+      let recalculatedFragileResult: "C" | "NC" | undefined;
+      const fragileFieldsWereSent = [
+        input.fragileState,
+        input.fragileContainmentAction,
+        input.fragilePeriodicity,
+        input.fragileReferenceImageUrl,
+        input.fragileEvidencePhotos,
+      ].some(value => value !== undefined);
+      if (
+        fragileFieldsWereSent &&
+        entry.module !== "fragile_items"
+      )
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message:
+            "Os dados específicos de Quebráveis só podem ser editados nesse controlo.",
+        });
+      if (entry.module === "fragile_items") {
+        const stateFromInput = input.fragileState;
+        const shouldNormalizeFromResult =
+          stateFromInput === undefined && input.result === "C";
+        const effectiveFragileState =
+          stateFromInput ??
+          (shouldNormalizeFromResult ? "Íntegro" : previousFragileState) ??
+          (entry.result === "C" ? "Íntegro" : "Danificado");
+        if (
+          input.fragileState !== undefined ||
+          shouldNormalizeFromResult
+        ) {
+          nextFragileState = effectiveFragileState;
+          nextPayload.state = effectiveFragileState;
+        }
+        if (input.fragileContainmentAction !== undefined) {
+          nextFragileContainmentAction =
+            input.fragileContainmentAction.trim() || null;
+        }
+        if (effectiveFragileState === "Íntegro") {
+          nextFragileContainmentAction = null;
+          delete nextPayload.containmentAction;
+        } else if (nextFragileContainmentAction) {
+          nextPayload.containmentAction = nextFragileContainmentAction;
+        } else if (fragileFieldsWereSent) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message:
+              "A ação de contenção é obrigatória quando o quebrável está danificado ou em falta.",
+          });
+        }
+        if (input.fragilePeriodicity !== undefined) {
+          nextFragilePeriodicity = input.fragilePeriodicity;
+          nextPayload.periodicity = input.fragilePeriodicity;
+        }
+        if (input.fragileReferenceImageUrl !== undefined) {
+          nextFragileReferenceImageUrl = input.fragileReferenceImageUrl;
+          if (input.fragileReferenceImageUrl)
+            nextPayload.referenceImageUrl = input.fragileReferenceImageUrl;
+          else delete nextPayload.referenceImageUrl;
+        }
+        if (input.fragileEvidencePhotos !== undefined) {
+          nextFragileEvidencePhotos = input.fragileEvidencePhotos;
+          nextPayload.evidencePhotos = input.fragileEvidencePhotos;
+        }
+        if (stateFromInput !== undefined || shouldNormalizeFromResult)
+          recalculatedFragileResult =
+            effectiveFragileState === "Íntegro" ? "C" : "NC";
+      }
       if (input.collaboratorId !== undefined) {
         if (entry.module !== "bphf")
           throw new TRPCError({
@@ -4291,7 +4394,8 @@ export const qualityRouter = router({
             ? "NÃO VERIFICADO"
             : first.lots[0]?.lot ?? "";
       }
-      const effectiveResult = recalculatedDispatchResult ?? input.result;
+      const effectiveResult =
+        recalculatedFragileResult ?? recalculatedDispatchResult ?? input.result;
       await db
         .update(controlEntries)
         .set({
@@ -4316,6 +4420,22 @@ export const qualityRouter = router({
                 result: effectiveResult,
                 incidenceResolved:
                   entry.result === "NC" && effectiveResult === "C",
+                ...(entry.module === "fragile_items" &&
+                (fragileFieldsWereSent ||
+                  (input.result === "C" && previousFragileState !== "Íntegro"))
+                  ? {
+                      previousFragileState,
+                      fragileState: nextFragileState,
+                      previousFragileContainmentAction,
+                      fragileContainmentAction: nextFragileContainmentAction,
+                      previousFragilePeriodicity,
+                      fragilePeriodicity: nextFragilePeriodicity,
+                      previousFragileReferenceImageUrl,
+                      fragileReferenceImageUrl: nextFragileReferenceImageUrl,
+                      previousFragileEvidencePhotos,
+                      fragileEvidencePhotos: nextFragileEvidencePhotos,
+                    }
+                  : {}),
                 ...(input.collaboratorId !== undefined
                   ? {
                       previousCollaboratorId:
