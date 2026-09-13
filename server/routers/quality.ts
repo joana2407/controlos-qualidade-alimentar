@@ -254,6 +254,7 @@ const REQUIRED_MODULE_FREQUENCIES = [
 ] as const;
 const MONTHLY_CHECKLIST_TEMPLATE = [
   "Cumprimento do plano de higienização",
+  "Monitorização do grau de cumprimento do plano de manutenção preventiva",
   "Estado de limpeza de paredes e tectos",
   "Estado de limpeza de todas as superfícies no interior das áreas de laboração (inspecionar zonas ocultas)",
   "Cumprimento dos layouts e circuitos definidos por todos os colaboradores",
@@ -8643,15 +8644,22 @@ export const qualityRouter = router({
       "Geral",
       ctx.user!.openId
     );
-    const existing = await db.select().from(checklistItems).limit(1);
-    if (existing.length) return { success: true, created: 0 };
+    const existing = await db.select().from(checklistItems);
+    const existingLabels = new Set(existing.map(item => item.label.trim()));
+    const missingLabels = MONTHLY_CHECKLIST_TEMPLATE.filter(
+      label => !existingLabels.has(label)
+    );
+    if (!missingLabels.length) return { success: true, created: 0 };
+
+    const nextSortOrder =
+      Math.max(0, ...existing.map(item => item.sortOrder ?? 0)) + 1;
     const inserted = await db
       .insert(checklistItems)
       .values(
-        MONTHLY_CHECKLIST_TEMPLATE.map((label, index) => ({
+        missingLabels.map((label, index) => ({
           area: "Geral",
           label,
-          sortOrder: index + 1,
+          sortOrder: nextSortOrder + index,
           active: "true" as const,
           createdBy: ctx.user!.openId,
         }))
@@ -8665,6 +8673,16 @@ export const qualityRouter = router({
           checklistAreaId: defaultAreaId,
         }))
       );
-    return { success: true, created: MONTHLY_CHECKLIST_TEMPLATE.length };
+    await db
+      .insert(checklistItemFactories)
+      .values(
+        inserted.flatMap(item =>
+          [1, 2, 3].map(factoryId => ({
+            checklistItemId: item.id,
+            factoryId,
+          }))
+        )
+      );
+    return { success: true, created: missingLabels.length };
   }),
 });

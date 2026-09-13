@@ -912,3 +912,7 @@
 - [x] Permitir editar toda a informação associada à verificação de Quebráveis e sincronizar o estado do ponto
 - [x] Reconciliar incidências relacionadas quando uma verificação de Quebráveis passa para C, NC ou N/A
 - [x] Adicionar regressões para histórico, incidências e alterações de C/NC, e validar a compilação
+
+- [x] Auditar o catálogo e o fluxo de áreas da Checklist Mensal antes de adicionar o novo ponto
+- [x] Adicionar na área Geral o ponto «Monitorização do grau de cumprimento do plano de manutenção preventiva»
+- [x] Validar persistência, apresentação, completitude, filtros e histórico do novo ponto

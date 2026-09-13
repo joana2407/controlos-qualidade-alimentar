@@ -2104,6 +2104,49 @@ describe("procedimentos de qualidade por fábrica", () => {
     await expect(technician.removeChecklistArea({ id: 201 })).rejects.toMatchObject({ code: "FORBIDDEN" });
   });
 
+  it("inclui a monitorização do plano de manutenção preventiva na área Geral e por fábrica", async () => {
+    const itemId = 304;
+    monthlyRows.push({
+      id: itemId,
+      area: "Geral",
+      label: "Monitorização do grau de cumprimento do plano de manutenção preventiva",
+      active: "true",
+    } as any);
+    monthlyAreaAssignments.push({ checklistItemId: itemId, checklistAreaId: 201 });
+    monthlyAssignments.push(
+      { checklistItemId: itemId, factoryId: 1 },
+      { checklistItemId: itemId, factoryId: 2 },
+      { checklistItemId: itemId, factoryId: 3 }
+    );
+    try {
+      const caller = qualityRouter.createCaller(createContext());
+      const factoryOne = await caller.listChecklistItems({ factoryId: 1 });
+      const factoryThree = await caller.listChecklistItems({ factoryId: 3 });
+      expect(factoryOne).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            id: itemId,
+            label: "Monitorização do grau de cumprimento do plano de manutenção preventiva",
+            areaNames: ["Geral"],
+          }),
+        ])
+      );
+      expect(factoryThree).toEqual(
+        expect.arrayContaining([expect.objectContaining({ id: itemId })])
+      );
+    } finally {
+      monthlyRows.splice(monthlyRows.findIndex(item => item.id === itemId), 1);
+      monthlyAreaAssignments.splice(
+        monthlyAreaAssignments.findIndex(item => item.checklistItemId === itemId),
+        1
+      );
+      monthlyAssignments.splice(
+        monthlyAssignments.findIndex(item => item.checklistItemId === itemId),
+        3
+      );
+    }
+  });
+
   it("devolve e contabiliza o mesmo ponto em todas as Áreas/Zonas atribuídas", async () => {
     monthlyAreaRows.push({ id: 202, name: "Produção", active: "true" });
     monthlyAreaAssignments.push({ checklistItemId: 301, checklistAreaId: 202 });
