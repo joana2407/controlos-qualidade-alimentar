@@ -1724,10 +1724,17 @@ describe("procedimentos de qualidade por fábrica", () => {
           factoryId: 3,
           result: "C",
           notes: "Verificação revista e conforme.",
-          fragileState: "Íntegro",
-          fragileContainmentAction: "",
+          fragileState: "Danificado",
+          fragileContainmentAction: "Dado antigo do desvio",
           fragilePeriodicity: "S",
-          fragileEvidencePhotos: [],
+          fragileEvidencePhotos: [
+            {
+              key: "fragile-evidence/254/old.jpg",
+              url: "/manus-storage/old.jpg",
+              fileName: "old.jpg",
+              mimeType: "image/jpeg",
+            },
+          ],
         })
       ).resolves.toMatchObject({ success: true, incidenciaResolvida: true });
       expect(dbUpdates).toEqual(
@@ -1740,6 +1747,7 @@ describe("procedimentos de qualidade por fábrica", () => {
               periodicity: "S",
               evidencePhotos: [],
             }),
+            notes: null,
           }),
         ])
       );
@@ -1751,6 +1759,51 @@ describe("procedimentos de qualidade por fábrica", () => {
           (update.payload as Record<string, unknown>).fragileItemId === 254
       );
       expect(updatedEntry?.payload).not.toHaveProperty("containmentAction");
+    } finally {
+      Object.assign(sourceEntry, originalSourceEntry);
+    }
+  });
+
+  it("força Danificado quando uma edição NC recebe um estado Íntegro incoerente", async () => {
+    const sourceEntry = entries[0]!;
+    const originalSourceEntry = { ...sourceEntry };
+    Object.assign(sourceEntry, {
+      module: "fragile_items",
+      factoryId: 3,
+      area: "Z. PREPARAÇÃO DE MASSAS",
+      result: "C",
+      registeredByProfileId: 3,
+      registeredByName: "Joana Pina",
+      payload: {
+        fragileItemId: 254,
+        state: "Íntegro",
+        containmentAction: "",
+      },
+    });
+    try {
+      await expect(
+        qualityRouter.createCaller(createContext()).updateControlEntry({
+          id: sourceEntry.id,
+          title: "Quebrável — Painel de Comandos Doseador Água",
+          area: "Z. PREPARAÇÃO DE MASSAS",
+          factoryId: 3,
+          result: "NC",
+          notes: "Dano identificado.",
+          fragileState: "Íntegro",
+          fragileContainmentAction: "Dano identificado.",
+        })
+      ).resolves.toMatchObject({ success: true });
+      expect(dbUpdates).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            result: "NC",
+            payload: expect.objectContaining({
+              state: "Danificado",
+              containmentAction: "Dano identificado.",
+            }),
+          }),
+        ])
+      );
     } finally {
       Object.assign(sourceEntry, originalSourceEntry);
     }

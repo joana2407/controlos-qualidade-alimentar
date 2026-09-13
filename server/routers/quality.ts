@@ -79,6 +79,15 @@ import { lisbonCalendarDateToUtc, lisbonDateInputValue, lisbonDayBoundsUtc } fro
 
 const qualityModuleSchema = z.enum(qualityModuleValues);
 const resultSchema = z.enum(resultValues);
+type FragileState = "Íntegro" | "Danificado" | "Em falta";
+const fragileStateFromResult = (
+  result: string | null | undefined,
+  fallback: FragileState | null = null
+): FragileState | null => {
+  if (result === "C") return "Íntegro";
+  if (result === "NC") return "Danificado";
+  return fallback;
+};
 const qualityProfileRoleSchema = z.enum(["technician", "manager", "viewer"]);
 const qualityPanelKeySchema = z.enum(QUALITY_PANEL_KEYS as [QualityPanelKey, ...QualityPanelKey[]]);
 const qualityExternalPanelKeySchema = z.enum(QUALITY_EXTERNAL_PANEL_KEYS as [QualityExternalPanelKey, ...QualityExternalPanelKey[]]);
@@ -4167,29 +4176,31 @@ export const qualityRouter = router({
         });
       if (entry.module === "fragile_items") {
         const stateFromInput = input.fragileState;
-        const shouldNormalizeFromResult =
-          stateFromInput === undefined && input.result === "C";
+        const resultState = fragileStateFromResult(input.result);
         const effectiveFragileState =
+          resultState ??
           stateFromInput ??
-          (shouldNormalizeFromResult ? "Íntegro" : previousFragileState) ??
-          (entry.result === "C" ? "Íntegro" : "Danificado");
-        if (
-          input.fragileState !== undefined ||
-          shouldNormalizeFromResult
-        ) {
-          nextFragileState = effectiveFragileState;
-          nextPayload.state = effectiveFragileState;
-        }
+          (previousFragileState === "Íntegro" ||
+          previousFragileState === "Danificado" ||
+          previousFragileState === "Em falta"
+            ? previousFragileState
+            : null) ??
+          fragileStateFromResult(entry.result, "Íntegro")!;
+        const resultDeterminesState = input.result === "C" || input.result === "NC";
+        nextFragileState = effectiveFragileState;
+        nextPayload.state = effectiveFragileState;
         if (input.fragileContainmentAction !== undefined) {
           nextFragileContainmentAction =
             input.fragileContainmentAction.trim() || null;
         }
         if (effectiveFragileState === "Íntegro") {
           nextFragileContainmentAction = null;
+          nextFragileEvidencePhotos = [];
           delete nextPayload.containmentAction;
+          nextPayload.evidencePhotos = [];
         } else if (nextFragileContainmentAction) {
           nextPayload.containmentAction = nextFragileContainmentAction;
-        } else if (fragileFieldsWereSent) {
+        } else if (fragileFieldsWereSent || resultDeterminesState) {
           throw new TRPCError({
             code: "BAD_REQUEST",
             message:
@@ -4207,10 +4218,13 @@ export const qualityRouter = router({
           else delete nextPayload.referenceImageUrl;
         }
         if (input.fragileEvidencePhotos !== undefined) {
-          nextFragileEvidencePhotos = input.fragileEvidencePhotos;
-          nextPayload.evidencePhotos = input.fragileEvidencePhotos;
+          nextFragileEvidencePhotos =
+            effectiveFragileState === "Íntegro"
+              ? []
+              : input.fragileEvidencePhotos;
+          nextPayload.evidencePhotos = nextFragileEvidencePhotos;
         }
-        if (stateFromInput !== undefined || shouldNormalizeFromResult)
+        if (resultDeterminesState || stateFromInput !== undefined)
           recalculatedFragileResult =
             effectiveFragileState === "Íntegro" ? "C" : "NC";
       }
@@ -4406,7 +4420,10 @@ export const qualityRouter = router({
             ? { factoryId: input.factoryId }
             : {}),
           result: effectiveResult,
-          notes: input.notes?.trim() || null,
+          notes:
+            entry.module === "fragile_items" && effectiveResult === "C"
+              ? null
+              : input.notes?.trim() || null,
           payload: {
             ...nextPayload,
             editHistory: [
@@ -4464,6 +4481,41 @@ export const qualityRouter = router({
               eq(controlTasks.status, "pending")
             )
           );
+      }
+      if (entry.module === "fragile_items" && entry.result !== effectiveResult) {
+        const linkedNonconformities = await db
+          .select()
+          .from(nonconformities)
+          .where(eq(nonconformities.sourceEntryId, entry.id));
+        if (effectiveResult === "C") {
+          await Promise.all(
+            linkedNonconformities.map(nc =>
+              db
+                .update(nonconformities)
+                .set({
+                  status: "closed",
+                  closedAt: new Date(),
+                  validatedBy: ctx.operatorProfile!.name,
+                  validatedByOpenId: ctx.user!.openId,
+                })
+                .where(eq(nonconformities.id, nc.id))
+            )
+          );
+        } else if (effectiveResult === "NC") {
+          await Promise.all(
+            linkedNonconformities.map(nc =>
+              db
+                .update(nonconformities)
+                .set({
+                  status: "open",
+                  closedAt: null,
+                  validatedBy: null,
+                  validatedByOpenId: null,
+                })
+                .where(eq(nonconformities.id, nc.id))
+            )
+          );
+        }
       }
       const updatedPlannedTaskId = Number(nextPayload.plannedTaskId);
       await reconcilePlannedControlTaskStatus(
@@ -4660,15 +4712,50 @@ export const qualityRouter = router({
       const completedAt = input.performedAt
         ? new Date(`${input.performedAt}T12:00:00`)
         : new Date();
+      const normalizedPayload = { ...input.payload };
+      let normalizedResult = input.result ?? null;
+      if (input.module === "fragile_items") {
+        const payloadState =
+          typeof normalizedPayload.state === "string"
+            ? (normalizedPayload.state as FragileState)
+            : null;
+        const normalizedState = fragileStateFromResult(
+          input.result,
+          payloadState
+        ) ?? "Íntegro";
+        normalizedResult = normalizedState === "Íntegro" ? "C" : "NC";
+        normalizedPayload.state = normalizedState;
+        if (normalizedState === "Íntegro") {
+          delete normalizedPayload.containmentAction;
+          normalizedPayload.evidencePhotos = [];
+        } else {
+          const containmentAction =
+            typeof normalizedPayload.containmentAction === "string"
+              ? normalizedPayload.containmentAction.trim()
+              : typeof input.notes === "string"
+                ? input.notes.trim()
+                : "";
+          if (!containmentAction)
+            throw new TRPCError({
+              code: "BAD_REQUEST",
+              message:
+                "A ação de contenção é obrigatória quando o quebrável está danificado ou em falta.",
+            });
+          normalizedPayload.containmentAction = containmentAction;
+        }
+      }
       const insertedEntry = await db.insert(controlEntries).values({
         module: input.module,
         title: input.title,
         area: input.area,
         factoryId: input.factoryId ?? null,
-        result: input.result ?? null,
-        notes: input.notes ?? null,
+        result: normalizedResult,
+        notes:
+          input.module === "fragile_items" && normalizedResult === "C"
+            ? null
+            : input.notes ?? null,
         payload: {
-          ...input.payload,
+          ...normalizedPayload,
           plannedTaskId: authorization.task?.id ?? null,
           plannedDate: authorization.task?.dueAt
             ? new Date(authorization.task.dueAt).toISOString()
@@ -4908,12 +4995,12 @@ export const qualityRouter = router({
       }
       const isCriticalMetal = shouldCreateCriticalMetalAlert(
         input.module,
-        input.result
+        normalizedResult
       );
       return {
         success: true,
         critical: isCriticalMetal,
-        incidence: input.result === "NC",
+        incidence: normalizedResult === "NC",
       };
     }),
 
@@ -7028,19 +7115,25 @@ export const qualityRouter = router({
             !Array.isArray(entry.payload)
               ? (entry.payload as Record<string, unknown>)
               : {};
-          const evidencePhotos = Array.isArray(payload.evidencePhotos)
-            ? payload.evidencePhotos
-            : [];
+          const storedState =
+            payload.state === "Íntegro" ||
+            payload.state === "Danificado" ||
+            payload.state === "Em falta"
+              ? (payload.state as FragileState)
+              : null;
+          const normalizedState =
+            fragileStateFromResult(entry.result, storedState) ?? "Íntegro";
+          const evidencePhotos =
+            normalizedState === "Íntegro"
+              ? []
+              : Array.isArray(payload.evidencePhotos)
+                ? payload.evidencePhotos
+                : [];
           return {
             id: entry.id,
-            state:
-              typeof payload.state === "string"
-                ? payload.state
-                : entry.result === "C"
-                  ? "Íntegro"
-                  : "Não conforme",
+            state: normalizedState,
             result: entry.result,
-            notes: entry.notes,
+            notes: normalizedState === "Íntegro" ? null : entry.notes,
             completedAt: entry.completedAt,
             registeredByName: entry.registeredByName,
             registeredByTitle: entry.registeredByTitle,

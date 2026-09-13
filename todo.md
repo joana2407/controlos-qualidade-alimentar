@@ -916,3 +916,8 @@
 - [x] Auditar o catálogo e o fluxo de áreas da Checklist Mensal antes de adicionar o novo ponto
 - [x] Adicionar na área Geral o ponto «Monitorização do grau de cumprimento do plano de manutenção preventiva»
 - [x] Validar persistência, apresentação, completitude, filtros e histórico do novo ponto
+
+- [x] Auditar incoerências entre resultado, estado, título e incidências nos registos de Quebráveis
+- [x] Aplicar nos fluxos novos e editados a regra C=Conforme=Íntegro e NC=Não conforme=Danificado
+- [x] Reconciliar registos históricos já alterados e incidências relacionadas sem apagar rastreabilidade
+- [x] Adicionar regressões e validar detalhe, histórico, pendências e painéis

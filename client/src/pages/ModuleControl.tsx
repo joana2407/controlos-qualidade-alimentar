@@ -470,10 +470,11 @@ function DailyControlResults({
   };
   const { activeProfile, canManage } = useQualityAccess();
   const { factories } = useControlFactory();
-  const bphfEmployees = trpc.quality.listBphfInspectionEmployees.useQuery(
-    undefined,
-    { enabled: isBphf }
-  );
+  const bphfEmployees =
+    trpc.quality.listBphfInspectionEmployees?.useQuery?.(
+      undefined,
+      { enabled: isBphf }
+    ) ?? { data: [], isLoading: false };
   const utils = trpc.useUtils();
   const [selectedEntry, setSelectedEntry] = useState<DailyControlEntry | null>(
     null
@@ -591,9 +592,12 @@ function DailyControlResults({
     onError: error => toast.error(error.message),
   });
   const uploadFragileEditEvidence =
-    trpc.quality.uploadVerificationEvidence.useMutation({
+    trpc.quality.uploadVerificationEvidence?.useMutation?.({
       onError: error => toast.error(error.message),
-    });
+    }) ?? {
+      isPending: false,
+      mutate: (..._args: unknown[]) => undefined,
+    };
   const uploadFragileEditPhoto = async (file?: File) => {
     if (!file || !editingEntry || !isFragile) return;
     const photos = editingEntry.fragileEvidencePhotos;
@@ -1659,11 +1663,10 @@ function DailyControlResults({
                               ? {
                                   fragileState: "Íntegro" as const,
                                   fragileContainmentAction: "",
+                                  fragileEvidencePhotos: [],
                                   notes: "",
                                 }
-                              : isFragile &&
-                                  value === "NC" &&
-                                  current.fragileState === "Íntegro"
+                              : isFragile && value === "NC"
                                 ? {
                                     fragileState: "Danificado" as const,
                                   }
