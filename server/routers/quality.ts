@@ -7776,7 +7776,7 @@ export const qualityRouter = router({
     .input(z.object({ date: dateInput.optional() }).optional())
     .query(async ({ input }) => {
       const db = await requireDb();
-      const archives = input?.date
+      const allArchives = input?.date
         ? await db
             .select()
             .from(dailyReportArchives)
@@ -7789,6 +7789,15 @@ export const qualityRouter = router({
               desc(dailyReportArchives.operationalDate),
               desc(dailyReportArchives.revision)
             );
+      const seenDates = new Set<string>();
+      const archives = allArchives.filter(archive => {
+        const key = archive.operationalDate instanceof Date
+          ? archive.operationalDate.toISOString().slice(0, 10)
+          : String(archive.operationalDate).slice(0, 10);
+        if (seenDates.has(key)) return false;
+        seenDates.add(key);
+        return true;
+      });
       return archives.map(archive => {
         const snapshot =
           archive.snapshot &&
@@ -7865,9 +7874,21 @@ export const qualityRouter = router({
           desc(dailyReportArchives.operationalDate),
           desc(dailyReportArchives.revision)
         );
-      const pending = archives.filter(
-        archive => !archive.backupFileKey || !archive.backupFileUrl
-      );
+      const finalByDate = new Map<string, typeof archives[number]>();
+      const archivesByDate = new Map<string, typeof archives>();
+      for (const archive of archives) {
+        const key = archive.operationalDate instanceof Date
+          ? archive.operationalDate.toISOString().slice(0, 10)
+          : String(archive.operationalDate).slice(0, 10);
+        const sameDay = archivesByDate.get(key) ?? [];
+        sameDay.push(archive);
+        archivesByDate.set(key, sameDay);
+        if (!finalByDate.has(key)) finalByDate.set(key, archive);
+      }
+      const pending = Array.from(finalByDate.entries()).filter(([key, archive]) =>
+        !archive.backupFileKey || !archive.backupFileUrl ||
+        (archivesByDate.get(key) ?? []).some(previous => previous.id !== archive.id && (previous.backupFileKey || previous.backupFileUrl))
+      ).map(([, archive]) => archive);
       const results = [];
       for (const archive of pending)
         results.push(await ensureDailyReportArchiveBackup(archive.id));

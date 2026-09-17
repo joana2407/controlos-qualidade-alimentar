@@ -921,3 +921,7 @@
 - [x] Aplicar nos fluxos novos e editados a regra C=Conforme=Íntegro e NC=Não conforme=Danificado
 - [x] Reconciliar registos históricos já alterados e incidências relacionadas sem apagar rastreabilidade
 - [x] Adicionar regressões e validar detalhe, histórico, pendências e painéis
+
+- [x] Auditar o armazenamento e os fluxos de geração manual e automática de backups diários
+- [x] Implementar a substituição da versão anterior do mesmo dia e eliminar duplicados dessa data
+- [x] Reconciliar backups existentes e validar geração, descarga, permissões e preservação de outras datas

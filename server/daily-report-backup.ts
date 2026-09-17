@@ -1,5 +1,5 @@
 import * as XLSX from "xlsx";
-import { eq } from "drizzle-orm";
+import { desc, eq, sql } from "drizzle-orm";
 import { dailyReportArchives } from "../drizzle/schema";
 import { getDb } from "./db";
 import { storagePut } from "./storage";
@@ -8,21 +8,17 @@ function asRecord(value: unknown): Record<string, unknown> {
   if (typeof value === "string") { try { return JSON.parse(value) as Record<string, unknown>; } catch { return {}; } }
   return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
 }
-
 function asRows(value: unknown): Record<string, unknown>[] {
   return Array.isArray(value) ? value.map(asRecord) : [];
 }
-
 function dateKey(value: unknown) {
   const date = value instanceof Date ? value : new Date(String(value));
   return Number.isNaN(date.getTime()) ? "sem-data" : date.toISOString().slice(0, 10);
 }
-
 function displayDate(value: unknown) {
   const date = value instanceof Date ? value : new Date(String(value));
   return Number.isNaN(date.getTime()) ? "" : date.toLocaleString("pt-PT", { timeZone: "Europe/Lisbon" });
 }
-
 function formatValue(value: unknown): string {
   if (value === null || value === undefined) return "";
   if (typeof value === "boolean") return value ? "Sim" : "Não";
@@ -30,7 +26,6 @@ function formatValue(value: unknown): string {
   if (Array.isArray(value) || (typeof value === "object" && value)) return JSON.stringify(value);
   return String(value);
 }
-
 function toWorkbook(archive: any) {
   const snapshot = asRecord(archive.snapshot);
   const tasks = asRows(snapshot.plannedTasks);
@@ -51,54 +46,64 @@ function toWorkbook(archive: any) {
     Anotações: notes.length,
   }]), "Resumo da versão");
   XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(tasks.map((task) => ({
-    Controlo: formatValue(task.module),
-    "Fábrica / linha": formatValue(task.factoryName ?? task.factory),
-    Responsável: formatValue(task.responsible ?? task.assignedToName),
-    Estado: formatValue(task.status),
-    Data: displayDate(task.dueAt),
+    Controlo: formatValue(task.module), "Fábrica / linha": formatValue(task.factoryName ?? task.factory),
+    Responsável: formatValue(task.responsible ?? task.assignedToName), Estado: formatValue(task.status), Data: displayDate(task.dueAt),
   }))), "Tarefas planeadas");
   XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(controls.map((entry) => ({
-    Data: displayDate(entry.completedAt),
-    Controlo: formatValue(entry.module),
-    "Fábrica / linha": formatValue(entry.factoryName ?? entry.factory),
-    Área: formatValue(entry.area),
-    Resultado: formatValue(entry.result),
-    Título: formatValue(entry.title),
-    "Registado por": formatValue(entry.registeredByName),
-    Função: formatValue(entry.registeredByTitle),
-    Observações: formatValue(entry.notes),
-    Dados: formatValue(entry.payload),
+    Data: displayDate(entry.completedAt), Controlo: formatValue(entry.module), "Fábrica / linha": formatValue(entry.factoryName ?? entry.factory),
+    Área: formatValue(entry.area), Resultado: formatValue(entry.result), Título: formatValue(entry.title),
+    "Registado por": formatValue(entry.registeredByName), Função: formatValue(entry.registeredByTitle), Observações: formatValue(entry.notes), Dados: formatValue(entry.payload),
   }))), "Controlos");
   XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(incidences.map((incidence) => ({
-    Data: displayDate(incidence.detectedAt ?? incidence.completedAt),
-    Título: formatValue(incidence.title),
-    Controlo: formatValue(incidence.module),
-    Área: formatValue(incidence.area),
-    Estado: formatValue(incidence.status),
-    Gravidade: formatValue(incidence.severity),
-    Descrição: formatValue(incidence.description ?? incidence.notes),
+    Data: displayDate(incidence.detectedAt ?? incidence.completedAt), Título: formatValue(incidence.title), Controlo: formatValue(incidence.module),
+    Área: formatValue(incidence.area), Estado: formatValue(incidence.status), Gravidade: formatValue(incidence.severity), Descrição: formatValue(incidence.description ?? incidence.notes),
   }))), "Incidências");
   XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(notes.map((note) => ({
-    Anotação: formatValue(note.note),
-    "Atualizada por": formatValue(note.updatedByName ?? note.createdBy),
-    Data: displayDate(note.updatedAt ?? note.createdAt),
+    Anotação: formatValue(note.note), "Atualizada por": formatValue(note.updatedByName ?? note.createdBy), Data: displayDate(note.updatedAt ?? note.createdAt),
   }))), "Anotações");
   return workbook;
 }
 
-/** Gera apenas uma vez o ficheiro Excel permanente de uma versão imutável. */
+/**
+ * Garante o backup final do dia. As revisões continuam na BD para auditoria,
+ * mas apenas a revisão mais recente mantém a referência ao ficheiro Excel.
+ */
 export async function ensureDailyReportArchiveBackup(archiveId: number) {
   const db = await getDb();
   if (!db) throw new Error("Base de dados indisponível para guardar o backup diário.");
   const archive = (await db.select().from(dailyReportArchives).where(eq(dailyReportArchives.id, archiveId)).limit(1))[0];
   if (!archive) throw new Error("Versão de arquivo não encontrada para gerar o backup.");
-  if (archive.backupFileKey && archive.backupFileUrl) return { created: false, archive };
 
   const operationalDate = dateKey(archive.operationalDate);
-  const filename = `relatorio-diario-${operationalDate}-V${archive.revision}.xlsx`;
-  const bytes = XLSX.write(toWorkbook(archive), { type: "buffer", bookType: "xlsx", compression: true }) as Buffer;
+  const sameDay = await db.select().from(dailyReportArchives)
+    .where(sql`DATE(${dailyReportArchives.operationalDate}) = ${operationalDate}`)
+    .orderBy(desc(dailyReportArchives.revision));
+  const finalArchive = sameDay[0] ?? archive;
+  if (finalArchive.id !== archive.id) {
+    return { created: false, skipped: "not_final_version" as const, archive: finalArchive };
+  }
+
+  const filename = `relatorio-diario-${operationalDate}.xlsx`;
+  if (finalArchive.backupFileKey && finalArchive.backupFileUrl) {
+    for (const previous of sameDay.slice(1)) {
+      if (previous.backupFileKey || previous.backupFileUrl) {
+        await db.update(dailyReportArchives).set({ backupFileKey: null, backupFileUrl: null, backupGeneratedAt: null, backupSizeBytes: null }).where(eq(dailyReportArchives.id, previous.id));
+      }
+    }
+    return { created: false, archive: finalArchive, reconciled: true };
+  }
+  const bytes = XLSX.write(toWorkbook(finalArchive), { type: "buffer", bookType: "xlsx", compression: true }) as Buffer;
+  // A chave estável substitui o objeto anterior no storage compatível com S3.
   const backup = await storagePut(`qualicontrol/backups-diarios/${operationalDate}/${filename}`, bytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
   const generatedAt = new Date();
-  await db.update(dailyReportArchives).set({ backupFileKey: backup.key, backupFileUrl: backup.url, backupGeneratedAt: generatedAt, backupSizeBytes: bytes.byteLength }).where(eq(dailyReportArchives.id, archive.id));
-  return { created: true, archiveId: archive.id, fileName: filename, ...backup, generatedAt, sizeBytes: bytes.byteLength };
+
+  for (const previous of sameDay) {
+    if (previous.id !== finalArchive.id && (previous.backupFileKey || previous.backupFileUrl)) {
+      await db.update(dailyReportArchives).set({ backupFileKey: null, backupFileUrl: null, backupGeneratedAt: null, backupSizeBytes: null }).where(eq(dailyReportArchives.id, previous.id));
+    }
+  }
+  await db.update(dailyReportArchives).set({ backupFileKey: backup.key, backupFileUrl: backup.url, backupGeneratedAt: generatedAt, backupSizeBytes: bytes.byteLength }).where(eq(dailyReportArchives.id, finalArchive.id));
+  return { created: true, archiveId: finalArchive.id, fileName: filename, ...backup, generatedAt, sizeBytes: bytes.byteLength };
 }
+
+export { toWorkbook };
