@@ -6,7 +6,7 @@ import { ensureDailyReportArchiveBackup } from "./daily-report-backup";
 export type ArchiveKind = "initial" | "retroactive_revision";
 
 export function localDateKey(date: Date) {
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+  return lisbonDateKey(date);
 }
 
 function lisbonParts(date: Date) {
@@ -50,10 +50,22 @@ function jsonValue(value: unknown): unknown {
 export function buildDailyReportSnapshot(input: { operationalDate: string; tasks: any[]; entries: any[]; nonconformities: any[]; summaries: any[]; factories: any[] }) {
   const operationalEntries = input.entries.filter((entry) => {
     const payload = payloadRecord(entry.payload);
-    const plannedDate = typeof payload.plannedDate === "string" ? localDateKey(new Date(payload.plannedDate)) : null;
-    return plannedDate === input.operationalDate || localDateKey(new Date(entry.completedAt)) === input.operationalDate;
+    const plannedDate = typeof payload.plannedDate === "string" && !Number.isNaN(new Date(payload.plannedDate).getTime())
+      ? localDateKey(new Date(payload.plannedDate))
+      : null;
+    const completedDate = entry.completedAt && !Number.isNaN(new Date(entry.completedAt).getTime())
+      ? localDateKey(new Date(entry.completedAt))
+      : null;
+    return plannedDate === input.operationalDate || completedDate === input.operationalDate;
   });
   const entryIds = new Set(operationalEntries.map((entry) => entry.id));
+  const operationalIncidences = input.nonconformities.filter((item) => {
+    if (item.sourceEntryId && entryIds.has(item.sourceEntryId)) return true;
+    const dates = [item.detectedAt, item.occurredAt, item.completedAt, item.createdAt]
+      .filter(value => value && !Number.isNaN(new Date(value).getTime()))
+      .map(value => localDateKey(new Date(value)));
+    return dates.includes(input.operationalDate);
+  });
   return jsonValue({
     schemaVersion: 1,
     operationalDate: input.operationalDate,
@@ -61,7 +73,7 @@ export function buildDailyReportSnapshot(input: { operationalDate: string; tasks
     factories: input.factories,
     plannedTasks: input.tasks.filter((task) => localDateKey(new Date(task.dueAt)) === input.operationalDate),
     controlEntries: operationalEntries,
-    incidences: input.nonconformities.filter((item) => item.sourceEntryId && entryIds.has(item.sourceEntryId)),
+    incidences: operationalIncidences,
     dailyNotes: input.summaries.filter((item) => localDateKey(new Date(item.referenceDate)) === input.operationalDate),
   }) as Record<string, unknown>;
 }
@@ -101,7 +113,29 @@ export async function createInitialDailyReportArchive(operationalDate: string, c
 
 /** Cria, ou recupera sem duplicar, o arquivo oficial do dia solicitado manualmente. */
 export async function createManualDailyReportArchive(operationalDate: string, createdBy: string) {
-  return createInitialDailyReportArchive(operationalDate, createdBy);
+  const db = await getDb();
+  if (!db) throw new Error("Base de dados indisponível para criar o arquivo diário.");
+  const existing = await db.select().from(dailyReportArchives)
+    .where(matchesOperationalDate(operationalDate))
+    .orderBy(desc(dailyReportArchives.revision));
+  const snapshot = await archiveData(db, operationalDate);
+  if (existing.length === 0) {
+    const inserted = await db.insert(dailyReportArchives).values({
+      operationalDate: operationalDateValue(operationalDate), revision: 1, archiveKind: "initial",
+      triggerTaskId: null, triggerEntryId: null, revisionReason: "Arquivo diário manual", snapshot, createdBy,
+    });
+    const archiveId = Number(inserted?.[0]?.insertId);
+    const backup = Number.isInteger(archiveId) && archiveId > 0 ? await ensureDailyReportArchiveBackup(archiveId) : null;
+    return { created: true, revision: 1, archiveId, backup };
+  }
+  const revision = (existing[0]?.revision ?? 0) + 1;
+  const inserted = await db.insert(dailyReportArchives).values({
+    operationalDate: operationalDateValue(operationalDate), revision, archiveKind: "retroactive_revision",
+    triggerTaskId: null, triggerEntryId: null, revisionReason: "Atualização manual do relatório diário", snapshot, createdBy,
+  });
+  const archiveId = Number(inserted?.[0]?.insertId);
+  const backup = Number.isInteger(archiveId) && archiveId > 0 ? await ensureDailyReportArchiveBackup(archiveId) : null;
+  return { created: true, revision, operationalDate, archiveId, backup };
 }
 
 export async function createRetroactiveDailyReportRevision(input: { taskId: number; entryId?: number | null; dueAt: Date; module: string; reason: string; createdBy: string }) {

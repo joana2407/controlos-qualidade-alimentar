@@ -46,14 +46,17 @@ describe("arquivo diário de relatórios", () => {
       operationalDate: "2026-08-21",
       tasks: [{ id: 4, dueAt: new Date("2026-08-21T09:00:00") }],
       entries: [{ id: 8, completedAt: new Date("2026-08-23T12:00:00"), payload: { plannedDate: "2026-08-21T09:00:00.000Z" } }],
-      nonconformities: [{ id: 1, sourceEntryId: 8 }],
+      nonconformities: [
+        { id: 1, sourceEntryId: 8 },
+        { id: 2, sourceEntryId: null, detectedAt: new Date("2026-08-21T16:00:00Z") },
+      ],
       summaries: [{ id: 1, referenceDate: "2026-08-21", note: "Sem ocorrências relevantes" }],
       factories: [{ id: 1, name: "Fábrica 1" }],
     });
 
     expect(snapshot.plannedTasks).toHaveLength(1);
     expect(snapshot.controlEntries).toHaveLength(1);
-    expect(snapshot.incidences).toHaveLength(1);
+    expect(snapshot.incidences).toHaveLength(2);
     expect(snapshot.dailyNotes).toHaveLength(1);
   });
 
@@ -97,7 +100,7 @@ describe("arquivo diário de relatórios", () => {
     expect(mock.archives[0].operationalDate).toBeInstanceOf(Date);
   });
 
-  it("guarda manualmente o backup diário da data selecionada sem duplicar o arquivo", async () => {
+  it("reconstrói manualmente o relatório atual e cria uma nova revisão auditável", async () => {
     const mock = createArchiveDb();
     archiveMock.db = mock.db;
     archiveMock.backup.mockClear();
@@ -106,9 +109,10 @@ describe("arquivo diário de relatórios", () => {
     const repeated = await createManualDailyReportArchive("2026-08-21", "Arquivo manual por Joana Pina");
 
     expect(first).toMatchObject({ created: true, revision: 1 });
-    expect(repeated.created).toBe(false);
-    expect(mock.archives).toHaveLength(1);
+    expect(repeated).toMatchObject({ created: true, revision: 2 });
+    expect(mock.archives).toHaveLength(2);
     expect(mock.archives[0]).toMatchObject({ archiveKind: "initial", createdBy: "Arquivo manual por Joana Pina" });
+    expect(mock.archives[1]).toMatchObject({ archiveKind: "retroactive_revision", revisionReason: "Atualização manual do relatório diário" });
     expect(archiveMock.backup).toHaveBeenCalledWith(1);
   });
 
