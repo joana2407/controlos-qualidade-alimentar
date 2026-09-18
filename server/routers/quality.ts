@@ -72,7 +72,6 @@ import {
   qualitySessionProcedure,
   router,
 } from "../_core/trpc";
-import { notifyOwner } from "../_core/notification";
 import { getDispatchProfile } from "../../shared/dispatch-control";
 import { QUALITY_EXTERNAL_PANEL_KEYS, QUALITY_PANEL_KEYS, isQualityExternalPanelKey, isQualityPanelKey, type QualityExternalPanelKey, type QualityPanelKey } from "../../shared/quality-panel-access";
 import { lisbonCalendarDateToUtc, lisbonDateInputValue, lisbonDayBoundsUtc } from "../../shared/lisbon-time";
@@ -4039,13 +4038,9 @@ export const qualityRouter = router({
           incidenceReviewRequired = true;
         }
       }
-      const managerAlerted =
-        isFollowUpTask && ctx.operatorProfile!.role !== "manager"
-          ? await notifyOwner({
-              title: "Verificação de seguimento concluída",
-              content: `${ctx.operatorProfile!.name} concluiu a tarefa «${task.title}» com resultado ${input.result}. Observações: ${input.notes}`,
-            })
-          : false;
+      // A conclusão do seguimento gera apenas o alerta interno na incidência.
+      // Não enviar e-mails/notificações externas: a revisão é feita no painel.
+      const managerAlerted = false;
       return {
         success: true,
         critical: shouldCreateCriticalMetalAlert(task.module, input.result),

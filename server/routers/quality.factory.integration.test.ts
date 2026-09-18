@@ -1910,7 +1910,7 @@ describe("procedimentos de qualidade por fábrica", () => {
     tasks[0]!.assigneeProfileIds = originalAssignees;
   });
 
-  it("guarda as observações e alerta a Responsável quando uma técnica conclui um seguimento", async () => {
+  it("guarda as observações e mantém o alerta apenas no painel quando uma técnica conclui um seguimento", async () => {
     const task = tasks[0]!;
     const originalTask = { ...task, assigneeProfileIds: [...task.assigneeProfileIds] };
     Object.assign(task, {
@@ -1936,7 +1936,7 @@ describe("procedimentos de qualidade por fábrica", () => {
             result: "C",
             notes: "Cacifo revisto e conforme na nova verificação.",
           })
-      ).resolves.toMatchObject({ followUpCompleted: true, managerAlerted: true });
+      ).resolves.toMatchObject({ followUpCompleted: true, managerAlerted: false });
       expect(dbInserts).toEqual(
         expect.arrayContaining([
           expect.objectContaining({
@@ -1944,12 +1944,7 @@ describe("procedimentos de qualidade por fábrica", () => {
           }),
         ])
       );
-      expect(notifyOwner).toHaveBeenCalledWith(
-        expect.objectContaining({
-          title: "Verificação de seguimento concluída",
-          content: expect.stringContaining("Cacifo revisto e conforme"),
-        })
-      );
+      expect(notifyOwner).not.toHaveBeenCalled();
     } finally {
       Object.assign(task, originalTask);
     }
