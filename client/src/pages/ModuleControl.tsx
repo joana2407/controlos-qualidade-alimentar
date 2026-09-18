@@ -6810,7 +6810,11 @@ export function InternalAnalysis({ createEntry }: any) {
     item.test.toLocaleLowerCase("pt-PT").includes("elisa")
   );
   const selectTest = (test: string) =>
-    setTests(current => (current[0] === test ? [] : [test]));
+    setTests(current =>
+      current.includes(test)
+        ? current.filter(item => item !== test)
+        : [...current, test]
+    );
   const updateSample = (
     index: number,
     update: (sample: (typeof samples)[number]) => (typeof samples)[number]
@@ -6969,7 +6973,7 @@ export function InternalAnalysis({ createEntry }: any) {
                           key={test}
                           type="button"
                           size="sm"
-                          variant={tests[0] === test ? "default" : "outline"}
+                          variant={tests.includes(test) ? "default" : "outline"}
                           onClick={() => selectTest(test)}
                         >
                           {test}
@@ -6981,7 +6985,7 @@ export function InternalAnalysis({ createEntry }: any) {
               </div>
               <p className="text-xs text-muted-foreground">
                 {tests.length
-                  ? `Análise selecionada: ${tests[0]}.`
+                  ? `${tests.length} análise(s) selecionada(s): ${tests.join(", ")}.`
                   : "Selecione uma análise para iniciar a respetiva validação."}
               </p>
             </div>

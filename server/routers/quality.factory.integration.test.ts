@@ -1020,6 +1020,32 @@ describe("procedimentos de qualidade por fábrica", () => {
     }
   });
 
+  it("considera completo o controlo analítico com um registo e conserva registos adicionais do mesmo dia", async () => {
+    const taskId = 519;
+    const entryIds = [5191, 5192];
+    tasks.push({ id: taskId, factoryId: null, status: "pending", dueAt: now, completedAt: null, module: "internal_analysis", area: "Plano do Dia", title: "Plano do Dia — Análises internas múltiplas", responsible: "Equipa", assigneeProfileIds: [1] });
+    entries.push(
+      ...entryIds.map((id, index) => ({
+        id,
+        factoryId: null,
+        module: "internal_analysis",
+        area: index === 0 ? "Ovo" : "Mostarda",
+        result: "C",
+        completedAt: new Date(now.getTime() + index * 60_000),
+        payload: { plannedTaskId: taskId, tests: [index === 0 ? "Teste rápido ovo" : "Teste rápido mostarda"] },
+      })) as any
+    );
+    try {
+      const dashboard = await qualityRouter.createCaller(createContext()).dashboard({ date: now });
+      expect(dashboard.moduleProgress.internal_analysis).toMatchObject({ expected: 1, completed: 1, percentage: 100 });
+      expect(entries.filter(entry => entry.module === "internal_analysis" && entry.payload?.plannedTaskId === taskId)).toHaveLength(2);
+      expect(dashboard.plannedControls).toEqual(expect.arrayContaining([expect.objectContaining({ id: taskId, completed: true })]));
+    } finally {
+      entries.splice(entries.findIndex(entry => entry.id === entryIds[0]), entryIds.length);
+      tasks.splice(tasks.findIndex(task => task.id === taskId), 1);
+    }
+  });
+
   it("aceita submeter outro produto sensorial depois de o primeiro ter concluído a tarefa", async () => {
     tasks.push({ id: 515, factoryId: 1, status: "completed", dueAt: now, completedAt: now, module: "sensory", area: "Plano do Dia", title: "Plano do Dia — Controlo sensorial F1", responsible: "Sabrina Esteves", assigneeProfileIds: [1] });
     try {
