@@ -2599,6 +2599,7 @@ export default function ModuleControl() {
   ]);
   const dashboard = trpc.quality.dashboard.useQuery({
     date: progressDateInput,
+    viewerProfileId: activeProfile?.id,
   });
   const controlFactories = useMemo(() => {
     if (module !== "food_defense") return factories;
