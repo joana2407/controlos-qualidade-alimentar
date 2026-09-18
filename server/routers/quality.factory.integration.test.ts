@@ -2291,6 +2291,47 @@ describe("procedimentos de qualidade por fábrica", () => {
     }
   });
 
+  it("devolve as mesmas percentagens de Quebráveis para todos os perfis", async () => {
+    const profileTaskIds = [701, 702, 703];
+    tasks.push(
+      ...profileTaskIds.map((id, index) => ({
+        id,
+        factoryId: index + 1,
+        status: "pending" as const,
+        dueAt: now,
+        completedAt: null,
+        module: "fragile_items" as const,
+        area: "Plano do Dia",
+        title: `Quebráveis — perfil comum F${index + 1}`,
+        responsible: "Equipa",
+        assigneeProfileIds: [index + 1],
+      }))
+    );
+    try {
+      const dashboards = await Promise.all(
+        [1, 2, 3].map(viewerProfileId =>
+          qualityRouter
+            .createCaller(createContext())
+            .dashboard({ date: now, viewerProfileId })
+        )
+      );
+      const progressByProfile = dashboards.map(
+        dashboard => dashboard.moduleProgressByFactory.fragile_items
+      );
+      expect(progressByProfile[1]).toEqual(progressByProfile[0]);
+      expect(progressByProfile[2]).toEqual(progressByProfile[0]);
+      expect(progressByProfile[0]).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ factoryId: 1 }),
+          expect.objectContaining({ factoryId: 2 }),
+          expect.objectContaining({ factoryId: 3 }),
+        ])
+      );
+    } finally {
+      tasks.splice(tasks.findIndex(task => task.id === profileTaskIds[0]), profileTaskIds.length);
+    }
+  });
+
   it("lista o histórico anterior do ponto de Quebráveis com estado, autoria e observações", async () => {
     const historyEntries = [
       { id: 950, factoryId: 1, module: "fragile_items", area: "Zona Tratamento Térmico", title: "Quebrável — Portas forno Anelar 1", result: "NC", notes: "Substituir proteção antes do próximo turno.", completedAt: new Date(2026, 7, 13, 9, 30, 0), registeredByName: "Sabrina Esteves", registeredByTitle: "Tec. Qualidade", payload: { fragileItemId: 1, state: "Danificado", evidencePhotos: [{ url: "/manus-storage/dano.png", fileName: "dano.png" }] } },

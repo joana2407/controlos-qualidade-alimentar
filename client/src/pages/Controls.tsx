@@ -448,7 +448,6 @@ export default function Controls() {
   );
   const dashboard = trpc.quality.dashboard.useQuery({
     date: progressDateInput,
-    viewerProfileId: activeProfile?.id,
   });
   const observationInput = useMemo(
     () => ({
