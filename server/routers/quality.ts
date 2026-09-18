@@ -7005,9 +7005,10 @@ export const qualityRouter = router({
     .input(
       z
         .object({
-          factoryId: z.number().int().optional(),
-          periodicity: z.enum(["D", "S", "Q", "M"]).optional(),
-          referenceDate: z.coerce.date().optional(),
+        factoryId: z.number().int().optional(),
+        periodicity: z.enum(["D", "S", "Q", "M"]).optional(),
+        referenceDate: z.coerce.date().optional(),
+        plannedTaskId: z.number().int().optional(),
         })
         .optional()
     )
@@ -7043,6 +7044,24 @@ export const qualityRouter = router({
         }
       });
       const referenceDate = input?.referenceDate ?? new Date();
+      const plannedTask = input?.plannedTaskId
+        ? (await db.select().from(controlTasks).where(eq(controlTasks.id, input.plannedTaskId)).limit(1))[0]
+        : null;
+      const entriesForPlannedTask = plannedTask
+        ? new Set(entries.filter(entry => Number(entryPayload(entry).plannedTaskId) === plannedTask.id)
+            .map(entry => Number(entryPayload(entry).fragileItemId)))
+        : null;
+      const referenceDateKey = localDateKey(referenceDate);
+      const lastInspectionsBeforeReference = new Map<number, Date>();
+      if (plannedTask) {
+        entries.forEach(entry => {
+          const itemId = Number(entryPayload(entry).fragileItemId);
+          if (!Number.isInteger(itemId) || fragileInspectionOperationalDate(entry) >= referenceDateKey) return;
+          const inspectionAt = fragileInspectionAt(entry);
+          const current = lastInspectionsBeforeReference.get(itemId);
+          if (!current || inspectionAt > current) lastInspectionsBeforeReference.set(itemId, inspectionAt);
+        });
+      }
       return items
         .filter(
           item =>
@@ -7051,10 +7070,12 @@ export const qualityRouter = router({
             (!input?.periodicity || item.periodicity === input.periodicity)
         )
         .map(item => {
-          const lastInspectionAt = lastInspections.get(item.id) ?? null;
+          const lastInspectionAt = (plannedTask ? lastInspectionsBeforeReference.get(item.id) : lastInspections.get(item.id)) ?? null;
+          const completedForPlannedTask = entriesForPlannedTask?.has(item.id) ?? false;
           return {
             ...item,
             lastInspectionAt,
+            completedForPlannedTask,
             dueAt: fragileInspectionDueDate(
               item.periodicity,
               lastInspectionAt,
@@ -7068,6 +7089,7 @@ export const qualityRouter = router({
           };
         })
         .filter(item =>
+          !item.completedForPlannedTask &&
           isFragileInspectionPending(
             item.periodicity,
             item.lastInspectionAt,

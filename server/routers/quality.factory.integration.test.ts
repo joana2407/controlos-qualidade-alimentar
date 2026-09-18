@@ -2276,6 +2276,21 @@ describe("procedimentos de qualidade por fábrica", () => {
     expect(factoryOne[0]?.lastInspectionAt).toBeNull();
   });
 
+  it("não mostra zero pontos quando a tarefa do dia continua pendente apesar de existir um registo contra outra tarefa", async () => {
+    const plannedTask = { id: 200, factoryId: 1, status: "pending", dueAt: new Date(2026, 8, 17, 12, 0, 0), completedAt: null, module: "fragile_items", area: "Plano do Dia", title: "Quebráveis F1 — 17/09", responsible: "Equipa", assigneeProfileIds: [1] };
+    const otherTaskEntry = { id: 201, factoryId: 1, module: "fragile_items", area: "Zona Tratamento Térmico", result: "C", completedAt: new Date(2026, 8, 17, 13, 0, 0), payload: { fragileItemId: 1, plannedTaskId: 999, actualVerificationDate: "2026-09-17" } };
+    tasks.push(plannedTask);
+    entries.push(otherTaskEntry);
+    try {
+      const caller = qualityRouter.createCaller(createContext());
+      const pending = await caller.fragilePending({ factoryId: 1, referenceDate: plannedTask.dueAt, plannedTaskId: plannedTask.id });
+      expect(pending.map(item => item.id)).toContain(1);
+    } finally {
+      entries.splice(entries.findIndex(entry => entry.id === otherTaskEntry.id), 1);
+      tasks.splice(tasks.findIndex(task => task.id === plannedTask.id), 1);
+    }
+  });
+
   it("lista o histórico anterior do ponto de Quebráveis com estado, autoria e observações", async () => {
     const historyEntries = [
       { id: 950, factoryId: 1, module: "fragile_items", area: "Zona Tratamento Térmico", title: "Quebrável — Portas forno Anelar 1", result: "NC", notes: "Substituir proteção antes do próximo turno.", completedAt: new Date(2026, 7, 13, 9, 30, 0), registeredByName: "Sabrina Esteves", registeredByTitle: "Tec. Qualidade", payload: { fragileItemId: 1, state: "Danificado", evidencePhotos: [{ url: "/manus-storage/dano.png", fileName: "dano.png" }] } },

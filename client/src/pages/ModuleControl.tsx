@@ -2929,6 +2929,7 @@ export default function ModuleControl() {
                   {...props}
                   factoryId={factoryId}
                   referenceDate={progressDateInput}
+                  plannedTaskId={authorization.data?.taskId}
                   showHeader={false}
                 />
               </>

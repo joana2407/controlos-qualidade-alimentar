@@ -71,7 +71,7 @@ function delayLabel(point: FragilePoint) {
   return `Atraso: ${point.delayDays} ${point.delayDays === 1 ? "dia" : "dias"}`;
 }
 
-export function FragileOperationsPanel({ createEntry, factoryId, referenceDate, showHeader = true }: { createEntry: any; factoryId: string; referenceDate?: Date | string | null; showHeader?: boolean }) {
+export function FragileOperationsPanel({ createEntry, factoryId, referenceDate, plannedTaskId, showHeader = true }: { createEntry: any; factoryId: string; referenceDate?: Date | string | null; plannedTaskId?: number | null; showHeader?: boolean }) {
   const utils = trpc.useUtils();
   const metadata = trpc.quality.metadata.useQuery();
   const [periodicity, setPeriodicity] = useState<"all" | Periodicity>("all");
@@ -110,7 +110,7 @@ export function FragileOperationsPanel({ createEntry, factoryId, referenceDate, 
   const [newAreaName, setNewAreaName] = useState("");
   const [areaToDelete, setAreaToDelete] = useState("");
 
-  const pendingInput = useMemo(() => factoryId ? { factoryId: Number(factoryId), referenceDate: referenceDate ? new Date(referenceDate) : undefined } : undefined, [factoryId, referenceDate]);
+  const pendingInput = useMemo(() => factoryId ? { factoryId: Number(factoryId), referenceDate: referenceDate ? new Date(referenceDate) : undefined, plannedTaskId: plannedTaskId ?? undefined } : undefined, [factoryId, plannedTaskId, referenceDate]);
   const items = trpc.quality.listFragileItems.useQuery();
   const fragileAreas = trpc.quality.listFragileAreas.useQuery();
   const pending = trpc.quality.fragilePending.useQuery(pendingInput, { enabled: Boolean(factoryId) });
