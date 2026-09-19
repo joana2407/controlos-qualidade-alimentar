@@ -1170,10 +1170,14 @@ async function assessControlAuthorization(
     const hasIncompletePlannedCoverage = !plannedCoverageSatisfied;
     const isExplicitDispatchSupplement =
       input.module === "dispatch_control" && Boolean(input.plannedTaskId);
+    const isExplicitInternalAnalysisSupplement =
+      input.module === "internal_analysis" && Boolean(input.plannedTaskId);
     const isCompletedPlanOpenForSupplement =
       allowsSupplementaryDailyEntries &&
       plannedCoverageSatisfied &&
-      (isCurrentDay || isExplicitDispatchSupplement);
+      (isCurrentDay ||
+        isExplicitDispatchSupplement ||
+        isExplicitInternalAnalysisSupplement);
     return (
       (hasIncompletePlannedCoverage || isCompletedPlanOpenForSupplement) &&
       item.area === "Plano do Dia" &&

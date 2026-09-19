@@ -1020,6 +1020,28 @@ describe("procedimentos de qualidade por fábrica", () => {
     }
   });
 
+  it("mantém as Análises internas retroativas acessíveis para um registo adicional", async () => {
+    const taskId = 5171;
+    const previousDate = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+    tasks.push({ id: taskId, factoryId: null, status: "completed", dueAt: previousDate, completedAt: previousDate, module: "internal_analysis", area: "Plano do Dia", title: "Plano do Dia — Análises internas retroativas", responsible: "Sabrina Esteves", assigneeProfileIds: [1] });
+    entries.push({
+      id: taskId,
+      factoryId: null,
+      module: "internal_analysis",
+      area: "Ovo",
+      result: "C",
+      completedAt: previousDate,
+      payload: { plannedTaskId: taskId, plannedDate: previousDate.toISOString(), tests: ["Teste rápido ovo"] },
+    } as any);
+    try {
+      const caller = qualityRouter.createCaller(createContext({ id: 1, name: "Sabrina Esteves", title: "Tec. Qualidade", role: "technician" }));
+      await expect(caller.controlAuthorization({ module: "internal_analysis", plannedTaskId: taskId })).resolves.toMatchObject({ allowed: true, taskId, isPreviousPending: true });
+    } finally {
+      entries.pop();
+      tasks.pop();
+    }
+  });
+
   it("considera completo o controlo analítico com um registo e conserva registos adicionais do mesmo dia", async () => {
     const taskId = 519;
     const entryIds = [5191, 5192];
