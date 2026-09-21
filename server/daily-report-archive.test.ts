@@ -60,6 +60,33 @@ describe("arquivo diário de relatórios", () => {
     expect(snapshot.dailyNotes).toHaveLength(1);
   });
 
+  it("inclui o período completo e as fotografias dos controlos e incidências", () => {
+    const snapshot = buildDailyReportSnapshot({
+      operationalDate: "2026-08-21",
+      tasks: [],
+      entries: [{
+        id: 10,
+        completedAt: new Date("2026-08-21T12:00:00Z"),
+        payload: { evidencePhotos: [{ key: "control-photo", url: "/manus-storage/control-photo", fileName: "controlo.jpg", mimeType: "image/jpeg" }] },
+      }],
+      nonconformities: [{
+        id: 11,
+        sourceEntryId: 10,
+        payload: { evidencePhotos: [{ key: "incidence-photo", url: "/manus-storage/incidence-photo", fileName: "incidencia.jpg", mimeType: "image/jpeg" }] },
+      }],
+      summaries: [],
+      factories: [],
+    });
+
+    expect(snapshot).toMatchObject({
+      schemaVersion: 2,
+      periodStart: "2026-08-21T00:00:00 Europe/Lisbon",
+      periodEnd: "2026-08-21T23:59:59 Europe/Lisbon",
+    });
+    expect(snapshot.controlPhotos).toHaveLength(1);
+    expect(snapshot.incidencePhotos).toHaveLength(1);
+  });
+
   it("reconhece as 23:55 de Lisboa tanto no horário de verão como no de inverno", () => {
     expect(isLisbonArchiveTime(new Date("2026-08-21T22:55:00.000Z"))).toBe(true);
     expect(isLisbonArchiveTime(new Date("2026-08-21T23:55:00.000Z"))).toBe(false);

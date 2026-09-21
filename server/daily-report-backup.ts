@@ -32,9 +32,16 @@ function toWorkbook(archive: any) {
   const controls = asRows(snapshot.controlEntries);
   const incidences = asRows(snapshot.incidences);
   const notes = asRows(snapshot.dailyNotes);
+  const incidencePhotos = asRows(snapshot.incidencePhotos);
+  const controlPhotos = asRows(snapshot.controlPhotos);
+  const photos: Record<string, unknown>[] = [
+    ...incidencePhotos.map(photo => ({ ...photo, Tipo: "Incidência" })),
+    ...controlPhotos.map(photo => ({ ...photo, Tipo: "Controlo" })),
+  ];
   const workbook = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet([{
     "Data operacional": dateKey(archive.operationalDate),
+    "Período incluído": `${dateKey(archive.operationalDate)} 00:00–23:59 (Europe/Lisbon)`,
     Versão: `V${archive.revision}`,
     Tipo: archive.archiveKind === "initial" ? "Arquivo diário inicial" : "Revisão retroativa",
     "Criado em": displayDate(archive.createdAt),
@@ -44,20 +51,25 @@ function toWorkbook(archive: any) {
     Controlos: controls.length,
     Incidências: incidences.length,
     Anotações: notes.length,
+    Fotografias: photos.length,
   }]), "Resumo da versão");
   XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(tasks.map((task) => ({
-    Controlo: formatValue(task.module), "Fábrica / linha": formatValue(task.factoryName ?? task.factory),
+    ID: formatValue(task.id), Controlo: formatValue(task.module), Título: formatValue(task.title), "Fábrica / linha": formatValue(task.factoryName ?? task.factory ?? task.factoryId),
     Responsável: formatValue(task.responsible ?? task.assignedToName), Estado: formatValue(task.status), Data: displayDate(task.dueAt),
+    "Concluído em": displayDate(task.completedAt), "Criado por": formatValue(task.createdByName ?? task.createdBy), Dados: formatValue(task),
   }))), "Tarefas planeadas");
   XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(controls.map((entry) => ({
-    Data: displayDate(entry.completedAt), Controlo: formatValue(entry.module), "Fábrica / linha": formatValue(entry.factoryName ?? entry.factory),
+    ID: formatValue(entry.id), Data: displayDate(entry.completedAt), "Data operacional": formatValue(asRecord(entry.payload).actualVerificationDate ?? asRecord(entry.payload).plannedDate), Controlo: formatValue(entry.module), "Fábrica / linha": formatValue(entry.factoryName ?? entry.factory ?? entry.factoryId),
     Área: formatValue(entry.area), Resultado: formatValue(entry.result), Título: formatValue(entry.title),
-    "Registado por": formatValue(entry.registeredByName), Função: formatValue(entry.registeredByTitle), Observações: formatValue(entry.notes), Dados: formatValue(entry.payload),
+    "Registado por": formatValue(entry.registeredByName), Função: formatValue(entry.registeredByTitle), "Tarefa associada": formatValue(asRecord(entry.payload).plannedTaskId), Observações: formatValue(entry.notes), Dados: formatValue(entry.payload),
   }))), "Controlos");
   XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(incidences.map((incidence) => ({
-    Data: displayDate(incidence.detectedAt ?? incidence.completedAt), Título: formatValue(incidence.title), Controlo: formatValue(incidence.module),
-    Área: formatValue(incidence.area), Estado: formatValue(incidence.status), Gravidade: formatValue(incidence.severity), Descrição: formatValue(incidence.description ?? incidence.notes),
+    ID: formatValue(incidence.id), "Registo de origem": formatValue(incidence.sourceEntryId), Data: displayDate(incidence.detectedAt ?? incidence.occurredAt ?? incidence.createdAt ?? incidence.completedAt), "Data da ocorrência": formatValue(asRecord(incidence.payload).occurredOn), Título: formatValue(incidence.title), Controlo: formatValue(incidence.module),
+    Área: formatValue(incidence.area), "Fábrica / linha": formatValue(incidence.factoryId), Estado: formatValue(incidence.status), Gravidade: formatValue(incidence.severity), Responsável: formatValue(incidence.assignedTo), Descrição: formatValue(incidence.description ?? incidence.notes), Tratamento: formatValue(asRecord(incidence.payload).incidenceTreatment), Dados: formatValue(incidence.payload),
   }))), "Incidências");
+  XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(photos.map(photo => ({
+    Tipo: formatValue(photo.Tipo), "ID do registo": formatValue(photo.incidenceId ?? photo.controlEntryId), Chave: formatValue(photo.key), Ficheiro: formatValue(photo.fileName), "Tipo MIME": formatValue(photo.mimeType), "Ligação para fotografia": formatValue(photo.url),
+  }))), "Fotografias");
   XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(notes.map((note) => ({
     Anotação: formatValue(note.note), "Atualizada por": formatValue(note.updatedByName ?? note.createdBy), Data: displayDate(note.updatedAt ?? note.createdAt),
   }))), "Anotações");
@@ -84,7 +96,8 @@ export async function ensureDailyReportArchiveBackup(archiveId: number) {
   }
 
   const filename = `relatorio-diario-${operationalDate}.xlsx`;
-  if (finalArchive.backupFileKey && finalArchive.backupFileUrl) {
+  const snapshotVersion = Number(asRecord(finalArchive.snapshot).schemaVersion ?? 1);
+  if (finalArchive.backupFileKey && finalArchive.backupFileUrl && snapshotVersion >= 2) {
     for (const previous of sameDay.slice(1)) {
       if (previous.backupFileKey || previous.backupFileUrl) {
         await db.update(dailyReportArchives).set({ backupFileKey: null, backupFileUrl: null, backupGeneratedAt: null, backupSizeBytes: null }).where(eq(dailyReportArchives.id, previous.id));

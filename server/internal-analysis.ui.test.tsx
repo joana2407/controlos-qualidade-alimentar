@@ -38,9 +38,8 @@ describe("controlo de análises internas", () => {
     const eggTest = screen.getByRole("button", { name: "Teste rápido ovo" });
     const mustardTest = screen.getByRole("button", { name: "Teste rápido mostarda" });
     fireEvent.click(eggTest);
-    expect(screen.getByText("Análise selecionada: Teste rápido ovo.")).toBeTruthy();
+    expect(screen.getByText("1 análise(s) selecionada(s): Teste rápido ovo.")).toBeTruthy();
     fireEvent.click(mustardTest);
-    expect(screen.getByText("Análise selecionada: Teste rápido mostarda.")).toBeTruthy();
-    expect(screen.queryByText("Análise selecionada: Teste rápido ovo.")).toBeNull();
+    expect(screen.getByText("2 análise(s) selecionada(s): Teste rápido ovo, Teste rápido mostarda.")).toBeTruthy();
   });
 });

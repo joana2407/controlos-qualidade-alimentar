@@ -47,6 +47,39 @@ function jsonValue(value: unknown): unknown {
   return value;
 }
 
+function photosFrom(value: unknown): Array<{
+  key: string | null;
+  url: string;
+  fileName: string;
+  mimeType: string | null;
+}> {
+  const photos: Array<{
+    key: string | null;
+    url: string;
+    fileName: string;
+    mimeType: string | null;
+  }> = [];
+  const visit = (current: unknown) => {
+    if (Array.isArray(current)) {
+      current.forEach(visit);
+      return;
+    }
+    if (!current || typeof current !== "object") return;
+    const record = current as Record<string, unknown>;
+    if (typeof record.url === "string" && typeof record.fileName === "string") {
+      photos.push({
+        key: typeof record.key === "string" ? record.key : null,
+        url: record.url,
+        fileName: record.fileName,
+        mimeType: typeof record.mimeType === "string" ? record.mimeType : null,
+      });
+    }
+    Object.values(record).forEach(visit);
+  };
+  visit(value);
+  return photos;
+}
+
 export function buildDailyReportSnapshot(input: { operationalDate: string; tasks: any[]; entries: any[]; nonconformities: any[]; summaries: any[]; factories: any[] }) {
   const operationalEntries = input.entries.filter((entry) => {
     const payload = payloadRecord(entry.payload);
@@ -66,14 +99,30 @@ export function buildDailyReportSnapshot(input: { operationalDate: string; tasks
       .map(value => localDateKey(new Date(value)));
     return dates.includes(input.operationalDate);
   });
+  const incidencePhotos = operationalIncidences.flatMap((incidence) =>
+    photosFrom(incidence.payload).map((photo) => ({
+      incidenceId: incidence.id,
+      ...photo,
+    }))
+  );
+  const controlPhotos = operationalEntries.flatMap((entry) =>
+    photosFrom(entry.payload).map((photo) => ({
+      controlEntryId: entry.id,
+      ...photo,
+    }))
+  );
   return jsonValue({
-    schemaVersion: 1,
+    schemaVersion: 2,
     operationalDate: input.operationalDate,
+    periodStart: `${input.operationalDate}T00:00:00 Europe/Lisbon`,
+    periodEnd: `${input.operationalDate}T23:59:59 Europe/Lisbon`,
     generatedAt: new Date().toISOString(),
     factories: input.factories,
     plannedTasks: input.tasks.filter((task) => localDateKey(new Date(task.dueAt)) === input.operationalDate),
     controlEntries: operationalEntries,
     incidences: operationalIncidences,
+    incidencePhotos,
+    controlPhotos,
     dailyNotes: input.summaries.filter((item) => localDateKey(new Date(item.referenceDate)) === input.operationalDate),
   }) as Record<string, unknown>;
 }
