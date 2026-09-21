@@ -164,6 +164,13 @@ const incidenceTreatmentSchema = z.object({
     .max(8)
     .optional(),
 });
+const incidenceTreatmentHistoryEntrySchema = incidenceTreatmentSchema.extend({
+  revision: z.number().int().positive(),
+  recordedAt: z.string().datetime(),
+  recordedByProfileId: z.number().int(),
+  recordedByName: z.string().min(1).max(160),
+  recordedByTitle: z.string().min(1).max(120),
+});
 const followUpReviewAlertSchema = z.object({
   followUpTaskId: z.number().int(),
   title: z.string().min(1).max(180),
@@ -177,6 +184,12 @@ const followUpReviewAlertSchema = z.object({
 function incidenceTreatmentFromPayload(payload: Record<string, unknown>) {
   const parsed = incidenceTreatmentSchema.safeParse(payload.incidenceTreatment);
   return parsed.success ? parsed.data : { status: "pending" as const };
+}
+function incidenceTreatmentHistoryFromPayload(payload: Record<string, unknown>) {
+  const parsed = z
+    .array(incidenceTreatmentHistoryEntrySchema)
+    .safeParse(payload.incidenceTreatmentHistory);
+  return parsed.success ? parsed.data : [];
 }
 function followUpReviewAlertsFromPayload(payload: Record<string, unknown>) {
   const parsed = z.array(followUpReviewAlertSchema).safeParse(
@@ -5584,6 +5597,7 @@ export const qualityRouter = router({
             generatedNonconformity
           );
           const treatment = incidenceTreatmentFromPayload(payload);
+          const treatmentHistory = incidenceTreatmentHistoryFromPayload(payload);
           const followUpReviewAlerts = followUpReviewAlertsFor(entry, payload);
           const occurredOn = incidenceOccurredOnFromPayload(
             payload,
@@ -5600,6 +5614,7 @@ export const qualityRouter = router({
             treatmentStatus: treatmentDecision,
             treatmentProgress: treatment.status,
             treatment,
+            treatmentHistory,
             followUpReviewAlerts,
             nonconformityId: linked?.id ?? null,
             occurrenceNumber,
@@ -5976,7 +5991,8 @@ export const qualityRouter = router({
               "Para concluir o tratamento, indique a correção, o responsável e a data de conclusão.",
           });
         }
-        payload.incidenceTreatment = {
+        const recordedAt = new Date().toISOString();
+        const nextTreatment = {
           status: input.treatment.status,
           correction,
           responsible,
@@ -5990,10 +6006,28 @@ export const qualityRouter = router({
             input.treatment.evidencePhotos ??
             incidenceTreatmentFromPayload(payload).evidencePhotos ??
             [],
-          updatedAt: new Date().toISOString(),
+          updatedAt: recordedAt,
           updatedByProfileId: ctx.operatorProfile!.id,
           updatedByName: ctx.operatorProfile!.name,
         };
+        payload.incidenceTreatment = nextTreatment;
+        const treatmentHistory = incidenceTreatmentHistoryFromPayload(payload);
+        const nextRevision =
+          treatmentHistory.reduce(
+            (highestRevision, item) => Math.max(highestRevision, item.revision),
+            0
+          ) + 1;
+        payload.incidenceTreatmentHistory = [
+          ...treatmentHistory,
+          {
+            ...nextTreatment,
+            revision: nextRevision,
+            recordedAt,
+            recordedByProfileId: ctx.operatorProfile!.id,
+            recordedByName: ctx.operatorProfile!.name,
+            recordedByTitle: ctx.operatorProfile!.title,
+          },
+        ];
         if (
           pendingFollowUpReviewAlertsFromPayload(payload).length ||
           hasCompletedFollowUpRequiringReview
@@ -6211,6 +6245,7 @@ export const qualityRouter = router({
             generatedNonconformity
           );
           const treatment = incidenceTreatmentFromPayload(payload);
+          const treatmentHistory = incidenceTreatmentHistoryFromPayload(payload);
           const followUpReviewAlerts =
             pendingFollowUpReviewAlertsFromPayload(payload);
           const occurredOn = incidenceOccurredOnFromPayload(payload, entry.completedAt);
@@ -6226,6 +6261,7 @@ export const qualityRouter = router({
             treatmentStatus: treatmentDecision,
             treatmentProgress: treatment.status,
             treatment,
+            treatmentHistory,
             followUpReviewAlerts,
             nonconformityId: linked?.id ?? null,
           };

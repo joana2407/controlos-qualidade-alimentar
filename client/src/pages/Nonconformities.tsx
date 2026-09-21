@@ -57,6 +57,13 @@ type IncidenceTreatment = {
     mimeType: "image/jpeg" | "image/png" | "image/webp";
   }>;
 };
+type IncidenceTreatmentHistoryEntry = IncidenceTreatment & {
+  revision: number;
+  recordedAt: string;
+  recordedByProfileId: number;
+  recordedByName: string;
+  recordedByTitle: string;
+};
 type FragileTreatmentReview = {
   periodicity: "D" | "S" | "Q" | "M";
   riskLevel: "1" | "2" | "3";
@@ -101,6 +108,7 @@ type OccurrenceItem = {
     mimeType: "image/jpeg" | "image/png" | "image/webp";
   }>;
   treatment: IncidenceTreatment;
+  treatmentHistory: IncidenceTreatmentHistoryEntry[];
   followUpReviewAlerts: Array<{
     followUpTaskId: number;
     title: string;
@@ -222,6 +230,48 @@ const incidenceTreatmentFrom = (value: unknown): IncidenceTreatment => {
     evidencePhotos: photos,
   };
 };
+const incidenceTreatmentHistoryFrom = (
+  value: unknown
+): IncidenceTreatmentHistoryEntry[] => {
+  const entries = Array.isArray(value) ? value : [];
+  return entries
+    .map((entry, index) => {
+      const record =
+        entry && typeof entry === "object" && !Array.isArray(entry)
+          ? (entry as Record<string, unknown>)
+          : {};
+      const recordedAt =
+        typeof record.recordedAt === "string" &&
+        !Number.isNaN(new Date(record.recordedAt).getTime())
+          ? record.recordedAt
+          : "";
+      if (!recordedAt) return null;
+      return {
+        ...incidenceTreatmentFrom(record),
+        revision:
+          typeof record.revision === "number" && record.revision > 0
+            ? record.revision
+            : index + 1,
+        recordedAt,
+        recordedByProfileId:
+          typeof record.recordedByProfileId === "number"
+            ? record.recordedByProfileId
+            : 0,
+        recordedByName:
+          typeof record.recordedByName === "string" && record.recordedByName.trim()
+            ? record.recordedByName
+            : "Utilizador não identificado",
+        recordedByTitle:
+          typeof record.recordedByTitle === "string"
+            ? record.recordedByTitle
+            : "",
+      };
+    })
+    .filter(
+      (entry): entry is IncidenceTreatmentHistoryEntry => entry !== null
+    )
+    .sort((left, right) => left.revision - right.revision);
+};
 const bphfContextFrom = (
   module: string,
   payload: Record<string, unknown>,
@@ -269,6 +319,7 @@ const incidenceDetailHiddenKeys = new Set([
   "plannedDate",
   "sourceEntryId",
   "incidenceTreatment",
+  "incidenceTreatmentHistory",
 ]);
 const formatIncidenceDetailValue = (value: unknown): string => {
   if (value === null || value === undefined || value === "") return "Não indicado";
@@ -524,6 +575,10 @@ export default function Nonconformities() {
               (item as any).treatment ??
                 (item.payload as any)?.incidenceTreatment
             ),
+            treatmentHistory: incidenceTreatmentHistoryFrom(
+              (item as any).treatmentHistory ??
+                (item.payload as any)?.incidenceTreatmentHistory
+            ),
             followUpReviewAlerts: Array.isArray(
               (item as any).followUpReviewAlerts
             )
@@ -576,6 +631,7 @@ export default function Nonconformities() {
             ...emptyIncidenceTreatment(),
             status: "completed" as const,
           },
+          treatmentHistory: [],
           followUpReviewAlerts: [],
           fragileTreatmentReview: null,
           plannedTaskId: null,
@@ -1666,6 +1722,77 @@ export default function Nonconformities() {
                             {treatmentLabel(selected.treatment.status)}
                           </Badge>
                         </div>
+                        {selected.treatmentHistory.length ? (
+                          <section className="rounded-lg border border-teal-200 bg-white/75 p-3">
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                              <div>
+                                <p className="text-sm font-semibold text-teal-950">
+                                  Histórico do tratamento
+                                </p>
+                                <p className="mt-0.5 text-xs text-teal-800">
+                                  Cada edição guardada mantém a data, o tipo de tratamento e as pessoas envolvidas.
+                                </p>
+                              </div>
+                              <Badge className="bg-teal-100 text-teal-900 hover:bg-teal-100">
+                                {selected.treatmentHistory.length} {selected.treatmentHistory.length === 1 ? "edição" : "edições"}
+                              </Badge>
+                            </div>
+                            <ol className="mt-3 space-y-2">
+                              {[...selected.treatmentHistory]
+                                .reverse()
+                                .map(history => (
+                                  <li
+                                    key={`${history.revision}-${history.recordedAt}`}
+                                    className="rounded-md border border-slate-200 bg-slate-50 p-3"
+                                  >
+                                    <div className="flex flex-wrap items-start justify-between gap-2">
+                                      <div className="flex flex-wrap items-center gap-2">
+                                        <span className="text-xs font-semibold text-slate-700">
+                                          Edição {history.revision}
+                                        </span>
+                                        <span className="text-xs text-slate-500">
+                                          Tipo de tratamento:
+                                        </span>
+                                        <Badge className={treatmentTone(history.status)}>
+                                          {treatmentLabel(history.status)}
+                                        </Badge>
+                                      </div>
+                                      <time
+                                        dateTime={history.recordedAt}
+                                        className="text-xs text-slate-500"
+                                      >
+                                        Registado em {new Date(history.recordedAt).toLocaleString("pt-PT", {
+                                          timeZone: "Europe/Lisbon",
+                                        })}
+                                      </time>
+                                    </div>
+                                    <div className="mt-2 grid gap-1 text-xs text-slate-700 sm:grid-cols-2">
+                                      <p>
+                                        <span className="font-medium text-teal-800">
+                                          Responsável pelo tratamento:
+                                        </span>{" "}
+                                        {history.responsible || "Não indicado"}
+                                      </p>
+                                      <p>
+                                        <span className="font-medium text-teal-800">
+                                          Registado por:
+                                        </span>{" "}
+                                        {history.recordedByName}
+                                        {history.recordedByTitle
+                                          ? ` · ${history.recordedByTitle}`
+                                          : ""}
+                                      </p>
+                                    </div>
+                                    {(history.correction || history.notes) && (
+                                      <p className="mt-2 whitespace-pre-wrap text-xs text-slate-600">
+                                        {history.correction || history.notes}
+                                      </p>
+                                    )}
+                                  </li>
+                                ))}
+                            </ol>
+                          </section>
+                        ) : null}
                         {selected.followUpReviewAlerts.length ? (
                           <div
                             className="space-y-3 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950"

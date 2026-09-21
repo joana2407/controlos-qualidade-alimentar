@@ -2624,6 +2624,108 @@ describe("procedimentos de qualidade por fábrica", () => {
     }
   });
 
+  it("guarda uma revisão rastreável sempre que o tratamento da incidência é editado", async () => {
+    const incidence = {
+      id: 909,
+      factoryId: 1,
+      module: "fragile_items",
+      area: "Produção",
+      title: "Quebrável — Luminária",
+      result: "NC",
+      completedAt: now,
+      payload: {},
+    };
+    entries.unshift(incidence);
+    try {
+      const caller = qualityRouter.createCaller(createContext());
+      await caller.updateIncidence({
+        id: 909,
+        treatment: {
+          status: "in_progress",
+          correction: "Agendada substituição da luminária.",
+          responsible: "Joana Pina",
+          dueDate: "2026-08-20",
+        },
+      });
+
+      expect(dbUpdates.at(-1)).toMatchObject({
+        payload: expect.objectContaining({
+          incidenceTreatment: expect.objectContaining({
+            status: "in_progress",
+            responsible: "Joana Pina",
+          }),
+          incidenceTreatmentHistory: [
+            expect.objectContaining({
+              revision: 1,
+              status: "in_progress",
+              responsible: "Joana Pina",
+              recordedByName: "Joana Pina",
+              recordedByTitle: "Resp. Qualidade",
+              recordedAt: expect.any(String),
+            }),
+          ],
+        }),
+      });
+    } finally {
+      entries.shift();
+    }
+  });
+
+  it("preserva as revisões anteriores quando o tratamento é atualizado novamente", async () => {
+    const initialHistory = {
+      revision: 1,
+      recordedAt: "2026-08-14T09:30:00.000Z",
+      recordedByProfileId: 2,
+      recordedByName: "Neuza Antunes",
+      recordedByTitle: "Tec. Qualidade",
+      status: "pending" as const,
+      correction: "Aguardar substituição.",
+      responsible: "Manutenção",
+    };
+    const incidence = {
+      id: 910,
+      factoryId: 1,
+      module: "bphf",
+      area: "Produção",
+      title: "Higienização das mãos",
+      result: "NC",
+      completedAt: now,
+      payload: { incidenceTreatmentHistory: [initialHistory] },
+    };
+    entries.unshift(incidence);
+    try {
+      const caller = qualityRouter.createCaller(createContext());
+      await caller.updateIncidence({
+        id: 910,
+        treatment: {
+          status: "in_progress",
+          correction: "Acompanhamento iniciado.",
+          responsible: "Joana Pina",
+        },
+      });
+
+      expect(dbUpdates.at(-1)).toMatchObject({
+        payload: expect.objectContaining({
+          incidenceTreatmentHistory: [
+            expect.objectContaining({
+              revision: 1,
+              recordedByName: "Neuza Antunes",
+              responsible: "Manutenção",
+            }),
+            expect.objectContaining({
+              revision: 2,
+              recordedByName: "Joana Pina",
+              status: "in_progress",
+              responsible: "Joana Pina",
+            }),
+          ],
+        }),
+      });
+    } finally {
+      entries.shift();
+    }
+  });
+
   it("inclui verificações semanais e mensais quando o Plano do Dia é uma sexta-feira", async () => {
     const caller = qualityRouter.createCaller(createContext());
     const friday = new Date(2026, 7, 14, 12, 0, 0);
