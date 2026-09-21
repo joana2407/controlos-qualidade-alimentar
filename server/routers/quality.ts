@@ -1172,12 +1172,17 @@ async function assessControlAuthorization(
       input.module === "dispatch_control" && Boolean(input.plannedTaskId);
     const isExplicitInternalAnalysisSupplement =
       input.module === "internal_analysis" && Boolean(input.plannedTaskId);
+    const isExplicitInternalAnalysisDate =
+      input.module === "internal_analysis" &&
+      Boolean(input.plannedDate) &&
+      !isCurrentDay;
     const isCompletedPlanOpenForSupplement =
       allowsSupplementaryDailyEntries &&
       plannedCoverageSatisfied &&
       (isCurrentDay ||
         isExplicitDispatchSupplement ||
-        isExplicitInternalAnalysisSupplement);
+        isExplicitInternalAnalysisSupplement ||
+        isExplicitInternalAnalysisDate);
     return (
       (hasIncompletePlannedCoverage || isCompletedPlanOpenForSupplement) &&
       item.area === "Plano do Dia" &&

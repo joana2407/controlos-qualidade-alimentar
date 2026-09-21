@@ -1036,6 +1036,7 @@ describe("procedimentos de qualidade por fábrica", () => {
     try {
       const caller = qualityRouter.createCaller(createContext({ id: 1, name: "Sabrina Esteves", title: "Tec. Qualidade", role: "technician" }));
       await expect(caller.controlAuthorization({ module: "internal_analysis", plannedTaskId: taskId })).resolves.toMatchObject({ allowed: true, taskId, isPreviousPending: true });
+      await expect(caller.controlAuthorization({ module: "internal_analysis", plannedDate: previousDate })).resolves.toMatchObject({ allowed: true, taskId, isPreviousPending: true });
     } finally {
       entries.pop();
       tasks.pop();
