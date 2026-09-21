@@ -16,6 +16,11 @@ describe("controlo sensorial", () => {
     expect(sensory).toContain('title="Fotografia do produto"');
     expect(sensory).toContain('maxPhotos={1}');
     expect(sensory).toContain("Documente o estado visual do produto avaliado");
+    expect(sensory).toContain("Colaborador responsável");
+    expect(sensory).toContain("sensory-collaborator-${index}");
+    expect(sensory).toContain("collaboratorId: collaborator?.id");
+    expect(sensory).toContain("collaboratorName: collaborator?.name");
+    expect(sensory).toContain("Fica associado à incidência");
     expect(sensory).not.toContain("<Label>Área</Label>");
   });
 });

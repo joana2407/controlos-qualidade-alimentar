@@ -473,7 +473,7 @@ function DailyControlResults({
   const bphfEmployees =
     trpc.quality.listBphfInspectionEmployees?.useQuery?.(
       undefined,
-      { enabled: isBphf }
+      { enabled: isBphf || isSensory }
     ) ?? { data: [], isLoading: false };
   const utils = trpc.useUtils();
   const [selectedEntry, setSelectedEntry] = useState<DailyControlEntry | null>(
@@ -746,7 +746,8 @@ function DailyControlResults({
         : undefined,
       lot: supportsProductDetails ? editingEntry.lot : undefined,
       validity: supportsProductDetails ? editingEntry.validity : undefined,
-      collaboratorId: isBphf ? editingEntry.collaboratorId : undefined,
+      collaboratorId:
+        isBphf || isSensory ? editingEntry.collaboratorId : undefined,
       fragileState: isFragile ? editingEntry.fragileState : undefined,
       fragileContainmentAction: isFragile
         ? editingEntry.fragileContainmentAction
@@ -1559,10 +1560,18 @@ function DailyControlResults({
                 </div>
               </section>
             )}
-            {isBphf && (
+            {(isBphf || isSensory) && (
               <div className="space-y-2">
-                <Label htmlFor="daily-entry-bphf-collaborator">
-                  Colaborador inspecionado
+                <Label
+                  htmlFor={
+                    isSensory
+                      ? "daily-entry-sensory-collaborator"
+                      : "daily-entry-bphf-collaborator"
+                  }
+                >
+                  {isSensory
+                    ? "Colaborador responsável pelo produto"
+                    : "Colaborador inspecionado"}
                 </Label>
                 <Select
                   value={String(editingEntry?.collaboratorId ?? "none")}
@@ -1579,8 +1588,16 @@ function DailyControlResults({
                   }
                 >
                   <SelectTrigger
-                    id="daily-entry-bphf-collaborator"
-                    aria-label="Colaborador inspecionado"
+                    id={
+                      isSensory
+                        ? "daily-entry-sensory-collaborator"
+                        : "daily-entry-bphf-collaborator"
+                    }
+                    aria-label={
+                      isSensory
+                        ? "Colaborador responsável pelo produto"
+                        : "Colaborador inspecionado"
+                    }
                   >
                     <SelectValue placeholder="Selecione o colaborador" />
                   </SelectTrigger>
@@ -1597,7 +1614,9 @@ function DailyControlResults({
                   </SelectContent>
                 </Select>
                 <p className="text-xs text-slate-500">
-                  Selecione o colaborador observado neste registo BPHF. A alteração ficará no histórico.
+                  {isSensory
+                    ? "Selecione o colaborador responsável pelo produto avaliado. A alteração ficará no histórico e na incidência associada."
+                    : "Selecione o colaborador observado neste registo BPHF. A alteração ficará no histórico."}
                 </p>
               </div>
             )}
@@ -4354,6 +4373,7 @@ type SensoryProductCheck = {
   product: string;
   lot: string;
   validity: string;
+  collaboratorId: string;
   scores: SensoryScores;
   notes: string;
   evidencePhotos: VerificationEvidencePhoto[];
@@ -4370,6 +4390,7 @@ const newSensoryProduct = (): SensoryProductCheck => ({
   product: "",
   lot: "",
   validity: "",
+  collaboratorId: "none",
   scores: newSensoryScores(),
   notes: "",
   evidencePhotos: [],
@@ -4395,6 +4416,11 @@ function sensoryCalculation(scores: SensoryScores) {
 }
 
 function Sensory({ createEntry }: any) {
+  const sensoryCollaborators =
+    trpc.quality.listBphfInspectionEmployees?.useQuery?.() ?? {
+      data: [],
+    };
+  const collaborators = sensoryCollaborators.data ?? [];
   const [products, setProducts] = useState<SensoryProductCheck[]>([
     newSensoryProduct(),
   ]);
@@ -4433,6 +4459,10 @@ function Sensory({ createEntry }: any) {
       products.map((item, index) => {
         const calculation = calculations[index];
         const result = calculation.percentage >= 50 ? "C" : "NC";
+        const collaborator = collaborators.find(
+          (employee: { id: number; name: string }) =>
+            String(employee.id) === item.collaboratorId
+        );
         return createEntry.mutateAsync({
           module: "sensory",
           title: `Controlo sensorial — ${item.product.trim()}`,
@@ -4443,6 +4473,8 @@ function Sensory({ createEntry }: any) {
             product: item.product.trim(),
             lot: item.lot.trim(),
             validity: item.validity,
+            collaboratorId: collaborator?.id,
+            collaboratorName: collaborator?.name,
             scores: item.scores,
             calculation,
             weights: {
@@ -4542,7 +4574,7 @@ function Sensory({ createEntry }: any) {
                       <Trash2 className="h-4 w-4" />
                     </Button>
                   </div>
-                  <div className="grid gap-4 md:grid-cols-3">
+                  <div className="grid gap-4 md:grid-cols-4">
                     <div className="space-y-2">
                       <Label htmlFor={`sensory-product-${index}`}>
                         Produto
@@ -4591,6 +4623,41 @@ function Sensory({ createEntry }: any) {
                           }))
                         }
                       />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor={`sensory-collaborator-${index}`}>
+                        Colaborador responsável
+                      </Label>
+                      <Select
+                        value={item.collaboratorId}
+                        onValueChange={value =>
+                          updateProduct(index, current => ({
+                            ...current,
+                            collaboratorId: value,
+                          }))
+                        }
+                      >
+                        <SelectTrigger
+                          id={`sensory-collaborator-${index}`}
+                          aria-label={`Colaborador responsável pelo produto ${index + 1}`}
+                        >
+                          <SelectValue placeholder="Não aplicável" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="none">Não aplicável</SelectItem>
+                          {collaborators.map((collaborator: { id: number; name: string }) => (
+                            <SelectItem
+                              key={collaborator.id}
+                              value={String(collaborator.id)}
+                            >
+                              {collaborator.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <p className="text-xs text-slate-500">
+                        Opcional. Fica associado à incidência se o resultado for não conforme.
+                      </p>
                     </div>
                   </div>
                   <div className="grid gap-4 md:grid-cols-2">

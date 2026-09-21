@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { areas, checklistAreas, checklistItemAreas, checklistItemFactories, checklistItems, controlPlans, correctiveActions, controlEntries, controlTasks, dailyReportArchives, dailyReportArchiveViews, factories, fragileAreas, fragileItems, nonconformities, qualityPinProfiles } from "../../drizzle/schema";
+import { areas, bphfInspectionEmployees, checklistAreas, checklistItemAreas, checklistItemFactories, checklistItems, controlPlans, correctiveActions, controlEntries, controlTasks, dailyReportArchives, dailyReportArchiveViews, factories, fragileAreas, fragileItems, nonconformities, qualityPinProfiles } from "../../drizzle/schema";
 import type { TrpcContext } from "../_core/context";
 import { getDb } from "../db";
 import { storageGetSignedUrl, storagePut } from "../storage";
@@ -50,6 +50,10 @@ const monthlyAreaAssignments = [{ checklistItemId: 301, checklistAreaId: 201 }, 
 const archiveRows: any[] = [];
 const archiveViewRows: any[] = [];
 const profileRows = [{ id: 1, name: "Sabrina Esteves", title: "Tec. Qualidade", active: "true", role: "technician" }, { id: 2, name: "Neuza Antunes", title: "Tec. Qualidade", active: "true", role: "technician" }, { id: 3, name: "Joana Pina", title: "Resp. Qualidade", active: "true", role: "manager" }];
+const collaboratorRows = [
+  { id: 71, name: "Maria Silva", active: "true" },
+  { id: 72, name: "João Costa", active: "true" },
+];
 const plans: Array<{ id: number; title: string; module: "bphf"; areaId: number; factoryId: number; frequency: "daily"; active: "true" }> = [];
 const fragile = [
   { id: 1, factoryId: 1, periodicity: "D", location: "Zona Tratamento Térmico", name: "Portas forno Anelar 1", status: "active" },
@@ -89,6 +93,7 @@ function mockDatabase() {
     if (table === dailyReportArchives) return archiveRows;
     if (table === dailyReportArchiveViews) return archiveViewRows;
     if (table === qualityPinProfiles) return profileRows;
+    if (table === bphfInspectionEmployees) return collaboratorRows;
     if (table === controlPlans) return plans;
     if (table === fragileItems) return fragile;
     if (table === fragileAreas) return fragileAreaRows;
@@ -1081,6 +1086,90 @@ describe("procedimentos de qualidade por fábrica", () => {
       expect(dbUpdates).toEqual(expect.arrayContaining([expect.objectContaining({ status: "completed", completedByProfileId: 1 })]));
     } finally {
       tasks.pop();
+    }
+  });
+
+  it("guarda o colaborador responsável no produto sensorial e na incidência associada", async () => {
+    tasks.push({ id: 5151, factoryId: 1, status: "completed", dueAt: now, completedAt: now, module: "sensory", area: "Plano do Dia", title: "Plano do Dia — Sensorial com colaborador", responsible: "Sabrina Esteves", assigneeProfileIds: [1] });
+    try {
+      const caller = qualityRouter.createCaller(createContext({ id: 1, name: "Sabrina Esteves", title: "Tec. Qualidade", role: "technician" }));
+
+      await expect(caller.createEntry({
+        module: "sensory",
+        title: "Controlo sensorial — Pão de mistura",
+        area: "Controlo sensorial",
+        factoryId: 1,
+        result: "NC",
+        payload: {
+          product: "Pão de mistura",
+          lot: "L-26264",
+          validity: "2026-09-30",
+          collaboratorId: 71,
+          collaboratorName: "Nome não validado pelo cliente",
+        },
+        createNonconformity: false,
+        severity: "medium",
+      })).resolves.toMatchObject({ success: true, incidence: true });
+
+      expect(dbInserts).toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          module: "sensory",
+          result: "NC",
+          payload: expect.objectContaining({
+            collaboratorId: 71,
+            collaboratorName: "Maria Silva",
+          }),
+        }),
+      ]));
+    } finally {
+      tasks.pop();
+    }
+  });
+
+  it("permite atualizar o colaborador responsável num registo sensorial", async () => {
+    const sensoryEntry = {
+      id: 5152,
+      factoryId: 1,
+      module: "sensory",
+      area: "Controlo sensorial",
+      title: "Controlo sensorial — Pão de mistura",
+      result: "NC",
+      notes: "Desvio de aspeto.",
+      completedAt: now,
+      registeredByProfileId: 3,
+      registeredByName: "Joana Pina",
+      registeredByTitle: "Resp. Qualidade",
+      payload: { product: "Pão de mistura", lot: "L-26264", validity: "2026-09-30" },
+    };
+    entries.unshift(sensoryEntry);
+    try {
+      await expect(qualityRouter.createCaller(createContext()).updateControlEntry({
+        id: sensoryEntry.id,
+        title: sensoryEntry.title,
+        area: sensoryEntry.area,
+        factoryId: 1,
+        result: "NC",
+        notes: sensoryEntry.notes,
+        productName: "Pão de mistura",
+        lot: "L-26264",
+        validity: "2026-09-30",
+        collaboratorId: 71,
+      })).resolves.toMatchObject({ success: true });
+
+      expect(dbUpdates.at(-1)).toMatchObject({
+        payload: expect.objectContaining({
+          collaboratorId: 71,
+          collaboratorName: "Maria Silva",
+          editHistory: [
+            expect.objectContaining({
+              previousCollaboratorId: null,
+              collaboratorId: 71,
+            }),
+          ],
+        }),
+      });
+    } finally {
+      entries.shift();
     }
   });
 

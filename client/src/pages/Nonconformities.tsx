@@ -1540,6 +1540,39 @@ export default function Nonconformities() {
                     </div>
                   ) : null}
                   {selected.type === "incidence" &&
+                  selected.module === "sensory" &&
+                  selected.collaboratorName ? (
+                    <div className="rounded-xl border border-violet-100 bg-violet-50/70 p-4">
+                      <p className="text-sm font-semibold text-violet-950">
+                        Contexto do controlo sensorial
+                      </p>
+                      <dl className="mt-3 grid gap-3 text-sm sm:grid-cols-2">
+                        <div>
+                          <dt className="text-xs font-medium text-violet-700">
+                            Colaborador responsável pelo produto
+                          </dt>
+                          <dd className="mt-1 font-medium text-slate-900">
+                            {selected.collaboratorName}
+                          </dd>
+                        </div>
+                        <div>
+                          <dt className="text-xs font-medium text-violet-700">
+                            Produto e lote
+                          </dt>
+                          <dd className="mt-1 text-slate-900">
+                            {typeof selected.payload.product === "string"
+                              ? selected.payload.product
+                              : "Produto não identificado"}
+                            {typeof selected.payload.lot === "string" &&
+                            selected.payload.lot
+                              ? ` · ${selected.payload.lot}`
+                              : ""}
+                          </dd>
+                        </div>
+                      </dl>
+                    </div>
+                  ) : null}
+                  {selected.type === "incidence" &&
                   incidenceDetailsFrom(selected.payload).length ? (
                     <section className="rounded-xl border border-amber-200 bg-amber-50/70 p-4">
                       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">

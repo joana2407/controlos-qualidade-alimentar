@@ -18,7 +18,7 @@ const qualityRouter = readFileSync(
 
 describe("edição do colaborador inspecionado em BPHF", () => {
   it("apresenta o seletor no painel operacional e nos Relatórios", () => {
-    expect(moduleControl).toContain('id="daily-entry-bphf-collaborator"');
+    expect(moduleControl).toContain('"daily-entry-bphf-collaborator"');
     expect(moduleControl).toContain("Colaborador inspecionado");
     expect(reports).toContain('id="report-entry-bphf-collaborator"');
     expect(reports).toContain('editingEntry.module === "bphf"');
@@ -26,7 +26,7 @@ describe("edição do colaborador inspecionado em BPHF", () => {
 
   it("envia o identificador do colaborador e valida-o no catálogo BPHF", () => {
     expect(moduleControl).toContain(
-      "collaboratorId: isBphf ? editingEntry.collaboratorId : undefined"
+      "isBphf || isSensory ? editingEntry.collaboratorId : undefined"
     );
     expect(reports).toContain(
       'editingEntry.module === "bphf"'

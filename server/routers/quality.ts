@@ -4246,11 +4246,11 @@ export const qualityRouter = router({
             effectiveFragileState === "Íntegro" ? "C" : "NC";
       }
       if (input.collaboratorId !== undefined) {
-        if (entry.module !== "bphf")
+        if (entry.module !== "bphf" && entry.module !== "sensory")
           throw new TRPCError({
             code: "BAD_REQUEST",
             message:
-              "O colaborador inspecionado só pode ser editado em registos BPHF.",
+              "O colaborador associado só pode ser editado em registos BPHF ou Sensoriais.",
           });
         if (input.collaboratorId === null) {
           delete nextPayload.collaboratorId;
@@ -4759,6 +4759,29 @@ export const qualityRouter = router({
                 "A ação de contenção é obrigatória quando o quebrável está danificado ou em falta.",
             });
           normalizedPayload.containmentAction = containmentAction;
+        }
+      }
+      if (input.module === "sensory") {
+        const collaboratorId = Number(normalizedPayload.collaboratorId);
+        if (Number.isInteger(collaboratorId) && collaboratorId > 0) {
+          const collaborator = (
+            await db
+              .select()
+              .from(bphfInspectionEmployees)
+              .where(eq(bphfInspectionEmployees.id, collaboratorId))
+              .limit(1)
+          )[0];
+          if (!collaborator)
+            throw new TRPCError({
+              code: "NOT_FOUND",
+              message:
+                "O colaborador selecionado já não existe no catálogo BPHF.",
+            });
+          normalizedPayload.collaboratorId = collaborator.id;
+          normalizedPayload.collaboratorName = collaborator.name;
+        } else {
+          delete normalizedPayload.collaboratorId;
+          delete normalizedPayload.collaboratorName;
         }
       }
       const insertedEntry = await db.insert(controlEntries).values({
