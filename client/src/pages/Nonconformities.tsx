@@ -64,6 +64,18 @@ type IncidenceTreatmentHistoryEntry = IncidenceTreatment & {
   recordedByName: string;
   recordedByTitle: string;
 };
+type FragileRecurrenceHistoryEntry = {
+  verificationEntryId?: number;
+  operationalDate: string;
+  completedAt: string;
+  state: "Íntegro" | "Danificado" | "Em falta";
+  containmentAction: string;
+  notes: string;
+  evidencePhotos: IncidenceTreatment["evidencePhotos"];
+  registeredByProfileId: number;
+  registeredByName: string;
+  registeredByTitle: string;
+};
 type FragileTreatmentReview = {
   periodicity: "D" | "S" | "Q" | "M";
   riskLevel: "1" | "2" | "3";
@@ -109,6 +121,7 @@ type OccurrenceItem = {
   }>;
   treatment: IncidenceTreatment;
   treatmentHistory: IncidenceTreatmentHistoryEntry[];
+  fragileRecurrenceHistory: FragileRecurrenceHistoryEntry[];
   followUpReviewAlerts: Array<{
     followUpTaskId: number;
     title: string;
@@ -272,6 +285,64 @@ const incidenceTreatmentHistoryFrom = (
     )
     .sort((left, right) => left.revision - right.revision);
 };
+const fragileRecurrenceHistoryFrom = (
+  value: unknown
+): FragileRecurrenceHistoryEntry[] => {
+  const entries = Array.isArray(value) ? value : [];
+  const history = entries
+    .map(entry => {
+      const record =
+        entry && typeof entry === "object" && !Array.isArray(entry)
+          ? (entry as Record<string, unknown>)
+          : {};
+      const operationalDate = normaliseIsoDate(record.operationalDate);
+      const completedAt =
+        typeof record.completedAt === "string" &&
+        !Number.isNaN(new Date(record.completedAt).getTime())
+          ? record.completedAt
+          : "";
+      const state =
+        record.state === "Íntegro" ||
+        record.state === "Danificado" ||
+        record.state === "Em falta"
+          ? record.state
+          : null;
+      if (!operationalDate || !completedAt || !state) return null;
+      return {
+        ...(typeof record.verificationEntryId === "number"
+          ? { verificationEntryId: record.verificationEntryId }
+          : {}),
+        operationalDate,
+        completedAt,
+        state: state as FragileRecurrenceHistoryEntry["state"],
+        containmentAction:
+          typeof record.containmentAction === "string"
+            ? record.containmentAction
+            : "",
+        notes: typeof record.notes === "string" ? record.notes : "",
+        evidencePhotos: incidenceTreatmentFrom(record).evidencePhotos,
+        registeredByProfileId:
+          typeof record.registeredByProfileId === "number"
+            ? record.registeredByProfileId
+            : 0,
+        registeredByName:
+          typeof record.registeredByName === "string" && record.registeredByName.trim()
+            ? record.registeredByName
+            : "Utilizador não identificado",
+        registeredByTitle:
+          typeof record.registeredByTitle === "string"
+            ? record.registeredByTitle
+            : "",
+      };
+    })
+    .filter(
+      (entry): entry is FragileRecurrenceHistoryEntry => entry !== null
+    ) as FragileRecurrenceHistoryEntry[];
+  return history.sort(
+    (left, right) =>
+      new Date(left.completedAt).getTime() - new Date(right.completedAt).getTime()
+  );
+};
 const bphfContextFrom = (
   module: string,
   payload: Record<string, unknown>,
@@ -320,6 +391,8 @@ const incidenceDetailHiddenKeys = new Set([
   "sourceEntryId",
   "incidenceTreatment",
   "incidenceTreatmentHistory",
+  "fragileRecurrenceHistory",
+  "mergedIntoFragileIncidenceId",
 ]);
 const formatIncidenceDetailValue = (value: unknown): string => {
   if (value === null || value === undefined || value === "") return "Não indicado";
@@ -534,8 +607,9 @@ export default function Nonconformities() {
               matchesSimilar &&
               (treatmentFilter === "all" ||
                 (treatmentFilter === "follow_up_review_pending"
-                  ? hasFollowUpReviewPending
-                  : treatment.status === treatmentFilter))
+                  ? !item.generatedNonconformity && hasFollowUpReviewPending
+                  : !item.generatedNonconformity &&
+                    treatment.status === treatmentFilter))
             );
           })
           .map(item => ({
@@ -578,6 +652,10 @@ export default function Nonconformities() {
             treatmentHistory: incidenceTreatmentHistoryFrom(
               (item as any).treatmentHistory ??
                 (item.payload as any)?.incidenceTreatmentHistory
+            ),
+            fragileRecurrenceHistory: fragileRecurrenceHistoryFrom(
+              (item as any).fragileRecurrenceHistory ??
+                (item.payload as any)?.fragileRecurrenceHistory
             ),
             followUpReviewAlerts: Array.isArray(
               (item as any).followUpReviewAlerts
@@ -632,6 +710,7 @@ export default function Nonconformities() {
             status: "completed" as const,
           },
           treatmentHistory: [],
+          fragileRecurrenceHistory: [],
           followUpReviewAlerts: [],
           fragileTreatmentReview: null,
           plannedTaskId: null,
@@ -680,17 +759,18 @@ export default function Nonconformities() {
       in_progress: 0,
       completed: 0,
     };
-    const visibleIncidences = occurrences.filter(
-      item => item.type === "incidence"
+    const incidenceItems = occurrences.filter(item => item.type === "incidence");
+    const internallyManagedIncidences = incidenceItems.filter(
+      item => !item.generatedNonconformity
     );
-    visibleIncidences.forEach(item => {
+    internallyManagedIncidences.forEach(item => {
         summary[item.treatment.status] += 1;
     });
     return {
       ...summary,
       total: summary.pending + summary.in_progress + summary.completed,
       open: summary.pending + summary.in_progress,
-      generatedNc: visibleIncidences.filter(item => item.generatedNonconformity)
+      generatedNc: incidenceItems.filter(item => item.generatedNonconformity)
         .length,
     };
   }, [occurrences]);
@@ -1379,6 +1459,17 @@ export default function Nonconformities() {
                               <AlertTriangle className="h-4 w-4" />
                             </span>
                           ) : null}
+                          {item.type === "incidence" &&
+                          item.generatedNonconformity ? (
+                            <span
+                              role="img"
+                              aria-label="Não Conformidade gerada: gestão externa"
+                              title="Não Conformidade gerada: gestão externa"
+                              className="inline-flex text-red-700"
+                            >
+                              <FileWarning className="h-4 w-4" />
+                            </span>
+                          ) : null}
                           <Badge
                             className={
                               item.type === "incidence"
@@ -1400,10 +1491,17 @@ export default function Nonconformities() {
                             <p className="mt-2 text-xs text-slate-600">
                               Decisão de NC: {ncStateLabel(item)}
                             </p>
-                            <Badge className={`mt-2 ${treatmentTone(item.treatment.status)}`}>
-                              {treatmentLabel(item.treatment.status)}
-                            </Badge>
-                            {item.followUpReviewAlerts.length ? (
+                            {item.generatedNonconformity ? (
+                              <Badge className="mt-2 border border-red-300 bg-red-100 text-red-950 hover:bg-red-100">
+                                <FileWarning className="mr-1 h-3 w-3" />
+                                Gestão externa de NC
+                              </Badge>
+                            ) : (
+                              <Badge className={`mt-2 ${treatmentTone(item.treatment.status)}`}>
+                                {treatmentLabel(item.treatment.status)}
+                              </Badge>
+                            )}
+                            {!item.generatedNonconformity && item.followUpReviewAlerts.length ? (
                               <Badge className="mt-2 bg-amber-200 text-amber-950 hover:bg-amber-200">
                                 <AlertTriangle className="mr-1 h-3 w-3" />
                                 {item.followUpReviewAlerts.length === 1
@@ -1649,6 +1747,88 @@ export default function Nonconformities() {
                       </div>
                     </div>
                   ) : null}
+                  {selected.type === "incidence" &&
+                  selected.fragileRecurrenceHistory.length ? (
+                    <section className="rounded-xl border border-red-200 bg-red-50/60 p-4">
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div className="flex items-start gap-2">
+                          <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-red-700" />
+                          <div>
+                            <p className="font-semibold text-red-950">
+                              Histórico de reincidências — Quebráveis
+                            </p>
+                            <p className="mt-1 text-sm text-red-900">
+                              As verificações NC posteriores deste mesmo ponto foram
+                              associadas a esta incidência enquanto o tratamento se manteve aberto.
+                            </p>
+                          </div>
+                        </div>
+                        <Badge className="border border-red-300 bg-red-100 text-red-950 hover:bg-red-100">
+                          {selected.fragileRecurrenceHistory.length} {selected.fragileRecurrenceHistory.length === 1 ? "reincidência" : "reincidências"}
+                        </Badge>
+                      </div>
+                      <ol className="mt-4 space-y-3">
+                        {[...selected.fragileRecurrenceHistory]
+                          .reverse()
+                          .map((recurrence, index) => (
+                            <li
+                              key={`${recurrence.verificationEntryId ?? index}-${recurrence.completedAt}`}
+                              className="rounded-lg border border-red-100 bg-white/85 p-3"
+                            >
+                              <div className="flex flex-wrap items-start justify-between gap-2">
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <Badge className="bg-red-100 text-red-900 hover:bg-red-100">
+                                    NC reincidente
+                                  </Badge>
+                                  <span className="text-sm font-medium text-slate-900">
+                                    {recurrence.state}
+                                  </span>
+                                </div>
+                                <span className="text-xs text-slate-600">
+                                  Verificada em {new Date(`${recurrence.operationalDate}T12:00:00`).toLocaleDateString("pt-PT", { timeZone: "Europe/Lisbon" })}
+                                </span>
+                              </div>
+                              {recurrence.containmentAction ? (
+                                <p className="mt-2 text-sm text-slate-800">
+                                  <span className="font-medium text-red-900">Ação de contenção:</span>{" "}
+                                  {recurrence.containmentAction}
+                                </p>
+                              ) : null}
+                              {recurrence.notes ? (
+                                <p className="mt-1 whitespace-pre-wrap text-sm text-slate-700">
+                                  {recurrence.notes}
+                                </p>
+                              ) : null}
+                              <p className="mt-2 text-xs text-slate-600">
+                                Registada por {recurrence.registeredByName}
+                                {recurrence.registeredByTitle
+                                  ? ` · ${recurrence.registeredByTitle}`
+                                  : ""}
+                              </p>
+                              {recurrence.evidencePhotos.length ? (
+                                <div className="mt-3 flex flex-wrap gap-2">
+                                  {recurrence.evidencePhotos.map(photo => (
+                                    <a
+                                      key={photo.url}
+                                      href={photo.url}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                      className="overflow-hidden rounded-md border border-red-200 bg-white"
+                                    >
+                                      <img
+                                        src={photo.url}
+                                        alt={`Evidência da reincidência: ${photo.fileName}`}
+                                        className="h-16 w-16 object-cover"
+                                      />
+                                    </a>
+                                  ))}
+                                </div>
+                              ) : null}
+                            </li>
+                          ))}
+                      </ol>
+                    </section>
+                  ) : null}
                   {selected.type === "incidence" ? (
                     <>
                       <div className="space-y-4 rounded-xl border border-amber-100 bg-amber-50 p-4">
@@ -1686,14 +1866,19 @@ export default function Nonconformities() {
                           </div>
                         )}
                         {selected.generatedNonconformity ? (
-                          <div className="space-y-3 rounded-lg border border-emerald-200 bg-white/70 p-3">
-                            <div className="flex items-center gap-2 text-sm font-medium text-emerald-800">
-                              <CheckCircle2 className="h-4 w-4" />
-                              Não Conformidade gerada
+                          <div className="space-y-3 rounded-lg border border-red-300 bg-red-50/80 p-3">
+                            <div className="flex items-center gap-2 text-sm font-semibold text-red-950">
+                              <FileWarning className="h-4 w-4" />
+                              Não Conformidade gerada — gestão externa
                               {selected.nonconformityId
                                 ? ` · registo interno #${selected.nonconformityId}`
                                 : ""}
                             </div>
+                            <p className="text-sm text-red-900">
+                              O tratamento, as ações e os seguimentos desta Não
+                              Conformidade são geridos no sistema externo. Não é
+                              necessário registar informação de tratamento neste painel.
+                            </p>
                             {canManage && (
                               <div className="space-y-2">
                                 <Label>N.º de ocorrência</Label>
@@ -1737,6 +1922,23 @@ export default function Nonconformities() {
                           </div>
                         )}
                       </div>
+                      {selected.generatedNonconformity ? (
+                        <section className="rounded-xl border border-red-200 bg-red-50/60 p-4 text-sm text-red-950">
+                          <div className="flex items-start gap-3">
+                            <FileWarning className="mt-0.5 h-5 w-5 shrink-0 text-red-700" />
+                            <div>
+                              <p className="font-semibold">
+                                Tratamento gerido externamente
+                              </p>
+                              <p className="mt-1 text-red-900">
+                                Esta incidência já originou uma Não Conformidade.
+                                O tratamento não é registado no QualiControl para
+                                evitar duplicação de informação.
+                              </p>
+                            </div>
+                          </div>
+                        </section>
+                      ) : (
                       <div className="space-y-4 rounded-xl border border-teal-100 bg-teal-50/60 p-4">
                         <div className="flex flex-wrap items-start justify-between gap-3">
                           <div>
@@ -2159,6 +2361,7 @@ export default function Nonconformities() {
                           </div>
                         )}
                       </div>
+                      )}
                       {selected.type === "incidence" ? (
                         <section className="space-y-3 rounded-xl border border-sky-200 bg-sky-50/70 p-4">
                           <div>
@@ -2185,7 +2388,8 @@ export default function Nonconformities() {
                           </Button>
                         </section>
                       ) : null}
-                      {selected.type === "incidence" ? (
+                      {selected.type === "incidence" &&
+                      !selected.generatedNonconformity ? (
                         <section className="space-y-3 rounded-xl border border-violet-200 bg-violet-50/60 p-4">
                           <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                             <div>
@@ -2287,7 +2491,10 @@ export default function Nonconformities() {
                           ) : null}
                         </section>
                       ) : null}
-                      {canManage && selected.module === "fragile_items" && selected.fragileTreatmentReview ? (
+                      {canManage &&
+                      !selected.generatedNonconformity &&
+                      selected.module === "fragile_items" &&
+                      selected.fragileTreatmentReview ? (
                         <div className="space-y-4 rounded-xl border border-red-200 bg-red-50/60 p-4">
                           <div>
                             <p className="font-medium text-red-950">

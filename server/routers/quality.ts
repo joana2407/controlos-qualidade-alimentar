@@ -171,6 +171,27 @@ const incidenceTreatmentHistoryEntrySchema = incidenceTreatmentSchema.extend({
   recordedByName: z.string().min(1).max(160),
   recordedByTitle: z.string().min(1).max(120),
 });
+const fragileRecurrenceHistoryEntrySchema = z.object({
+  verificationEntryId: z.number().int().positive().optional(),
+  operationalDate: z.string().date(),
+  completedAt: z.string().datetime(),
+  state: z.enum(["Íntegro", "Danificado", "Em falta"]),
+  containmentAction: z.string().max(3000).optional(),
+  notes: z.string().max(3000).optional(),
+  evidencePhotos: z
+    .array(
+      z.object({
+        key: z.string().min(1),
+        url: z.string().startsWith("/manus-storage/"),
+        fileName: z.string().min(1).max(255),
+        mimeType: z.enum(["image/jpeg", "image/png", "image/webp"]),
+      })
+    )
+    .max(8),
+  registeredByProfileId: z.number().int(),
+  registeredByName: z.string().min(1).max(160),
+  registeredByTitle: z.string().min(1).max(120),
+});
 const followUpReviewAlertSchema = z.object({
   followUpTaskId: z.number().int(),
   title: z.string().min(1).max(180),
@@ -190,6 +211,35 @@ function incidenceTreatmentHistoryFromPayload(payload: Record<string, unknown>) 
     .array(incidenceTreatmentHistoryEntrySchema)
     .safeParse(payload.incidenceTreatmentHistory);
   return parsed.success ? parsed.data : [];
+}
+function fragileRecurrenceHistoryFromPayload(payload: Record<string, unknown>) {
+  const parsed = z
+    .array(fragileRecurrenceHistoryEntrySchema)
+    .safeParse(payload.fragileRecurrenceHistory);
+  return parsed.success ? parsed.data : [];
+}
+function isMergedFragileRecurrenceEntry(entry: {
+  module: string;
+  payload?: unknown;
+}) {
+  const mergedInto = Number(
+    entryPayload(entry).mergedIntoFragileIncidenceId
+  );
+  return (
+    entry.module === "fragile_items" &&
+    Number.isInteger(mergedInto) &&
+    mergedInto > 0
+  );
+}
+function hasFragileRecurrenceInRange(
+  payload: Record<string, unknown>,
+  start: Date,
+  end: Date
+) {
+  return fragileRecurrenceHistoryFromPayload(payload).some(recurrence => {
+    const occurredAt = lisbonCalendarDateToUtc(recurrence.operationalDate);
+    return occurredAt >= start && occurredAt < end;
+  });
 }
 function followUpReviewAlertsFromPayload(payload: Record<string, unknown>) {
   const parsed = z.array(followUpReviewAlertSchema).safeParse(
@@ -3398,6 +3448,12 @@ export const qualityRouter = router({
           message:
             "A tarefa de seguimento só pode ser criada a partir de uma incidência ativa de uma verificação não conforme.",
         });
+      if (sourcePayload.generatedNonconformity === true)
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message:
+            "Esta incidência já gerou uma Não Conformidade; o respetivo tratamento é gerido no sistema externo.",
+        });
       const selectedProfiles = await db
         .select()
         .from(qualityPinProfiles)
@@ -4784,6 +4840,46 @@ export const qualityRouter = router({
           delete normalizedPayload.collaboratorName;
         }
       }
+      let recurrentFragileSource: { id: number; payload?: unknown } | null = null;
+      if (
+        input.module === "fragile_items" &&
+        normalizedResult === "NC" &&
+        input.factoryId &&
+        typeof normalizedPayload.fragileItemId === "number"
+      ) {
+        const [fragileIncidenceEntries, ncRows] = await Promise.all([
+          db
+            .select()
+            .from(controlEntries)
+            .where(
+              and(
+                eq(controlEntries.module, "fragile_items"),
+                eq(controlEntries.factoryId, input.factoryId)
+              )
+            )
+            .orderBy(desc(controlEntries.completedAt)),
+          db.select().from(nonconformities),
+        ]);
+        const externalNcSourceIds = new Set(
+          ncRows
+            .map(nc => nc.sourceEntryId)
+            .filter((entryId): entryId is number => Number.isInteger(entryId))
+        );
+        recurrentFragileSource =
+          fragileIncidenceEntries.find(entry => {
+            const payload = entryPayload(entry);
+            return (
+              entry.result === "NC" &&
+              !isDeletedControlEntry(entry) &&
+              entry.id !== undefined &&
+              payload.fragileItemId === normalizedPayload.fragileItemId &&
+              payload.mergedIntoFragileIncidenceId == null &&
+              payload.generatedNonconformity !== true &&
+              !externalNcSourceIds.has(entry.id) &&
+              incidenceTreatmentFromPayload(payload).status !== "completed"
+            );
+          }) ?? null;
+      }
       const insertedEntry = await db.insert(controlEntries).values({
         module: input.module,
         title: input.title,
@@ -4805,6 +4901,8 @@ export const qualityRouter = router({
           registeredAheadOfPlannedDate: authorization.isFuturePlanned ?? false,
           actualVerificationDate:
             input.performedAt ?? localDateKey(completedAt),
+          mergedIntoFragileIncidenceId:
+            recurrentFragileSource?.id ?? null,
           retroactiveJustification:
             authorization.isPreviousPending && input.retroactiveReason
               ? {
@@ -4823,6 +4921,44 @@ export const qualityRouter = router({
         registeredByTitle: ctx.operatorProfile!.title,
         createdBy: ctx.user!.openId,
       });
+      if (recurrentFragileSource) {
+        const sourcePayload = entryPayload(recurrentFragileSource);
+        const verificationEntryId = Number(
+          (insertedEntry as any)?.[0]?.insertId ??
+            (insertedEntry as any)?.insertId
+        );
+        const recurrence = {
+          ...(Number.isInteger(verificationEntryId) && verificationEntryId > 0
+            ? { verificationEntryId }
+            : {}),
+          operationalDate: input.performedAt ?? localDateKey(completedAt),
+          completedAt: completedAt.toISOString(),
+          state: normalizedPayload.state as FragileState,
+          containmentAction:
+            typeof normalizedPayload.containmentAction === "string"
+              ? normalizedPayload.containmentAction
+              : "",
+          notes: input.notes?.trim() ?? "",
+          evidencePhotos: Array.isArray(normalizedPayload.evidencePhotos)
+            ? normalizedPayload.evidencePhotos
+            : [],
+          registeredByProfileId: ctx.operatorProfile!.id,
+          registeredByName: ctx.operatorProfile!.name,
+          registeredByTitle: ctx.operatorProfile!.title,
+        };
+        await db
+          .update(controlEntries)
+          .set({
+            payload: {
+              ...sourcePayload,
+              fragileRecurrenceHistory: [
+                ...fragileRecurrenceHistoryFromPayload(sourcePayload),
+                recurrence,
+              ],
+            },
+          })
+          .where(eq(controlEntries.id, recurrentFragileSource.id));
+      }
       const oneSubmissionModules: Array<(typeof qualityModuleValues)[number]> =
         [
           "sensory",
@@ -5594,8 +5730,10 @@ export const qualityRouter = router({
           return (
             entry.result === "NC" &&
             !payload.deletedAt &&
-            occurredAt >= start &&
-            occurredAt < end &&
+            !isMergedFragileRecurrenceEntry(entry) &&
+            ((occurredAt >= start && occurredAt < end) ||
+              (entry.module === "fragile_items" &&
+                hasFragileRecurrenceInRange(payload, start, end))) &&
             (!input?.factoryId || entry.factoryId === input.factoryId) &&
             (!input?.collaboratorId ||
               Number(payload.collaboratorId) === input.collaboratorId)
@@ -5622,10 +5760,21 @@ export const qualityRouter = router({
           const treatment = incidenceTreatmentFromPayload(payload);
           const treatmentHistory = incidenceTreatmentHistoryFromPayload(payload);
           const followUpReviewAlerts = followUpReviewAlertsFor(entry, payload);
-          const occurredOn = incidenceOccurredOnFromPayload(
+          const originalOccurredOn = incidenceOccurredOnFromPayload(
             payload,
             entry.completedAt
           );
+          const relevantRecurrences = fragileRecurrenceHistoryFromPayload(
+            payload
+          ).filter(recurrence => {
+            const occurredAt = lisbonCalendarDateToUtc(recurrence.operationalDate);
+            return occurredAt >= start && occurredAt < end;
+          });
+          const occurredOn =
+            originalOccurredOn >= localDateKey(start) &&
+            originalOccurredOn <= localDateKey(new Date(end.getTime() - 1))
+              ? originalOccurredOn
+              : relevantRecurrences.at(-1)?.operationalDate ?? originalOccurredOn;
           return {
             ...entry,
             occurredOn,
@@ -5641,6 +5790,7 @@ export const qualityRouter = router({
             followUpReviewAlerts,
             nonconformityId: linked?.id ?? null,
             occurrenceNumber,
+            fragileRecurrenceHistory: fragileRecurrenceHistoryFromPayload(payload),
           };
         });
     }),
@@ -5898,10 +6048,32 @@ export const qualityRouter = router({
         !Array.isArray(entry.payload)
           ? ({ ...entry.payload } as Record<string, unknown>)
           : {};
-      const followUpTasks = await db
-        .select()
-        .from(controlTasks)
-        .where(eq(controlTasks.sourceEntryId, entry.id));
+      const [followUpTasks, nonconformityRows] = await Promise.all([
+        db
+          .select()
+          .from(controlTasks)
+          .where(eq(controlTasks.sourceEntryId, entry.id)),
+        db
+          .select()
+          .from(nonconformities)
+          .where(eq(nonconformities.sourceEntryId, entry.id)),
+      ]);
+      const managedExternally =
+        input.generatedNonconformity === true ||
+        payload.generatedNonconformity === true ||
+        nonconformityRows.some(nc => nc.sourceEntryId === entry.id);
+      if (managedExternally && input.treatment !== undefined)
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message:
+            "O tratamento desta incidência é gerido no sistema externo de Não Conformidades.",
+        });
+      if (managedExternally && input.fragileTreatmentReview !== undefined)
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message:
+            "A decisão de acompanhamento desta incidência é gerida no sistema externo de Não Conformidades.",
+        });
       const acknowledgedAt =
         typeof payload.followUpReviewAcknowledgedAt === "string" &&
         !Number.isNaN(new Date(payload.followUpReviewAcknowledgedAt).getTime())
@@ -5939,6 +6111,16 @@ export const qualityRouter = router({
         payload.treatmentDecision = input.generatedNonconformity
           ? "nc_generated"
           : "no_nc";
+        if (input.generatedNonconformity)
+          await db
+            .update(controlTasks)
+            .set({ status: "cancelled" })
+            .where(
+              and(
+                eq(controlTasks.sourceEntryId, entry.id),
+                eq(controlTasks.status, "pending")
+              )
+            );
       }
       if (input.occurrenceNumber !== undefined)
         payload.nonconformityOccurrenceNumber =
@@ -6251,7 +6433,13 @@ export const qualityRouter = router({
         .filter(entry => {
           const payload = entry.payload && typeof entry.payload === "object" && !Array.isArray(entry.payload) ? (entry.payload as Record<string, unknown>) : {};
           const occurredAt = incidenceOccurredAtFromPayload(payload, entry.completedAt);
-          return entry.result === "NC" && occurredAt >= start && occurredAt < end;
+          return (
+            entry.result === "NC" &&
+            !isMergedFragileRecurrenceEntry(entry) &&
+            ((occurredAt >= start && occurredAt < end) ||
+              (entry.module === "fragile_items" &&
+                hasFragileRecurrenceInRange(payload, start, end)))
+          );
         })
         .map(entry => {
           const linked = ncRows.find(nc => nc.sourceEntryId === entry.id);
@@ -6271,10 +6459,23 @@ export const qualityRouter = router({
           const treatmentHistory = incidenceTreatmentHistoryFromPayload(payload);
           const followUpReviewAlerts =
             pendingFollowUpReviewAlertsFromPayload(payload);
-          const occurredOn = incidenceOccurredOnFromPayload(payload, entry.completedAt);
+          const originalOccurredOn = incidenceOccurredOnFromPayload(payload, entry.completedAt);
+          const relevantRecurrences = fragileRecurrenceHistoryFromPayload(payload)
+            .filter(recurrence => {
+              const occurredAt = lisbonCalendarDateToUtc(recurrence.operationalDate);
+              return occurredAt >= start && occurredAt < end;
+            });
+          const occurredOn =
+            originalOccurredOn >= localDateKey(start) &&
+            originalOccurredOn <= localDateKey(new Date(end.getTime() - 1))
+              ? originalOccurredOn
+              : relevantRecurrences.at(-1)?.operationalDate ?? originalOccurredOn;
           return {
             ...entry,
-            detectedAt: incidenceOccurredAtFromPayload(payload, entry.completedAt),
+            detectedAt:
+              relevantRecurrences.at(-1)?.completedAt
+                ? new Date(relevantRecurrences.at(-1)!.completedAt)
+                : incidenceOccurredAtFromPayload(payload, entry.completedAt),
             occurredOn,
             factoryName: entry.factoryId
               ? (factoryNames.get(entry.factoryId) ??
@@ -6285,6 +6486,7 @@ export const qualityRouter = router({
             treatmentProgress: treatment.status,
             treatment,
             treatmentHistory,
+            fragileRecurrenceHistory: fragileRecurrenceHistoryFromPayload(payload),
             followUpReviewAlerts,
             nonconformityId: linked?.id ?? null,
           };
@@ -6349,7 +6551,13 @@ export const qualityRouter = router({
         .filter(entry => {
           const payload = entry.payload && typeof entry.payload === "object" && !Array.isArray(entry.payload) ? (entry.payload as Record<string, unknown>) : {};
           const occurredAt = incidenceOccurredAtFromPayload(payload, entry.completedAt);
-          return entry.result === "NC" && occurredAt >= start && occurredAt < end;
+          return (
+            entry.result === "NC" &&
+            !isMergedFragileRecurrenceEntry(entry) &&
+            ((occurredAt >= start && occurredAt < end) ||
+              (entry.module === "fragile_items" &&
+                hasFragileRecurrenceInRange(payload, start, end)))
+          );
         });
       const scopedNcs = ncRows
         .filter(nc => !input.factoryId || nc.factoryId === input.factoryId)
@@ -6377,7 +6585,17 @@ export const qualityRouter = router({
           generatedNonconformity
         );
         const treatment = incidenceTreatmentFromPayload(payload);
-        const occurredOn = incidenceOccurredOnFromPayload(payload, entry.completedAt);
+        const originalOccurredOn = incidenceOccurredOnFromPayload(payload, entry.completedAt);
+        const relevantRecurrences = fragileRecurrenceHistoryFromPayload(payload)
+          .filter(recurrence => {
+            const occurredAt = lisbonCalendarDateToUtc(recurrence.operationalDate);
+            return occurredAt >= start && occurredAt < end;
+          });
+        const occurredOn =
+          originalOccurredOn >= localDateKey(start) &&
+          originalOccurredOn <= localDateKey(new Date(end.getTime() - 1))
+            ? originalOccurredOn
+            : relevantRecurrences.at(-1)?.operationalDate ?? originalOccurredOn;
         return {
           id: entry.id,
           title: entry.title,
@@ -6397,13 +6615,14 @@ export const qualityRouter = router({
           treatmentProgress: treatment.status,
           treatmentDecision,
           treatment,
+          fragileRecurrenceHistory: fragileRecurrenceHistoryFromPayload(payload),
           nonconformityId: linked?.id ?? null,
           nonconformitySeverity: linked?.severity ?? null,
           nonconformityStatus: linked?.status ?? null,
         };
       });
       const pendingTreatment = incidences.filter(
-        item => item.treatmentProgress === "pending"
+        item => !item.generatedNonconformity && item.treatmentProgress === "pending"
       ).length;
       return {
         date: start,

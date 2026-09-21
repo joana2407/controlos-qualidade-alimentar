@@ -1774,6 +1774,44 @@ describe("procedimentos de qualidade por fábrica", () => {
     }
   });
 
+  it("encaminha uma incidência com NC gerada para gestão externa sem tratamento ou seguimento interno", async () => {
+    const incidence = {
+      id: 9076,
+      factoryId: 1,
+      module: "fragile_items",
+      area: "Produção",
+      title: "Quebrável — Janela",
+      result: "NC",
+      completedAt: now,
+      payload: { generatedNonconformity: true, fragileItemId: 1 },
+    };
+    entries.unshift(incidence as any);
+    try {
+      const caller = qualityRouter.createCaller(createContext());
+      await expect(
+        caller.updateIncidence({
+          id: incidence.id,
+          treatment: {
+            status: "in_progress",
+            correction: "Não deve ser aceite internamente.",
+            responsible: "Joana Pina",
+          },
+        })
+      ).rejects.toMatchObject({ code: "BAD_REQUEST" });
+      await expect(
+        caller.createIncidenceFollowUpTask({
+          sourceEntryId: incidence.id,
+          title: "Seguimento externo",
+          description: "Não deve ser criado no QualiControl.",
+          dueAt: now,
+          assigneeProfileIds: [1],
+        })
+      ).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    } finally {
+      entries.shift();
+    }
+  });
+
   it("retira a incidência ativa e cancela apenas os seguimentos pendentes quando a verificação passa a Conforme", async () => {
     const sourceEntry = entries[0]!;
     const originalSourceEntry = { ...sourceEntry };
@@ -2685,6 +2723,72 @@ describe("procedimentos de qualidade por fábrica", () => {
       expect(alerts.some(alert => alert.title === "Broa da Serra")).toBe(false);
     } finally {
       entries.splice(entries.length - unlinkedIncidences.length, unlinkedIncidences.length);
+    }
+  });
+
+  it("apresenta uma reincidência NC de Quebráveis no histórico da incidência anterior em tratamento", async () => {
+    const sourceIncidence = {
+      id: 9077,
+      factoryId: 1,
+      module: "fragile_items",
+      area: "Zona Tratamento Térmico",
+      title: "Quebrável — Portas forno Anelar 1",
+      result: "NC",
+      completedAt: new Date(2026, 7, 12, 10, 0, 0),
+      payload: {
+        fragileItemId: 1,
+        state: "Danificado",
+        incidenceTreatment: { status: "in_progress", responsible: "Joana Pina" },
+        fragileRecurrenceHistory: [
+          {
+            verificationEntryId: 9079,
+            operationalDate: "2026-08-14",
+            completedAt: now.toISOString(),
+            state: "Danificado",
+            containmentAction: "Isolar o ponto e solicitar substituição.",
+            notes: "Dano reincidente confirmado.",
+            evidencePhotos: [],
+            registeredByProfileId: 1,
+            registeredByName: "Sabrina Esteves",
+            registeredByTitle: "Tec. Qualidade",
+          },
+        ],
+      },
+    };
+    const mergedVerification = {
+      id: 9079,
+      factoryId: 1,
+      module: "fragile_items",
+      area: "Zona Tratamento Térmico",
+      title: "Quebrável — Portas forno Anelar 1",
+      result: "NC",
+      completedAt: now,
+      payload: { fragileItemId: 1, mergedIntoFragileIncidenceId: sourceIncidence.id },
+    };
+    entries.unshift(sourceIncidence as any, mergedVerification as any);
+    try {
+      const caller = qualityRouter.createCaller(createContext());
+      const incidences = await caller.listIncidences({ date: now, factoryId: 1 });
+      const daily = await caller.dailyIncidences({ date: now, factoryId: 1 });
+
+      expect(incidences).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            id: sourceIncidence.id,
+            fragileRecurrenceHistory: [
+              expect.objectContaining({
+                state: "Danificado",
+                registeredByName: "Sabrina Esteves",
+              }),
+            ],
+          }),
+        ])
+      );
+      expect(incidences.some(item => item.id === mergedVerification.id)).toBe(false);
+      expect(daily.incidences.some(item => item.id === sourceIncidence.id)).toBe(true);
+      expect(daily.incidences.some(item => item.id === mergedVerification.id)).toBe(false);
+    } finally {
+      entries.splice(0, 2);
     }
   });
 
