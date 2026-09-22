@@ -24,6 +24,12 @@ describe("gestão externa de Não Conformidades e reincidências de Quebráveis"
     expect(nonconformitiesPage).toContain("Evidência da reincidência:");
   });
 
+  it("mostra o contador de reincidências na lista geral", () => {
+    expect(nonconformitiesPage).toContain("item.fragileRecurrenceHistory.length > 0");
+    expect(nonconformitiesPage).toContain("1 reincidência");
+    expect(nonconformitiesPage).toContain("reincidências de Quebráveis");
+  });
+
   it("protege no servidor o tratamento externo e a agregação da reincidência", () => {
     expect(qualityRouter).toContain("O tratamento desta incidência é gerido no sistema externo de Não Conformidades.");
     expect(qualityRouter).toContain("Esta incidência já gerou uma Não Conformidade; o respetivo tratamento é gerido no sistema externo.");

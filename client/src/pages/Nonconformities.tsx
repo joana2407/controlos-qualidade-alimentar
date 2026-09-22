@@ -1470,6 +1470,17 @@ export default function Nonconformities() {
                               <FileWarning className="h-4 w-4" />
                             </span>
                           ) : null}
+                          {item.type === "incidence" &&
+                          item.fragileRecurrenceHistory.length > 0 ? (
+                            <Badge
+                              className="bg-orange-100 text-orange-900 hover:bg-orange-100"
+                              aria-label={`${item.fragileRecurrenceHistory.length} reincidências de Quebráveis`}
+                            >
+                              {item.fragileRecurrenceHistory.length === 1
+                                ? "1 reincidência"
+                                : `${item.fragileRecurrenceHistory.length} reincidências`}
+                            </Badge>
+                          ) : null}
                           <Badge
                             className={
                               item.type === "incidence"
