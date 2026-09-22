@@ -10,6 +10,9 @@ describe("interface de avaliação sensorial de I&D", () => {
   it("inclui projeto, avaliações por provador, acompanhamento e fecho", () => {
     expect(page).toContain("Novo projeto de I&D");
     expect(page).toContain("Registar avaliação");
+    expect(page).toContain("Projeto associado");
+    expect(page).toContain("Projeto associado ao teste");
+    expect(page).toContain("activeProjects.map");
     expect(page).toContain("Evolução por tempo de vida");
     expect(page).toContain("Fechar projeto de I&D");
     expect(page).toContain("Provador");
