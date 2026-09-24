@@ -323,6 +323,13 @@
       "when": 1788949929541,
       "tag": "0046_secret_power_pack",
       "breakpoints": true
+    },
+    {
+      "idx": 47,
+      "version": "5",
+      "when": 1790231170412,
+      "tag": "0047_easy_ikaris",
+      "breakpoints": true
     }
   ]
 }

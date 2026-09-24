@@ -5,6 +5,7 @@ import {
   factories,
   rdSensoryEvaluations,
   rdSensoryProjects,
+  rdSensoryTests,
 } from "../../drizzle/schema";
 import { getDb } from "../db";
 import { storagePut } from "../storage";
@@ -24,6 +25,7 @@ const photoSchema = z.object({
 });
 const evaluationInput = z.object({
   projectId: z.number().int(),
+  testId: z.number().int().positive().optional(),
   evaluatedAt: z.coerce.date(),
   lifeDay: z.number().int().min(0).max(999),
   tasterName: z.string().trim().min(2).max(160),
@@ -41,6 +43,15 @@ const projectInput = z.object({
   title: z.string().trim().min(3).max(180),
   product: z.string().trim().min(2).max(180),
   factoryId: z.number().int().positive().nullable().optional(),
+  productionLot: z.string().trim().max(100).optional(),
+  productionDate: z.coerce.date().optional(),
+  intendedShelfLifeDays: z.number().int().min(1).max(999).optional(),
+  intendedExpiryDate: z.coerce.date().optional(),
+});
+const testInput = z.object({
+  projectId: z.number().int(),
+  title: z.string().trim().min(2).max(180),
+  formulation: z.string().trim().max(180).optional(),
   productionLot: z.string().trim().max(100).optional(),
   productionDate: z.coerce.date().optional(),
   intendedShelfLifeDays: z.number().int().min(1).max(999).optional(),
@@ -121,6 +132,10 @@ async function requireDb() {
   return db;
 }
 
+function testCode(projectCode: string) {
+  return `${projectCode}-T${Date.now().toString(36).toUpperCase()}`.slice(0, 80);
+}
+
 async function projectDetail(db: Awaited<ReturnType<typeof requireDb>>, projectId: number) {
   const project = (await db.select().from(rdSensoryProjects).where(and(eq(rdSensoryProjects.id, projectId), isNull(rdSensoryProjects.deletedAt))).limit(1))[0];
   if (!project) throw new TRPCError({ code: "NOT_FOUND", message: "Projeto de I&D não encontrado." });
@@ -129,12 +144,26 @@ async function projectDetail(db: Awaited<ReturnType<typeof requireDb>>, projectI
     .from(rdSensoryEvaluations)
     .where(and(eq(rdSensoryEvaluations.projectId, projectId), isNull(rdSensoryEvaluations.deletedAt)))
     .orderBy(desc(rdSensoryEvaluations.evaluatedAt), desc(rdSensoryEvaluations.id));
+  const tests = await db
+    .select()
+    .from(rdSensoryTests)
+    .where(and(eq(rdSensoryTests.projectId, projectId), isNull(rdSensoryTests.deletedAt)))
+    .orderBy(desc(rdSensoryTests.createdAt), desc(rdSensoryTests.id));
   const computedFinalScore = averageScore(evaluations.map(evaluation => evaluation.weightedScore / 100));
   return {
     ...project,
     computedFinalScore,
     timeline: buildRDSensoryTimeline(evaluations),
     evaluations,
+    tests: tests.map(test => {
+      const testEvaluations = evaluations.filter(evaluation => evaluation.testId === test.id);
+      return {
+        ...test,
+        evaluations: testEvaluations,
+        computedFinalScore: averageScore(testEvaluations.map(evaluation => evaluation.weightedScore / 100)),
+      };
+    }),
+    legacyEvaluations: evaluations.filter(evaluation => evaluation.testId === null),
   };
 }
 
@@ -147,11 +176,15 @@ export const rdSensoryRouter = router({
         ? await db.select().from(rdSensoryProjects).where(and(eq(rdSensoryProjects.status, input.status), isNull(rdSensoryProjects.deletedAt))).orderBy(desc(rdSensoryProjects.updatedAt))
         : await db.select().from(rdSensoryProjects).where(isNull(rdSensoryProjects.deletedAt)).orderBy(desc(rdSensoryProjects.updatedAt));
       const evaluations = await db.select().from(rdSensoryEvaluations).where(isNull(rdSensoryEvaluations.deletedAt)).orderBy(desc(rdSensoryEvaluations.evaluatedAt));
+      const tests = await db.select().from(rdSensoryTests).where(isNull(rdSensoryTests.deletedAt));
       return projects.map(project => {
         const projectEvaluations = evaluations.filter(evaluation => evaluation.projectId === project.id);
+        const projectTests = tests.filter(test => test.projectId === project.id);
         return {
           ...project,
           evaluationCount: projectEvaluations.length,
+          testCount: projectTests.length,
+          activeTestCount: projectTests.filter(test => test.status === "active").length,
           latestLifeDay: projectEvaluations.length ? Math.max(...projectEvaluations.map(evaluation => evaluation.lifeDay)) : null,
           computedFinalScore: averageScore(projectEvaluations.map(evaluation => evaluation.weightedScore / 100)),
         };
@@ -180,7 +213,46 @@ export const rdSensoryRouter = router({
         createdByTitle: profile.title,
         createdBy: ctx.user!.openId,
       }).$returningId();
-      return projectDetail(db, Number(inserted[0]!.id));
+      const projectId = Number(inserted[0]!.id);
+      await db.insert(rdSensoryTests).values({
+        projectId,
+        code: `${code}-T01`.slice(0, 80),
+        title: "Teste 1",
+        formulation: null,
+        productionLot: input.productionLot || null,
+        productionDate: input.productionDate || null,
+        intendedShelfLifeDays: input.intendedShelfLifeDays || null,
+        intendedExpiryDate: input.intendedExpiryDate || null,
+        createdByProfileId: profile.id,
+        createdByName: profile.name,
+        createdBy: ctx.user!.openId,
+      });
+      return projectDetail(db, projectId);
+    }),
+
+  createTest: qualityOperatorProcedure
+    .input(testInput)
+    .mutation(async ({ ctx, input }) => {
+      const db = await requireDb();
+      const project = (await db.select().from(rdSensoryProjects).where(and(eq(rdSensoryProjects.id, input.projectId), isNull(rdSensoryProjects.deletedAt))).limit(1))[0];
+      if (!project) throw new TRPCError({ code: "NOT_FOUND", message: "Projeto de I&D não encontrado." });
+      if (project.status === "closed") throw new TRPCError({ code: "FORBIDDEN", message: "Um projeto fechado não aceita novos testes." });
+      const profile = ctx.operatorProfile!;
+      const { projectId, ...test } = input;
+      await db.insert(rdSensoryTests).values({
+        ...test,
+        code: testCode(project.code),
+        formulation: test.formulation || null,
+        productionLot: test.productionLot || null,
+        productionDate: test.productionDate || null,
+        intendedShelfLifeDays: test.intendedShelfLifeDays || null,
+        intendedExpiryDate: test.intendedExpiryDate || null,
+        projectId,
+        createdByProfileId: profile.id,
+        createdByName: profile.name,
+        createdBy: ctx.user!.openId,
+      });
+      return projectDetail(db, projectId);
     }),
 
   addEvaluation: qualityOperatorProcedure
@@ -189,10 +261,30 @@ export const rdSensoryRouter = router({
       const db = await requireDb();
       const project = (await db.select().from(rdSensoryProjects).where(and(eq(rdSensoryProjects.id, input.projectId), isNull(rdSensoryProjects.deletedAt))).limit(1))[0];
       if (!project) throw new TRPCError({ code: "NOT_FOUND", message: "Projeto de I&D não encontrado." });
-      if (project.status === "closed") throw new TRPCError({ code: "FORBIDDEN", message: "O projeto de I&D está fechado e não aceita novas avaliações." });
       const profile = ctx.operatorProfile!;
+      let testId = input.testId;
+      if (!testId) {
+        const firstTest = (await db.select().from(rdSensoryTests).where(and(eq(rdSensoryTests.projectId, project.id), eq(rdSensoryTests.status, "active"), isNull(rdSensoryTests.deletedAt))).orderBy(desc(rdSensoryTests.createdAt)).limit(1))[0];
+        if (firstTest) testId = firstTest.id;
+        else {
+          const insertedTest = await db.insert(rdSensoryTests).values({
+            projectId: project.id,
+            code: testCode(project.code),
+            title: "Teste 1",
+            createdByProfileId: profile.id,
+            createdByName: profile.name,
+            createdBy: ctx.user!.openId,
+          }).$returningId();
+          testId = Number(insertedTest[0]!.id);
+        }
+      }
+      const test = (await db.select().from(rdSensoryTests).where(and(eq(rdSensoryTests.id, testId), eq(rdSensoryTests.projectId, project.id), isNull(rdSensoryTests.deletedAt))).limit(1))[0];
+      if (!test) throw new TRPCError({ code: "NOT_FOUND", message: "Teste de I&D não encontrado neste projeto." });
+      if (project.status === "closed" || test.status === "closed") throw new TRPCError({ code: "FORBIDDEN", message: "O projeto ou teste está fechado e não aceita novas avaliações." });
+      const { testId: _requestedTestId, ...evaluation } = input;
       await db.insert(rdSensoryEvaluations).values({
-        ...input,
+        ...evaluation,
+        testId,
         weightedScore: calculateRDSensoryWeightedScore(input),
         photos: input.photos ?? null,
         tasterProfileId: input.tasterName === profile.name ? profile.id : null,
@@ -233,6 +325,24 @@ export const rdSensoryRouter = router({
       const { projectId, ...changes } = input;
       await db.update(rdSensoryProjects).set(changes).where(eq(rdSensoryProjects.id, projectId));
       return projectDetail(db, projectId);
+    }),
+
+  updateTest: qualityManagerProcedure
+    .input(testInput.omit({ projectId: true }).extend({ testId: z.number().int() }))
+    .mutation(async ({ input }) => {
+      const db = await requireDb();
+      const test = (await db.select().from(rdSensoryTests).where(and(eq(rdSensoryTests.id, input.testId), isNull(rdSensoryTests.deletedAt))).limit(1))[0];
+      if (!test) throw new TRPCError({ code: "NOT_FOUND", message: "Teste de I&D não encontrado." });
+      const { testId, ...changes } = input;
+      await db.update(rdSensoryTests).set({
+        ...changes,
+        formulation: changes.formulation || null,
+        productionLot: changes.productionLot || null,
+        productionDate: changes.productionDate || null,
+        intendedShelfLifeDays: changes.intendedShelfLifeDays || null,
+        intendedExpiryDate: changes.intendedExpiryDate || null,
+      }).where(eq(rdSensoryTests.id, testId));
+      return projectDetail(db, test.projectId);
     }),
 
   updateEvaluation: qualityOperatorProcedure
@@ -276,6 +386,7 @@ export const rdSensoryRouter = router({
       await projectDetail(db, input.projectId);
       const deletion = { deletedAt: new Date(), deletedByProfileId: ctx.operatorProfile!.id, deletedByName: ctx.operatorProfile!.name };
       await db.update(rdSensoryEvaluations).set(deletion).where(and(eq(rdSensoryEvaluations.projectId, input.projectId), isNull(rdSensoryEvaluations.deletedAt)));
+      await db.update(rdSensoryTests).set(deletion).where(and(eq(rdSensoryTests.projectId, input.projectId), isNull(rdSensoryTests.deletedAt)));
       await db.update(rdSensoryProjects).set(deletion).where(eq(rdSensoryProjects.id, input.projectId));
       return { success: true };
     }),
@@ -302,5 +413,31 @@ export const rdSensoryRouter = router({
         closedByName: profile.name,
       }).where(eq(rdSensoryProjects.id, input.projectId));
       return projectDetail(db, input.projectId);
+    }),
+
+  closeTest: qualityManagerProcedure
+    .input(z.object({
+      testId: z.number().int(),
+      finalAssessment: z.string().trim().min(2).max(3000),
+      closingNotes: z.string().trim().max(3000).optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const db = await requireDb();
+      const test = (await db.select().from(rdSensoryTests).where(and(eq(rdSensoryTests.id, input.testId), isNull(rdSensoryTests.deletedAt))).limit(1))[0];
+      if (!test) throw new TRPCError({ code: "NOT_FOUND", message: "Teste de I&D não encontrado." });
+      if (test.status === "closed") throw new TRPCError({ code: "CONFLICT", message: "O teste já se encontra fechado." });
+      const evaluations = await db.select().from(rdSensoryEvaluations).where(and(eq(rdSensoryEvaluations.testId, input.testId), isNull(rdSensoryEvaluations.deletedAt)));
+      if (!evaluations.length) throw new TRPCError({ code: "BAD_REQUEST", message: "Registe pelo menos uma avaliação antes de fechar o teste." });
+      const profile = ctx.operatorProfile!;
+      await db.update(rdSensoryTests).set({
+        status: "closed",
+        finalScore: Math.round((averageScore(evaluations.map(evaluation => evaluation.weightedScore / 100)) ?? 0) * 100),
+        finalAssessment: input.finalAssessment,
+        closingNotes: input.closingNotes || null,
+        closedAt: new Date(),
+        closedByProfileId: profile.id,
+        closedByName: profile.name,
+      }).where(eq(rdSensoryTests.id, input.testId));
+      return projectDetail(db, test.projectId);
     }),
 });

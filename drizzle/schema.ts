@@ -32,6 +32,7 @@ const qualityModule = mysqlEnum("quality_module", qualityModuleValues);
 const controlResult = mysqlEnum("control_result", resultValues);
 const qualityProfileRole = mysqlEnum("quality_profile_role", ["technician", "manager", "viewer"]);
 const rdSensoryProjectStatus = mysqlEnum("rd_sensory_project_status", ["active", "closed"]);
+const rdSensoryTestStatus = mysqlEnum("rd_sensory_test_status", ["active", "closed"]);
 
 export const qualityPinProfiles = mysqlTable("quality_pin_profiles", {
   id: int("id").autoincrement().primaryKey(),
@@ -198,10 +199,44 @@ export const rdSensoryProjects = mysqlTable("rd_sensory_projects", {
   index("rd_sensory_project_created_idx").on(table.createdAt),
 ]);
 
-/** Avaliação de um provador num momento de vida do projeto ou amostra. Valores 1–5; nota ponderada 0–500. */
+/** Teste/subpasta dentro de um projeto de I&D. Um projeto pode conter várias formulações e testes independentes. */
+export const rdSensoryTests = mysqlTable("rd_sensory_tests", {
+  id: int("id").autoincrement().primaryKey(),
+  projectId: int("projectId").notNull(),
+  code: varchar("code", { length: 80 }).notNull().unique(),
+  title: varchar("title", { length: 180 }).notNull(),
+  formulation: varchar("formulation", { length: 180 }),
+  productionLot: varchar("productionLot", { length: 100 }),
+  productionDate: date("productionDate"),
+  intendedShelfLifeDays: int("intendedShelfLifeDays"),
+  intendedExpiryDate: date("intendedExpiryDate"),
+  status: rdSensoryTestStatus.default("active").notNull(),
+  finalScore: int("finalScore"),
+  finalAssessment: text("finalAssessment"),
+  closingNotes: text("closingNotes"),
+  closedAt: timestamp("closedAt"),
+  closedByProfileId: int("closedByProfileId"),
+  closedByName: varchar("closedByName", { length: 160 }),
+  createdByProfileId: int("createdByProfileId").notNull(),
+  createdByName: varchar("createdByName", { length: 160 }).notNull(),
+  createdBy: varchar("createdBy", { length: 64 }).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  deletedAt: timestamp("deletedAt"),
+  deletedByProfileId: int("deletedByProfileId"),
+  deletedByName: varchar("deletedByName", { length: 160 }),
+}, (table) => [
+  index("rd_sensory_test_project_idx").on(table.projectId),
+  index("rd_sensory_test_status_idx").on(table.status),
+  index("rd_sensory_test_created_idx").on(table.createdAt),
+]);
+
+/** Avaliação de um provador num momento de vida de um teste. Valores 1–5; nota ponderada 0–500. */
 export const rdSensoryEvaluations = mysqlTable("rd_sensory_evaluations", {
   id: int("id").autoincrement().primaryKey(),
   projectId: int("projectId").notNull(),
+  /** Nullable for historical evaluations created before the test/subfolder model. */
+  testId: int("testId"),
   evaluatedAt: timestamp("evaluatedAt").notNull(),
   lifeDay: int("lifeDay").notNull(),
   tasterProfileId: int("tasterProfileId"),
@@ -228,6 +263,7 @@ export const rdSensoryEvaluations = mysqlTable("rd_sensory_evaluations", {
   deletedByName: varchar("deletedByName", { length: 160 }),
 }, (table) => [
   index("rd_sensory_evaluation_project_idx").on(table.projectId),
+  index("rd_sensory_evaluation_test_idx").on(table.testId),
   index("rd_sensory_evaluation_date_idx").on(table.evaluatedAt),
   index("rd_sensory_evaluation_taster_idx").on(table.tasterProfileId),
 ]);
