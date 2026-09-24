@@ -205,7 +205,11 @@ export const rdSensoryTests = mysqlTable("rd_sensory_tests", {
   projectId: int("projectId").notNull(),
   code: varchar("code", { length: 80 }).notNull().unique(),
   title: varchar("title", { length: 180 }).notNull(),
+  /** Data que identifica o ensaio/formulação dentro do projeto. */
+  testDate: date("testDate").notNull(),
   formulation: varchar("formulation", { length: 180 }),
+  /** Receita detalhada aplicável exclusivamente a este teste. */
+  recipe: text("recipe"),
   productionLot: varchar("productionLot", { length: 100 }),
   productionDate: date("productionDate"),
   intendedShelfLifeDays: int("intendedShelfLifeDays"),

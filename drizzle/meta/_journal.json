@@ -330,6 +330,13 @@
       "when": 1790231170412,
       "tag": "0047_easy_ikaris",
       "breakpoints": true
+    },
+    {
+      "idx": 48,
+      "version": "5",
+      "when": 1790232775089,
+      "tag": "0048_medical_captain_midlands",
+      "breakpoints": true
     }
   ]
 }

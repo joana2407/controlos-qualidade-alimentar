@@ -51,7 +51,9 @@ const projectInput = z.object({
 const testInput = z.object({
   projectId: z.number().int(),
   title: z.string().trim().min(2).max(180),
+  testDate: z.coerce.date(),
   formulation: z.string().trim().max(180).optional(),
+  recipe: z.string().trim().max(6000).optional(),
   productionLot: z.string().trim().max(100).optional(),
   productionDate: z.coerce.date().optional(),
   intendedShelfLifeDays: z.number().int().min(1).max(999).optional(),
@@ -161,6 +163,7 @@ async function projectDetail(db: Awaited<ReturnType<typeof requireDb>>, projectI
         ...test,
         evaluations: testEvaluations,
         computedFinalScore: averageScore(testEvaluations.map(evaluation => evaluation.weightedScore / 100)),
+        timeline: buildRDSensoryTimeline(testEvaluations),
       };
     }),
     legacyEvaluations: evaluations.filter(evaluation => evaluation.testId === null),
@@ -196,17 +199,21 @@ export const rdSensoryRouter = router({
     .query(async ({ input }) => projectDetail(await requireDb(), input.projectId)),
 
   createProject: qualityOperatorProcedure
-    .input(projectInput)
+    .input(projectInput.extend({
+      initialTestDate: z.coerce.date(),
+      initialTestRecipe: z.string().trim().max(6000).optional(),
+    }))
     .mutation(async ({ ctx, input }) => {
       const db = await requireDb();
       const profile = ctx.operatorProfile!;
-      if (input.factoryId) {
-        const factory = (await db.select().from(factories).where(eq(factories.id, input.factoryId)).limit(1))[0];
+      const { initialTestDate, initialTestRecipe, ...projectInputValues } = input;
+      if (projectInputValues.factoryId) {
+        const factory = (await db.select().from(factories).where(eq(factories.id, projectInputValues.factoryId)).limit(1))[0];
         if (!factory) throw new TRPCError({ code: "BAD_REQUEST", message: "A fábrica selecionada não existe." });
       }
       const code = `ID-${new Date().getFullYear()}-${Date.now().toString(36).toUpperCase()}`;
       const inserted = await db.insert(rdSensoryProjects).values({
-        ...input,
+        ...projectInputValues,
         code,
         createdByProfileId: profile.id,
         createdByName: profile.name,
@@ -218,11 +225,13 @@ export const rdSensoryRouter = router({
         projectId,
         code: `${code}-T01`.slice(0, 80),
         title: "Teste 1",
+        testDate: initialTestDate,
         formulation: null,
-        productionLot: input.productionLot || null,
-        productionDate: input.productionDate || null,
-        intendedShelfLifeDays: input.intendedShelfLifeDays || null,
-        intendedExpiryDate: input.intendedExpiryDate || null,
+        recipe: initialTestRecipe || null,
+        productionLot: projectInputValues.productionLot || null,
+        productionDate: projectInputValues.productionDate || null,
+        intendedShelfLifeDays: projectInputValues.intendedShelfLifeDays || null,
+        intendedExpiryDate: projectInputValues.intendedExpiryDate || null,
         createdByProfileId: profile.id,
         createdByName: profile.name,
         createdBy: ctx.user!.openId,
@@ -243,6 +252,7 @@ export const rdSensoryRouter = router({
         ...test,
         code: testCode(project.code),
         formulation: test.formulation || null,
+        recipe: test.recipe || null,
         productionLot: test.productionLot || null,
         productionDate: test.productionDate || null,
         intendedShelfLifeDays: test.intendedShelfLifeDays || null,
@@ -271,6 +281,8 @@ export const rdSensoryRouter = router({
             projectId: project.id,
             code: testCode(project.code),
             title: "Teste 1",
+            testDate: input.evaluatedAt,
+            recipe: null,
             createdByProfileId: profile.id,
             createdByName: profile.name,
             createdBy: ctx.user!.openId,
@@ -337,6 +349,7 @@ export const rdSensoryRouter = router({
       await db.update(rdSensoryTests).set({
         ...changes,
         formulation: changes.formulation || null,
+        recipe: changes.recipe || null,
         productionLot: changes.productionLot || null,
         productionDate: changes.productionDate || null,
         intendedShelfLifeDays: changes.intendedShelfLifeDays || null,

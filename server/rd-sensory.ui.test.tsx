@@ -14,6 +14,10 @@ describe("interface de avaliação sensorial de I&D", () => {
     expect(page).toContain("Teste de I&D");
     expect(page).toContain("Testes / subpastas do projeto");
     expect(page).toContain("Novo teste");
+    expect(page).toContain("Data do teste");
+    expect(page).toContain("Receita do teste");
+    expect(page).toContain("Receita:");
+    expect(page).toContain("Editar teste");
     expect(page).toContain("Nova avaliação neste teste");
     expect(page).toContain("Fechar teste");
     expect(page).toContain("Evolução por tempo de vida");
@@ -46,6 +50,8 @@ describe("interface de avaliação sensorial de I&D", () => {
     expect(router).toContain("createTest: qualityOperatorProcedure");
     expect(router).toContain("updateTest: qualityManagerProcedure");
     expect(router).toContain("closeTest: qualityManagerProcedure");
+    expect(router).toContain("testDate: z.coerce.date()");
+    expect(router).toContain("recipe: z.string().trim().max(6000).optional()");
     expect(router).toContain("uploadEvaluationPhoto: qualityOperatorProcedure");
     expect(router).toContain("updateProject: qualityManagerProcedure");
     expect(router).toContain("updateEvaluation: qualityOperatorProcedure");
