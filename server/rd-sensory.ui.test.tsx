@@ -41,8 +41,9 @@ describe("interface de avaliação sensorial de I&D", () => {
     expect(page).toContain("XLSX.writeFile");
   });
 
-  it("regista a rota própria para o controlo de I&D", () => {
-    expect(routes).toContain('path={"/id-sensorial"}');
+  it("não regista uma rota interna de I&D na aplicação principal", () => {
+    expect(routes).not.toContain('path={"/id-sensorial"}');
+    expect(routes).not.toContain('import("./pages/RDSensory")');
   });
 
   it("protege no servidor anexos, gestão sensível e edição de avaliações", () => {

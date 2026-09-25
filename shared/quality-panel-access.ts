@@ -6,7 +6,6 @@ export const QUALITY_PANEL_OPTIONS = [
   { key: "reports", label: "Relatórios", description: "Consulta e exportação de registos." },
   { key: "analytics", label: "Análise operacional", description: "Indicadores e gráficos de desempenho." },
   { key: "backups", label: "Backups diários", description: "Consulta de arquivos operacionais." },
-  { key: "rd_sensory", label: "I&D — controlo sensorial", description: "Projetos e avaliações sensoriais de I&D." },
 ] as const;
 
 export const QUALITY_EXTERNAL_PANEL_OPTIONS = [
@@ -41,7 +40,6 @@ export function panelsForQualityPath(pathname: string): QualityPanelKey | null {
   if (pathname === "/relatorios") return "reports";
   if (pathname === "/analise-operacional") return "analytics";
   if (pathname === "/backups-diarios") return "backups";
-  if (pathname === "/id-sensorial") return "rd_sensory";
   return null;
 }
 

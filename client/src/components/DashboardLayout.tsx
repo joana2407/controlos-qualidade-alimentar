@@ -26,7 +26,7 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 import { useIsMobile } from "@/hooks/useMobile";
-import { Activity, AlertTriangle, Archive, ArrowLeft, BarChart3, Beaker, BookOpenCheck, Boxes, ChevronDown, ClipboardCheck, ClipboardList, Factory, FilePlus2, FileWarning, FlaskConical, KeyRound, LayoutDashboard, ListChecks, Magnet, MessageSquareMore, MessageSquareWarning, Microscope, PackageSearch, PanelLeft, Ruler, Settings2, ShieldAlert, ShieldCheck, ThermometerSnowflake, TimerReset, TrendingDown, Truck, Wrench } from "lucide-react";
+import { Activity, AlertTriangle, Archive, ArrowLeft, BarChart3, BookOpenCheck, Boxes, ChevronDown, ClipboardCheck, ClipboardList, Factory, FilePlus2, FileWarning, FlaskConical, KeyRound, LayoutDashboard, ListChecks, Magnet, MessageSquareMore, MessageSquareWarning, Microscope, PackageSearch, PanelLeft, Ruler, Settings2, ShieldAlert, ShieldCheck, ThermometerSnowflake, TimerReset, TrendingDown, Truck, Wrench } from "lucide-react";
 import React, { CSSProperties, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { useLocation } from "wouter";
@@ -56,10 +56,6 @@ const controlPanels = [
   { icon: Microscope, label: "Análises internas", path: "/controlos/internal_analysis" },
   { icon: ThermometerSnowflake, label: "Controlos de Temperatura", path: "/controlos/temperature_controls" },
   { icon: ShieldAlert, label: "Food Defense", path: "/controlos/food_defense" },
-];
-
-const researchDevelopmentPanels = [
-  { icon: Beaker, label: "Controlo sensorial de I&D", path: "/id-sensorial" },
 ];
 
 const occurrencePanels = [
@@ -212,7 +208,7 @@ function DashboardLayoutContent({
   const [productionBreakdownsOpen, setProductionBreakdownsOpen] = useState(false);
   const [isResizing, setIsResizing] = useState(false);
   const sidebarRef = useRef<HTMLDivElement>(null);
-  const activeMenuItem = [...menuItems, ...controlPanels, ...researchDevelopmentPanels].find(item => item.path === location);
+  const activeMenuItem = [...menuItems, ...controlPanels].find(item => item.path === location);
   const isMobile = useIsMobile();
   const { activeProfile, canManage, canOperate } = useQualityAccess();
   const utils = trpc.useUtils();
@@ -231,7 +227,6 @@ function DashboardLayoutContent({
   const canAccessPanelPath = (path: string) => hasQualityPanelAccess(activeProfile!.role, activeProfile!.panelAccess, panelsForQualityPath(path));
   const visibleMenuItems = menuItems.filter((item) => (item.path !== "/configuracao" || canManage) && canAccessPanelPath(item.path));
   const visibleControlPanels = controlPanels.filter(panel => canAccessPanelPath(panel.path));
-  const visibleResearchDevelopmentPanels = researchDevelopmentPanels.filter(panel => canAccessPanelPath(panel.path));
   const visibleExternalPanels = preparedExternalPanels.filter(panel => hasQualityExternalPanelAccess(activeProfile!.role, activeProfile!.externalPanelAccess, panel.accessKey));
   const canViewCurrentPanel = canAccessPanelPath(location);
 
@@ -329,13 +324,6 @@ function DashboardLayoutContent({
               })}
             </SidebarMenu>
             {controlsOpen && !isCollapsed && visibleControlPanels.length > 0 && <div className="relative z-10 isolate mx-2 mb-3 rounded-xl border border-slate-700/90 bg-slate-950 p-2 text-slate-100 shadow-lg"><div className="flex items-center justify-between gap-2 border-b border-slate-800 px-2 pb-2"><p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-300">Controlos Operacionais</p><div className="flex items-center gap-1"><span className="rounded-full bg-slate-800 px-2 py-0.5 text-[10px] font-medium text-slate-200">{visibleControlPanels.length}</span><Button type="button" variant="ghost" size="sm" aria-label="Minimizar Controlos Operacionais" className="h-7 px-2 text-[11px] font-medium text-teal-100 hover:bg-slate-800 hover:text-white" onClick={() => setControlsOpen(false)}>Minimizar <ChevronDown className="ml-1 h-3.5 w-3.5" /></Button></div></div><SidebarMenu className="mt-1 gap-1 px-0 py-0">{visibleControlPanels.map((panel) => { const panelActive = location === panel.path; return <SidebarMenuItem key={panel.path} className="min-w-0"><SidebarMenuButton isActive={panelActive} onClick={() => setLocation(panel.path)} tooltip={panel.label} className="h-auto min-h-10 min-w-0 px-3 py-2 text-sm font-medium text-slate-100 hover:bg-slate-800 hover:text-white data-[active=true]:bg-teal-600 data-[active=true]:text-white [&>span:last-child]:!overflow-visible [&>span:last-child]:!text-clip [&>span:last-child]:!whitespace-normal"><panel.icon className={`h-4 w-4 shrink-0 ${panelActive ? "text-white" : "text-teal-200"}`} /><span className="min-w-0 leading-5">{panel.label}</span></SidebarMenuButton></SidebarMenuItem>; })}</SidebarMenu><Button type="button" variant="ghost" size="sm" className="mt-2 h-8 w-full text-xs text-teal-100 hover:bg-slate-800 hover:text-white" onClick={() => setLocation("/controlos")}>Ver painel de controlos</Button></div>}
-            {visibleResearchDevelopmentPanels.length > 0 && <SidebarMenu className="mx-2 mt-1 rounded-xl border border-cyan-100 bg-cyan-50/70 px-2 py-2">
-              {!isCollapsed && <p className="px-2 pb-1.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-cyan-800">I&amp;D interno</p>}
-              {visibleResearchDevelopmentPanels.map((panel) => {
-                const panelActive = location === panel.path;
-                return <SidebarMenuItem key={panel.path}><SidebarMenuButton isActive={panelActive} onClick={() => setLocation(panel.path)} tooltip={panel.label} className="h-auto min-h-11 px-3 py-2 text-sm font-medium text-slate-800 transition-all hover:bg-cyan-100 hover:text-slate-950 data-[active=true]:bg-cyan-600 data-[active=true]:text-white [&>span:last-child]:!overflow-visible [&>span:last-child]:!text-clip [&>span:last-child]:!whitespace-normal"><span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-cyan-100 text-cyan-800"><panel.icon className="h-4 w-4" /></span><span className="min-w-0 leading-5">{panel.label}</span></SidebarMenuButton></SidebarMenuItem>;
-              })}
-            </SidebarMenu>}
             {visibleExternalPanels.length > 0 && <SidebarMenu className="mt-2 border-t border-border/70 px-2 py-2">
               {!isCollapsed && <p className="px-2 pb-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Painéis externos</p>}
               {visibleExternalPanels.map((panel) => panel.factories ? <SidebarMenuItem key={panel.label}><SidebarMenuButton onClick={() => isCollapsed ? toast.info(`${panel.label}: abra a barra lateral para escolher a fábrica.`) : setProductionBreakdownsOpen((open) => !open)} tooltip={`${panel.label} — selecionar fábrica`} aria-expanded={productionBreakdownsOpen} className="h-10 text-muted-foreground transition-all hover:text-foreground"><span className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-md ${panel.iconClass}`}><panel.icon className="h-3.5 w-3.5" /></span><span>{panel.label}</span>{!isCollapsed && <ChevronDown className={`ml-auto h-4 w-4 transition-transform ${productionBreakdownsOpen ? "rotate-0" : "-rotate-90"}`} />}</SidebarMenuButton>{productionBreakdownsOpen && !isCollapsed && <div className="ml-8 border-l border-border/70 py-1"><SidebarMenu className="px-2 py-0">{panel.factories.map((factory) => <SidebarMenuItem key={factory.label}><SidebarMenuButton onClick={() => window.open(factory.url, "_blank", "noopener,noreferrer")} tooltip={`${factory.label} — abrir painel externo`} className="h-8 text-sm text-muted-foreground transition-all hover:text-foreground"><Factory className={`h-3.5 w-3.5 ${factory.iconClass}`} /><span>{factory.label}</span></SidebarMenuButton></SidebarMenuItem>)}</SidebarMenu></div>}</SidebarMenuItem> : <SidebarMenuItem key={panel.label}><SidebarMenuButton onClick={() => window.open(panel.url, "_blank", "noopener,noreferrer")} tooltip={`${panel.label} — abrir painel externo`} className="h-10 text-muted-foreground transition-all hover:text-foreground"><span className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-md ${panel.iconClass}`}><panel.icon className="h-3.5 w-3.5" /></span><span>{panel.label}</span></SidebarMenuButton></SidebarMenuItem>)}

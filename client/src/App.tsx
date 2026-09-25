@@ -15,7 +15,6 @@ const Configuration = React.lazy(() => import("./pages/Configuration"));
 import PlatformOverview from "./pages/PlatformOverview";
 const DailyBackups = React.lazy(() => import("./pages/DailyBackups"));
 const OperationalAnalytics = React.lazy(() => import("./pages/OperationalAnalytics"));
-const RDSensory = React.lazy(() => import("./pages/RDSensory"));
 
 function Router() {
   // make sure to consider if you need authentication for certain routes
@@ -38,7 +37,6 @@ function Router() {
       <Route path={"/nao-conformidades"} component={Nonconformities} />
       <Route path={"/relatorios"} component={Reports} />
       <Route path={"/analise-operacional"} component={OperationalAnalytics} />
-      <Route path={"/id-sensorial"} component={RDSensory} />
       <Route path={"/backups-diarios"} component={DailyBackups} />
       <Route path={"/configuracao"} component={Configuration} />
       <Route path={"/404"} component={NotFound} />

@@ -76,10 +76,8 @@ describe("atalhos laterais dos painéis de controlo", () => {
     fireEvent.click(screen.getByRole("button", { name: "Plataforma" }));
     expect(setLocation).toHaveBeenLastCalledWith("/plataforma");
 
-    expect(screen.getByText("I&D interno")).toBeTruthy();
-    expect(screen.getByText("I&D interno").closest("ul")?.className).toContain("bg-cyan-50/70");
-    fireEvent.click(screen.getByRole("button", { name: "Controlo sensorial de I&D" }));
-    expect(setLocation).toHaveBeenLastCalledWith("/id-sensorial");
+    expect(screen.queryByText("I&D interno")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Controlo sensorial de I&D" })).toBeNull();
     expect(screen.getByRole("button", { name: "I&D · Artisan" })).toBeTruthy();
   });
 
@@ -93,7 +91,7 @@ describe("atalhos laterais dos painéis de controlo", () => {
       expect(screen.getByRole("button", { name: label })).toBeTruthy();
     });
     expect(screen.queryByRole("button", { name: "Sensorial I&D" })).toBeNull();
-    expect(screen.getByRole("button", { name: "Controlo sensorial de I&D" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Controlo sensorial de I&D" })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Quebráveis" }));
     expect(setLocation).toHaveBeenLastCalledWith("/controlos/fragile_items");
   });
@@ -118,9 +116,9 @@ describe("atalhos laterais dos painéis de controlo", () => {
 
   it("oculta os painéis não atribuídos a uma técnica e bloqueia a rota direta", async () => {
     activeProfile = { id: 1, name: "Técnica limitada", title: "Tec. Qualidade", role: "technician", panelAccess: ["dashboard", "operational_controls"], externalPanelAccess: ["artisan_rd"] };
-    currentLocation = "/id-sensorial";
-    render(<DashboardLayout workspace="quality"><div>Conteúdo de I&D</div></DashboardLayout>);
-    await waitFor(() => expect(screen.getByText("Painel não autorizado")).toBeTruthy());
+    currentLocation = "/qualicontrol";
+    render(<DashboardLayout workspace="quality"><div>Conteúdo operacional</div></DashboardLayout>);
+    await waitFor(() => expect(screen.getByRole("button", { name: "Hoje" })).toBeTruthy());
     expect(screen.getByRole("button", { name: "I&D · Artisan" })).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Gestão de Ocorrências" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Gestão de MP" })).toBeNull();
