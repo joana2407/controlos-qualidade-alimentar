@@ -12,6 +12,7 @@ export const QUALITY_PANEL_OPTIONS = [
 export const QUALITY_EXTERNAL_PANEL_OPTIONS = [
   { key: "occurrences", label: "Gestão de Ocorrências", description: "Acesso ao painel externo de ocorrências." },
   { key: "raw_materials", label: "Gestão de MP", description: "Acesso ao painel externo de matérias-primas." },
+  { key: "sensory_control", label: "Controlo Sensorial", description: "Acesso ao painel externo de controlo sensorial." },
   { key: "artisan_rd", label: "I&D · Artisan", description: "Acesso ao painel externo de I&D Artisan." },
   { key: "calibration", label: "Plano de Calibração", description: "Acesso ao painel externo de calibração." },
   { key: "maintenance", label: "Plano de Manutenção", description: "Acesso ao painel externo de manutenção." },

@@ -13,6 +13,7 @@ describe("navegação lateral dos painéis de controlo", () => {
     [
       "Gestão de Ocorrências",
       "Gestão de MP",
+      "Controlo Sensorial",
       "Plano Calibração",
       "Plano de Manutenção",
       "Quebras de produção",
@@ -23,6 +24,7 @@ describe("navegação lateral dos painéis de controlo", () => {
     [
       "https://analiseocorrencias.manus.space/login",
       "https://gestaomateriasprimas.manus.space/",
+      "https://id-interno.lovable.app/",
       "https://planocalibracao.manus.space/",
       "https://manutencaoprenventiva-as.manus.space/",
       "https://quebrasdash-tyuemnk4.manus.space/",
