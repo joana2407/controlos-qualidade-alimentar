@@ -30,6 +30,12 @@ describe("gestão externa de Não Conformidades e reincidências de Quebráveis"
     expect(nonconformitiesPage).toContain("reincidências de Quebráveis");
   });
 
+  it("permite abrir diretamente as incidências do colaborador recomendado", () => {
+    expect(nonconformitiesPage).toContain("openCollaboratorIncidences");
+    expect(nonconformitiesPage).toContain("setCollaboratorId(String(alert.collaboratorId))");
+    expect(nonconformitiesPage).toContain("Abrir as ${alert.total} incidências de ${alert.collaboratorName}");
+  });
+
   it("protege no servidor o tratamento externo e a agregação da reincidência", () => {
     expect(qualityRouter).toContain("O tratamento desta incidência é gerido no sistema externo de Não Conformidades.");
     expect(qualityRouter).toContain("Esta incidência já gerou uma Não Conformidade; o respetivo tratamento é gerido no sistema externo.");

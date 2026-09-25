@@ -813,6 +813,21 @@ export default function Nonconformities() {
     setEndDate("");
     setSelectedKey("");
   };
+  const openCollaboratorIncidences = (alert: {
+    collaboratorId: number;
+    collaboratorName: string;
+  }) => {
+    const since = new Date();
+    since.setMonth(since.getMonth() - 6);
+    setSimilarFilter(null);
+    setFactoryId("");
+    setCollaboratorId(String(alert.collaboratorId));
+    setStartDate(since.toISOString().slice(0, 10));
+    setEndDate("");
+    setTreatmentFilter("all");
+    setOpenNcOnly(false);
+    setSelectedKey("");
+  };
   const updateGeneratedState = (value: "yes" | "no") => {
     if (!selected || selected.type !== "incidence") return;
     const generatedNonconformity = value === "yes";
@@ -1333,12 +1348,22 @@ export default function Nonconformities() {
                 </p>
                 <div className="mt-3 flex flex-wrap gap-2">
                   {recurrenceAlerts.data.map(alert => (
-                    <Badge
+                    <Button
                       key={alert.collaboratorId}
-                      className="bg-amber-200 text-amber-950 hover:bg-amber-200"
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="border-amber-300 bg-amber-200 text-amber-950 hover:bg-amber-300"
+                      onClick={() =>
+                        openCollaboratorIncidences({
+                          collaboratorId: alert.collaboratorId,
+                          collaboratorName: alert.collaboratorName,
+                        })
+                      }
+                      aria-label={`Abrir as ${alert.total} incidências de ${alert.collaboratorName}`}
                     >
                       {alert.collaboratorName} · {alert.total} incidências
-                    </Badge>
+                    </Button>
                   ))}
                 </div>
               </div>
