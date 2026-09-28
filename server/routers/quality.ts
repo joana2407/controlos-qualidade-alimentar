@@ -179,6 +179,32 @@ const qualityManagerAiResponseSchema = {
   required: ["answer", "nextSteps", "cautions", "questions"],
   additionalProperties: false,
 } as const;
+const qualityManagerAiResponseValidator = z.object({
+  answer: z.string().trim().min(1),
+  nextSteps: z.array(z.string()).max(5),
+  cautions: z.array(z.string()).max(4),
+  questions: z.array(z.string()).max(4),
+});
+const incidenceAiResponseValidator = z.object({
+  answer: z.string().trim().min(1),
+  suggestions: z.array(z.string()).max(5),
+  risks: z.array(z.string()).max(5),
+  questions: z.array(z.string()).max(4),
+});
+const llmContentToText = (content: unknown) => {
+  if (typeof content === "string") return content;
+  if (!Array.isArray(content)) return "";
+  return content
+    .map(part => {
+      if (typeof part === "string") return part;
+      if (part && typeof part === "object" && "text" in part) {
+        return typeof part.text === "string" ? part.text : "";
+      }
+      return "";
+    })
+    .filter(Boolean)
+    .join("\n");
+};
 const qualityModuleLabels: Record<string, string> = {
   bphf: "BPHF",
   metal_detectors: "Detetores de metais",
@@ -9593,17 +9619,15 @@ export const qualityRouter = router({
         },
         maxTokens: 1400,
       });
-      const content = response.choices[0]?.message.content;
+      const content = llmContentToText(response.choices[0]?.message.content);
       try {
-        const parsed = JSON.parse(typeof content === "string" ? content : "{}");
-        const answer = typeof parsed.answer === "string" ? parsed.answer.trim() : "";
-        if (!answer) throw new Error("empty response");
+        const parsed = incidenceAiResponseValidator.parse(JSON.parse(content || "{}"));
         const list = (value: unknown) =>
           Array.isArray(value)
             ? value.filter((item): item is string => typeof item === "string" && Boolean(item.trim())).slice(0, 5)
             : [];
         return {
-          answer,
+          answer: parsed.answer,
           suggestions: list(parsed.suggestions),
           risks: list(parsed.risks),
           questions: list(parsed.questions),
@@ -9684,11 +9708,9 @@ ${guidanceText}`,
         },
         maxTokens: 1200,
       });
-      const content = response.choices[0]?.message.content;
+      const content = llmContentToText(response.choices[0]?.message.content);
       try {
-        const parsed = JSON.parse(typeof content === "string" ? content : "{}");
-        const answer = typeof parsed.answer === "string" ? parsed.answer.trim() : "";
-        if (!answer) throw new Error("empty response");
+        const parsed = qualityManagerAiResponseValidator.parse(JSON.parse(content || "{}"));
         const list = (value: unknown, max: number) =>
           Array.isArray(value)
             ? value
@@ -9699,7 +9721,7 @@ ${guidanceText}`,
                 .slice(0, max)
             : [];
         return {
-          answer,
+          answer: parsed.answer,
           nextSteps: list(parsed.nextSteps, 5),
           cautions: list(parsed.cautions, 4),
           questions: list(parsed.questions, 4),

@@ -134,6 +134,7 @@ export function QualityManagerCopilot() {
   const [replies, setReplies] = useState<AssistantReply[]>([]);
   const [guidanceTopic, setGuidanceTopic] = useState("");
   const [guidance, setGuidance] = useState("");
+  const [assistantError, setAssistantError] = useState("");
 
   const briefingInput = useMemo(() => {
     const moduleMatch = location.match(/^\/controlos\/([^/?]+)/)?.[1];
@@ -175,6 +176,7 @@ export function QualityManagerCopilot() {
         cautions: string[];
         questions: string[];
       }) => {
+        setAssistantError("");
         setReplies(current => [
           ...current,
           {
@@ -187,7 +189,10 @@ export function QualityManagerCopilot() {
         ]);
         setQuestion("");
       },
-      onError: (error: { message: string }) => toast.error(error.message),
+      onError: (error: { message: string }) => {
+        setAssistantError(error.message || "Não foi possível obter uma resposta do Copiloto.");
+        toast.error(error.message);
+      },
     }) ?? {
       mutate: () => undefined,
       isPending: false,
@@ -234,6 +239,7 @@ export function QualityManagerCopilot() {
       toast.error("Escreva uma pergunta para o copiloto.");
       return;
     }
+    setAssistantError("");
     assistant.mutate({
       question: value,
       module: briefingInput.module,
@@ -518,6 +524,13 @@ export function QualityManagerCopilot() {
                       {assistant.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}
                       {assistant.isPending ? "A analisar…" : "Pedir orientação"}
                     </Button>
+                    {assistantError ? (
+                      <div role="alert" className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-900">
+                        <p className="font-semibold">O Copiloto não conseguiu responder.</p>
+                        <p className="mt-1 text-xs leading-5">{assistantError}</p>
+                        <p className="mt-2 text-xs leading-5">Confirme que a sessão operacional continua ativa e tente novamente. A pergunta permanece no campo para repetir o pedido.</p>
+                      </div>
+                    ) : null}
                     {replies.map((reply, index) => (
                       <article key={`${reply.question}-${index}`} className="mt-3 rounded-lg border border-teal-100 bg-teal-50/50 p-3 text-sm">
                         <p className="font-medium text-teal-950">{reply.question}</p>

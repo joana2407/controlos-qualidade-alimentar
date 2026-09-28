@@ -18,6 +18,8 @@ describe("Copiloto de Qualidade global", () => {
     expect(copilot).toContain("Registos encontrados sem Plano do Dia");
     expect(copilot).toContain("qualityManagerAiBriefing");
     expect(copilot).toContain("qualityManagerAiAssist");
+    expect(copilot).toContain("O Copiloto não conseguiu responder.");
+    expect(copilot).toContain("A pergunta permanece no campo para repetir o pedido.");
   });
 
   it("mantém o copiloto disponível em todo o shell apenas para Responsáveis de Qualidade", () => {

@@ -103,6 +103,11 @@ function mockDatabase() {
     select: () => ({
       from: (table: unknown) => {
         const records = sourceFor(table);
+        const orderedQuery = {
+          limit: async () => records,
+          then: <T>(resolve: (value: unknown[]) => T | PromiseLike<T>) =>
+            Promise.resolve(records).then(resolve),
+        };
         const filteredQuery = {
           limit: async () => records,
           orderBy: () => ({
@@ -113,7 +118,7 @@ function mockDatabase() {
           then: <T>(resolve: (value: unknown[]) => T | PromiseLike<T>) => Promise.resolve(records).then(resolve),
         };
         return {
-          orderBy: async () => records,
+          orderBy: () => orderedQuery,
           then: <T>(resolve: (value: unknown[]) => T | PromiseLike<T>) => Promise.resolve(records).then(resolve),
           where: () => filteredQuery,
         };
@@ -3148,5 +3153,30 @@ describe("procedimentos de qualidade por fábrica", () => {
 
     expect(result).toMatchObject({ incidence: false, conformity: { result: "N/A", verificationSummary: { verified: 1, notVerified: 1 }, productValidations: [expect.objectContaining({ verificationStatus: "verified", conformity: expect.objectContaining({ result: "C" }) }), expect.objectContaining({ verificationStatus: "not_verified", notVerifiedReason: "Referência indisponível no cais de expedição.", conformity: expect.objectContaining({ result: "N/A" }) })] } });
     expect(dbInserts[0]).toMatchObject({ module: "dispatch_control", result: "N/A", payload: expect.objectContaining({ verificationSummary: { verified: 1, notVerified: 1 } }) });
+  });
+  it("converte a resposta JSON estruturada do Copiloto num objeto consumível pela interface", async () => {
+    vi.mocked(invokeLLM).mockResolvedValue({
+      choices: [{
+        message: {
+          role: "assistant",
+          content: [{
+            type: "text",
+            text: JSON.stringify({
+              answer: "Comece por confirmar os controlos em atraso.",
+              nextSteps: ["Abrir a primeira tarefa pendente."],
+              cautions: ["Confirme a data operacional."],
+              questions: ["Existe alguma justificação retroativa pendente?"],
+            }),
+          }],
+        },
+      }],
+    } as any);
+    const caller = qualityRouter.createCaller(createContext());
+    await expect(caller.qualityManagerAiAssist({ question: "Por onde devo começar?" })).resolves.toEqual({
+      answer: "Comece por confirmar os controlos em atraso.",
+      nextSteps: ["Abrir a primeira tarefa pendente."],
+      cautions: ["Confirme a data operacional."],
+      questions: ["Existe alguma justificação retroativa pendente?"],
+    });
   });
 });
