@@ -622,6 +622,116 @@ function isDeletedControlEntry(entry: { payload?: unknown }) {
   );
 }
 
+function verificationHistoryKey(
+  entry: {
+    module: string;
+    factoryId: number | null;
+    title?: string | null;
+    area?: string | null;
+  },
+  payload: Record<string, unknown>
+) {
+  const persistentPoint = controlledPointKey(entry, payload);
+  if (persistentPoint) return persistentPoint;
+  const normalize = (value: unknown) =>
+    typeof value === "string"
+      ? value.trim().toLocaleLowerCase("pt-PT").replace(/\s+/g, " ")
+      : "";
+  const factory = entry.factoryId ?? "none";
+  const collaboratorId = Number(payload.collaboratorId);
+  const criterion = normalize(payload.criterion);
+  if (entry.module === "bphf" && collaboratorId > 0 && criterion)
+    return `bphf|${factory}|collaborator:${collaboratorId}|criterion:${criterion}`;
+  const product = normalize(payload.product);
+  if (product) return `${entry.module}|${factory}|product:${product}`;
+  const area = normalize(entry.area);
+  const title = normalize(entry.title);
+  return `${entry.module}|${factory}|area:${area}|title:${title}`;
+}
+
+function verificationEvidencePhotos(payload: Record<string, unknown>) {
+  const values = Array.isArray(payload.evidencePhotos)
+    ? payload.evidencePhotos
+    : Array.isArray(payload.photos)
+      ? payload.photos
+      : [];
+  return values
+    .filter(
+      (photo): photo is Record<string, unknown> =>
+        Boolean(photo) && typeof photo === "object" && !Array.isArray(photo)
+    )
+    .map(photo => ({
+      key: typeof photo.key === "string" ? photo.key : "",
+      url: typeof photo.url === "string" ? photo.url : "",
+      fileName:
+        typeof photo.fileName === "string" ? photo.fileName : "Fotografia",
+      mimeType:
+        photo.mimeType === "image/jpeg" ||
+        photo.mimeType === "image/png" ||
+        photo.mimeType === "image/webp"
+          ? photo.mimeType
+          : "image/jpeg",
+    }))
+    .filter(photo => Boolean(photo.url));
+}
+
+function verificationHistoryItemFrom(entry: {
+  id: number;
+  module: string;
+  title: string;
+  area: string;
+  result: string | null;
+  notes: string | null;
+  completedAt: Date;
+  registeredByName: string | null;
+  registeredByTitle: string | null;
+  payload?: unknown;
+}) {
+  const payload = entryPayload(entry);
+  return {
+    id: entry.id,
+    operationalDate:
+      entry.module === "fragile_items"
+        ? fragileInspectionOperationalDate(entry)
+        : entryOperationalDate(entry),
+    completedAt: entry.completedAt,
+    result: entry.result,
+    title: entry.title,
+    area: entry.area,
+    state:
+      entry.module === "fragile_items"
+        ? fragileStateFromResult(
+            entry.result,
+            payload.state === "Íntegro" ||
+              payload.state === "Danificado" ||
+              payload.state === "Em falta"
+              ? payload.state
+              : null
+          )
+        : null,
+    containmentAction:
+      typeof payload.containmentAction === "string"
+        ? payload.containmentAction
+        : "",
+    notes: entry.notes ?? "",
+    registeredByName: entry.registeredByName,
+    registeredByTitle: entry.registeredByTitle,
+    collaboratorName:
+      typeof payload.collaboratorName === "string"
+        ? payload.collaboratorName
+        : "",
+    product: typeof payload.product === "string" ? payload.product : "",
+    lot: typeof payload.lot === "string" ? payload.lot : "",
+    validity:
+      typeof payload.validity === "string"
+        ? payload.validity
+        : typeof payload.expiry === "string"
+          ? payload.expiry
+          : "",
+    evidencePhotos: verificationEvidencePhotos(payload),
+  };
+}
+
 function coverageSlot(type: string, ...parts: Array<string | number>) {
   return JSON.stringify([type, ...parts]);
 }
@@ -6113,6 +6223,39 @@ export const qualityRouter = router({
             fragileRecurrenceHistory: fragileRecurrenceHistoryFromPayload(payload),
           };
         });
+    }),
+
+  incidenceVerificationHistory: qualitySessionProcedure
+    .input(z.object({ sourceEntryId: z.number().int().positive() }))
+    .query(async ({ input }) => {
+      const db = await requireDb();
+      const [source, entries] = await Promise.all([
+        db
+          .select()
+          .from(controlEntries)
+          .where(eq(controlEntries.id, input.sourceEntryId))
+          .limit(1),
+        db.select().from(controlEntries).orderBy(desc(controlEntries.completedAt)),
+      ]);
+      const sourceEntry = source[0];
+      if (!sourceEntry || isDeletedControlEntry(sourceEntry))
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "A verificação de origem desta incidência não foi encontrada.",
+        });
+      const sourcePayload = entryPayload(sourceEntry);
+      const contextKey = verificationHistoryKey(sourceEntry, sourcePayload);
+      return entries
+        .filter(entry => !isDeletedControlEntry(entry))
+        .filter(
+          entry =>
+            verificationHistoryKey(entry, entryPayload(entry)) === contextKey
+        )
+        .slice(0, 50)
+        .map(entry => ({
+          ...verificationHistoryItemFrom(entry),
+          isSourceVerification: entry.id === sourceEntry.id,
+        }));
     }),
 
   incidenceRecurrenceAlerts: qualitySessionProcedure.query(async () => {

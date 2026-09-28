@@ -82,6 +82,25 @@ type FragileTreatmentReview = {
   riskLevel: "1" | "2" | "3";
   rationale: string;
 };
+type VerificationHistoryEntry = {
+  id: number;
+  operationalDate: string;
+  completedAt: Date;
+  result: string | null;
+  title: string;
+  area: string;
+  state: "Íntegro" | "Danificado" | "Em falta" | null;
+  containmentAction: string;
+  notes: string;
+  registeredByName: string | null;
+  registeredByTitle: string | null;
+  collaboratorName: string;
+  product: string;
+  lot: string;
+  validity: string;
+  evidencePhotos: IncidenceTreatment["evidencePhotos"];
+  isSourceVerification: boolean;
+};
 const emptyIncidenceTreatment = (): IncidenceTreatment => ({
   status: "pending",
   correction: "",
@@ -123,6 +142,7 @@ type OccurrenceItem = {
   treatment: IncidenceTreatment;
   treatmentHistory: IncidenceTreatmentHistoryEntry[];
   fragileRecurrenceHistory: FragileRecurrenceHistoryEntry[];
+  verificationHistory: VerificationHistoryEntry[];
   followUpReviewAlerts: Array<{
     followUpTaskId: number;
     title: string;
@@ -344,6 +364,71 @@ const fragileRecurrenceHistoryFrom = (
       new Date(left.completedAt).getTime() - new Date(right.completedAt).getTime()
   );
 };
+const verificationHistoryFrom = (value: unknown): VerificationHistoryEntry[] =>
+  (Array.isArray(value) ? value : [])
+    .map(item => {
+      const record =
+        item && typeof item === "object" && !Array.isArray(item)
+          ? (item as Record<string, unknown>)
+          : {};
+      const completedAt =
+        record.completedAt instanceof Date
+          ? record.completedAt
+          : new Date(typeof record.completedAt === "string" ? record.completedAt : "");
+      const id = typeof record.id === "number" ? record.id : 0;
+      const operationalDate = normaliseIsoDate(record.operationalDate);
+      if (!id || !operationalDate || Number.isNaN(completedAt.getTime())) return null;
+      const evidencePhotos = Array.isArray(record.evidencePhotos)
+        ? record.evidencePhotos.filter(
+            (photo): photo is IncidenceTreatment["evidencePhotos"][number] =>
+              Boolean(
+                photo &&
+                  typeof photo === "object" &&
+                  typeof (photo as { url?: unknown }).url === "string" &&
+                  typeof (photo as { key?: unknown }).key === "string"
+              )
+          )
+        : [];
+      return {
+        id,
+        operationalDate,
+        completedAt,
+        result: typeof record.result === "string" ? record.result : null,
+        title: typeof record.title === "string" ? record.title : "Verificação",
+        area: typeof record.area === "string" ? record.area : "",
+        state:
+          record.state === "Íntegro" ||
+          record.state === "Danificado" ||
+          record.state === "Em falta"
+            ? record.state
+            : null,
+        containmentAction:
+          typeof record.containmentAction === "string"
+            ? record.containmentAction
+            : "",
+        notes: typeof record.notes === "string" ? record.notes : "",
+        registeredByName:
+          typeof record.registeredByName === "string"
+            ? record.registeredByName
+            : null,
+        registeredByTitle:
+          typeof record.registeredByTitle === "string"
+            ? record.registeredByTitle
+            : null,
+        collaboratorName:
+          typeof record.collaboratorName === "string"
+            ? record.collaboratorName
+            : "",
+        product: typeof record.product === "string" ? record.product : "",
+        lot: typeof record.lot === "string" ? record.lot : "",
+        validity: typeof record.validity === "string" ? record.validity : "",
+        evidencePhotos,
+        isSourceVerification: record.isSourceVerification === true,
+      };
+    })
+    .filter(
+      (entry): entry is VerificationHistoryEntry => entry !== null
+    );
 const bphfContextFrom = (
   module: string,
   payload: Record<string, unknown>,
@@ -382,6 +467,12 @@ const incidenceDetailLabels: Record<string, string> = {
   orderNumber: "Número da encomenda",
   customer: "Cliente",
   expiry: "Validade",
+  actualVerificationDate: "Data efetiva da verificação",
+  containmentAction: "Ação de contenção",
+  periodicity: "Periodicidade",
+  registeredAgainstPreviousPlan: "Registado contra plano anterior",
+  registeredAheadOfPlannedDate: "Registado antes da data prevista",
+  state: "Estado do ponto",
 };
 const incidenceDetailHiddenKeys = new Set([
   "dailyIncidenceGenerated",
@@ -394,6 +485,9 @@ const incidenceDetailHiddenKeys = new Set([
   "incidenceTreatmentHistory",
   "fragileRecurrenceHistory",
   "mergedIntoFragileIncidenceId",
+  "fragileItemId",
+  "recordLifecycle",
+  "editHistory",
 ]);
 const formatIncidenceDetailValue = (value: unknown): string => {
   if (value === null || value === undefined || value === "") return "Não indicado";
@@ -484,6 +578,8 @@ export default function Nonconformities() {
   const [endDate, setEndDate] = useState("");
   const [selectedKey, setSelectedKey] = useState("");
   const [detailsExpanded, setDetailsExpanded] = useState(true);
+  const [verificationHistoryExpanded, setVerificationHistoryExpanded] =
+    useState(true);
   const [occurrenceNumberDraft, setOccurrenceNumberDraft] = useState("");
   const [editingIncidence, setEditingIncidence] = useState(false);
   const [incidenceTitleDraft, setIncidenceTitleDraft] = useState("");
@@ -659,6 +755,9 @@ export default function Nonconformities() {
               (item as any).fragileRecurrenceHistory ??
                 (item.payload as any)?.fragileRecurrenceHistory
             ),
+            verificationHistory: verificationHistoryFrom(
+              (item as any).verificationHistory
+            ),
             followUpReviewAlerts: Array.isArray(
               (item as any).followUpReviewAlerts
             )
@@ -713,6 +812,7 @@ export default function Nonconformities() {
           },
           treatmentHistory: [],
           fragileRecurrenceHistory: [],
+          verificationHistory: [],
           followUpReviewAlerts: [],
           fragileTreatmentReview: null,
           plannedTaskId: null,
@@ -757,6 +857,25 @@ export default function Nonconformities() {
     [incidences.data, ncs.data, openNcOnly, searchText, similarFilter, treatmentFilter]
   );
   const selected = occurrences.find(item => item.key === selectedKey) ?? null;
+  const verificationHistoryInput = useMemo(
+    () => ({ sourceEntryId: selected?.type === "incidence" ? selected.id : 1 }),
+    [selected?.id, selected?.type]
+  );
+  const verificationHistoryQuery =
+    trpc.quality.incidenceVerificationHistory?.useQuery?.(
+      verificationHistoryInput,
+      {
+        enabled: selected?.type === "incidence",
+        staleTime: 30_000,
+        refetchOnWindowFocus: false,
+      }
+    ) ?? { data: undefined, isLoading: false };
+  const selectedVerificationHistory =
+    selected?.type === "incidence" && verificationHistoryQuery.data
+      ? verificationHistoryFrom(verificationHistoryQuery.data)
+      : selected?.type === "incidence"
+        ? selected.verificationHistory
+        : [];
   const followUpTaskInput = useMemo(
     () => ({ sourceEntryId: selected?.type === "incidence" ? selected.id : 0 }),
     [selected?.id, selected?.type]
@@ -1857,6 +1976,97 @@ export default function Nonconformities() {
                         ))}
                       </div>
                     </div>
+                  ) : null}
+                  {selected.type === "incidence" &&
+                  selectedVerificationHistory.length ? (
+                    <section className="rounded-xl border border-sky-200 bg-sky-50/60 p-4">
+                      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                        <div>
+                          <p className="text-sm font-semibold text-sky-950">
+                            {selected.module === "fragile_items"
+                              ? "Histórico de verificações deste ponto"
+                              : selected.module === "bphf"
+                                ? "Histórico do colaborador e critério verificados"
+                                : selected.module === "sensory"
+                                  ? "Histórico de verificações deste produto"
+                                  : "Histórico de verificações relacionadas"}
+                          </p>
+                          <p className="mt-1 text-xs text-sky-900">
+                            Todos os registos efetuados no mesmo contexto, incluindo verificações conformes e não conformes.
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Badge className="border border-sky-300 bg-white text-sky-950 hover:bg-white">
+                            {selectedVerificationHistory.length} {selectedVerificationHistory.length === 1 ? "verificação" : "verificações"}
+                          </Badge>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="gap-1 border-sky-300 bg-white text-sky-950 hover:bg-sky-100"
+                            aria-expanded={verificationHistoryExpanded}
+                            aria-controls="incidence-verification-history"
+                            onClick={() => setVerificationHistoryExpanded(current => !current)}
+                          >
+                            {verificationHistoryExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                            {verificationHistoryExpanded ? "Minimizar histórico" : "Mostrar histórico"}
+                          </Button>
+                        </div>
+                      </div>
+                      {verificationHistoryExpanded ? (
+                        <ol id="incidence-verification-history" className="mt-4 space-y-3">
+                          {selectedVerificationHistory.map(verification => (
+                            <li key={verification.id} className="rounded-lg border border-sky-100 bg-white/90 p-3">
+                              <div className="flex flex-wrap items-start justify-between gap-2">
+                                <div className="flex flex-wrap items-center gap-2">
+                                  {verification.isSourceVerification ? (
+                                    <Badge className="bg-amber-100 text-amber-900 hover:bg-amber-100">Origem da incidência</Badge>
+                                  ) : null}
+                                  <Badge
+                                    className={
+                                      verification.result === "NC"
+                                        ? "bg-red-100 text-red-900 hover:bg-red-100"
+                                        : verification.result === "C"
+                                          ? "bg-emerald-100 text-emerald-900 hover:bg-emerald-100"
+                                          : "bg-slate-100 text-slate-800 hover:bg-slate-100"
+                                    }
+                                  >
+                                    {verification.result === "NC" ? "Não conforme" : verification.result === "C" ? "Conforme" : verification.result ?? "Sem resultado"}
+                                  </Badge>
+                                  {verification.state ? <span className="text-sm font-medium text-slate-900">{verification.state}</span> : null}
+                                </div>
+                                <span className="text-xs text-slate-600">
+                                  {new Date(`${verification.operationalDate}T12:00:00`).toLocaleDateString("pt-PT", { timeZone: "Europe/Lisbon" })}
+                                </span>
+                              </div>
+                              <p className="mt-2 text-sm font-medium text-slate-900">{verification.title}</p>
+                              <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-700">
+                                {verification.area ? <span>Área: {verification.area}</span> : null}
+                                {verification.collaboratorName ? <span>Colaborador: {verification.collaboratorName}</span> : null}
+                                {verification.product ? <span>Produto: {verification.product}</span> : null}
+                                {verification.lot ? <span>Lote: {verification.lot}</span> : null}
+                                {verification.validity ? <span>Validade: {verification.validity}</span> : null}
+                              </div>
+                              {verification.containmentAction ? <p className="mt-2 text-sm text-slate-800"><span className="font-medium text-sky-900">Ação de contenção:</span> {verification.containmentAction}</p> : null}
+                              {verification.notes ? <p className="mt-1 whitespace-pre-wrap text-sm text-slate-700">{verification.notes}</p> : null}
+                              <p className="mt-2 text-xs text-slate-600">
+                                Registada por {verification.registeredByName ?? "Utilizador não identificado"}
+                                {verification.registeredByTitle ? ` · ${verification.registeredByTitle}` : ""}
+                              </p>
+                              {verification.evidencePhotos.length ? (
+                                <div className="mt-3 flex flex-wrap gap-2">
+                                  {verification.evidencePhotos.map(photo => (
+                                    <a key={photo.url} href={photo.url} target="_blank" rel="noreferrer" className="overflow-hidden rounded-md border border-sky-200 bg-white">
+                                      <img src={photo.url} alt={`Evidência da verificação: ${photo.fileName}`} className="h-16 w-16 object-cover" />
+                                    </a>
+                                  ))}
+                                </div>
+                              ) : null}
+                            </li>
+                          ))}
+                        </ol>
+                      ) : null}
+                    </section>
                   ) : null}
                   {selected.type === "incidence" &&
                   selected.fragileRecurrenceHistory.length ? (

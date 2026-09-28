@@ -2770,6 +2770,9 @@ describe("procedimentos de qualidade por fábrica", () => {
       const caller = qualityRouter.createCaller(createContext());
       const incidences = await caller.listIncidences({ date: now, factoryId: 1 });
       const daily = await caller.dailyIncidences({ date: now, factoryId: 1 });
+      const history = await caller.incidenceVerificationHistory({
+        sourceEntryId: sourceIncidence.id,
+      });
 
       expect(incidences).toEqual(
         expect.arrayContaining([
@@ -2785,6 +2788,19 @@ describe("procedimentos de qualidade por fábrica", () => {
         ])
       );
       expect(incidences.some(item => item.id === mergedVerification.id)).toBe(false);
+      expect(history).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            id: sourceIncidence.id,
+            isSourceVerification: true,
+            state: "Danificado",
+          }),
+          expect.objectContaining({
+            id: mergedVerification.id,
+            isSourceVerification: false,
+          }),
+        ])
+      );
       expect(daily.incidences.some(item => item.id === sourceIncidence.id)).toBe(true);
       expect(daily.incidences.some(item => item.id === mergedVerification.id)).toBe(false);
     } finally {

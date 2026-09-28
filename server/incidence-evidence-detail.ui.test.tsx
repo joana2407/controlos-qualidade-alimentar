@@ -33,6 +33,10 @@ vi.mock("@/lib/trpc", () => ({
       listNcs: { useQuery: () => ({ data: [] }) },
       incidenceRecurrenceAlerts: { useQuery: () => ({ data: [] }) },
       similarIncidenceAlerts: { useQuery: () => ({ data: similarAlerts }) },
+      incidenceVerificationHistory: { useQuery: () => ({ data: [
+        { id: 9, operationalDate: "2026-08-19", completedAt: new Date("2026-08-19T10:00:00"), result: "NC", title: "Inspeção BPHF", area: "Produção", state: null, containmentAction: "", notes: "Bolor identificado na amostra.", registeredByName: "Joana Pina", registeredByTitle: "Resp. Qualidade", collaboratorName: "Maria Silva", product: "Pão de forma", lot: "L-26247", validity: "2026-09-20", evidencePhotos: [{ key: "history/9.png", url: "/manus-storage/history/9.png", fileName: "histórico-9.png", mimeType: "image/png" }], isSourceVerification: true },
+        { id: 8, operationalDate: "2026-08-12", completedAt: new Date("2026-08-12T10:00:00"), result: "C", title: "Inspeção BPHF", area: "Produção", state: null, containmentAction: "", notes: "Verificação conforme.", registeredByName: "Neuza Antunes", registeredByTitle: "Tec. Qualidade", collaboratorName: "Maria Silva", product: "Pão de forma", lot: "L-26230", validity: "2026-09-13", evidencePhotos: [], isSourceVerification: false },
+      ], isLoading: false }) },
       updateIncidence: { useMutation: () => ({ mutate: updateIncidence, isPending: false }) },
       listIncidenceFollowUpTasks: { useQuery: () => ({ data: [], isLoading: false }) },
       createIncidenceFollowUpTask: { useMutation: () => ({ mutate: createFollowUpTask, isPending: false }) },
@@ -95,7 +99,31 @@ describe("detalhe de incidência com evidências", () => {
     expect(screen.getByText("Pão de forma")).toBeTruthy();
     expect(screen.getByText("L-26247")).toBeTruthy();
     expect(screen.getByText("2026-09-20")).toBeTruthy();
-    expect(screen.getByText("Bolor identificado na amostra.")).toBeTruthy();
+    expect(screen.getAllByText("Bolor identificado na amostra.").length).toBeGreaterThan(0);
+  });
+
+  it("mostra o histórico completo das verificações no mesmo contexto", () => {
+    render(<Nonconformities />);
+    fireEvent.click(screen.getByRole("button", { name: /Incidência com foto/i }));
+
+    expect(screen.getByText("Histórico do colaborador e critério verificados")).toBeTruthy();
+    expect(screen.getByText("2 verificações")).toBeTruthy();
+    expect(screen.getByText("Origem da incidência")).toBeTruthy();
+    expect(screen.getAllByText("Produto: Pão de forma").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Lote: L-26247").length).toBeGreaterThan(0);
+    expect(screen.getByRole("img", { name: "Evidência da verificação: histórico-9.png" })).toBeTruthy();
+  });
+
+  it("permite minimizar e reabrir o histórico de verificações", () => {
+    render(<Nonconformities />);
+    fireEvent.click(screen.getByRole("button", { name: /Incidência com foto/i }));
+
+    fireEvent.click(screen.getByRole("button", { name: "Minimizar histórico" }));
+    expect(screen.getByRole("button", { name: "Mostrar histórico" }).getAttribute("aria-expanded")).toBe("false");
+    expect(screen.queryByText("Origem da incidência")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Mostrar histórico" }));
+    expect(screen.getByText("Origem da incidência")).toBeTruthy();
   });
 
   it("permite minimizar e reabrir os detalhes técnicos da incidência", () => {
