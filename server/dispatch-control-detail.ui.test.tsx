@@ -121,6 +121,7 @@ vi.mock("wouter", () => ({
   Link: ({ children, href, ...props }: { children: React.ReactNode; href: string }) => <a href={href} {...props}>{children}</a>,
   useRoute: () => [true, { module: route.value }],
   useSearch: () => "",
+  useLocation: () => [window.location.pathname, (target: string) => window.history.pushState({}, "", target)],
 }));
 
 import ModuleControl from "../client/src/pages/ModuleControl";

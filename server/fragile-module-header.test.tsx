@@ -7,6 +7,7 @@ vi.mock("wouter", () => ({
   Link: ({ children, href }: { children: React.ReactNode; href: string }) => <a href={href}>{children}</a>,
   useRoute: () => [true, { module: "fragile_items" }],
   useSearch: () => window.location.search,
+  useLocation: () => [window.location.pathname, (target: string) => window.history.pushState({}, "", target)],
 }));
 
 const noopMutation = { mutate: vi.fn(), mutateAsync: vi.fn(), isPending: false };

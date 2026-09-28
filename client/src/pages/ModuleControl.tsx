@@ -68,6 +68,13 @@ import {
   readControlFactoryScope,
   writeControlFactoryScope,
 } from "@/lib/controlFactoryScope";
+import {
+  currentLisbonDateKey,
+  dateFromOperationalDateKey,
+  isOperationalDateKey,
+  readControlOperationalDate,
+  writeControlOperationalDate,
+} from "@/lib/controlOperationalDate";
 import { trpc } from "@/lib/trpc";
 import { useQualityAccess } from "@/contexts/QualityAccessContext";
 import { FragileOperationsPanel } from "@/components/quality/FragileOperationsPanel";
@@ -105,7 +112,7 @@ import {
   WandSparkles,
 } from "lucide-react";
 import React, { FormEvent, useEffect, useMemo, useRef, useState } from "react";
-import { Link, useRoute, useSearch } from "wouter";
+import { Link, useLocation, useRoute, useSearch } from "wouter";
 import { toast } from "sonner";
 
 type Result = "C" | "NC" | "N/A";
@@ -176,6 +183,17 @@ export const ControlFactoryContext = React.createContext<ControlFactoryScope>({
   setFactoryId: () => undefined,
 });
 const useControlFactory = () => React.useContext(ControlFactoryContext);
+type ControlOperationalDateScope = {
+  dateKey: string;
+  setDateKey: (value: string) => void;
+};
+const ControlOperationalDateContext =
+  React.createContext<ControlOperationalDateScope>({
+    dateKey: currentLisbonDateKey(),
+    setDateKey: () => undefined,
+  });
+const useControlOperationalDate = () =>
+  React.useContext(ControlOperationalDateContext);
 type ModuleProgress = {
   expected: number;
   completed: number;
@@ -1917,6 +1935,7 @@ function ModuleHeader({
   children?: React.ReactNode;
 }) {
   const { factories, factoryId, setFactoryId } = useControlFactory();
+  const { dateKey, setDateKey } = useControlOperationalDate();
   const helpAnchor =
     (
       {
@@ -2008,6 +2027,39 @@ function ModuleHeader({
           </div>
         </div>
         <div className="flex flex-col gap-2 sm:flex-row sm:items-stretch">
+          <div
+            className={
+              critical
+                ? "rounded-xl border border-red-200 bg-white/80 p-3"
+                : "rounded-xl border border-slate-700 bg-slate-800/70 p-3"
+            }
+          >
+            <div className="flex items-center gap-2">
+              <CalendarClock
+                className={
+                  critical ? "h-4 w-4 text-red-700" : "h-4 w-4 text-teal-300"
+                }
+              />
+              <Label
+                htmlFor="control-operational-date"
+                className={
+                  critical
+                    ? "text-xs font-medium text-red-800"
+                    : "text-xs font-medium text-slate-200"
+                }
+              >
+                Data do controlo
+              </Label>
+            </div>
+            <Input
+              id="control-operational-date"
+              type="date"
+              value={dateKey}
+              aria-label="Data do controlo"
+              onChange={event => setDateKey(event.target.value)}
+              className={`mt-2 h-10 min-w-44 ${selectClass}`}
+            />
+          </div>
           {!commonToAllOperations && (
             <div
               className={
@@ -2528,6 +2580,7 @@ function AnticipatedPlanNotice({
 
 export default function ModuleControl() {
   const [, params] = useRoute("/controlos/:module");
+  const [, setLocation] = useLocation();
   const module = params?.module ?? "bphf";
   const { activeProfile } = useQualityAccess();
   const search = useSearch();
@@ -2571,16 +2624,52 @@ export default function ModuleControl() {
   const focusedEntryId = Number(queryParams.get("entryId")) || undefined;
   const openFocusedEntryForEditing = queryParams.get("edit") === "1";
   const plannedDateKey = queryParams.get("plannedDate");
+  const explicitDateKey = queryParams.get("date");
+  const storedOperationalDateKey = readControlOperationalDate(module);
+  const hasExplicitOperationalDate =
+    isOperationalDateKey(explicitDateKey) ||
+    isOperationalDateKey(storedOperationalDateKey);
+  const [operationalDateKey, setOperationalDateKey] = useState(() => {
+    if (isOperationalDateKey(explicitDateKey)) return explicitDateKey;
+    if (isOperationalDateKey(plannedDateKey)) return plannedDateKey;
+    return storedOperationalDateKey ?? currentLisbonDateKey();
+  });
   const resultsOnly = queryParams.get("view") === "results";
-  const plannedDate = useMemo(() => {
-    if (!plannedDateKey || !/^\d{4}-\d{2}-\d{2}$/.test(plannedDateKey)) return undefined;
-    const date = new Date(`${plannedDateKey}T12:00:00`);
-    return Number.isNaN(date.getTime()) ? undefined : date;
-  }, [plannedDateKey]);
+  const operationalDate = useMemo(
+    () => dateFromOperationalDateKey(operationalDateKey),
+    [operationalDateKey]
+  );
   useEffect(() => {
     const factoryFromQuery = queryParams.get("factoryId");
     if (factoryFromQuery) setFactoryId(factoryFromQuery);
   }, [queryParams]);
+  useEffect(() => {
+    const dateFromQuery = isOperationalDateKey(explicitDateKey)
+      ? explicitDateKey
+      : isOperationalDateKey(plannedDateKey)
+        ? plannedDateKey
+        : undefined;
+    if (dateFromQuery) {
+      setOperationalDateKey(dateFromQuery);
+      return;
+    }
+    setOperationalDateKey(
+      readControlOperationalDate(module) ?? currentLisbonDateKey()
+    );
+  }, [explicitDateKey, module, plannedDateKey]);
+  const selectOperationalDate = (value: string) => {
+    if (!isOperationalDateKey(value)) return;
+    writeControlOperationalDate(module, value);
+    setOperationalDateKey(value);
+    const next = new URLSearchParams(search);
+    next.set("date", value);
+    next.delete("plannedDate");
+    next.delete("plannedTaskId");
+    next.delete("pending");
+    next.delete("entryId");
+    next.delete("edit");
+    setLocation(`/controlos/${module}?${next.toString()}`);
+  };
   const authorization = trpc.quality.controlAuthorization?.useQuery?.({
     module: (config?.id ?? "bphf") as (typeof MODULES)[number]["id"],
     factoryId: isSharedControl
@@ -2589,13 +2678,14 @@ export default function ModuleControl() {
         ? Number(factoryId)
         : undefined,
     plannedTaskId,
-    plannedDate,
+    plannedDate: operationalDate,
     viewerProfileId: activeProfile?.id,
   }) ?? { data: undefined, isLoading: false };
   const progressDateInput = useMemo(() => {
     const dueAt =
-      authorization.data?.isPreviousPending ||
-      authorization.data?.isFuturePlanned
+      !hasExplicitOperationalDate &&
+      (authorization.data?.isPreviousPending ||
+        authorization.data?.isFuturePlanned)
         ? authorization.data.dueAt
         : undefined;
     if (dueAt) {
@@ -2607,14 +2697,13 @@ export default function ModuleControl() {
         12
       );
     }
-    if (plannedDate) return plannedDate;
-    const today = new Date();
-    return new Date(today.getFullYear(), today.getMonth(), today.getDate(), 12);
+    return operationalDate;
   }, [
     authorization.data?.dueAt,
     authorization.data?.isFuturePlanned,
     authorization.data?.isPreviousPending,
-    plannedDate,
+    hasExplicitOperationalDate,
+    operationalDate,
   ]);
   const dashboard = trpc.quality.dashboard.useQuery({
     date: progressDateInput,
@@ -2791,9 +2880,12 @@ export default function ModuleControl() {
   };
   if (resultsOnly)
     return (
-      <ControlFactoryContext.Provider
-        value={{ factories: controlFactories, factoryId, setFactoryId }}
+      <ControlOperationalDateContext.Provider
+        value={{ dateKey: operationalDateKey, setDateKey: selectOperationalDate }}
       >
+        <ControlFactoryContext.Provider
+          value={{ factories: controlFactories, factoryId, setFactoryId }}
+        >
         <ModuleProgressContext.Provider
           value={{
             items:
@@ -2828,16 +2920,20 @@ export default function ModuleControl() {
             </section>
           </div>
         </ModuleProgressContext.Provider>
-      </ControlFactoryContext.Provider>
+        </ControlFactoryContext.Provider>
+      </ControlOperationalDateContext.Provider>
     );
   if (
     authorization.isLoading ||
     (authorization.data && !authorization.data.allowed)
   )
     return (
-      <ControlFactoryContext.Provider
-        value={{ factories: controlFactories, factoryId, setFactoryId }}
+      <ControlOperationalDateContext.Provider
+        value={{ dateKey: operationalDateKey, setDateKey: selectOperationalDate }}
       >
+        <ControlFactoryContext.Provider
+          value={{ factories: controlFactories, factoryId, setFactoryId }}
+        >
         <ModuleProgressContext.Provider
           value={{
             items:
@@ -2872,12 +2968,16 @@ export default function ModuleControl() {
             </section>
           </div>
         </ModuleProgressContext.Provider>
-      </ControlFactoryContext.Provider>
+        </ControlFactoryContext.Provider>
+      </ControlOperationalDateContext.Provider>
     );
   return (
-    <ControlFactoryContext.Provider
-      value={{ factories: controlFactories, factoryId, setFactoryId }}
+    <ControlOperationalDateContext.Provider
+      value={{ dateKey: operationalDateKey, setDateKey: selectOperationalDate }}
     >
+      <ControlFactoryContext.Provider
+        value={{ factories: controlFactories, factoryId, setFactoryId }}
+      >
       <ModuleProgressContext.Provider
         value={{
           items:
@@ -2985,7 +3085,8 @@ export default function ModuleControl() {
           </section>
         </div>
       </ModuleProgressContext.Provider>
-    </ControlFactoryContext.Provider>
+      </ControlFactoryContext.Provider>
+    </ControlOperationalDateContext.Provider>
   );
 }
 

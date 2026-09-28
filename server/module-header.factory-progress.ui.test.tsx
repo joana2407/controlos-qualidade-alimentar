@@ -43,6 +43,7 @@ vi.mock("wouter", () => ({
   Link: ({ children, href, ...props }: { children: React.ReactNode; href: string }) => <a href={href} {...props}>{children}</a>,
   useRoute: () => [true, { module: routeModule.value }],
   useSearch: () => window.location.search,
+  useLocation: () => [window.location.pathname, (target: string) => window.history.pushState({}, "", target)],
 }));
 
 import ModuleControl from "../client/src/pages/ModuleControl";
@@ -69,6 +70,28 @@ describe("cabeçalho de controlo — progresso por fábrica", () => {
     expect(screen.getByText(/e não para o dia atual/)).toBeTruthy();
     const input = dashboardInputs[0] as { date: Date };
     expect(input.date.toISOString()).toContain("2026-08-20T12:00:00.000Z");
+  });
+
+  it("permite selecionar a data operacional em todos os painéis e atualiza as consultas da data escolhida", () => {
+    window.history.pushState({}, "", "/controlos/sensory?factoryId=1&date=2026-08-18");
+    routeModule.value = "sensory";
+    render(<ModuleControl />);
+
+    const dateFilter = screen.getByLabelText("Data do controlo") as HTMLInputElement;
+    expect(dateFilter.value).toBe("2026-08-18");
+    expect(dashboardInputs[0]).toMatchObject({
+      date: new Date("2026-08-18T12:00:00"),
+    });
+    expect(dailyResultsInputs[0]).toMatchObject({
+      module: "sensory",
+      factoryId: 1,
+      operationalDate: new Date("2026-08-18T12:00:00"),
+    });
+
+    fireEvent.change(dateFilter, { target: { value: "2026-08-19" } });
+    expect(window.location.search).toContain("date=2026-08-19");
+    expect(window.location.search).not.toContain("plannedTaskId");
+    expect(window.localStorage.getItem("quality-control-operational-date:sensory")).toBe("2026-08-19");
   });
 
   it("atualiza o formulário para o plannedTaskId e data da pendência após navegar no mesmo controlo", () => {
