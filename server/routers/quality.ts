@@ -155,6 +155,34 @@ const incidenceAiResponseSchema = {
   required: ["answer", "suggestions", "risks", "questions"],
   additionalProperties: false,
 } as const;
+const qualityManagerAiResponseSchema = {
+  type: "object",
+  properties: {
+    answer: {
+      type: "string",
+      description: "Orientação curta, prática e priorizada em português europeu.",
+    },
+    nextSteps: { type: "array", items: { type: "string" }, maxItems: 5 },
+    cautions: { type: "array", items: { type: "string" }, maxItems: 4 },
+    questions: { type: "array", items: { type: "string" }, maxItems: 4 },
+  },
+  required: ["answer", "nextSteps", "cautions", "questions"],
+  additionalProperties: false,
+} as const;
+const qualityModuleLabels: Record<string, string> = {
+  bphf: "BPHF",
+  metal_detectors: "Detetores de metais",
+  sensory: "Controlo sensorial",
+  shelf_life: "Shelf-life",
+  monthly_checklist: "Checklist mensal",
+  suggestion_boxes: "Caixas de sugestões",
+  fragile_items: "Quebráveis",
+  dispatch_control: "Controlo à expedição",
+  internal_analysis: "Análises internas",
+  temperature_controls: "Controlos de temperatura",
+  food_defense: "Food Defense",
+  not_applicable: "Não aplicável",
+};
 const ensureJoanaQualityManager = (ctx: { operatorProfile?: { role: string; name: string } | null }) => {
   if (
     ctx.operatorProfile?.role !== "manager" ||
@@ -1203,6 +1231,244 @@ function isPlanTaskResolved(
     fragileCatalog
     )
   );
+}
+
+type QualityManagerAiFocus = {
+  module?: (typeof qualityModuleValues)[number];
+  operationalDate?: Date;
+};
+
+/**
+ * Consolida a mesma fonte de verdade usada pelo Painel Hoje e pelos módulos.
+ * O copiloto apenas recebe contagens e atalhos úteis: nunca altera estes dados.
+ */
+async function buildQualityManagerAiBriefing(
+  db: any,
+  focus: QualityManagerAiFocus = {}
+) {
+  const [
+    tasks,
+    entries,
+    ncs,
+    actions,
+    factoryCatalog,
+    areaCatalog,
+    monthlyItems,
+    monthlyAssignments,
+    monthlyAreaAssignments,
+    monthlyAreaRows,
+    fragileCatalog,
+  ] = (await Promise.all([
+    db.select().from(controlTasks).orderBy(controlTasks.dueAt),
+    db.select().from(controlEntries).orderBy(desc(controlEntries.completedAt)),
+    db.select().from(nonconformities).orderBy(desc(nonconformities.detectedAt)),
+    db.select().from(correctiveActions).orderBy(correctiveActions.dueAt),
+    db.select().from(factories).orderBy(factories.name),
+    db.select().from(areas).orderBy(areas.name),
+    db.select().from(checklistItems).orderBy(checklistItems.sortOrder),
+    db.select().from(checklistItemFactories).orderBy(checklistItemFactories.factoryId),
+    db.select().from(checklistItemAreas),
+    db.select().from(checklistAreas),
+    db.select().from(fragileItems).orderBy(fragileItems.sortOrder),
+  ])) as [
+    any[], any[], any[], any[], any[], any[], any[], any[], any[], any[], any[]
+  ];
+  const now = new Date();
+  const todayKey = localDateKey(now);
+  const { start: todayStart, end: todayEnd } = asDateRange(now);
+  const selectedDate = focus.operationalDate ?? now;
+  const selectedKey = localDateKey(selectedDate);
+  const factoryNames = new Map(factoryCatalog.map(factory => [factory.id, factory.name]));
+  const activeTasks = tasks.filter(
+    task => isBusinessDay(task.dueAt) && task.status !== "cancelled"
+  );
+  const taskIsCompleted = (task: (typeof tasks)[number]) =>
+    task.area === "Plano do Dia"
+      ? isPlanTaskResolved(
+          task,
+          entries,
+          areaCatalog,
+          monthlyItems,
+          monthlyAssignments,
+          factoryCatalog,
+          monthlyAreaAssignments,
+          monthlyAreaRows,
+          fragileCatalog
+        )
+      : task.status === "completed";
+  const pendingTasks = activeTasks.filter(task => !taskIsCompleted(task));
+  const taskSummary = (task: (typeof tasks)[number]) => {
+    const dateKey = localDateKey(task.dueAt);
+    const query = new URLSearchParams({
+      plannedTaskId: String(task.id),
+      plannedDate: dateKey,
+    });
+    if (task.factoryId) query.set("factoryId", String(task.factoryId));
+    return {
+      id: task.id,
+      title: task.title,
+      module: task.module,
+      moduleLabel: qualityModuleLabels[task.module],
+      factoryName: task.factoryId
+        ? factoryNames.get(task.factoryId) ?? "Fábrica não identificada"
+        : "Controlo comum",
+      dueDate: dateKey,
+      responsible: task.responsible,
+      url: `/controlos/${task.module}?${query.toString()}`,
+    };
+  };
+  const overdueTasks = pendingTasks
+    .filter(task => task.dueAt < todayStart)
+    .sort((left, right) => left.dueAt.getTime() - right.dueAt.getTime())
+    .slice(0, 8)
+    .map(taskSummary);
+  const todayTasks = pendingTasks
+    .filter(task => task.dueAt >= todayStart && task.dueAt < todayEnd)
+    .sort((left, right) => left.dueAt.getTime() - right.dueAt.getTime())
+    .slice(0, 8)
+    .map(taskSummary);
+  const consistencyAlerts = activeTasks
+    .filter(task => task.area === "Plano do Dia")
+    .map(task => {
+      const dynamicallyCompleted = taskIsCompleted(task);
+      const dueDate = localDateKey(task.dueAt);
+      if (task.status === "completed" && !dynamicallyCompleted)
+        return {
+          ...taskSummary(task),
+          kind: "completed_without_coverage" as const,
+          message:
+            "A tarefa está marcada como concluída, mas a cobertura dinâmica ainda indica verificações em falta.",
+        };
+      if (
+        task.status === "pending" &&
+        dynamicallyCompleted &&
+        dueDate <= todayKey
+      )
+        return {
+          ...taskSummary(task),
+          kind: "pending_with_coverage" as const,
+          message:
+            "Existem registos suficientes para a cobertura prevista, mas o estado gravado continua pendente.",
+        };
+      return null;
+    })
+    .filter(
+      (item): item is NonNullable<typeof item> => Boolean(item)
+    )
+    .slice(0, 8);
+  const activeIncidences = entries
+    .filter(entry => entry.result === "NC" && !isDeletedControlEntry(entry))
+    .filter(entry => !isMergedFragileRecurrenceEntry(entry))
+    .map(entry => {
+      const payload = entryPayload(entry);
+      const linkedNc = ncs.some(nc => nc.sourceEntryId === entry.id);
+      const generatedNonconformity =
+        linkedNc || payload.generatedNonconformity === true;
+      const treatmentDecision = incidenceDecisionFromPayload(
+        payload,
+        generatedNonconformity
+      );
+      return {
+        entry,
+        payload,
+        generatedNonconformity,
+        treatmentDecision,
+        followUpReviews: pendingFollowUpReviewAlertsFromPayload(payload),
+      };
+    });
+  const pendingTreatment = activeIncidences
+    .filter(item => !item.generatedNonconformity)
+    .filter(item => item.treatmentDecision === "pending")
+    .slice(0, 8)
+    .map(({ entry }) => ({
+      id: entry.id,
+      title: entry.title,
+      moduleLabel: qualityModuleLabels[entry.module],
+      factoryName: entry.factoryId
+        ? factoryNames.get(entry.factoryId) ?? "Fábrica não identificada"
+        : "Sem fábrica/linha",
+      occurredOn: incidenceOccurredOnFromPayload(entryPayload(entry), entry.completedAt),
+      url: "/incidencias",
+    }));
+  const reviewFollowUps = activeIncidences
+    .filter(item => !item.generatedNonconformity && item.followUpReviews.length > 0)
+    .slice(0, 8)
+    .map(({ entry, followUpReviews }) => ({
+      id: entry.id,
+      title: entry.title,
+      reviewCount: followUpReviews.length,
+      moduleLabel: qualityModuleLabels[entry.module],
+      url: "/incidencias",
+    }));
+  const formalNcsOpen = ncs.filter(nc => nc.status !== "closed").length;
+  const overdueActions = actions
+    .filter(action => action.status !== "verified" && action.status !== "completed")
+    .filter(action => Boolean(action.dueAt) && action.dueAt! < todayStart)
+    .sort((left, right) => left.dueAt!.getTime() - right.dueAt!.getTime())
+    .slice(0, 6)
+    .map(action => ({
+      id: action.id,
+      description: action.description,
+      responsible: action.responsible,
+      dueDate: localDateKey(action.dueAt!),
+      url: "/incidencias",
+    }));
+  const focusedModule = focus.module
+    ? (() => {
+        const plannedForDate = activeTasks.filter(
+          task =>
+            task.module === focus.module &&
+            localDateKey(task.dueAt) === selectedKey
+        );
+        const registrationsForDate = entries.filter(
+          entry =>
+            !isDeletedControlEntry(entry) &&
+            entry.module === focus.module &&
+            entryOperationalDate(entry) === selectedKey
+        );
+        return {
+          module: focus.module,
+          label: qualityModuleLabels[focus.module],
+          operationalDate: selectedKey,
+          plannedTasks: plannedForDate.length,
+          completedPlannedTasks: plannedForDate.filter(taskIsCompleted).length,
+          registrations: registrationsForDate.length,
+          status:
+            registrationsForDate.length > 0 && plannedForDate.length === 0
+              ? "history_without_plan"
+              : plannedForDate.length === 0
+                ? "not_planned"
+                : plannedForDate.every(taskIsCompleted)
+                  ? "completed"
+                  : "pending",
+        };
+      })()
+    : null;
+  return {
+    generatedAt: now.toISOString(),
+    operationalDate: todayKey,
+    counts: {
+      overdueControls: overdueTasks.length,
+      controlsDueToday: todayTasks.length,
+      incidencesAwaitingDecision: pendingTreatment.length,
+      followUpsAwaitingReview: reviewFollowUps.reduce(
+        (total, item) => total + item.reviewCount,
+        0
+      ),
+      openFormalNonconformities: formalNcsOpen,
+      overdueCorrectiveActions: overdueActions.length,
+      consistencyAlerts: consistencyAlerts.length,
+    },
+    priorities: {
+      overdueTasks,
+      todayTasks,
+      pendingTreatment,
+      reviewFollowUps,
+      overdueActions,
+      consistencyAlerts,
+    },
+    focusedModule,
+  };
 }
 
 async function assessControlAuthorization(
@@ -9099,7 +9365,7 @@ export const qualityRouter = router({
       };
     }),
 
-  listIncidenceAiGuidance: qualitySessionProcedure.query(async () => {
+  listIncidenceAiGuidance: qualityManagerProcedure.query(async () => {
     const db = await requireDb();
     return db
       .select()
@@ -9132,7 +9398,7 @@ export const qualityRouter = router({
       };
     }),
 
-  incidenceAiAssist: qualitySessionProcedure
+  incidenceAiAssist: qualityManagerProcedure
     .input(
       z.object({
         question: z.string().trim().min(2).max(1600),
@@ -9193,6 +9459,102 @@ export const qualityRouter = router({
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
           message: "O assistente não conseguiu preparar uma resposta. Tente novamente.",
+        });
+      }
+    }),
+
+  qualityManagerAiBriefing: qualityManagerProcedure
+    .input(
+      z
+        .object({
+          module: qualityModuleSchema.optional(),
+          operationalDate: dateInput.optional(),
+        })
+        .optional()
+    )
+    .query(async ({ input }) => {
+      const db = await requireDb();
+      return buildQualityManagerAiBriefing(db, {
+        module: input?.module,
+        operationalDate: input?.operationalDate,
+      });
+    }),
+
+  qualityManagerAiAssist: qualityManagerProcedure
+    .input(
+      z.object({
+        question: z.string().trim().min(2).max(1600),
+        module: qualityModuleSchema.optional(),
+        operationalDate: dateInput.optional(),
+      })
+    )
+    .mutation(async ({ input }) => {
+      const db = await requireDb();
+      const [briefing, guidance] = await Promise.all([
+        buildQualityManagerAiBriefing(db, {
+          module: input.module,
+          operationalDate: input.operationalDate,
+        }),
+        db
+          .select()
+          .from(incidenceAiGuidance)
+          .orderBy(desc(incidenceAiGuidance.createdAt))
+          .limit(50),
+      ]);
+      const guidanceText = guidance.length
+        ? guidance.map(item => `- [${item.topic}] ${item.guidance}`).join("\n")
+        : "Ainda não existem orientações personalizadas ensinadas pela Joana Pina.";
+      const response = await invokeLLM({
+        model: "gpt-5-mini",
+        messages: [
+          {
+            role: "system",
+            content: `És o Copiloto de Qualidade do QualiControl, destinado exclusivamente a Responsáveis de Qualidade. Responde sempre em português europeu, com linguagem operacional clara, curta e priorizada. Apoias a triagem de pendências, incidências, seguimentos e coerência do planeamento; não executas alterações, não publicas planos, não fechas registos, não atribuis responsáveis e não decides uma NC. Não inventes dados, requisitos ou evidências.
+
+Usa o briefing operacional fornecido como fonte de verdade. Distingue sempre: (1) um resultado histórico já registado; (2) a completitude do Plano do Dia da data; e (3) a autorização para introduzir um novo registo. Se o módulo selecionado mostrar resultados mas nenhum plano para a data, explica que não é uma pendência automática e recomenda confirmar o planeamento antes de publicar ou corrigir o plano. Incidências que já geraram NC são geridas externamente: não proponhas tratamento duplicado neste site. Assinala divergências como algo a confirmar, nunca como certeza.
+
+Orientações aprendidas da Joana Pina:
+${guidanceText}`,
+          },
+          {
+            role: "user",
+            content: `Pedido da Responsável de Qualidade:\n${input.question}\n\nBriefing operacional atual:\n${JSON.stringify(briefing, null, 2)}`,
+          },
+        ],
+        response_format: {
+          type: "json_schema",
+          json_schema: {
+            name: "quality_manager_copilot",
+            strict: true,
+            schema: qualityManagerAiResponseSchema,
+          },
+        },
+        maxTokens: 1200,
+      });
+      const content = response.choices[0]?.message.content;
+      try {
+        const parsed = JSON.parse(typeof content === "string" ? content : "{}");
+        const answer = typeof parsed.answer === "string" ? parsed.answer.trim() : "";
+        if (!answer) throw new Error("empty response");
+        const list = (value: unknown, max: number) =>
+          Array.isArray(value)
+            ? value
+                .filter(
+                  (item): item is string =>
+                    typeof item === "string" && Boolean(item.trim())
+                )
+                .slice(0, max)
+            : [];
+        return {
+          answer,
+          nextSteps: list(parsed.nextSteps, 5),
+          cautions: list(parsed.cautions, 4),
+          questions: list(parsed.questions, 4),
+        };
+      } catch {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "O copiloto não conseguiu preparar uma resposta. Tente novamente.",
         });
       }
     }),

@@ -68,7 +68,9 @@ export function IncidenceAiAssistant({ incidence }: Props) {
   const [messages, setMessages] = useState<Message[]>([initialMessage]);
   const [topic, setTopic] = useState("");
   const [guidance, setGuidance] = useState("");
-  const guidanceQuery = trpc.quality.listIncidenceAiGuidance?.useQuery?.() ?? {
+  const guidanceQuery = trpc.quality.listIncidenceAiGuidance?.useQuery?.(undefined, {
+    enabled: canManage,
+  }) ?? {
     data: [],
     refetch: async () => undefined,
   };
@@ -116,6 +118,8 @@ export function IncidenceAiAssistant({ incidence }: Props) {
     }
     teach.mutate({ topic: topic.trim(), guidance: guidance.trim() });
   };
+
+  if (!canManage) return null;
 
   return (
     <Card className="overflow-hidden border-teal-200 bg-gradient-to-br from-white via-teal-50/40 to-slate-50">

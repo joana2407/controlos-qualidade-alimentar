@@ -1,4 +1,5 @@
 import { OperatorPinGate } from "@/components/OperatorPinGate";
+import { QualityManagerCopilot } from "@/components/quality/QualityManagerCopilot";
 import { QualityAccessProvider, useQualityAccess } from "@/contexts/QualityAccessContext";
 import { trpc } from "@/lib/trpc";
 import { canAccessWorkspace } from "@/lib/workspaceAccess";
@@ -386,6 +387,7 @@ function DashboardLayoutContent({
           </div>
         )}
         <main className="flex-1 p-4">{canViewCurrentPanel ? children : <section className="mx-auto grid min-h-[55vh] max-w-lg place-items-center text-center"><Card className="border-amber-200 bg-amber-50"><CardContent className="p-8"><ShieldAlert className="mx-auto h-8 w-8 text-amber-700" /><h1 className="mt-4 text-xl font-semibold text-amber-950">Painel não autorizado</h1><p className="mt-2 text-sm leading-6 text-amber-900">O seu perfil não tem acesso a este painel. Contacte a Responsável de Qualidade para rever as suas autorizações.</p><Button className="mt-5" onClick={() => setLocation("/qualicontrol")}>Voltar aos painéis autorizados</Button></CardContent></Card></section>}</main>
+        {canManage && <QualityManagerCopilot />}
       </SidebarInset>
     </>
   );
