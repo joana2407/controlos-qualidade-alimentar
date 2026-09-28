@@ -15,6 +15,7 @@ const AIChatBox = lazy(() =>
 );
 
 export type IncidenceAiContext = {
+  incidenceId: number;
   title: string;
   module: string;
   occurredOn: string;
@@ -26,6 +27,15 @@ export type IncidenceAiContext = {
   generatedNonconformity?: boolean;
   occurrenceNumber?: string;
   collaboratorName?: string;
+  pointKey?: string;
+  totalNonconformingReportsAtPoint?: number;
+  fragileRecurrenceHistory?: Array<{
+    operationalDate: string;
+    state: string;
+    containmentAction?: string;
+    notes?: string;
+    registeredByName?: string;
+  }>;
   details?: Array<{ label: string; value: string }>;
   treatmentHistory?: Array<{
     revision: number;
@@ -68,6 +78,7 @@ export function IncidenceAiAssistant({ incidence }: Props) {
   const [messages, setMessages] = useState<Message[]>([initialMessage]);
   const [topic, setTopic] = useState("");
   const [guidance, setGuidance] = useState("");
+  const [failedQuestion, setFailedQuestion] = useState<string | null>(null);
   const guidanceQuery = trpc.quality.listIncidenceAiGuidance?.useQuery?.(undefined, {
     enabled: canManage,
   }) ?? {
@@ -76,12 +87,22 @@ export function IncidenceAiAssistant({ incidence }: Props) {
   };
   const assist = trpc.quality.incidenceAiAssist?.useMutation?.({
     onSuccess: response => {
+      setFailedQuestion(null);
       setMessages(current => [
         ...current,
         { role: "assistant", content: formatResponse(response) },
       ]);
     },
-    onError: error => toast.error(error.message),
+    onError: error => {
+      const retryQuestion = messages.at(-1)?.role === "user" ? messages.at(-1)?.content : null;
+      setFailedQuestion(retryQuestion ?? "Analisa novamente esta incidência.");
+      const message = error.message || "Não foi possível obter a resposta do assistente.";
+      setMessages(current => [
+        ...current,
+        { role: "assistant", content: `**Não foi possível concluir a análise.**\n\n${message}\n\nO contexto da incidência foi preservado. Pode tentar novamente.` },
+      ]);
+      toast.error(message);
+    },
   }) ?? {
     mutate: () => undefined,
     isPending: false,

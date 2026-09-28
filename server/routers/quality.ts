@@ -124,6 +124,7 @@ const fragileTreatmentReviewSchema = z.object({
   rationale: z.string().trim().max(1200).optional(),
 });
 const incidenceAiContextSchema = z.object({
+  incidenceId: z.number().int().positive().optional(),
   title: z.string().max(180),
   module: z.string().max(80),
   occurredOn: z.string().max(40),
@@ -135,6 +136,15 @@ const incidenceAiContextSchema = z.object({
   generatedNonconformity: z.boolean().optional(),
   occurrenceNumber: z.string().max(80).optional(),
   collaboratorName: z.string().max(160).optional(),
+  pointKey: z.string().max(300).optional(),
+  totalNonconformingReportsAtPoint: z.number().int().min(1).max(200).optional(),
+  fragileRecurrenceHistory: z.array(z.object({
+    operationalDate: z.string().max(40),
+    state: z.string().max(40),
+    containmentAction: z.string().max(3000).optional(),
+    notes: z.string().max(3000).optional(),
+    registeredByName: z.string().max(160).optional(),
+  })).max(50).optional(),
   details: z.array(z.object({ label: z.string().max(160), value: z.string().max(1200) })).max(30).optional(),
   treatmentHistory: z.array(z.object({
     revision: z.number().int(),
@@ -9423,7 +9433,7 @@ export const qualityRouter = router({
         messages: [
           {
             role: "system",
-            content: `És o assistente interno de gestão de Incidências do QualiControl. Responde sempre em português europeu, com linguagem técnica, clara e prática para a Responsável de Qualidade. Apoias a análise, priorização, preparação de perguntas, verificação de evidências e próximos passos; não executas alterações, não fechas incidências, não decides uma NC e não substituis a avaliação humana. Se a incidência já gerou uma Não Conformidade, recorda que o tratamento é gerido no sistema externo e não proponhas duplicar esse tratamento neste site. Não inventes requisitos, factos ou evidências. Usa as orientações da Joana Pina como preferências operacionais, mas assinala quando uma orientação não é suficiente ou entra em conflito com os dados.\n\nOrientações aprendidas da Joana Pina:\n${guidanceText}`,
+            content: `És o assistente interno de gestão de Incidências do QualiControl. Responde sempre em português europeu, com linguagem técnica, clara e prática para a Responsável de Qualidade. Apoias a análise, priorização, preparação de perguntas, verificação de evidências e próximos passos; não executas alterações, não fechas incidências, não decides uma NC e não substituis a avaliação humana. Se a incidência já gerou uma Não Conformidade, recorda que o tratamento é gerido no sistema externo e não proponhas duplicar esse tratamento neste site. Não inventes requisitos, factos ou evidências. Quando a incidência for de Quebráveis, usa obrigatoriamente totalNonconformingReportsAtPoint e fragileRecurrenceHistory: indica quantas não conformidades foram registadas no mesmo ponto, explica a evolução e propõe o tratamento a confirmar pela Responsável de Qualidade. Distingue o registo inicial das reincidências e, se não houver histórico suficiente, declara essa limitação. Usa as orientações da Joana Pina como preferências operacionais, mas assinala quando uma orientação não é suficiente ou entra em conflito com os dados.\n\nOrientações aprendidas da Joana Pina:\n${guidanceText}`,
           },
           {
             role: "user",

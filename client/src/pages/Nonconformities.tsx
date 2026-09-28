@@ -1675,6 +1675,7 @@ export default function Nonconformities() {
                   {selected.type === "incidence" ? (
                     <IncidenceAiAssistant
                       incidence={{
+                        incidenceId: selected.id,
                         title: selected.title,
                         module: selected.module,
                         occurredOn: selected.occurredOn,
@@ -1686,6 +1687,15 @@ export default function Nonconformities() {
                         generatedNonconformity: selected.generatedNonconformity,
                         occurrenceNumber: selected.occurrenceNumber ?? undefined,
                         collaboratorName: selected.collaboratorName ?? undefined,
+                        pointKey: selected.pointKey,
+                        totalNonconformingReportsAtPoint: 1 + selected.fragileRecurrenceHistory.length,
+                        fragileRecurrenceHistory: selected.fragileRecurrenceHistory.map(recurrence => ({
+                          operationalDate: recurrence.operationalDate,
+                          state: recurrence.state,
+                          containmentAction: recurrence.containmentAction,
+                          notes: recurrence.notes,
+                          registeredByName: recurrence.registeredByName,
+                        })),
                         details: incidenceDetailsFrom(selected.payload).map(detail => ({
                           label: detail.label,
                           value: detail.value,
