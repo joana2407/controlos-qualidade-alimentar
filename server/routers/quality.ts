@@ -179,18 +179,6 @@ const qualityManagerAiResponseSchema = {
   required: ["answer", "nextSteps", "cautions", "questions"],
   additionalProperties: false,
 } as const;
-const qualityManagerAiResponseValidator = z.object({
-  answer: z.string().trim().min(1),
-  nextSteps: z.array(z.string()).max(5),
-  cautions: z.array(z.string()).max(4),
-  questions: z.array(z.string()).max(4),
-});
-const incidenceAiResponseValidator = z.object({
-  answer: z.string().trim().min(1),
-  suggestions: z.array(z.string()).max(5),
-  risks: z.array(z.string()).max(5),
-  questions: z.array(z.string()).max(4),
-});
 const llmContentToText = (content: unknown) => {
   if (typeof content === "string") return content;
   if (!Array.isArray(content)) return "";
@@ -205,6 +193,37 @@ const llmContentToText = (content: unknown) => {
     .filter(Boolean)
     .join("\n");
 };
+const parseLlmJsonObject = (content: unknown): Record<string, unknown> => {
+  const text = llmContentToText(content).trim();
+  if (!text) throw new Error("empty response");
+  const candidates = [text];
+  const fenced = text.match(/```(?:json)?\s*([\s\S]*?)\s*```/i)?.[1]?.trim();
+  if (fenced) candidates.push(fenced);
+  const firstBrace = text.indexOf("{");
+  const lastBrace = text.lastIndexOf("}");
+  if (firstBrace >= 0 && lastBrace > firstBrace) {
+    candidates.push(text.slice(firstBrace, lastBrace + 1));
+  }
+  for (const candidate of candidates) {
+    try {
+      const parsed = JSON.parse(candidate);
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed))
+        return parsed as Record<string, unknown>;
+    } catch {
+      // Try the next harmless extraction form before reporting an invalid reply.
+    }
+  }
+  throw new Error("invalid JSON response");
+};
+const textField = (value: unknown) =>
+  typeof value === "string" && value.trim() ? value.trim() : "";
+const stringList = (value: unknown, max: number) =>
+  Array.isArray(value)
+    ? value
+        .filter((item): item is string => typeof item === "string" && Boolean(item.trim()))
+        .map(item => item.trim())
+        .slice(0, max)
+    : [];
 const qualityModuleLabels: Record<string, string> = {
   bphf: "BPHF",
   metal_detectors: "Detetores de metais",
@@ -9621,16 +9640,14 @@ export const qualityRouter = router({
       });
       const content = llmContentToText(response.choices[0]?.message.content);
       try {
-        const parsed = incidenceAiResponseValidator.parse(JSON.parse(content || "{}"));
-        const list = (value: unknown) =>
-          Array.isArray(value)
-            ? value.filter((item): item is string => typeof item === "string" && Boolean(item.trim())).slice(0, 5)
-            : [];
+        const parsed = parseLlmJsonObject(content);
+        const answer = textField(parsed.answer);
+        if (!answer) throw new Error("empty answer");
         return {
-          answer: parsed.answer,
-          suggestions: list(parsed.suggestions),
-          risks: list(parsed.risks),
-          questions: list(parsed.questions),
+          answer,
+          suggestions: stringList(parsed.suggestions, 5),
+          risks: stringList(parsed.risks, 5),
+          questions: stringList(parsed.questions, 4),
         };
       } catch {
         throw new TRPCError({
@@ -9710,21 +9727,14 @@ ${guidanceText}`,
       });
       const content = llmContentToText(response.choices[0]?.message.content);
       try {
-        const parsed = qualityManagerAiResponseValidator.parse(JSON.parse(content || "{}"));
-        const list = (value: unknown, max: number) =>
-          Array.isArray(value)
-            ? value
-                .filter(
-                  (item): item is string =>
-                    typeof item === "string" && Boolean(item.trim())
-                )
-                .slice(0, max)
-            : [];
+        const parsed = parseLlmJsonObject(content);
+        const answer = textField(parsed.answer);
+        if (!answer) throw new Error("empty answer");
         return {
-          answer: parsed.answer,
-          nextSteps: list(parsed.nextSteps, 5),
-          cautions: list(parsed.cautions, 4),
-          questions: list(parsed.questions, 4),
+          answer,
+          nextSteps: stringList(parsed.nextSteps, 5),
+          cautions: stringList(parsed.cautions, 4),
+          questions: stringList(parsed.questions, 4),
         };
       } catch {
         throw new TRPCError({

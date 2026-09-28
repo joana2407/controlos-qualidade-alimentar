@@ -3179,4 +3179,21 @@ describe("procedimentos de qualidade por fábrica", () => {
       questions: ["Existe alguma justificação retroativa pendente?"],
     });
   });
+  it("aceita uma resposta do Copiloto em bloco Markdown mesmo sem listas opcionais", async () => {
+    vi.mocked(invokeLLM).mockResolvedValue({
+      choices: [{
+        message: {
+          role: "assistant",
+          content: "```json\n{\"answer\":\"Confirme primeiro a pendência mais antiga.\"}\n```",
+        },
+      }],
+    } as any);
+    const caller = qualityRouter.createCaller(createContext());
+    await expect(caller.qualityManagerAiAssist({ question: "Qual é a prioridade?" })).resolves.toEqual({
+      answer: "Confirme primeiro a pendência mais antiga.",
+      nextSteps: [],
+      cautions: [],
+      questions: [],
+    });
+  });
 });
