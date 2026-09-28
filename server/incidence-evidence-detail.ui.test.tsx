@@ -140,6 +140,33 @@ describe("detalhe de incidência com evidências", () => {
     expect(screen.getByText("Pão de forma")).toBeTruthy();
   });
 
+  it("mantém os atalhos da origem e da conversa IA junto ao cabeçalho do detalhe", () => {
+    render(<Nonconformities />);
+    fireEvent.click(screen.getByRole("button", { name: /Incidência com foto/i }));
+
+    expect(screen.getByRole("button", { name: "Abrir verificação de origem" })).toBeTruthy();
+    const aiButton = screen.getByRole("button", { name: "Abrir Assistente IA de Incidências" });
+    expect(aiButton.getAttribute("aria-pressed")).toBe("false");
+
+    fireEvent.click(aiButton);
+    expect(screen.getByText("Assistente IA de Incidências")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Minimizar Assistente IA de Incidências" })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Minimizar Assistente IA de Incidências" }));
+    expect(screen.queryByText("Assistente IA de Incidências")).toBeNull();
+  });
+
+  it("permite minimizar os contextos e as tarefas de seguimento sem perder a identificação", () => {
+    render(<Nonconformities />);
+    fireEvent.click(screen.getByRole("button", { name: /Incidência com foto/i }));
+
+    fireEvent.click(screen.getByRole("button", { name: "Minimizar contexto BPHF" }));
+    expect(screen.getByRole("button", { name: "Mostrar contexto BPHF" }).getAttribute("aria-expanded")).toBe("false");
+
+    fireEvent.click(screen.getByRole("button", { name: "Minimizar tarefas de seguimento" }));
+    expect(screen.getByRole("button", { name: "Mostrar tarefas de seguimento" }).getAttribute("aria-expanded")).toBe("false");
+  });
+
   it("permite atribuir ou remover um colaborador responsável através da lista BPHF", () => {
     render(<Nonconformities />);
     fireEvent.click(screen.getByRole("button", { name: /Incidência pendente/i }));
@@ -251,7 +278,7 @@ describe("detalhe de incidência com evidências", () => {
     render(<Nonconformities />);
     fireEvent.click(screen.getByRole("button", { name: /Incidência com foto/i }));
 
-    expect(screen.getByRole("button", { name: /Ver \/ editar verificação de origem/i })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Abrir verificação de origem" })).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Criar tarefa de seguimento" }));
     fireEvent.change(screen.getByLabelText("Data de execução"), { target: { value: "2026-08-24" } });
     fireEvent.click(screen.getByRole("combobox", { name: "Técnica responsável pela tarefa de seguimento" }));

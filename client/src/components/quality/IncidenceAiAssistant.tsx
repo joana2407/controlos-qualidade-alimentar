@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { useQualityAccess } from "@/contexts/QualityAccessContext";
 import { trpc } from "@/lib/trpc";
-import { Bot, BookOpen, Lightbulb, MessageSquareText, ShieldAlert, Sparkles } from "lucide-react";
+import { Bot, BookOpen, ChevronUp, Lightbulb, MessageSquareText, ShieldAlert, Sparkles } from "lucide-react";
 import React, { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
@@ -46,7 +46,10 @@ export type IncidenceAiContext = {
   }>;
 };
 
-type Props = { incidence?: IncidenceAiContext };
+type Props = {
+  incidence?: IncidenceAiContext;
+  onMinimize?: () => void;
+};
 
 const initialMessage: Message = {
   role: "assistant",
@@ -73,7 +76,7 @@ const formatResponse = (response: {
   return sections.join("\n\n");
 };
 
-export function IncidenceAiAssistant({ incidence }: Props) {
+export function IncidenceAiAssistant({ incidence, onMinimize }: Props) {
   const { activeProfile, canManage } = useQualityAccess();
   const [messages, setMessages] = useState<Message[]>([initialMessage]);
   const [topic, setTopic] = useState("");
@@ -163,6 +166,19 @@ export function IncidenceAiAssistant({ incidence }: Props) {
           <Badge variant="secondary" className="w-fit">
             {guidanceQuery.data?.length ?? 0} orientações aprendidas
           </Badge>
+          {onMinimize ? (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="h-8 gap-1 bg-white text-xs"
+              aria-label="Minimizar Assistente IA de Incidências"
+              onClick={onMinimize}
+            >
+              <ChevronUp className="h-3.5 w-3.5" />
+              Minimizar
+            </Button>
+          ) : null}
         </div>
       </CardHeader>
       <CardContent className="grid gap-4 p-4 lg:grid-cols-[minmax(0,1.4fr)_minmax(260px,0.6fr)]">

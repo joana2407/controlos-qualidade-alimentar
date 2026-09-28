@@ -25,6 +25,7 @@ import { trpc } from "@/lib/trpc";
 import {
   AlertCircle,
   AlertTriangle,
+  Bot,
   CheckCircle2,
   ChevronDown,
   ChevronUp,
@@ -521,6 +522,30 @@ const treatmentSummaryLabel = (status: IncidenceTreatment["status"]) =>
     : status === "in_progress"
       ? "Em curso"
       : "Pendentes";
+function DetailSectionToggle({
+  section,
+  collapsed,
+  onToggle,
+}: {
+  section: string;
+  collapsed: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <Button
+      type="button"
+      variant="outline"
+      size="sm"
+      className="h-8 gap-1 bg-white/90 text-xs"
+      aria-label={`${collapsed ? "Mostrar" : "Minimizar"} ${section}`}
+      aria-expanded={!collapsed}
+      onClick={onToggle}
+    >
+      {collapsed ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronUp className="h-3.5 w-3.5" />}
+      {collapsed ? "Mostrar" : "Minimizar"}
+    </Button>
+  );
+}
 const fragileRiskForPeriodicity = (
   periodicity: FragileTreatmentReview["periodicity"]
 ): FragileTreatmentReview["riskLevel"] =>
@@ -580,6 +605,10 @@ export default function Nonconformities() {
   const [detailsExpanded, setDetailsExpanded] = useState(true);
   const [verificationHistoryExpanded, setVerificationHistoryExpanded] =
     useState(true);
+  const [collapsedDetailSections, setCollapsedDetailSections] = useState<
+    Record<string, boolean>
+  >({});
+  const [assistantOpen, setAssistantOpen] = useState(false);
   const [occurrenceNumberDraft, setOccurrenceNumberDraft] = useState("");
   const [editingIncidence, setEditingIncidence] = useState(false);
   const [incidenceTitleDraft, setIncidenceTitleDraft] = useState("");
@@ -611,6 +640,11 @@ export default function Nonconformities() {
   const [followUpDescription, setFollowUpDescription] = useState("");
   const [followUpDueDate, setFollowUpDueDate] = useState("");
   const [followUpAssigneeId, setFollowUpAssigneeId] = useState("");
+  const toggleDetailSection = (section: string) =>
+    setCollapsedDetailSections(current => ({
+      ...current,
+      [section]: !current[section],
+    }));
   const filters = useMemo(
     () => ({
       factoryId: factoryId ? Number(factoryId) : undefined,
@@ -1750,6 +1784,40 @@ export default function Nonconformities() {
                   ? "Consulte o registo e indique claramente se originou uma Não Conformidade."
                   : "A lista reúne incidências e Não Conformidades no intervalo escolhido."}
               </CardDescription>
+              {selected?.type === "incidence" ? (
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="border-sky-200 bg-sky-50 text-sky-950 hover:bg-sky-100"
+                    onClick={openOriginVerification}
+                  >
+                    <Pencil className="mr-2 h-4 w-4" />
+                    {canEditSelectedIncidence
+                      ? "Abrir verificação de origem"
+                      : "Consultar verificação de origem"}
+                  </Button>
+                  {canManage ? (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant={assistantOpen ? "secondary" : "outline"}
+                      className={
+                        assistantOpen
+                          ? "bg-teal-100 text-teal-950 hover:bg-teal-200"
+                          : "border-teal-200 bg-teal-50 text-teal-950 hover:bg-teal-100"
+                      }
+                      aria-label="Abrir Assistente IA de Incidências"
+                      aria-pressed={assistantOpen}
+                      onClick={() => setAssistantOpen(current => !current)}
+                    >
+                      <Bot className="mr-2 h-4 w-4" />
+                      {assistantOpen ? "Assistente IA aberto" : "Abrir Assistente IA"}
+                    </Button>
+                  ) : null}
+                </div>
+              ) : null}
             </CardHeader>
             <CardContent className="p-5">
               {selected ? (
@@ -1791,7 +1859,7 @@ export default function Nonconformities() {
                       </p>
                     )}
                   </div>
-                  {selected.type === "incidence" ? (
+                  {selected.type === "incidence" && assistantOpen ? (
                     <IncidenceAiAssistant
                       incidence={{
                         incidenceId: selected.id,
@@ -1827,13 +1895,22 @@ export default function Nonconformities() {
                           recordedAt: entry.recordedAt,
                         })),
                       }}
+                      onMinimize={() => setAssistantOpen(false)}
                     />
                   ) : null}
                   {selected.type === "incidence" && selected.bphfContext ? (
                     <div className="rounded-xl border border-teal-100 bg-teal-50/60 p-4">
-                      <p className="text-sm font-semibold text-teal-950">
-                        Contexto da verificação BPHF
-                      </p>
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <p className="text-sm font-semibold text-teal-950">
+                          Contexto da verificação BPHF
+                        </p>
+                        <DetailSectionToggle
+                          section="contexto BPHF"
+                          collapsed={Boolean(collapsedDetailSections.bphfContext)}
+                          onToggle={() => toggleDetailSection("bphfContext")}
+                        />
+                      </div>
+                      {!collapsedDetailSections.bphfContext ? <>
                       <dl className="mt-3 grid gap-3 text-sm sm:grid-cols-3">
                         <div>
                           <dt className="text-xs font-medium text-teal-700">
@@ -1865,15 +1942,24 @@ export default function Nonconformities() {
                       <p className="mt-3 text-xs text-teal-900">
                         Observações: {selected.description}
                       </p>
+                      </> : null}
                     </div>
                   ) : null}
                   {selected.type === "incidence" &&
                   selected.module === "sensory" &&
                   selected.collaboratorName ? (
                     <div className="rounded-xl border border-violet-100 bg-violet-50/70 p-4">
-                      <p className="text-sm font-semibold text-violet-950">
-                        Contexto do controlo sensorial
-                      </p>
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <p className="text-sm font-semibold text-violet-950">
+                          Contexto do controlo sensorial
+                        </p>
+                        <DetailSectionToggle
+                          section="contexto do controlo sensorial"
+                          collapsed={Boolean(collapsedDetailSections.sensoryContext)}
+                          onToggle={() => toggleDetailSection("sensoryContext")}
+                        />
+                      </div>
+                      {!collapsedDetailSections.sensoryContext ? <>
                       <dl className="mt-3 grid gap-3 text-sm sm:grid-cols-2">
                         <div>
                           <dt className="text-xs font-medium text-violet-700">
@@ -1898,6 +1984,7 @@ export default function Nonconformities() {
                           </dd>
                         </div>
                       </dl>
+                      </> : null}
                     </div>
                   ) : null}
                   {selected.type === "incidence" &&
@@ -1949,13 +2036,20 @@ export default function Nonconformities() {
                   {selected.type === "incidence" &&
                   selected.evidencePhotos.length ? (
                     <div className="rounded-xl border border-teal-100 bg-teal-50/50 p-4">
-                      <div className="flex items-center gap-2">
-                        <ImagePlus className="h-4 w-4 text-teal-700" />
-                        <p className="text-sm font-medium text-teal-950">
-                          Fotografias de evidência
-                        </p>
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div className="flex items-center gap-2">
+                          <ImagePlus className="h-4 w-4 text-teal-700" />
+                          <p className="text-sm font-medium text-teal-950">
+                            Fotografias de evidência
+                          </p>
+                        </div>
+                        <DetailSectionToggle
+                          section="fotografias de evidência"
+                          collapsed={Boolean(collapsedDetailSections.evidencePhotos)}
+                          onToggle={() => toggleDetailSection("evidencePhotos")}
+                        />
                       </div>
-                      <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3">
+                      {!collapsedDetailSections.evidencePhotos ? <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3">
                         {selected.evidencePhotos.map((photo, index) => (
                           <a
                             key={`${photo.url}-${index}`}
@@ -1975,6 +2069,7 @@ export default function Nonconformities() {
                           </a>
                         ))}
                       </div>
+                      : null}
                     </div>
                   ) : null}
                   {selected.type === "incidence" &&
@@ -2084,11 +2179,18 @@ export default function Nonconformities() {
                             </p>
                           </div>
                         </div>
-                        <Badge className="border border-red-300 bg-red-100 text-red-950 hover:bg-red-100">
-                          {selected.fragileRecurrenceHistory.length} {selected.fragileRecurrenceHistory.length === 1 ? "reincidência" : "reincidências"}
-                        </Badge>
+                        <div className="flex items-center gap-2">
+                          <Badge className="border border-red-300 bg-red-100 text-red-950 hover:bg-red-100">
+                            {selected.fragileRecurrenceHistory.length} {selected.fragileRecurrenceHistory.length === 1 ? "reincidência" : "reincidências"}
+                          </Badge>
+                          <DetailSectionToggle
+                            section="histórico de reincidências"
+                            collapsed={Boolean(collapsedDetailSections.fragileRecurrences)}
+                            onToggle={() => toggleDetailSection("fragileRecurrences")}
+                          />
+                        </div>
                       </div>
-                      <ol className="mt-4 space-y-3">
+                      {!collapsedDetailSections.fragileRecurrences ? <ol className="mt-4 space-y-3">
                         {[...selected.fragileRecurrenceHistory]
                           .reverse()
                           .map((recurrence, index) => (
@@ -2147,22 +2249,26 @@ export default function Nonconformities() {
                               ) : null}
                             </li>
                           ))}
-                      </ol>
+                      </ol> : null}
                     </section>
                   ) : null}
                   {selected.type === "incidence" ? (
                     <>
                       <div className="space-y-4 rounded-xl border border-amber-100 bg-amber-50 p-4">
-                        <div>
-                          <p className="font-medium text-amber-950">
-                            Decisão sobre a incidência
-                          </p>
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <p className="font-medium text-amber-950">Decisão sobre a incidência</p>
+                          <DetailSectionToggle
+                            section="decisão sobre a incidência"
+                            collapsed={Boolean(collapsedDetailSections.incidenceDecision)}
+                            onToggle={() => toggleDetailSection("incidenceDecision")}
+                          />
+                        </div>
+                        {!collapsedDetailSections.incidenceDecision ? <>
                           <p className="mt-1 text-sm text-amber-900">
                             Indique se esta incidência gerou uma Não
                             Conformidade e, quando aplicável, registe o número
                             de ocorrência atribuído no sistema externo.
                           </p>
-                        </div>
                         {canManage && (
                           <div className="space-y-2">
                             <Label>
@@ -2242,6 +2348,7 @@ export default function Nonconformities() {
                             incidência.
                           </div>
                         )}
+                        </> : null}
                       </div>
                       {selected.generatedNonconformity ? (
                         <section className="rounded-xl border border-red-200 bg-red-50/60 p-4 text-sm text-red-950">
@@ -2277,7 +2384,13 @@ export default function Nonconformities() {
                           >
                             {treatmentLabel(selected.treatment.status)}
                           </Badge>
+                          <DetailSectionToggle
+                            section="tratamento da incidência"
+                            collapsed={Boolean(collapsedDetailSections.treatment)}
+                            onToggle={() => toggleDetailSection("treatment")}
+                          />
                         </div>
+                        {!collapsedDetailSections.treatment || editingTreatment ? <>
                         {selected.treatmentHistory.length ? (
                           <section className="rounded-lg border border-teal-200 bg-white/75 p-3">
                             <div className="flex flex-wrap items-center justify-between gap-2">
@@ -2681,34 +2794,9 @@ export default function Nonconformities() {
                             ) : null}
                           </div>
                         )}
+                        </> : null}
                       </div>
                       )}
-                      {selected.type === "incidence" ? (
-                        <section className="space-y-3 rounded-xl border border-sky-200 bg-sky-50/70 p-4">
-                          <div>
-                            <p className="font-medium text-sky-950">
-                              Verificação que originou a incidência
-                            </p>
-                            <p className="mt-1 text-sm text-sky-900">
-                              Consulte o registo original. Ao corrigi-lo para Conforme,
-                              esta incidência deixa de estar ativa e os seguimentos ainda
-                              pendentes são cancelados.
-                            </p>
-                          </div>
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="outline"
-                            className="border-sky-300 bg-white text-sky-950 hover:bg-sky-100"
-                            onClick={openOriginVerification}
-                          >
-                            <Pencil className="mr-2 h-4 w-4" />
-                            {canEditSelectedIncidence
-                              ? "Ver / editar verificação de origem"
-                              : "Consultar verificação de origem"}
-                          </Button>
-                        </section>
-                      ) : null}
                       {selected.type === "incidence" &&
                       !selected.generatedNonconformity ? (
                         <section className="space-y-3 rounded-xl border border-violet-200 bg-violet-50/60 p-4">
@@ -2723,13 +2811,21 @@ export default function Nonconformities() {
                                 origem no contexto da tarefa.
                               </p>
                             </div>
-                            {canManage && !creatingFollowUpTask ? (
-                              <Button type="button" size="sm" onClick={startFollowUpTask}>
-                                <Plus className="mr-2 h-4 w-4" />
-                                Criar tarefa de seguimento
-                              </Button>
-                            ) : null}
+                            <div className="flex flex-wrap items-center gap-2">
+                              {canManage && !creatingFollowUpTask ? (
+                                <Button type="button" size="sm" onClick={startFollowUpTask}>
+                                  <Plus className="mr-2 h-4 w-4" />
+                                  Criar tarefa de seguimento
+                                </Button>
+                              ) : null}
+                              <DetailSectionToggle
+                                section="tarefas de seguimento"
+                                collapsed={Boolean(collapsedDetailSections.followUps)}
+                                onToggle={() => toggleDetailSection("followUps")}
+                              />
+                            </div>
                           </div>
+                          {!collapsedDetailSections.followUps || creatingFollowUpTask ? <>
                           {followUpTasks.isLoading ? (
                             <p className="text-sm text-violet-800">A carregar tarefas associadas…</p>
                           ) : followUpTasks.data?.length ? (
@@ -2810,6 +2906,7 @@ export default function Nonconformities() {
                               </div>
                             </form>
                           ) : null}
+                          </> : null}
                         </section>
                       ) : null}
                       {canManage &&
