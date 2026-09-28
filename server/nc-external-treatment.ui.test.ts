@@ -30,6 +30,13 @@ describe("gestão externa de Não Conformidades e reincidências de Quebráveis"
     expect(nonconformitiesPage).toContain("reincidências de Quebráveis");
   });
 
+  it("disponibiliza pesquisa textual para filtrar as incidências", () => {
+    expect(nonconformitiesPage).toContain('id="incidences-search"');
+    expect(nonconformitiesPage).toContain("Pesquisar por título, descrição, colaborador ou responsável");
+    expect(nonconformitiesPage).toContain("const [searchText, setSearchText] = useState(\"\")");
+    expect(nonconformitiesPage).toContain("searchableText.includes(term)");
+  });
+
   it("permite abrir diretamente as incidências do colaborador recomendado", () => {
     expect(nonconformitiesPage).toContain("openCollaboratorIncidences");
     expect(nonconformitiesPage).toContain("setCollaboratorId(String(alert.collaboratorId))");

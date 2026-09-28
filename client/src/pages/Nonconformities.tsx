@@ -478,6 +478,7 @@ export default function Nonconformities() {
   const [, setLocation] = useLocation();
   const [factoryId, setFactoryId] = useState("");
   const [collaboratorId, setCollaboratorId] = useState("");
+  const [searchText, setSearchText] = useState("");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [selectedKey, setSelectedKey] = useState("");
@@ -721,17 +722,38 @@ export default function Nonconformities() {
           pointKey: controlledPointKey(item),
         })),
       ]
-        .filter(item =>
-          !openNcOnly ||
-          (item.type === "nonconformity"
-            ? item.status !== "closed"
-            : item.generatedNonconformity && !item.nonconformityId)
-        )
+        .filter(item => {
+          if (
+            openNcOnly &&
+            (item.type === "nonconformity"
+              ? item.status === "closed"
+              : !item.generatedNonconformity || item.nonconformityId)
+          ) {
+            return false;
+          }
+          const term = normaliseSimilarTitle(searchText);
+          if (!term) return true;
+          const searchableText = [
+            item.title,
+            item.description,
+            item.area,
+            item.module,
+            moduleLabel(item.module as any),
+            factoryName(item.factoryId),
+            item.collaboratorName ?? "",
+            item.registeredByName ?? "",
+            item.occurrenceNumber ?? "",
+            item.occurredOn,
+          ]
+            .join(" ")
+            .toLocaleLowerCase("pt-PT");
+          return searchableText.includes(term);
+        })
         .sort(
         (left, right) =>
           new Date(right.date).getTime() - new Date(left.date).getTime()
       ),
-    [incidences.data, ncs.data, openNcOnly, similarFilter, treatmentFilter]
+    [incidences.data, ncs.data, openNcOnly, searchText, similarFilter, treatmentFilter]
   );
   const selected = occurrences.find(item => item.key === selectedKey) ?? null;
   const followUpTaskInput = useMemo(
@@ -966,6 +988,20 @@ export default function Nonconformities() {
               Acompanhe incidências registadas nos controlos, a decisão sobre a
               geração de NC e as Não Conformidades formalmente abertas.
             </p>
+            <div className="mt-4 max-w-2xl">
+              <Label htmlFor="incidences-search" className="mb-1 block text-xs">
+                Pesquisar incidências
+              </Label>
+              <Input
+                id="incidences-search"
+                value={searchText}
+                placeholder="Pesquisar por título, descrição, colaborador ou responsável..."
+                onChange={event => {
+                  setSearchText(event.target.value);
+                  setSelectedKey("");
+                }}
+              />
+            </div>
             <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
               <div className="flex items-center gap-2">
                 <Factory className="h-4 w-4 text-red-700" />
