@@ -57,6 +57,19 @@ export const qualityPanelAccess = mysqlTable("quality_panel_access", {
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 }, (table) => [index("quality_panel_access_profile_idx").on(table.profileId)]);
 
+/** Orientações explícitas ensinadas pela Responsável de Qualidade ao assistente de Incidências. */
+export const incidenceAiGuidance = mysqlTable("incidence_ai_guidance", {
+  id: int("id").autoincrement().primaryKey(),
+  topic: varchar("topic", { length: 160 }).notNull(),
+  guidance: text("guidance").notNull(),
+  createdByProfileId: int("createdByProfileId").notNull(),
+  createdByName: varchar("createdByName", { length: 160 }).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (table) => [
+  index("incidence_ai_guidance_topic_idx").on(table.topic),
+  index("incidence_ai_guidance_created_idx").on(table.createdAt),
+]);
+
 /** Colaboradores que podem ser identificados numa inspeção BPHF de cacifos. */
 export const bphfInspectionEmployees = mysqlTable("bphf_inspection_employees", {
   id: int("id").autoincrement().primaryKey(),

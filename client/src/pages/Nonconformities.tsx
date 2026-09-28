@@ -1,4 +1,5 @@
 import { SeverityBadge, StatusBadge } from "@/components/quality/QualityUi";
+import { IncidenceAiAssistant } from "@/components/quality/IncidenceAiAssistant";
 import { Badge } from "@/components/ui/badge";
 import { OfflineIncidencePanel } from "@/components/OfflineIncidencePanel";
 import { Button } from "@/components/ui/button";
@@ -1671,6 +1672,34 @@ export default function Nonconformities() {
                       </p>
                     )}
                   </div>
+                  {selected.type === "incidence" ? (
+                    <IncidenceAiAssistant
+                      incidence={{
+                        title: selected.title,
+                        module: selected.module,
+                        occurredOn: selected.occurredOn,
+                        factory: factoryName(selected.factoryId),
+                        area: selected.area,
+                        description: selected.description,
+                        result: typeof selected.payload.result === "string" ? selected.payload.result : undefined,
+                        treatmentStatus: selected.treatment.status,
+                        generatedNonconformity: selected.generatedNonconformity,
+                        occurrenceNumber: selected.occurrenceNumber ?? undefined,
+                        collaboratorName: selected.collaboratorName ?? undefined,
+                        details: incidenceDetailsFrom(selected.payload).map(detail => ({
+                          label: detail.label,
+                          value: detail.value,
+                        })),
+                        treatmentHistory: selected.treatmentHistory.map(entry => ({
+                          revision: entry.revision,
+                          status: entry.status,
+                          correction: entry.correction,
+                          responsible: entry.responsible,
+                          recordedAt: entry.recordedAt,
+                        })),
+                      }}
+                    />
+                  ) : null}
                   {selected.type === "incidence" && selected.bphfContext ? (
                     <div className="rounded-xl border border-teal-100 bg-teal-50/60 p-4">
                       <p className="text-sm font-semibold text-teal-950">

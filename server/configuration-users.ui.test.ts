@@ -26,7 +26,7 @@ describe("Configuração de utilizadores e autorizações", () => {
     expect(page).toContain("Painéis externos autorizados");
     expect(panels).toContain("Painel Hoje");
     expect(panels).toContain("Controlos Operacionais");
-    expect(panels).toContain("I&D — controlo sensorial");
+    expect(panels).not.toContain("I&D — controlo sensorial");
     expect(panels).toContain("Gestão de Ocorrências");
     expect(panels).toContain("I&D · Artisan");
     expect(panels).toContain("Quebras de produção");

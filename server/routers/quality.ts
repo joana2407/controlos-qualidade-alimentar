@@ -20,6 +20,7 @@ import {
   evidences,
   fragileAreas,
   fragileItems,
+  incidenceAiGuidance,
   nonconformities,
   qualityPanelAccess,
   qualityPinProfiles,
@@ -122,6 +123,49 @@ const fragileTreatmentReviewSchema = z.object({
   riskLevel: fragileRiskLevelSchema,
   rationale: z.string().trim().max(1200).optional(),
 });
+const incidenceAiContextSchema = z.object({
+  title: z.string().max(180),
+  module: z.string().max(80),
+  occurredOn: z.string().max(40),
+  factory: z.string().max(160).optional(),
+  area: z.string().max(160).optional(),
+  description: z.string().max(4000).optional(),
+  result: z.string().max(40).optional(),
+  treatmentStatus: z.string().max(40).optional(),
+  generatedNonconformity: z.boolean().optional(),
+  occurrenceNumber: z.string().max(80).optional(),
+  collaboratorName: z.string().max(160).optional(),
+  details: z.array(z.object({ label: z.string().max(160), value: z.string().max(1200) })).max(30).optional(),
+  treatmentHistory: z.array(z.object({
+    revision: z.number().int(),
+    status: z.string().max(40),
+    correction: z.string().max(1200).optional(),
+    responsible: z.string().max(160).optional(),
+    recordedAt: z.string().max(80),
+  })).max(20).optional(),
+});
+const incidenceAiResponseSchema = {
+  type: "object",
+  properties: {
+    answer: { type: "string", description: "Resposta técnica em português europeu." },
+    suggestions: { type: "array", items: { type: "string" }, maxItems: 5 },
+    risks: { type: "array", items: { type: "string" }, maxItems: 5 },
+    questions: { type: "array", items: { type: "string" }, maxItems: 4 },
+  },
+  required: ["answer", "suggestions", "risks", "questions"],
+  additionalProperties: false,
+} as const;
+const ensureJoanaQualityManager = (ctx: { operatorProfile?: { role: string; name: string } | null }) => {
+  if (
+    ctx.operatorProfile?.role !== "manager" ||
+    ctx.operatorProfile.name.trim().toLocaleLowerCase("pt-PT") !== "joana pina"
+  ) {
+    throw new TRPCError({
+      code: "FORBIDDEN",
+      message: "As orientações do agente só podem ser ensinadas pela Responsável de Qualidade Joana Pina.",
+    });
+  }
+};
 const TEMPERATURE_EQUIPMENT_IDS_BY_FACTORY: Record<number, string[]> = {
   1: ["f1-freezer-1", "f1-freezer-2"],
   2: ["f2-cold-room", "f2-dispatch-freezer"],
@@ -9053,6 +9097,104 @@ export const qualityRouter = router({
           name: factoryNames.get(factory.id) ?? factory.code,
         })),
       };
+    }),
+
+  listIncidenceAiGuidance: qualitySessionProcedure.query(async () => {
+    const db = await requireDb();
+    return db
+      .select()
+      .from(incidenceAiGuidance)
+      .orderBy(desc(incidenceAiGuidance.createdAt))
+      .limit(50);
+  }),
+
+  teachIncidenceAi: qualityManagerProcedure
+    .input(
+      z.object({
+        topic: z.string().trim().min(2).max(160),
+        guidance: z.string().trim().min(5).max(3000),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      ensureJoanaQualityManager(ctx);
+      const db = await requireDb();
+      const created = await db.insert(incidenceAiGuidance).values({
+        topic: input.topic,
+        guidance: input.guidance,
+        createdByProfileId: ctx.operatorProfile!.id,
+        createdByName: ctx.operatorProfile!.name,
+      });
+      return {
+        success: true,
+        id: Number(created[0].insertId),
+        topic: input.topic,
+        guidance: input.guidance,
+      };
+    }),
+
+  incidenceAiAssist: qualitySessionProcedure
+    .input(
+      z.object({
+        question: z.string().trim().min(2).max(1600),
+        incidence: incidenceAiContextSchema.optional(),
+      })
+    )
+    .mutation(async ({ input }) => {
+      const db = await requireDb();
+      const guidance = await db
+        .select()
+        .from(incidenceAiGuidance)
+        .orderBy(desc(incidenceAiGuidance.createdAt))
+        .limit(50);
+      const guidanceText = guidance.length
+        ? guidance.map(item => `- [${item.topic}] ${item.guidance}`).join("\n")
+        : "Ainda não existem orientações personalizadas ensinadas pela Joana Pina.";
+      const incidenceText = input.incidence
+        ? JSON.stringify(input.incidence, null, 2)
+        : "Não foi selecionada uma incidência específica.";
+      const response = await invokeLLM({
+        model: "gpt-5-mini",
+        messages: [
+          {
+            role: "system",
+            content: `És o assistente interno de gestão de Incidências do QualiControl. Responde sempre em português europeu, com linguagem técnica, clara e prática para a Responsável de Qualidade. Apoias a análise, priorização, preparação de perguntas, verificação de evidências e próximos passos; não executas alterações, não fechas incidências, não decides uma NC e não substituis a avaliação humana. Se a incidência já gerou uma Não Conformidade, recorda que o tratamento é gerido no sistema externo e não proponhas duplicar esse tratamento neste site. Não inventes requisitos, factos ou evidências. Usa as orientações da Joana Pina como preferências operacionais, mas assinala quando uma orientação não é suficiente ou entra em conflito com os dados.\n\nOrientações aprendidas da Joana Pina:\n${guidanceText}`,
+          },
+          {
+            role: "user",
+            content: `Pedido da Responsável de Qualidade:\n${input.question}\n\nContexto da incidência:\n${incidenceText}`,
+          },
+        ],
+        response_format: {
+          type: "json_schema",
+          json_schema: {
+            name: "incidence_ai_assistance",
+            strict: true,
+            schema: incidenceAiResponseSchema,
+          },
+        },
+        maxTokens: 1400,
+      });
+      const content = response.choices[0]?.message.content;
+      try {
+        const parsed = JSON.parse(typeof content === "string" ? content : "{}");
+        const answer = typeof parsed.answer === "string" ? parsed.answer.trim() : "";
+        if (!answer) throw new Error("empty response");
+        const list = (value: unknown) =>
+          Array.isArray(value)
+            ? value.filter((item): item is string => typeof item === "string" && Boolean(item.trim())).slice(0, 5)
+            : [];
+        return {
+          answer,
+          suggestions: list(parsed.suggestions),
+          risks: list(parsed.risks),
+          questions: list(parsed.questions),
+        };
+      } catch {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "O assistente não conseguiu preparar uma resposta. Tente novamente.",
+        });
+      }
     }),
 
   initializeChecklist: qualityManagerProcedure.mutation(async ({ ctx }) => {
