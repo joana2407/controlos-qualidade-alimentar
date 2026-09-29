@@ -130,6 +130,25 @@ function mockDatabase() {
 }
 
 describe("procedimentos de qualidade por fábrica", () => {
+  it("não atribui um registo explicitamente ligado a outra tarefa do mesmo dia", () => {
+    const task = { id: 901, module: "bphf" as const, factoryId: 1, dueAt: now };
+    const otherTaskEntry = {
+      module: "bphf",
+      factoryId: 1,
+      completedAt: now,
+      payload: { plannedTaskId: 902, plannedDate: now.toISOString() },
+    };
+    const legacyEntry = {
+      module: "bphf",
+      factoryId: 1,
+      completedAt: now,
+      payload: { plannedDate: now.toISOString() },
+    };
+
+    expect(entryMatchesPlannedTask(otherTaskEntry, task)).toBe(false);
+    expect(entryMatchesPlannedTask(legacyEntry, task)).toBe(true);
+  });
+
   beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(now); tasks.splice(0, tasks.length, ...initialTasks.map((task) => ({ ...task, assigneeProfileIds: [...task.assigneeProfileIds] }))); monthlyAreaRows.splice(0, monthlyAreaRows.length, { id: 201, name: "Geral", active: "true" }); monthlyRows.splice(0, monthlyRows.length, { id: 301, area: "Geral", active: "true" }, { id: 302, area: "Geral", active: "true" }); monthlyAreaAssignments.splice(0, monthlyAreaAssignments.length, { checklistItemId: 301, checklistAreaId: 201 }, { checklistItemId: 302, checklistAreaId: 201 }); plans.length = 0; archiveRows.length = 0; archiveViewRows.length = 0; dbUpdates.length = 0; dbInserts.length = 0; persistInsertedControlEntries = false; vi.clearAllMocks(); vi.mocked(getDb).mockResolvedValue(mockDatabase() as any); vi.mocked(storagePut).mockResolvedValue({ key: "dispatch-orders/3/encomenda.pdf", url: "/manus-storage/dispatch-orders/3/encomenda.pdf" }); vi.mocked(storageGetSignedUrl).mockResolvedValue("https://storage.example/encomenda.pdf"); });
 
   it("filtra o painel e as tarefas pela fábrica selecionada", async () => {

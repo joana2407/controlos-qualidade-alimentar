@@ -880,10 +880,13 @@ export function entryMatchesPlannedTask(
   )
     return false;
   const payload = entryPayload(entry);
-  return (
-    Number(payload.plannedTaskId) === task.id ||
-    entryOperationalDate(entry) === localDateKey(new Date(task.dueAt))
-  );
+  const plannedTaskId = Number(payload.plannedTaskId);
+  // Quando o registo traz uma associação explícita, esta prevalece sobre a
+  // data. Caso contrário, mantém-se a compatibilidade com registos antigos
+  // que apenas guardavam a data operacional.
+  return Number.isInteger(plannedTaskId) && plannedTaskId > 0
+    ? plannedTaskId === task.id
+    : entryOperationalDate(entry) === localDateKey(new Date(task.dueAt));
 }
 
 function expectedMetalDetectorLines(
