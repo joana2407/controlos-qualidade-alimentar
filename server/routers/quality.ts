@@ -9683,6 +9683,15 @@ export const qualityRouter = router({
         question: z.string().trim().min(2).max(1600),
         module: qualityModuleSchema.optional(),
         operationalDate: dateInput.optional(),
+        conversation: z
+          .array(
+            z.object({
+              role: z.enum(["user", "assistant"]),
+              content: z.string().trim().min(1).max(2400),
+            })
+          )
+          .max(12)
+          .optional(),
       })
     )
     .mutation(async ({ input }) => {
@@ -9701,21 +9710,26 @@ export const qualityRouter = router({
       const guidanceText = guidance.length
         ? guidance.map(item => `- [${item.topic}] ${item.guidance}`).join("\n")
         : "Ainda não existem orientações personalizadas ensinadas pela Joana Pina.";
+      const conversationMessages = (input.conversation ?? []).map(message => ({
+        role: message.role,
+        content: message.content,
+      }));
       const response = await invokeLLM({
         model: "gpt-5-mini",
         messages: [
           {
             role: "system",
-            content: `És o Copiloto de Qualidade do QualiControl, destinado exclusivamente a Responsáveis de Qualidade. Responde sempre em português europeu, com linguagem operacional clara, curta e priorizada. Apoias a triagem de pendências, incidências, seguimentos e coerência do planeamento; não executas alterações, não publicas planos, não fechas registos, não atribuis responsáveis e não decides uma NC. Não inventes dados, requisitos ou evidências.
+            content: `És o Copiloto de Qualidade do QualiControl, um assistente de IA integrado para conversar com a Responsável de Qualidade. Analisa qualquer pergunta ou dúvida que ela coloque — operacional, técnica, de planeamento, de incidências ou de interpretação dos resultados — e responde diretamente ao que foi perguntado, sem te limitares a repetir as prioridades do painel. Responde sempre em português europeu, com linguagem clara, prática e adequada ao contexto. Quando a pergunta for ambígua, pede uma clarificação objetiva; quando não existirem dados suficientes, declara essa limitação e indica o que deve ser confirmado. Apoias a análise e a decisão, mas não executas alterações, não publicas planos, não fechas registos, não atribuis responsáveis e não decides uma NC. Não inventes dados, requisitos ou evidências.
 
 Usa o briefing operacional fornecido como fonte de verdade. Distingue sempre: (1) um resultado histórico já registado; (2) a completitude do Plano do Dia da data; e (3) a autorização para introduzir um novo registo. Se o módulo selecionado mostrar resultados mas nenhum plano para a data, explica que não é uma pendência automática e recomenda confirmar o planeamento antes de publicar ou corrigir o plano. Incidências que já geraram NC são geridas externamente: não proponhas tratamento duplicado neste site. Assinala divergências como algo a confirmar, nunca como certeza.
 
 Orientações aprendidas da Joana Pina:
 ${guidanceText}`,
           },
+          ...conversationMessages,
           {
             role: "user",
-            content: `Pedido da Responsável de Qualidade:\n${input.question}\n\nBriefing operacional atual:\n${JSON.stringify(briefing, null, 2)}`,
+            content: `Nova pergunta da Responsável de Qualidade:\n${input.question}\n\nBriefing operacional atual:\n${JSON.stringify(briefing, null, 2)}`,
           },
         ],
         response_format: {

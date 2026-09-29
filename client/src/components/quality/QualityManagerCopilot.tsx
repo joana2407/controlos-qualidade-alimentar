@@ -244,6 +244,10 @@ export function QualityManagerCopilot() {
       question: value,
       module: briefingInput.module,
       operationalDate: briefingInput.operationalDate,
+      conversation: replies.slice(-6).flatMap(reply => [
+        { role: "user" as const, content: reply.question },
+        { role: "assistant" as const, content: reply.answer },
+      ]),
     } as any);
   };
   const saveGuidance = () => {
@@ -487,7 +491,7 @@ export function QualityManagerCopilot() {
                       <h3 className="text-sm font-semibold text-slate-900">Perguntar ao copiloto</h3>
                     </div>
                     <p className="mt-1 text-xs leading-5 text-slate-600">
-                      O copiloto usa o briefing atual; recomenda ações, mas não executa nem altera dados.
+                      Coloque qualquer questão ou dúvida. O copiloto analisa o briefing atual e o histórico desta conversa; recomenda ações, mas não executa nem altera dados.
                     </p>
                     <div className="mt-3 flex flex-wrap gap-2">
                       {[
@@ -522,7 +526,7 @@ export function QualityManagerCopilot() {
                       disabled={assistant.isPending}
                     >
                       {assistant.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}
-                      {assistant.isPending ? "A analisar…" : "Pedir orientação"}
+                      {assistant.isPending ? "A analisar a questão…" : "Perguntar ao assistente"}
                     </Button>
                     {assistantError ? (
                       <div role="alert" className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-900">

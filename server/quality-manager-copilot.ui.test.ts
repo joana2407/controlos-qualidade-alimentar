@@ -18,6 +18,8 @@ describe("Copiloto de Qualidade global", () => {
     expect(copilot).toContain("Registos encontrados sem Plano do Dia");
     expect(copilot).toContain("qualityManagerAiBriefing");
     expect(copilot).toContain("qualityManagerAiAssist");
+    expect(copilot).toContain("conversation: replies.slice(-6)");
+    expect(copilot).toContain("qualquer questão ou dúvida");
     expect(copilot).toContain("O Copiloto não conseguiu responder.");
     expect(copilot).toContain("A pergunta permanece no campo para repetir o pedido.");
   });
@@ -31,6 +33,8 @@ describe("Copiloto de Qualidade global", () => {
   it("protege dados e assistência no servidor com qualityManagerProcedure", () => {
     expect(router).toContain("qualityManagerAiBriefing: qualityManagerProcedure");
     expect(router).toContain("qualityManagerAiAssist: qualityManagerProcedure");
+    expect(router).toContain("conversationMessages");
+    expect(router).toContain("um assistente de IA integrado para conversar");
     expect(router).toContain("listIncidenceAiGuidance: qualityManagerProcedure");
     expect(router).toContain("buildQualityManagerAiBriefing");
     expect(router).toContain("completed_without_coverage");

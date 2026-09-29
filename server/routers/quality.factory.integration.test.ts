@@ -130,6 +130,16 @@ function mockDatabase() {
 }
 
 describe("procedimentos de qualidade por fábrica", () => {
+  it("bloqueia o Copiloto para perfis técnicos e de consulta", async () => {
+    const technician = qualityRouter.createCaller(
+      createContext({ id: 1, name: "Sabrina Esteves", title: "Tec. Qualidade", role: "technician" })
+    );
+
+    await expect(
+      technician.qualityManagerAiAssist({ question: "Que controlos devo rever?" })
+    ).rejects.toMatchObject({ code: "FORBIDDEN" });
+  });
+
   it("não atribui um registo explicitamente ligado a outra tarefa do mesmo dia", () => {
     const task = { id: 901, module: "bphf" as const, factoryId: 1, dueAt: now };
     const otherTaskEntry = {
@@ -3191,12 +3201,23 @@ describe("procedimentos de qualidade por fábrica", () => {
       }],
     } as any);
     const caller = qualityRouter.createCaller(createContext());
-    await expect(caller.qualityManagerAiAssist({ question: "Por onde devo começar?" })).resolves.toEqual({
+    await expect(caller.qualityManagerAiAssist({
+      question: "E depois dessa pendência, o que devo confirmar?",
+      conversation: [
+        { role: "user", content: "Por onde devo começar?" },
+        { role: "assistant", content: "Comece pela pendência mais antiga." },
+      ],
+    })).resolves.toEqual({
       answer: "Comece por confirmar os controlos em atraso.",
       nextSteps: ["Abrir a primeira tarefa pendente."],
       cautions: ["Confirme a data operacional."],
       questions: ["Existe alguma justificação retroativa pendente?"],
     });
+    const request = vi.mocked(invokeLLM).mock.calls.at(-1)?.[0] as any;
+    expect(request.messages).toEqual(expect.arrayContaining([
+      { role: "user", content: "Por onde devo começar?" },
+      { role: "assistant", content: "Comece pela pendência mais antiga." },
+    ]));
   });
   it("aceita uma resposta do Copiloto em bloco Markdown mesmo sem listas opcionais", async () => {
     vi.mocked(invokeLLM).mockResolvedValue({
