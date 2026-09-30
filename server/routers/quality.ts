@@ -1363,6 +1363,31 @@ export function isHistoricalPlanTaskSatisfied(
   return oneSubmissionPlanModules.has(task.module) && taskEntries.length > 0;
 }
 
+/**
+ * Mantém o indicador agregado coerente com a resolução por tarefa.
+ *
+ * Alguns registos históricos podem cobrir o mesmo ponto/fábrica por data,
+ * mas pertencerem a outra tarefa do Plano do Dia. Nessa situação a cobertura
+ * agregada não pode mascarar uma tarefa ainda pendente como 100% concluída.
+ */
+export function reconcileFactoryCompletion(
+  expected: number,
+  completed: number,
+  hasPendingControl: boolean
+) {
+  const safeExpected = Math.max(0, expected);
+  const safeCompleted = Math.min(Math.max(0, completed), safeExpected);
+  const reconciledCompleted = hasPendingControl
+    ? Math.min(safeCompleted, Math.max(0, safeExpected - 1))
+    : safeCompleted;
+  return {
+    completed: reconciledCompleted,
+    percentage: safeExpected
+      ? Number(((reconciledCompleted / safeExpected) * 100).toFixed(1))
+      : 0,
+  };
+}
+
 function isPlanTaskResolved(
   task: {
     status?: string | null;
@@ -3366,16 +3391,18 @@ export const qualityRouter = router({
               });
               completed = completedCriterionIds.size;
             }
-            completed = Math.min(completed, expected);
+            const reconciled = reconcileFactoryCompletion(
+              expected,
+              completed,
+              Boolean(pendingControl)
+            );
             return {
               factoryId: factory.id,
               expected,
-              completed,
-              registeredToday: expected ? completed : 0,
-              percentage: expected
-                ? Number(((completed / expected) * 100).toFixed(1))
-                : 0,
-              ...(pendingControl && completed < expected
+              completed: reconciled.completed,
+              registeredToday: expected ? reconciled.completed : 0,
+              percentage: reconciled.percentage,
+              ...(pendingControl && reconciled.completed < expected
                 ? { pendingTaskId: pendingControl.id }
                 : {}),
             };
@@ -9723,7 +9750,7 @@ export const qualityRouter = router({
               role: "system",
               content: `És o Copiloto de Qualidade do QualiControl, um assistente de IA integrado para conversar com a Responsável de Qualidade. Analisa qualquer pergunta ou dúvida que ela coloque — operacional, técnica, de planeamento, de incidências ou de interpretação dos resultados — e responde diretamente ao que foi perguntado, sem te limitares a repetir as prioridades do painel. Responde sempre em português europeu, com linguagem clara, prática e adequada ao contexto. Quando a pergunta for ambígua, pede uma clarificação objetiva; quando não existirem dados suficientes, declara essa limitação e indica o que deve ser confirmado. Apoias a análise e a decisão, mas não executas alterações, não publicas planos, não fechas registos, não atribuis responsáveis e não decides uma NC. Não inventes dados, requisitos ou evidências.
 
-Usa o briefing operacional fornecido como fonte de verdade. Distingue sempre: (1) um resultado histórico já registado; (2) a completitude do Plano do Dia da data; e (3) a autorização para introduzir um novo registo. Se o módulo selecionado mostrar resultados mas nenhum plano para a data, explica que não é uma pendência automática e recomenda confirmar o planeamento antes de publicar ou corrigir o plano. Incidências que já geraram NC são geridas externamente: não proponhas tratamento duplicado neste site. Assinala divergências como algo a confirmar, nunca como certeza.
+Usa o briefing operacional fornecido como fonte de verdade. Distingue sempre: (1) um resultado histórico já registado; (2) a completitude do Plano do Dia da data; e (3) a autorização para introduzir um novo registo. A regra aprendida para esta correção é obrigatória: uma tarefa só pode ser considerada concluída quando a cobertura canónica da própria tarefa, módulo, fábrica e data está completa; registos de outra tarefa, de outra fábrica ou apenas coincidentes por data não podem fechar a tarefa. Por isso, uma fábrica nunca deve aparecer a 100% se existir uma tarefa da mesma fábrica ainda pendente. Se encontrares essa divergência, trata-a como incoerência do painel a corrigir, não como uma nova pendência real. Se o módulo selecionado mostrar resultados mas nenhum plano para a data, explica que não é uma pendência automática e recomenda confirmar o planeamento antes de publicar ou corrigir o plano. Incidências que já geraram NC são geridas externamente: não proponhas tratamento duplicado neste site. Assinala divergências como algo a confirmar, nunca como certeza.
 
 Orientações aprendidas da Joana Pina:
 ${guidanceText}`,

@@ -5,7 +5,7 @@ import { getDb } from "../db";
 import { storageGetSignedUrl, storagePut } from "../storage";
 import { invokeLLM } from "../_core/llm";
 import { notifyOwner } from "../_core/notification";
-import { entryMatchesPlannedTask, isHistoricalPlanTaskSatisfied, qualityRouter } from "./quality";
+import { entryMatchesPlannedTask, isHistoricalPlanTaskSatisfied, qualityRouter, reconcileFactoryCompletion } from "./quality";
 
 vi.mock("../db", () => ({ getDb: vi.fn() }));
 vi.mock("../storage", () => ({ storagePut: vi.fn(), storageGetSignedUrl: vi.fn() }));
@@ -304,6 +304,17 @@ describe("procedimentos de qualidade por fábrica", () => {
       expect(
         isHistoricalPlanTaskSatisfied(task, [entry], [], [], [], [], [], [], [])
       ).toBe(true);
+    });
+  });
+
+  it("nunca apresenta 100% quando a tarefa canónica da fábrica continua pendente", () => {
+    expect(reconcileFactoryCompletion(12, 12, true)).toEqual({
+      completed: 11,
+      percentage: 91.7,
+    });
+    expect(reconcileFactoryCompletion(12, 12, false)).toEqual({
+      completed: 12,
+      percentage: 100,
     });
   });
 
