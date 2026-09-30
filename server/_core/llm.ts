@@ -433,7 +433,11 @@ export async function invokeLLM(params: InvokeParams): Promise<InvokeResult> {
     );
   }
 
-  return (await response.json()) as InvokeResult;
+  const result = (await response.json()) as Partial<InvokeResult> | null;
+  if (!result || !Array.isArray(result.choices)) {
+    throw new Error("LLM response did not contain any choices");
+  }
+  return result as InvokeResult;
 }
 
 export type ModelInfo = {

@@ -56,4 +56,23 @@ describe("invokeLLM", () => {
     expect(payload.max_tokens).toBe(400);
     expect(payload.max_completion_tokens).toBeUndefined();
   });
+
+  it("rejeita uma resposta do Forge sem choices com erro controlado", async () => {
+    vi.stubEnv("BUILT_IN_FORGE_API_URL", "https://forge.test");
+    vi.stubEnv("BUILT_IN_FORGE_API_KEY", "test-key");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ error: { message: "resposta incompleta" } }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        })
+      )
+    );
+    const { invokeLLM } = await import("./_core/llm");
+
+    await expect(
+      invokeLLM({ messages: [{ role: "user", content: "Responde." }] })
+    ).rejects.toThrow("LLM response did not contain any choices");
+  });
 });

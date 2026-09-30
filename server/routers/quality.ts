@@ -5780,7 +5780,7 @@ export const qualityRouter = router({
             },
           },
         });
-        const content = response.choices[0]?.message.content;
+        const content = response.choices?.[0]?.message.content;
         const extracted = dispatchOrderExtractionSchema.parse(
           JSON.parse(typeof content === "string" ? content : "{}")
         );
@@ -8550,7 +8550,7 @@ export const qualityRouter = router({
         maxTokens: 400,
       });
       try {
-        const content = response.choices[0]?.message.content;
+        const content = response.choices?.[0]?.message.content;
         const parsed = JSON.parse(typeof content === "string" ? content : "{}");
         const suggestion = String(parsed.suggestion ?? "").trim();
         if (!suggestion) throw new Error("Sugestão vazia");
@@ -9641,7 +9641,7 @@ export const qualityRouter = router({
         },
         maxTokens: 1400,
       });
-      const content = llmContentToText(response.choices[0]?.message.content);
+      const content = llmContentToText(response.choices?.[0]?.message.content);
       try {
         const parsed = parseLlmJsonObject(content);
         const answer = textField(parsed.answer);
@@ -9748,7 +9748,7 @@ ${guidanceText}`,
       } catch {
         response = undefined;
       }
-      const content = llmContentToText(response?.choices[0]?.message.content);
+      const content = llmContentToText(response?.choices?.[0]?.message.content);
       try {
         const parsed = parseLlmJsonObject(content);
         const answer = textField(parsed.answer);
@@ -9778,7 +9778,7 @@ ${guidanceText}`,
             maxTokens: 900,
           });
           const fallbackAnswer = llmContentToText(
-            fallback.choices[0]?.message.content
+            fallback.choices?.[0]?.message.content
           ).trim();
           if (fallbackAnswer) {
             return {

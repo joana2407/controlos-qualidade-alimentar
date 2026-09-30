@@ -344,14 +344,14 @@ export const occurrencesRouter = router({
     ensureOccurrenceWrite(await getOccurrenceAccess(ctx));
     const objective = input.kind === "correction" ? "Sugere uma correção imediata, concreta e verificável para conter o desvio e proteger o produto." : "Sugere uma ação corretiva/preventiva concreta que elimine a causa-raiz, previna reincidência e indique uma verificação de eficácia.";
     const response = await invokeLLM({ messages: [{ role: "system", content: "És especialista em segurança alimentar BRCGS. Responde em português europeu, de forma técnica, concisa e sem preâmbulos." }, { role: "user", content: `${objective}\n\nOcorrência: ${input.description}\nTipo: ${input.type ?? "N/D"}\nOrigem: ${input.origin ?? "N/D"}\nÂmbito SGSQA: ${input.sgsqaScope ?? "N/D"}\nProduto: ${input.affectedProduct ?? "N/D"}\nPerigo: ${input.hazardType ?? "N/D"}\nCausa-raiz: ${input.rootCauseAnalysis ?? "N/D"}\nCorreção existente: ${input.existingCorrection ?? "N/D"}` }], maxTokens: 500 });
-    const content = response.choices[0]?.message.content;
+    const content = response.choices?.[0]?.message.content;
     return { suggestion: typeof content === "string" ? content.trim() : "" };
   }),
 
   suggestBrc: qualityOperatorProcedure.input(z.object({ description: z.string().min(12).max(12_000), type: z.enum(occurrenceTypes).optional(), origin: z.enum(occurrenceOrigins).optional(), sgsqaScope: z.string().max(255).optional(), affectedProduct: z.string().max(255).optional(), hazardType: z.string().max(255).optional() })).mutation(async ({ ctx, input }) => {
     ensureOccurrenceWrite(await getOccurrenceAccess(ctx));
     const response = await invokeLLM({ messages: [{ role: "system", content: `És auditor BRCGS Food Safety Issue 9. ${BRC_REFERENCE}` }, { role: "user", content: `Analisa a ocorrência e devolve somente JSON válido com requisitoBRC e causaRaiz. Descrição: ${input.description}\nTipo: ${input.type ?? "N/D"}\nOrigem: ${input.origin ?? "N/D"}\nÂmbito: ${input.sgsqaScope ?? "N/D"}\nProduto: ${input.affectedProduct ?? "N/D"}\nPerigo: ${input.hazardType ?? "N/D"}` }], response_format: { type: "json_schema", json_schema: { name: "brc_occurrence_analysis", strict: true, schema: { type: "object", properties: { requisitoBRC: { type: "string" }, causaRaiz: { type: "string" } }, required: ["requisitoBRC", "causaRaiz"], additionalProperties: false } } }, maxTokens: 700 });
-    const content = response.choices[0]?.message.content;
+    const content = response.choices?.[0]?.message.content;
     try {
       const parsed = JSON.parse(typeof content === "string" ? content : "{}");
       return { requirement: String(parsed.requisitoBRC ?? "").trim(), rootCause: String(parsed.causaRaiz ?? "").trim() };
