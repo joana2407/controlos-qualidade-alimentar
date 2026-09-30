@@ -9714,35 +9714,41 @@ export const qualityRouter = router({
         role: message.role,
         content: message.content,
       }));
-      const response = await invokeLLM({
-        model: "gpt-5-mini",
-        messages: [
-          {
-            role: "system",
-            content: `És o Copiloto de Qualidade do QualiControl, um assistente de IA integrado para conversar com a Responsável de Qualidade. Analisa qualquer pergunta ou dúvida que ela coloque — operacional, técnica, de planeamento, de incidências ou de interpretação dos resultados — e responde diretamente ao que foi perguntado, sem te limitares a repetir as prioridades do painel. Responde sempre em português europeu, com linguagem clara, prática e adequada ao contexto. Quando a pergunta for ambígua, pede uma clarificação objetiva; quando não existirem dados suficientes, declara essa limitação e indica o que deve ser confirmado. Apoias a análise e a decisão, mas não executas alterações, não publicas planos, não fechas registos, não atribuis responsáveis e não decides uma NC. Não inventes dados, requisitos ou evidências.
+      let response: Awaited<ReturnType<typeof invokeLLM>> | undefined;
+      try {
+        response = await invokeLLM({
+          model: "gpt-5-mini",
+          messages: [
+            {
+              role: "system",
+              content: `És o Copiloto de Qualidade do QualiControl, um assistente de IA integrado para conversar com a Responsável de Qualidade. Analisa qualquer pergunta ou dúvida que ela coloque — operacional, técnica, de planeamento, de incidências ou de interpretação dos resultados — e responde diretamente ao que foi perguntado, sem te limitares a repetir as prioridades do painel. Responde sempre em português europeu, com linguagem clara, prática e adequada ao contexto. Quando a pergunta for ambígua, pede uma clarificação objetiva; quando não existirem dados suficientes, declara essa limitação e indica o que deve ser confirmado. Apoias a análise e a decisão, mas não executas alterações, não publicas planos, não fechas registos, não atribuis responsáveis e não decides uma NC. Não inventes dados, requisitos ou evidências.
 
 Usa o briefing operacional fornecido como fonte de verdade. Distingue sempre: (1) um resultado histórico já registado; (2) a completitude do Plano do Dia da data; e (3) a autorização para introduzir um novo registo. Se o módulo selecionado mostrar resultados mas nenhum plano para a data, explica que não é uma pendência automática e recomenda confirmar o planeamento antes de publicar ou corrigir o plano. Incidências que já geraram NC são geridas externamente: não proponhas tratamento duplicado neste site. Assinala divergências como algo a confirmar, nunca como certeza.
 
 Orientações aprendidas da Joana Pina:
 ${guidanceText}`,
+            },
+            ...conversationMessages,
+            {
+              role: "user",
+              content: `Nova pergunta da Responsável de Qualidade:\n${input.question}\n\nBriefing operacional atual:\n${JSON.stringify(briefing, null, 2)}`,
+            },
+          ],
+          response_format: {
+            type: "json_schema",
+            json_schema: {
+              name: "quality_manager_copilot",
+              strict: true,
+              schema: qualityManagerAiResponseSchema,
+            },
           },
-          ...conversationMessages,
-          {
-            role: "user",
-            content: `Nova pergunta da Responsável de Qualidade:\n${input.question}\n\nBriefing operacional atual:\n${JSON.stringify(briefing, null, 2)}`,
-          },
-        ],
-        response_format: {
-          type: "json_schema",
-          json_schema: {
-            name: "quality_manager_copilot",
-            strict: true,
-            schema: qualityManagerAiResponseSchema,
-          },
-        },
-        maxTokens: 1200,
-      });
-      const content = llmContentToText(response.choices[0]?.message.content);
+          reasoning: { effort: "minimal" },
+          maxTokens: 1600,
+        });
+      } catch {
+        response = undefined;
+      }
+      const content = llmContentToText(response?.choices[0]?.message.content);
       try {
         const parsed = parseLlmJsonObject(content);
         const answer = textField(parsed.answer);
@@ -9754,6 +9760,37 @@ ${guidanceText}`,
           questions: stringList(parsed.questions, 4),
         };
       } catch {
+        try {
+          const fallback = await invokeLLM({
+            model: "gpt-5-mini",
+            messages: [
+              {
+                role: "system",
+                content:
+                  "És o Copiloto de Qualidade do QualiControl. Responde em português europeu, de forma clara e prática, à pergunta da Responsável de Qualidade. Usa apenas os dados fornecidos, declara qualquer limitação e não alteres registos nem decidas NC. Responde apenas com texto, sem JSON.",
+              },
+              {
+                role: "user",
+                content: `Pergunta: ${input.question}\n\nResumo operacional disponível:\n${JSON.stringify(briefing, null, 2)}`,
+              },
+            ],
+            reasoning: { effort: "minimal" },
+            maxTokens: 900,
+          });
+          const fallbackAnswer = llmContentToText(
+            fallback.choices[0]?.message.content
+          ).trim();
+          if (fallbackAnswer) {
+            return {
+              answer: fallbackAnswer,
+              nextSteps: [],
+              cautions: ["Resposta de recuperação: confirme os detalhes no painel antes de agir."],
+              questions: [],
+            };
+          }
+        } catch {
+          // Preserve the user-facing error below when both response paths fail.
+        }
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
           message: "O copiloto não conseguiu preparar uma resposta. Tente novamente.",

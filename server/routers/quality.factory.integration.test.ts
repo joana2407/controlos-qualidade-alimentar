@@ -3236,4 +3236,24 @@ describe("procedimentos de qualidade por fábrica", () => {
       questions: [],
     });
   });
+
+  it("usa uma resposta textual de recuperação quando a resposta estruturada falha", async () => {
+    vi.mocked(invokeLLM)
+      .mockRejectedValueOnce(new Error("resposta estruturada indisponível"))
+      .mockResolvedValueOnce({
+        choices: [{
+          message: {
+            role: "assistant",
+            content: "Existem pendências anteriores a confirmar no painel de controlos.",
+          },
+        }],
+      } as any);
+    const caller = qualityRouter.createCaller(createContext());
+    await expect(caller.qualityManagerAiAssist({ question: "Mostra-me as pendências dos dias anteriores." })).resolves.toEqual({
+      answer: "Existem pendências anteriores a confirmar no painel de controlos.",
+      nextSteps: [],
+      cautions: ["Resposta de recuperação: confirme os detalhes no painel antes de agir."],
+      questions: [],
+    });
+  });
 });
