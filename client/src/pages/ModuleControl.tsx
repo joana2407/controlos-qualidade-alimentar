@@ -1358,9 +1358,16 @@ function DailyControlResults({
                 }
               />
             </div>
-            <div className="grid gap-4 sm:grid-cols-2">
+            <div className="rounded-xl border border-teal-200 bg-teal-50/60 p-4">
+              <div className="mb-3">
+                <p className="font-semibold text-teal-950">Identificação do registo</p>
+                <p className="mt-1 text-xs leading-5 text-teal-900">
+                  Pode corrigir a fábrica/linha, a área e o título quando existiu um erro de digitação. A alteração fica registada no histórico.
+                </p>
+              </div>
+              <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
-                <Label>Fábrica / linha</Label>
+                <Label htmlFor="daily-entry-factory">Fábrica / linha</Label>
                 <Select
                   value={String(editingEntry?.factoryId ?? "common")}
                   onValueChange={value =>
@@ -1375,7 +1382,7 @@ function DailyControlResults({
                     )
                   }
                 >
-                  <SelectTrigger>
+                  <SelectTrigger id="daily-entry-factory" aria-label="Fábrica ou linha do registo">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -1402,6 +1409,7 @@ function DailyControlResults({
                     )
                   }
                 />
+              </div>
               </div>
             </div>
             {isFragile && (

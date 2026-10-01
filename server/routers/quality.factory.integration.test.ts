@@ -2118,6 +2118,34 @@ describe("procedimentos de qualidade por fábrica", () => {
     Object.assign(entry, originalEntry);
   });
 
+  it("permite corrigir a fábrica de uma verificação e preserva a alteração no registo", async () => {
+    const entry = entries[0]!;
+    const originalEntry = { ...entry };
+    Object.assign(entry, {
+      registeredByProfileId: 3,
+      registeredByName: "Joana Pina",
+      payload: { criterion: "Fardamento" },
+    });
+    try {
+      await qualityRouter.createCaller(createContext()).updateControlEntry({
+        id: entry.id,
+        title: entry.title ?? "Verificação BPHF",
+        area: entry.area,
+        factoryId: 2,
+        result: "C",
+        notes: "Registo corrigido.",
+      });
+      expect(dbUpdates[0]).toMatchObject({
+        factoryId: 2,
+        payload: {
+          editHistory: [expect.objectContaining({ action: "updated" })],
+        },
+      });
+    } finally {
+      Object.assign(entry, originalEntry);
+    }
+  });
+
   it("guarda o perfil que concluiu a tarefa e cria o respetivo registo de controlo", async () => {
     const originalStatus = tasks[0]!.status;
     const originalAssignees = tasks[0]!.assigneeProfileIds;
