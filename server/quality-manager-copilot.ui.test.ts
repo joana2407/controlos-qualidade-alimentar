@@ -39,14 +39,18 @@ describe("Copiloto de Qualidade global", () => {
     expect(router).toContain("buildQualityManagerAiBriefing");
     expect(router).toContain("completed_without_coverage");
     expect(router).toContain("pending_with_coverage");
-    expect(router).toContain("O copiloto apenas recebe contagens e atalhos úteis: nunca altera estes dados.");
+    expect(router).toContain("reconcilePendingQualityTasks");
+    expect(router).toContain("Reconciliação automática supervisionada");
+    expect(router).toContain("reconcilia automaticamente tarefas pendentes");
+    expect(copilot).toContain("reconcilia automaticamente apenas tarefas pendentes");
+    expect(copilot).toContain("incoerência(s) corrigida(s) automaticamente");
   });
 
   it("preserva a decisão humana e o tratamento externo de NC no prompt operacional", () => {
     expect(router).toContain("não executas alterações");
     expect(router).toContain("não decides uma NC");
     expect(router).toContain("Incidências que já geraram NC são geridas externamente");
-    expect(copilot).toContain("sem alterar registos");
+    expect(copilot).toContain("não altera verificações, resultados, incidências, NC ou planos");
     expect(copilot).toContain("permanecem sempre sob responsabilidade humana");
   });
 });

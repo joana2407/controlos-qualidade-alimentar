@@ -1439,6 +1439,7 @@ async function buildQualityManagerAiBriefing(
   db: any,
   focus: QualityManagerAiFocus = {}
 ) {
+  const automaticRepairs = await reconcilePendingQualityTasks(db);
   const [
     tasks,
     entries,
@@ -1660,6 +1661,7 @@ async function buildQualityManagerAiBriefing(
       overdueActions,
       consistencyAlerts,
     },
+    automaticRepairs,
     focusedModule,
   };
 }
@@ -1930,6 +1932,71 @@ async function reconcilePlannedControlTaskStatus(
           }
     )
     .where(eq(controlTasks.id, task.id));
+}
+
+/**
+ * Corrige incoerências já verificáveis: uma tarefa do Plano do Dia fica
+ * pendente apesar de a sua própria cobertura canónica estar completa.
+ * Nunca cria registos nem altera resultados; apenas sincroniza o estado da
+ * tarefa e identifica a correção como reconciliação automática do Copiloto.
+ */
+export async function reconcilePendingQualityTasks(db: any) {
+  const [tasks, entries, areaCatalog, monthlyItems, monthlyAssignments,
+    monthlyAreaAssignments, monthlyAreaRows, factoryCatalog, fragileCatalog] =
+    (await Promise.all([
+      db.select().from(controlTasks).orderBy(controlTasks.dueAt),
+      db.select().from(controlEntries).orderBy(desc(controlEntries.completedAt)),
+      db.select().from(areas).orderBy(areas.name),
+      db.select().from(checklistItems).orderBy(checklistItems.sortOrder),
+      db.select().from(checklistItemFactories).orderBy(checklistItemFactories.factoryId),
+      db.select().from(checklistItemAreas),
+      db.select().from(checklistAreas),
+      db.select().from(factories).orderBy(factories.name),
+      db.select().from(fragileItems).orderBy(fragileItems.sortOrder),
+    ])) as [any[], any[], any[], any[], any[], any[], any[], any[], any[]];
+
+  const candidates = tasks.filter(
+    task =>
+      task.area === "Plano do Dia" &&
+      task.status === "pending" &&
+      task.status !== "cancelled" &&
+      localDateKey(task.dueAt) <= localDateKey(new Date())
+  );
+  const repaired: Array<{ id: number; module: string; factoryId: number | null; dueDate: string }> = [];
+  for (const task of candidates) {
+    const complete = isHistoricalPlanTaskSatisfied(
+      task,
+      entries,
+      areaCatalog,
+      monthlyItems,
+      monthlyAssignments,
+      factoryCatalog,
+      monthlyAreaAssignments,
+      monthlyAreaRows,
+      fragileCatalog
+    );
+    if (!complete) continue;
+    const latestMatchingEntry = entries.find((entry: any) =>
+      entryMatchesPlannedTask(entry, task)
+    );
+    await db
+      .update(controlTasks)
+      .set({
+        status: "completed",
+        completedAt: latestMatchingEntry?.completedAt ?? task.dueAt,
+        completedByProfileId: null,
+        completedByName: "Copiloto de Qualidade",
+        completedByTitle: "Reconciliação automática supervisionada",
+      })
+      .where(eq(controlTasks.id, task.id));
+    repaired.push({
+      id: task.id,
+      module: task.module,
+      factoryId: task.factoryId ?? null,
+      dueDate: localDateKey(task.dueAt),
+    });
+  }
+  return repaired;
 }
 
 async function requireDb() {
@@ -9704,6 +9771,18 @@ export const qualityRouter = router({
       });
     }),
 
+  qualityManagerReconcileConsistency: qualityManagerProcedure.mutation(
+    async () => {
+      const db = await requireDb();
+      const repaired = await reconcilePendingQualityTasks(db);
+      return {
+        success: true,
+        repairedCount: repaired.length,
+        repaired,
+      };
+    }
+  ),
+
   qualityManagerAiAssist: qualityManagerProcedure
     .input(
       z.object({
@@ -9750,7 +9829,7 @@ export const qualityRouter = router({
               role: "system",
               content: `És o Copiloto de Qualidade do QualiControl, um assistente de IA integrado para conversar com a Responsável de Qualidade. Analisa qualquer pergunta ou dúvida que ela coloque — operacional, técnica, de planeamento, de incidências ou de interpretação dos resultados — e responde diretamente ao que foi perguntado, sem te limitares a repetir as prioridades do painel. Responde sempre em português europeu, com linguagem clara, prática e adequada ao contexto. Quando a pergunta for ambígua, pede uma clarificação objetiva; quando não existirem dados suficientes, declara essa limitação e indica o que deve ser confirmado. Apoias a análise e a decisão, mas não executas alterações, não publicas planos, não fechas registos, não atribuis responsáveis e não decides uma NC. Não inventes dados, requisitos ou evidências.
 
-Usa o briefing operacional fornecido como fonte de verdade. Distingue sempre: (1) um resultado histórico já registado; (2) a completitude do Plano do Dia da data; e (3) a autorização para introduzir um novo registo. A regra aprendida para esta correção é obrigatória: uma tarefa só pode ser considerada concluída quando a cobertura canónica da própria tarefa, módulo, fábrica e data está completa; registos de outra tarefa, de outra fábrica ou apenas coincidentes por data não podem fechar a tarefa. Por isso, uma fábrica nunca deve aparecer a 100% se existir uma tarefa da mesma fábrica ainda pendente. Se encontrares essa divergência, trata-a como incoerência do painel a corrigir, não como uma nova pendência real. Se o módulo selecionado mostrar resultados mas nenhum plano para a data, explica que não é uma pendência automática e recomenda confirmar o planeamento antes de publicar ou corrigir o plano. Incidências que já geraram NC são geridas externamente: não proponhas tratamento duplicado neste site. Assinala divergências como algo a confirmar, nunca como certeza.
+Usa o briefing operacional fornecido como fonte de verdade. Distingue sempre: (1) um resultado histórico já registado; (2) a completitude do Plano do Dia da data; e (3) a autorização para introduzir um novo registo. A regra aprendida para esta correção é obrigatória: uma tarefa só pode ser considerada concluída quando a cobertura canónica da própria tarefa, módulo, fábrica e data está completa; registos de outra tarefa, de outra fábrica ou apenas coincidentes por data não podem fechar a tarefa. Por isso, uma fábrica nunca deve aparecer a 100% se existir uma tarefa da mesma fábrica ainda pendente. Antes de apresentar prioridades, o sistema já reconcilia automaticamente tarefas pendentes cuja cobertura canónica própria esteja completa; considera essa reconciliação uma correção de estado, não uma alteração de verificações, resultados, incidências, NC ou planos. Se encontrares uma divergência que não cumpra esta prova, trata-a como incoerência a confirmar e não a corrijas. Se o módulo selecionado mostrar resultados mas nenhum plano para a data, explica que não é uma pendência automática e recomenda confirmar o planeamento antes de publicar ou corrigir o plano. Incidências que já geraram NC são geridas externamente: não proponhas tratamento duplicado neste site.
 
 Orientações aprendidas da Joana Pina:
 ${guidanceText}`,

@@ -284,7 +284,7 @@ export function QualityManagerCopilot() {
               <div>
                 <SheetTitle className="text-white">Copiloto de Qualidade</SheetTitle>
                 <SheetDescription className="mt-1 text-slate-300">
-                  Apoio à decisão da Responsável de Qualidade — sem alterar registos.
+                  Apoio à decisão da Responsável de Qualidade — com reconciliação segura de estados.
                 </SheetDescription>
               </div>
             </div>
@@ -491,7 +491,7 @@ export function QualityManagerCopilot() {
                       <h3 className="text-sm font-semibold text-slate-900">Perguntar ao copiloto</h3>
                     </div>
                     <p className="mt-1 text-xs leading-5 text-slate-600">
-                      Coloque qualquer questão ou dúvida. O copiloto analisa o briefing atual e o histórico desta conversa; recomenda ações, mas não executa nem altera dados.
+                      Coloque qualquer questão ou dúvida. O copiloto analisa o briefing atual e o histórico desta conversa. Ao abrir, reconcilia automaticamente apenas tarefas pendentes cuja cobertura canónica esteja completa; não altera verificações, resultados, incidências, NC ou planos.
                     </p>
                     <div className="mt-3 flex flex-wrap gap-2">
                       {[
@@ -528,6 +528,12 @@ export function QualityManagerCopilot() {
                       {assistant.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}
                       {assistant.isPending ? "A analisar a questão…" : "Perguntar ao assistente"}
                     </Button>
+                    {Array.isArray((briefing as any).automaticRepairs) && (briefing as any).automaticRepairs.length > 0 ? (
+                      <div role="status" className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-xs leading-5 text-emerald-900">
+                        <p className="font-semibold">{(briefing as any).automaticRepairs.length} incoerência(s) corrigida(s) automaticamente.</p>
+                        <p className="mt-1">Foram sincronizados apenas estados de tarefas com cobertura completa. As verificações e os resultados permaneceram intactos.</p>
+                      </div>
+                    ) : null}
                     {assistantError ? (
                       <div role="alert" className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-900">
                         <p className="font-semibold">O Copiloto não conseguiu responder.</p>
