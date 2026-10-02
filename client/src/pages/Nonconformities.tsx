@@ -2836,6 +2836,33 @@ export default function Nonconformities() {
                                   <p className="mt-1 text-xs text-slate-600">
                                     {task.responsible} · {dateFormat(task.dueAt, false)} · {task.status === "pending" ? "Por realizar" : task.status === "completed" ? "Concluída" : "Cancelada"}
                                   </p>
+                                  {task.incidenceOrigin ? (
+                                    <div className="mt-2 rounded-md border border-violet-200 bg-violet-50 px-2.5 py-2 text-xs leading-5 text-violet-950">
+                                      <p className="font-semibold">Dados da incidência que originou o seguimento</p>
+                                      <p className="mt-1">
+                                        <span className="font-medium">Colaborador avaliado:</span>{" "}
+                                        {task.incidenceOrigin.collaboratorName ?? "Não aplicável / não identificado"}
+                                      </p>
+                                      <p>
+                                        <span className="font-medium">Fábrica/linha:</span>{" "}
+                                        {task.incidenceOrigin.factoryName} · <span className="font-medium">Área:</span> {task.incidenceOrigin.area}
+                                      </p>
+                                      <p>
+                                        <span className="font-medium">Data da ocorrência:</span>{" "}
+                                        {task.incidenceOrigin.occurredOn} · <span className="font-medium">Resultado:</span> {task.incidenceOrigin.result ?? "NC"}
+                                      </p>
+                                      {(task.incidenceOrigin.productName || task.incidenceOrigin.lotNumber || task.incidenceOrigin.expiryDate) ? (
+                                        <p>
+                                          {[task.incidenceOrigin.productName && `Produto: ${task.incidenceOrigin.productName}`, task.incidenceOrigin.lotNumber && `Lote: ${task.incidenceOrigin.lotNumber}`, task.incidenceOrigin.expiryDate && `Validade: ${task.incidenceOrigin.expiryDate}`].filter(Boolean).join(" · ")}
+                                        </p>
+                                      ) : null}
+                                      {(task.incidenceOrigin.notes || task.incidenceOrigin.observation) ? (
+                                        <p className="mt-1 whitespace-pre-wrap text-violet-800">
+                                          {task.incidenceOrigin.notes ?? task.incidenceOrigin.observation}
+                                        </p>
+                                      ) : null}
+                                    </div>
+                                  ) : null}
                                   {task.executionReport ? (
                                     <div className="mt-2 rounded-md bg-emerald-50 px-2.5 py-2 text-xs text-emerald-950">
                                       <p className="font-semibold">

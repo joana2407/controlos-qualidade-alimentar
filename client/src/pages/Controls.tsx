@@ -1584,6 +1584,22 @@ export default function Controls() {
                               {factoryName(task.factoryId)} · {task.responsible}{" "}
                               · {dateFormat(task.dueAt, false)}
                             </p>
+                            {task.sourceEntryId && task.incidenceOrigin && task.status === "pending" ? (
+                              <div className="mt-3 rounded-lg border border-violet-200 bg-violet-50 px-3 py-2 text-xs leading-5 text-violet-950">
+                                <p className="font-semibold">Incidência de origem · {task.incidenceOrigin.title}</p>
+                                <p className="mt-1">
+                                  {task.incidenceOrigin.collaboratorName
+                                    ? `Colaborador avaliado: ${task.incidenceOrigin.collaboratorName} · `
+                                    : "Sem colaborador identificado · "}
+                                  {task.incidenceOrigin.factoryName} · {task.incidenceOrigin.area} · ocorrência em {task.incidenceOrigin.occurredOn}
+                                </p>
+                                {(task.incidenceOrigin.productName || task.incidenceOrigin.lotNumber || task.incidenceOrigin.notes || task.incidenceOrigin.observation) ? (
+                                  <p className="mt-1 text-violet-800">
+                                    {[task.incidenceOrigin.productName && `Produto: ${task.incidenceOrigin.productName}`, task.incidenceOrigin.lotNumber && `Lote: ${task.incidenceOrigin.lotNumber}`, task.incidenceOrigin.notes && `Observações: ${task.incidenceOrigin.notes}`, task.incidenceOrigin.observation && `Detalhe: ${task.incidenceOrigin.observation}`].filter(Boolean).join(" · ")}
+                                  </p>
+                                ) : null}
+                              </div>
+                            ) : null}
                             {task.module === "bphf" && task.area === "Plano do Dia" && task.createdAt && <p className="mt-1 text-xs text-violet-700">Publicado em {dateFormat(task.createdAt, true)} · {task.parentTaskId ? "ligada ao plano original" : "base do plano"}</p>}
                             {task.status === "completed" &&
                               task.executionReport && (

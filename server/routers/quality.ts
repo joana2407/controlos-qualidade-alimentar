@@ -777,6 +777,49 @@ function verificationHistoryItemFrom(entry: {
   };
 }
 
+function incidenceOriginFrom(
+  entry: {
+    id: number;
+    module: string;
+    title: string;
+    area: string;
+    factoryId: number | null;
+    result: string | null;
+    notes: string | null;
+    completedAt: Date;
+    payload?: unknown;
+  } | undefined,
+  factoryNames: Map<number, string>
+) {
+  if (!entry) return null;
+  const payload = entryPayload(entry);
+  const textValue = (...keys: string[]) => {
+    for (const key of keys) {
+      const value = payload[key];
+      if (typeof value === "string" && value.trim()) return value.trim();
+    }
+    return null;
+  };
+  return {
+    sourceEntryId: entry.id,
+    module: entry.module,
+    moduleLabel: qualityModuleLabels[entry.module] ?? entry.module,
+    title: entry.title,
+    area: entry.area,
+    factoryName: entry.factoryId
+      ? factoryNames.get(entry.factoryId) ?? "Fábrica não identificada"
+      : "Sem fábrica/linha",
+    result: entry.result,
+    occurredOn: incidenceOccurredOnFromPayload(payload, entry.completedAt),
+    collaboratorName: textValue("collaboratorName", "inspectedCollaborator"),
+    productName: textValue("product", "productName"),
+    lotNumber: textValue("lot", "lotNumber", "productionLot"),
+    expiryDate: textValue("validity", "expiry", "expiryDate"),
+    notes: entry.notes?.trim() || null,
+    observation: textValue("observations", "observation", "reason"),
+  };
+}
+
 function coverageSlot(type: string, ...parts: Array<string | number>) {
   return JSON.stringify([type, ...parts]);
 }
@@ -3910,10 +3953,17 @@ export const qualityRouter = router({
             : [];
           const qualityModule =
             task.area === "Plano do Dia" ? task.module : null;
+          const incidenceOrigin = task.sourceEntryId
+            ? incidenceOriginFrom(
+                entries.find(entry => entry.id === task.sourceEntryId),
+                new Map(factoryCatalog.map(factory => [factory.id, factory.name]))
+              )
+            : null;
           return report
             ? {
                 ...reconciledTask,
                 qualityModule,
+                incidenceOrigin,
                 executionReport: {
                   result: report.result,
                   notes: report.notes,
@@ -3923,7 +3973,12 @@ export const qualityRouter = router({
                   evidencePhotos,
                 },
               }
-            : { ...reconciledTask, qualityModule, executionReport: null };
+            : {
+                ...reconciledTask,
+                qualityModule,
+                incidenceOrigin,
+                executionReport: null,
+              };
         });
     }),
 
@@ -4062,14 +4117,20 @@ export const qualityRouter = router({
     .query(async ({ ctx, input }) => {
       const db = await requireDb();
       const profile = ctx.operatorProfile!;
-      const [tasks, entries] = await Promise.all([
+      const [tasks, entries, factoryRows] = await Promise.all([
         db
           .select()
           .from(controlTasks)
           .where(eq(controlTasks.sourceEntryId, input.sourceEntryId))
           .orderBy(controlTasks.dueAt),
         db.select().from(controlEntries).orderBy(desc(controlEntries.completedAt)),
+        db.select().from(factories).orderBy(factories.name),
       ]);
+      const factoryNames = new Map(
+        factoryRows.map(factory => [factory.id, factory.name])
+      );
+      const sourceEntry = entries.find(entry => entry.id === input.sourceEntryId);
+      const incidenceOrigin = incidenceOriginFrom(sourceEntry, factoryNames);
       return tasks.filter(task => {
         const assignees = Array.isArray(task.assigneeProfileIds)
           ? task.assigneeProfileIds
@@ -4080,6 +4141,7 @@ export const qualityRouter = router({
         return report
           ? {
               ...task,
+              incidenceOrigin,
               executionReport: {
                 result: report.result,
                 notes: report.notes,
@@ -4088,7 +4150,7 @@ export const qualityRouter = router({
                 registeredByTitle: report.registeredByTitle,
               },
             }
-          : { ...task, executionReport: null };
+          : { ...task, incidenceOrigin, executionReport: null };
       });
     }),
 
