@@ -3316,6 +3316,39 @@ describe("procedimentos de qualidade por fábrica", () => {
     expect(result).toMatchObject({ incidence: false, conformity: { result: "N/A", verificationSummary: { verified: 1, notVerified: 1 }, productValidations: [expect.objectContaining({ verificationStatus: "verified", conformity: expect.objectContaining({ result: "C" }) }), expect.objectContaining({ verificationStatus: "not_verified", notVerifiedReason: "Referência indisponível no cais de expedição.", conformity: expect.objectContaining({ result: "N/A" }) })] } });
     expect(dbInserts[0]).toMatchObject({ module: "dispatch_control", result: "N/A", payload: expect.objectContaining({ verificationSummary: { verified: 1, notVerified: 1 } }) });
   });
+
+  it("separa um seguimento pendente da lista de controlos em atraso do Copiloto", async () => {
+    const sourceEntry = entries[0]!;
+    const originalSourceEntry = { ...sourceEntry, payload: sourceEntry.payload };
+    const followUpTask = {
+      id: 999_001,
+      factoryId: 1,
+      status: "pending" as const,
+      dueAt: new Date(2026, 7, 13, 10, 0, 0),
+      completedAt: null,
+      module: "bphf" as const,
+      area: "Produção T",
+      title: "Seguimento — Cacifos",
+      responsible: "Neuza Antunes",
+      assigneeProfileIds: [2],
+      sourceEntryId: sourceEntry.id,
+    };
+    Object.assign(sourceEntry, { result: "NC", payload: { criterion: "Cacifos" } });
+    tasks.push(followUpTask);
+    try {
+      const briefing = await qualityRouter.createCaller(createContext()).qualityManagerAiBriefing({});
+
+      expect(briefing.priorities.overdueTasks.some(task => task.id === followUpTask.id)).toBe(false);
+      expect(briefing.priorities.overdueFollowUpTasks).toEqual(expect.arrayContaining([
+        expect.objectContaining({ id: followUpTask.id, title: "Seguimento — Cacifos", url: "/incidencias" }),
+      ]));
+      expect(briefing.counts.overdueFollowUps).toBeGreaterThanOrEqual(1);
+    } finally {
+      tasks.splice(tasks.findIndex(task => task.id === followUpTask.id), 1);
+      Object.assign(sourceEntry, originalSourceEntry);
+    }
+  });
+
   it("converte a resposta JSON estruturada do Copiloto num objeto consumível pela interface", async () => {
     vi.mocked(invokeLLM).mockResolvedValue({
       choices: [{

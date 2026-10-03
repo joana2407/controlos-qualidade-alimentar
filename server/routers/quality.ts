@@ -1519,6 +1519,10 @@ async function buildQualityManagerAiBriefing(
   const activeTasks = tasks.filter(
     task => isBusinessDay(task.dueAt) && task.status !== "cancelled"
   );
+  const operationalTasks = activeTasks.filter(task => !task.sourceEntryId);
+  const pendingFollowUpTasks = activeTasks.filter(
+    task => Boolean(task.sourceEntryId) && task.status !== "completed"
+  );
   const taskIsCompleted = (task: (typeof tasks)[number]) =>
     task.area === "Plano do Dia"
       ? isPlanTaskResolved(
@@ -1533,7 +1537,7 @@ async function buildQualityManagerAiBriefing(
           fragileCatalog
         )
       : task.status === "completed";
-  const pendingTasks = activeTasks.filter(task => !taskIsCompleted(task));
+  const pendingTasks = operationalTasks.filter(task => !taskIsCompleted(task));
   const taskSummary = (task: (typeof tasks)[number]) => {
     const dateKey = localDateKey(task.dueAt);
     const query = new URLSearchParams({
@@ -1564,7 +1568,16 @@ async function buildQualityManagerAiBriefing(
     .sort((left, right) => left.dueAt.getTime() - right.dueAt.getTime())
     .slice(0, 8)
     .map(taskSummary);
+  const overdueFollowUpTasks = pendingFollowUpTasks
+    .filter(task => task.dueAt < todayStart)
+    .sort((left, right) => left.dueAt.getTime() - right.dueAt.getTime())
+    .slice(0, 8)
+    .map(task => ({
+      ...taskSummary(task),
+      url: "/incidencias",
+    }));
   const consistencyAlerts = activeTasks
+    .filter(task => !task.sourceEntryId)
     .filter(task => task.area === "Plano do Dia")
     .map(task => {
       const dynamicallyCompleted = taskIsCompleted(task);
@@ -1686,6 +1699,7 @@ async function buildQualityManagerAiBriefing(
     operationalDate: todayKey,
     counts: {
       overdueControls: overdueTasks.length,
+      overdueFollowUps: overdueFollowUpTasks.length,
       controlsDueToday: todayTasks.length,
       incidencesAwaitingDecision: pendingTreatment.length,
       followUpsAwaitingReview: reviewFollowUps.reduce(
@@ -1698,6 +1712,7 @@ async function buildQualityManagerAiBriefing(
     },
     priorities: {
       overdueTasks,
+      overdueFollowUpTasks,
       todayTasks,
       pendingTreatment,
       reviewFollowUps,

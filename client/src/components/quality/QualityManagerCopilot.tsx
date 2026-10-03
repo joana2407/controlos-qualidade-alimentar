@@ -153,7 +153,8 @@ export function QualityManagerCopilot() {
     trpc.quality.qualityManagerAiBriefing?.useQuery?.(briefingInput as any, {
       enabled: canManage && open,
       staleTime: 0,
-      refetchOnWindowFocus: false,
+      refetchInterval: 30_000,
+      refetchOnWindowFocus: true,
     }) ?? {
       data: undefined,
       isLoading: false,
@@ -216,6 +217,7 @@ export function QualityManagerCopilot() {
   const briefing = briefingQuery.data;
   const counts = briefing?.counts ?? {
     overdueControls: 0,
+    overdueFollowUps: 0,
     controlsDueToday: 0,
     incidencesAwaitingDecision: 0,
     followUpsAwaitingReview: 0,
@@ -318,6 +320,10 @@ export function QualityManagerCopilot() {
                         <p className="text-lg font-bold text-red-800">{counts.overdueControls}</p>
                         <p className="text-[11px] leading-4 text-red-900">controlos em atraso</p>
                       </div>
+                      <div className="rounded-lg bg-rose-50 p-2.5">
+                        <p className="text-lg font-bold text-rose-800">{counts.overdueFollowUps}</p>
+                        <p className="text-[11px] leading-4 text-rose-900">seguimentos pendentes</p>
+                      </div>
                       <div className="rounded-lg bg-amber-50 p-2.5">
                         <p className="text-lg font-bold text-amber-800">{counts.controlsDueToday}</p>
                         <p className="text-[11px] leading-4 text-amber-900">por realizar hoje</p>
@@ -375,6 +381,27 @@ export function QualityManagerCopilot() {
                             <span className="block truncate text-xs text-slate-600">{task.factoryName} · previsto {dateLabel(task.dueDate)}</span>
                           </span>
                           <ArrowUpRight className="h-4 w-4 shrink-0 text-red-700" />
+                        </button>
+                      ))}
+                    </AssistantList>
+                    <AssistantList
+                      title="Seguimentos pendentes"
+                      icon={TimerReset}
+                      tone="bg-rose-100 text-rose-700"
+                      empty={!briefing.priorities.overdueFollowUpTasks.length}
+                    >
+                      {briefing.priorities.overdueFollowUpTasks.map((task: any) => (
+                        <button
+                          type="button"
+                          key={task.id}
+                          className="flex w-full items-center gap-2 py-2 text-left transition-colors hover:bg-rose-50"
+                          onClick={() => openPriority(task.url)}
+                        >
+                          <span className="min-w-0 flex-1">
+                            <span className="block truncate text-sm font-medium text-slate-900">{task.title}</span>
+                            <span className="block truncate text-xs text-slate-600">{task.factoryName} · previsto {dateLabel(task.dueDate)}</span>
+                          </span>
+                          <ArrowUpRight className="h-4 w-4 shrink-0 text-rose-700" />
                         </button>
                       ))}
                     </AssistantList>

@@ -9,6 +9,7 @@ describe("Copiloto de Qualidade global", () => {
   it("apresenta prioridades operacionais, atalhos e contexto da data selecionada", () => {
     expect(copilot).toContain("Copiloto de Qualidade");
     expect(copilot).toContain("Controlos em atraso");
+    expect(copilot).toContain("Seguimentos pendentes");
     expect(copilot).toContain("Prioridades de hoje");
     expect(copilot).toContain("Decisões de incidências");
     expect(copilot).toContain("Seguimentos a rever");
@@ -22,6 +23,7 @@ describe("Copiloto de Qualidade global", () => {
     expect(copilot).toContain("qualquer questão ou dúvida");
     expect(copilot).toContain("O Copiloto não conseguiu responder.");
     expect(copilot).toContain("A pergunta permanece no campo para repetir o pedido.");
+    expect(copilot).toContain("refetchInterval: 30_000");
   });
 
   it("mantém o copiloto disponível em todo o shell apenas para Responsáveis de Qualidade", () => {
@@ -40,6 +42,8 @@ describe("Copiloto de Qualidade global", () => {
     expect(router).toContain("completed_without_coverage");
     expect(router).toContain("pending_with_coverage");
     expect(router).toContain("reconcilePendingQualityTasks");
+    expect(router).toContain("const operationalTasks = activeTasks.filter(task => !task.sourceEntryId)");
+    expect(router).toContain("const overdueFollowUpTasks = pendingFollowUpTasks");
     expect(router).toContain("Reconciliação automática supervisionada");
     expect(router).toContain("reconcilia automaticamente tarefas pendentes");
     expect(copilot).toContain("reconcilia automaticamente apenas tarefas pendentes");
