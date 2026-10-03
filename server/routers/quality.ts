@@ -4409,6 +4409,38 @@ export const qualityRouter = router({
             }];
           }))
         : [];
+      const duplicatePlanScopes = selectedDates.flatMap(date =>
+        plannedControls.flatMap(({ module, factoryId }) => {
+          const sameScopePlans = existingPlans.filter(
+            task =>
+              task.module === module &&
+              task.factoryId === factoryId &&
+              localDateKey(new Date(task.dueAt)) === localDateKey(date)
+          );
+          if (!sameScopePlans.length) return [];
+          if (module === "bphf") {
+            const alreadyPlanned = new Set(
+              sameScopePlans.flatMap(task =>
+                Array.isArray(task.bphfCriteria) ? task.bphfCriteria : BPHF_CRITERIA
+              )
+            );
+            const hasNewCriterion = (plannedBphfCriteria ?? []).some(
+              criterion => !alreadyPlanned.has(criterion)
+            );
+            if (hasNewCriterion) return [];
+          }
+          return [
+            `${qualityModuleLabels[module] ?? module} · ${localDateKey(date)} · ${
+              factoryId ? `Fábrica ${factoryId}` : "Controlo comum"
+            }`,
+          ];
+        })
+      );
+      if (duplicatePlanScopes.length)
+        throw new TRPCError({
+          code: "CONFLICT",
+          message: `Já existe um Plano do Dia para: ${duplicatePlanScopes.join("; ")}. Para BPHF, use uma adenda apenas com verificações novas.`,
+        });
       const allControlsToCreate = [...controlsToCreate, ...bphfAddendaToCreate];
       if (allControlsToCreate.length)
         await db.insert(controlTasks).values(allControlsToCreate);

@@ -675,6 +675,38 @@ describe("procedimentos de qualidade por fábrica", () => {
     }
   });
 
+  it("bloqueia a publicação de um Plano do Dia duplicado", async () => {
+    const existingPlan = {
+      id: 891,
+      factoryId: 1,
+      status: "pending",
+      dueAt: now,
+      completedAt: null,
+      module: "sensory",
+      area: "Plano do Dia",
+      title: "Plano do Dia — Controlo sensorial F1",
+      responsible: "Sabrina Esteves",
+      assigneeProfileIds: [1, 2, 3],
+      plannedCoverage: ["[\"submission\"]"],
+    } as any;
+    tasks.push(existingPlan);
+    try {
+      await expect(
+        qualityRouter.createCaller(createContext()).publishDailyPlan({
+          date: now,
+          factoryIds: [1],
+          assigneeProfileIds: [1, 2, 3],
+          modules: ["sensory"],
+        })
+      ).rejects.toMatchObject({
+        code: "CONFLICT",
+        message: expect.stringMatching(/já existe.*Plano do Dia/i),
+      });
+    } finally {
+      tasks.splice(tasks.findIndex(task => task.id === existingPlan.id), 1);
+    }
+  });
+
   it("guarda no Plano do Dia apenas as linhas de Detetores selecionadas por fábrica", async () => {
     const metalAreas = [
       { id: 901, name: "Linha 1", group: "metal", factoryId: 1, active: "true" },
