@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { readFileSync } from "node:fs";
 import React from "react";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -49,6 +50,13 @@ vi.mock("wouter", () => ({
 import ModuleControl from "../client/src/pages/ModuleControl";
 
 describe("cabeçalho de controlo — progresso por fábrica", () => {
+  it("invalida os cartões BPHF e as pendências após eliminar uma verificação", () => {
+    const source = readFileSync("client/src/pages/ModuleControl.tsx", "utf8");
+
+    expect(source).toContain("utils.quality.listBphfCollaboratorInspections.invalidate();");
+    expect(source).toContain("utils.quality.pendingControlTasks.invalidate();");
+  });
+
   afterEach(() => { cleanup(); dashboardInputs.length = 0; authorizationInputs.length = 0; dailyResultsInputs.length = 0; bphfInspections.length = 0; uploadEvidenceMutate.mockReset(); createEntryMutateAsync.mockReset(); routeModule.value = "bphf"; delete (authorizationState as any).bphfCriteria; delete (authorizationState as any).metalDetectorLines; Object.assign(authorizationState, { allowed: true, taskId: 51, dueAt: new Date("2026-08-20T12:00:00"), isPreviousPending: true, isFuturePlanned: false, reason: "Autorizado" }); window.history.pushState({}, "", "/"); });
 
   it("substitui o resumo geral pelos cartões das fábricas incluídas no Plano do Dia", () => {

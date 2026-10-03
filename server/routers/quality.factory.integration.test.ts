@@ -5,7 +5,7 @@ import { getDb } from "../db";
 import { storageGetSignedUrl, storagePut } from "../storage";
 import { invokeLLM } from "../_core/llm";
 import { notifyOwner } from "../_core/notification";
-import { entryMatchesPlannedTask, isHistoricalPlanTaskSatisfied, qualityRouter, reconcileFactoryCompletion } from "./quality";
+import { completedCoverageSlots, entryMatchesPlannedTask, isHistoricalPlanTaskSatisfied, qualityRouter, reconcileFactoryCompletion, reconcilePendingQualityTasks } from "./quality";
 
 vi.mock("../db", () => ({ getDb: vi.fn() }));
 vi.mock("../storage", () => ({ storagePut: vi.fn(), storageGetSignedUrl: vi.fn() }));
@@ -199,6 +199,56 @@ describe("procedimentos de qualidade por fábrica", () => {
     };
 
     expect(entryMatchesPlannedTask(deletedEntry, task)).toBe(false);
+  });
+
+  it("não apresenta nem contabiliza um ponto BPHF eliminado como cobertura concluída", () => {
+    const slots = completedCoverageSlots("bphf", [
+      {
+        area: "Embalagem",
+        title: "Higienização das mãos dos manipuladores",
+        payload: {
+          criterion: "Higienização das mãos dos manipuladores",
+          recordLifecycle: { status: "deleted" },
+        },
+      },
+      {
+        area: "Produção",
+        title: "Higienização das mãos dos manipuladores",
+        payload: { criterion: "Higienização das mãos dos manipuladores" },
+      },
+    ]);
+
+    expect(slots.has(JSON.stringify(["bphf", "Embalagem", "Higienização das mãos dos manipuladores"]))).toBe(false);
+    expect(slots.has(JSON.stringify(["bphf", "Produção", "Higienização das mãos dos manipuladores"]))).toBe(true);
+  });
+
+  it("reabre uma tarefa concluída quando a cobertura ativa fica incompleta após eliminação", async () => {
+    const task = {
+      id: 501001,
+      factoryId: 1,
+      status: "completed",
+      dueAt: now,
+      completedAt: now,
+      module: "sensory",
+      area: "Plano do Dia",
+      title: "Plano do Dia — Sensorial F1",
+      responsible: "Sabrina Esteves",
+      assigneeProfileIds: [1],
+    } as any;
+    tasks.push(task);
+    try {
+      await reconcilePendingQualityTasks(mockDatabase() as any);
+
+      expect(dbUpdates).toContainEqual(
+        expect.objectContaining({
+          status: "pending",
+          completedAt: null,
+          completedByProfileId: null,
+        })
+      );
+    } finally {
+      tasks.pop();
+    }
   });
 
   it("reconcilia uma inspeção de Quebráveis retroativa mesmo quando o registo legado só tem actualVerificationDate", () => {

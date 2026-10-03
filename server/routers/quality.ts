@@ -831,6 +831,7 @@ export function completedCoverageSlots(
 ) {
   const completed = new Set<string>();
   entries.forEach(entry => {
+    if (isDeletedControlEntry(entry)) return;
     const payload = entryPayload(entry);
     if (module === "bphf") {
       const criterion =
@@ -2016,10 +2017,10 @@ function isCoveredByCompletedEquivalentPlan(task: any, tasks: any[]) {
 }
 
 /**
- * Corrige incoerências já verificáveis: uma tarefa do Plano do Dia fica
- * pendente apesar de a sua própria cobertura canónica estar completa.
- * Nunca cria registos nem altera resultados; apenas sincroniza o estado da
- * tarefa e identifica a correção como reconciliação automática do Copiloto.
+ * Corrige incoerências já verificáveis no estado gravado das tarefas do
+ * Plano do Dia. Nunca cria, elimina ou altera verificações: compara somente
+ * a cobertura ativa (excluindo registos eliminados) com o plano e sincroniza
+ * a tarefa tanto para concluída como para pendente quando necessário.
  */
 export async function reconcilePendingQualityTasks(db: any) {
   const [tasks, entries, areaCatalog, monthlyItems, monthlyAssignments,
@@ -2039,7 +2040,6 @@ export async function reconcilePendingQualityTasks(db: any) {
   const candidates = tasks.filter(
     task =>
       task.area === "Plano do Dia" &&
-      task.status === "pending" &&
       task.status !== "cancelled" &&
       localDateKey(task.dueAt) <= localDateKey(new Date())
   );
@@ -2056,18 +2056,31 @@ export async function reconcilePendingQualityTasks(db: any) {
       monthlyAreaRows,
       fragileCatalog
     );
-    if (!complete && !isCoveredByCompletedEquivalentPlan(task, tasks)) continue;
+    const reconciledComplete =
+      complete || isCoveredByCompletedEquivalentPlan(task, tasks);
+    const targetStatus = reconciledComplete ? "completed" : "pending";
+    if (task.status === targetStatus) continue;
     const latestMatchingEntry = entries.find((entry: any) =>
       entryMatchesPlannedTask(entry, task)
     );
     await db
       .update(controlTasks)
       .set({
-        status: "completed",
-        completedAt: latestMatchingEntry?.completedAt ?? task.dueAt,
-        completedByProfileId: null,
-        completedByName: "Copiloto de Qualidade",
-        completedByTitle: "Reconciliação automática supervisionada",
+        ...(reconciledComplete
+          ? {
+              status: "completed",
+              completedAt: latestMatchingEntry?.completedAt ?? task.dueAt,
+              completedByProfileId: null,
+              completedByName: "Copiloto de Qualidade",
+              completedByTitle: "Reconciliação automática supervisionada",
+            }
+          : {
+              status: "pending",
+              completedAt: null,
+              completedByProfileId: null,
+              completedByName: null,
+              completedByTitle: null,
+            }),
       })
       .where(eq(controlTasks.id, task.id));
     repaired.push({
@@ -2599,6 +2612,7 @@ export const qualityRouter = router({
         .orderBy(desc(controlEntries.completedAt))
         .limit(150);
       return entries.flatMap(entry => {
+        if (isDeletedControlEntry(entry)) return [];
         const payload =
           entry.payload &&
           typeof entry.payload === "object" &&
@@ -2989,7 +3003,9 @@ export const qualityRouter = router({
       ]);
       const scopedTasks = scopeToFactory(tasks, input?.factoryId);
       const scopedNcs = scopeToFactory(ncs, input?.factoryId);
-      const scopedEntries = scopeToFactory(entries, input?.factoryId);
+      const scopedEntries = scopeToFactory(entries, input?.factoryId).filter(
+        entry => !isDeletedControlEntry(entry)
+      );
       const scopedActions = scopeToFactory(actions, input?.factoryId);
       const scopedFragileCatalog = scopeToFactory(
         fragileCatalog,
@@ -3689,7 +3705,6 @@ export const qualityRouter = router({
     .query(async ({ input }) => {
       const db = await requireDb();
       const operationalDate = nextBusinessDay(new Date());
-      const { start, end } = asDateRange(operationalDate);
       const entries = await db
         .select()
         .from(controlEntries)
@@ -3699,10 +3714,10 @@ export const qualityRouter = router({
         entries: entries
           .filter(
             entry =>
+              !isDeletedControlEntry(entry) &&
               entry.module === input.module &&
               entry.factoryId === input.factoryId &&
-              entry.completedAt >= start &&
-              entry.completedAt < end
+              entryOperationalDate(entry) === localDateKey(operationalDate)
           )
           .map(entry => ({
             id: entry.id,
@@ -5721,6 +5736,7 @@ export const qualityRouter = router({
             : {};
         const taskEntriesForPlan = taskEntries.filter(
           entry =>
+            !isDeletedControlEntry(entry) &&
             entry.module === input.module &&
             entry.factoryId === authorization.task!.factoryId &&
             taskPayload(entry).plannedTaskId === authorization.task!.id

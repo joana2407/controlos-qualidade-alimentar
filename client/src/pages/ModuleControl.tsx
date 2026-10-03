@@ -681,6 +681,10 @@ function DailyControlResults({
       utils.quality.dashboard.invalidate();
       utils.quality.reports.invalidate();
       utils.quality.dailyControlResults.invalidate();
+      utils.quality.listBphfCollaboratorInspections.invalidate();
+      utils.quality.controlAuthorization.invalidate();
+      utils.quality.pendingControlTasks.invalidate();
+      utils.quality.listTasks.invalidate();
       setDeletingEntry(null);
       setSelectedEntry(null);
       toast.success("Registo de controlo eliminado.");
