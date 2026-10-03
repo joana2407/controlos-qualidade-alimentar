@@ -9,6 +9,8 @@ describe("navegação lateral dos painéis de controlo", () => {
     expect(source).toContain('label: "Incidências"');
     expect(source).toContain('path: "/incidencias"');
     expect(source).toContain("Abrir módulos de controlo");
+    expect(source).toContain("Atualizar dados da plataforma");
+    expect(source).toContain("window.location.reload()");
     expect(source).not.toContain("Painéis de controlo");
     expect(source).not.toContain("I&D interno");
     expect(source).not.toContain("Controlo sensorial de I&D");

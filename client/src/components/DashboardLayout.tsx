@@ -27,7 +27,7 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 import { useIsMobile } from "@/hooks/useMobile";
-import { Activity, AlertTriangle, Archive, ArrowLeft, BarChart3, BookOpenCheck, Boxes, ChevronDown, ClipboardCheck, ClipboardList, Factory, FilePlus2, FileWarning, FlaskConical, KeyRound, LayoutDashboard, ListChecks, Magnet, MessageSquareMore, MessageSquareWarning, Microscope, PackageSearch, PanelLeft, Ruler, Settings2, ShieldAlert, ShieldCheck, ThermometerSnowflake, TimerReset, TrendingDown, Truck, Wrench } from "lucide-react";
+import { Activity, AlertTriangle, Archive, ArrowLeft, BarChart3, BookOpenCheck, Boxes, ChevronDown, ClipboardCheck, ClipboardList, Factory, FilePlus2, FileWarning, FlaskConical, KeyRound, LayoutDashboard, ListChecks, Magnet, MessageSquareMore, MessageSquareWarning, Microscope, PackageSearch, PanelLeft, RefreshCw, Ruler, Settings2, ShieldAlert, ShieldCheck, ThermometerSnowflake, TimerReset, TrendingDown, Truck, Wrench } from "lucide-react";
 import React, { CSSProperties, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { useLocation } from "wouter";
@@ -195,7 +195,7 @@ function LisbonOperationalClock() {
     const timer = window.setInterval(() => setNow(new Date()), 1000);
     return () => window.clearInterval(timer);
   }, []);
-  return <div className="flex items-center gap-2 border-b border-teal-100 bg-teal-50/80 px-4 py-2 text-xs text-teal-950" aria-label={`Data e hora de Lisboa: ${lisbonDateLabel(now)} ${lisbonTimeLabel(now)}`}><span className="font-medium">Lisboa</span><span className="text-teal-700">{lisbonDateLabel(now)}</span><span className="font-mono-ui font-semibold tabular-nums">{lisbonTimeLabel(now)}</span><span className="hidden text-teal-700 sm:inline">· Dia operacional muda às 00:00</span></div>;
+  return <div className="flex items-center justify-between gap-3 border-b border-teal-100 bg-teal-50/80 px-4 py-2 text-xs text-teal-950"><div className="flex min-w-0 items-center gap-2" aria-label={`Data e hora de Lisboa: ${lisbonDateLabel(now)} ${lisbonTimeLabel(now)}`}><span className="font-medium">Lisboa</span><span className="text-teal-700">{lisbonDateLabel(now)}</span><span className="font-mono-ui font-semibold tabular-nums">{lisbonTimeLabel(now)}</span><span className="hidden text-teal-700 sm:inline">· Dia operacional muda às 00:00</span></div><Button type="button" variant="outline" size="sm" className="h-7 shrink-0 border-teal-200 bg-white/80 px-2 text-teal-800 hover:bg-teal-100 hover:text-teal-950" onClick={() => window.location.reload()} aria-label="Atualizar dados da plataforma" title="Atualizar dados da plataforma"><RefreshCw className="h-3.5 w-3.5 sm:mr-1.5" /><span className="hidden sm:inline">Atualizar</span></Button></div>;
 }
 
 function DashboardLayoutContent({
