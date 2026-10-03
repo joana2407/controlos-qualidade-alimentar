@@ -5,7 +5,7 @@ import { getDb } from "../db";
 import { storageGetSignedUrl, storagePut } from "../storage";
 import { invokeLLM } from "../_core/llm";
 import { notifyOwner } from "../_core/notification";
-import { completedCoverageSlots, entryMatchesPlannedTask, isHistoricalPlanTaskSatisfied, qualityRouter, reconcileFactoryCompletion, reconcilePendingQualityTasks } from "./quality";
+import { completedCoverageSlots, entryMatchesPlannedTask, isCoveredByCombinedSameScopePlans, isHistoricalPlanTaskSatisfied, qualityRouter, reconcileFactoryCompletion, reconcilePendingQualityTasks } from "./quality";
 
 vi.mock("../db", () => ({ getDb: vi.fn() }));
 vi.mock("../storage", () => ({ storagePut: vi.fn(), storageGetSignedUrl: vi.fn() }));
@@ -2829,6 +2829,58 @@ describe("procedimentos de qualidade por fábrica", () => {
       tasks.splice(tasks.indexOf(metalPlan), 1);
       entries.splice(entries.length - 1, 1);
       areaRows.splice(0, areaRows.length, ...originalAreas);
+    }
+  });
+
+  it("reconcilia um plano legado de detetores quando as linhas foram registadas em planos complementares do mesmo dia", async () => {
+    const fullPlan = {
+      id: 124,
+      factoryId: 1,
+      status: "pending",
+      dueAt: now,
+      completedAt: null,
+      module: "metal_detectors" as const,
+      area: "Plano do Dia",
+      title: "Plano do Dia — Detetores F1",
+      responsible: "Ana",
+      assigneeProfileIds: [3],
+      metalDetectorLines: ["Linha 1", "Linha 2", "Linha Croutons"],
+      plannedCoverage: [
+        '["metal","Linha 1"]',
+        '["metal","Linha 2"]',
+        '["metal","Linha Croutons"]',
+      ],
+    };
+    const complementaryPlan = {
+      ...fullPlan,
+      id: 125,
+      status: "completed",
+      metalDetectorLines: ["Linha 1", "Linha 2"],
+      plannedCoverage: ['["metal","Linha 1"]', '["metal","Linha 2"]'],
+    };
+    const metalEntries = [
+      { id: 833, factoryId: 1, module: "metal_detectors", area: "Linha 1", result: "C", completedAt: now, payload: { plannedTaskId: 125, plannedDate: now.toISOString() } },
+      { id: 834, factoryId: 1, module: "metal_detectors", area: "Linha 2", result: "C", completedAt: now, payload: { plannedTaskId: 125, plannedDate: now.toISOString() } },
+      { id: 835, factoryId: 1, module: "metal_detectors", area: "Linha Croutons", result: "C", completedAt: now, payload: { plannedTaskId: 124, plannedDate: now.toISOString() } },
+    ];
+    tasks.push(fullPlan, complementaryPlan);
+    entries.push(...metalEntries);
+    try {
+      expect(isHistoricalPlanTaskSatisfied(fullPlan, entries, areaRows)).toBe(false);
+      expect(isCoveredByCombinedSameScopePlans(fullPlan, tasks, entries)).toBe(true);
+
+      const repaired = await reconcilePendingQualityTasks(mockDatabase() as any);
+
+      expect(repaired).toEqual(expect.arrayContaining([
+        expect.objectContaining({ id: fullPlan.id, module: "metal_detectors", factoryId: 1 }),
+      ]));
+      expect(dbUpdates).toEqual(expect.arrayContaining([
+        expect.objectContaining({ status: "completed" }),
+      ]));
+    } finally {
+      tasks.splice(tasks.indexOf(fullPlan), 1);
+      tasks.splice(tasks.indexOf(complementaryPlan), 1);
+      entries.splice(entries.length - metalEntries.length, metalEntries.length);
     }
   });
 

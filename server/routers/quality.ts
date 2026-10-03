@@ -1947,9 +1947,10 @@ async function reconcilePlannedControlTaskStatus(
   )[0];
   if (!task || task.area !== "Plano do Dia" || task.status === "cancelled")
     return;
-  const [entries, areaCatalog, monthlyItems, monthlyAssignments, monthlyAreaAssignments, monthlyAreaRows, factoryCatalog, fragileCatalog] =
+  const [entries, tasks, areaCatalog, monthlyItems, monthlyAssignments, monthlyAreaAssignments, monthlyAreaRows, factoryCatalog, fragileCatalog] =
     await Promise.all([
       db.select().from(controlEntries).orderBy(desc(controlEntries.completedAt)),
+      db.select().from(controlTasks).orderBy(controlTasks.dueAt),
       db.select().from(areas).orderBy(areas.name),
       db.select().from(checklistItems).orderBy(checklistItems.sortOrder),
       db
@@ -1972,13 +1973,17 @@ async function reconcilePlannedControlTaskStatus(
     monthlyAreaRows,
     fragileCatalog
   );
+  const reconciledComplete =
+    completed ||
+    isCoveredByCompletedEquivalentPlan(task, tasks) ||
+    isCoveredByCombinedSameScopePlans(task, tasks, entries);
   const latestMatchingEntry = entries.find((entry: any) =>
     entryMatchesPlannedTask(entry, task)
   );
   await db
     .update(controlTasks)
     .set(
-      completed
+      reconciledComplete
         ? {
             status: "completed",
             completedAt: latestMatchingEntry?.completedAt ?? task.dueAt,
@@ -2032,6 +2037,38 @@ function isCoveredByCompletedEquivalentPlan(task: any, tasks: any[]) {
 }
 
 /**
+ * Planos legados publicados no mesmo módulo, fábrica e data podem ter
+ * cobertura complementar. A cobertura só é agregada no mesmo âmbito e nunca
+ * atravessa módulos, fábricas ou datas operacionais.
+ */
+export function isCoveredByCombinedSameScopePlans(
+  task: any,
+  tasks: any[],
+  entries: any[]
+) {
+  const requestedCoverage = plannedTaskCoverageSet(task);
+  if (!requestedCoverage.size) return false;
+  const dueDate = localDateKey(new Date(task.dueAt));
+  const relatedPlans = tasks.filter(candidate =>
+    candidate.area === "Plano do Dia" &&
+    candidate.status !== "cancelled" &&
+    candidate.module === task.module &&
+    candidate.factoryId === task.factoryId &&
+    localDateKey(new Date(candidate.dueAt)) === dueDate
+  );
+  if (relatedPlans.length < 2) return false;
+  const completedCoverage = completedCoverageSlots(
+    task.module,
+    entries.filter(entry =>
+      relatedPlans.some(plan => entryMatchesPlannedTask(entry, plan))
+    )
+  );
+  return Array.from(requestedCoverage).every(slot =>
+    completedCoverage.has(slot)
+  );
+}
+
+/**
  * Corrige incoerências já verificáveis no estado gravado das tarefas do
  * Plano do Dia. Nunca cria, elimina ou altera verificações: compara somente
  * a cobertura ativa (excluindo registos eliminados) com o plano e sincroniza
@@ -2072,7 +2109,9 @@ export async function reconcilePendingQualityTasks(db: any) {
       fragileCatalog
     );
     const reconciledComplete =
-      complete || isCoveredByCompletedEquivalentPlan(task, tasks);
+      complete ||
+      isCoveredByCompletedEquivalentPlan(task, tasks) ||
+      isCoveredByCombinedSameScopePlans(task, tasks, entries);
     const targetStatus = reconciledComplete ? "completed" : "pending";
     if (task.status === targetStatus) continue;
     const latestMatchingEntry = entries.find((entry: any) =>
@@ -2688,6 +2727,8 @@ export const qualityRouter = router({
     )
     .query(async ({ ctx, input }) => {
       const db = await requireDb();
+      if (input.plannedTaskId)
+        await reconcilePlannedControlTaskStatus(db, input.plannedTaskId);
       const access = await assessControlAuthorization(db, {
         module: input.module,
         factoryId: input.factoryId ?? null,
