@@ -1978,6 +1978,39 @@ async function reconcilePlannedControlTaskStatus(
     .where(eq(controlTasks.id, task.id));
 }
 
+function plannedTaskCoverageSet(task: any) {
+  return new Set<string>(
+    Array.isArray(task.plannedCoverage)
+      ? task.plannedCoverage.filter(
+          (slot: unknown): slot is string => typeof slot === "string"
+        )
+      : []
+  );
+}
+
+function isCoveredByCompletedEquivalentPlan(task: any, tasks: any[]) {
+  const requestedCoverage = plannedTaskCoverageSet(task);
+  if (!requestedCoverage.size) return false;
+  const dueDate = localDateKey(new Date(task.dueAt));
+  return tasks.some(candidate => {
+    if (
+      candidate.id === task.id ||
+      candidate.area !== "Plano do Dia" ||
+      candidate.status === "cancelled" ||
+      candidate.module !== task.module ||
+      candidate.factoryId !== task.factoryId ||
+      localDateKey(new Date(candidate.dueAt)) !== dueDate
+    )
+      return false;
+    const candidateCoverage = plannedTaskCoverageSet(candidate);
+    return (
+      candidate.status === "completed" &&
+      candidateCoverage.size >= requestedCoverage.size &&
+      Array.from(requestedCoverage).every(slot => candidateCoverage.has(slot))
+    );
+  });
+}
+
 /**
  * Corrige incoerências já verificáveis: uma tarefa do Plano do Dia fica
  * pendente apesar de a sua própria cobertura canónica estar completa.
@@ -2019,7 +2052,7 @@ export async function reconcilePendingQualityTasks(db: any) {
       monthlyAreaRows,
       fragileCatalog
     );
-    if (!complete) continue;
+    if (!complete && !isCoveredByCompletedEquivalentPlan(task, tasks)) continue;
     const latestMatchingEntry = entries.find((entry: any) =>
       entryMatchesPlannedTask(entry, task)
     );
@@ -2653,6 +2686,7 @@ export const qualityRouter = router({
     )
     .query(async ({ ctx, input }) => {
       const db = await requireDb();
+      await reconcilePendingQualityTasks(db);
       const isShared = sharedPlanModules.has(input.module);
       if (!isShared && input.factoryId === undefined) return [];
       const today = localDateKey(new Date());
@@ -2907,6 +2941,7 @@ export const qualityRouter = router({
     )
     .query(async ({ input }) => {
       const db = await requireDb();
+      await reconcilePendingQualityTasks(db);
       const [
         tasks,
         ncs,
@@ -3845,6 +3880,7 @@ export const qualityRouter = router({
     )
     .query(async ({ ctx, input }) => {
       const db = await requireDb();
+      await reconcilePendingQualityTasks(db);
       const [
         tasks,
         entries,
