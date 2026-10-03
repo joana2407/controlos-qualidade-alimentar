@@ -1046,7 +1046,7 @@ function expectedBphfAreas(
 
 function bphfTaskComplete(
   task: { factoryId: number | null; bphfCriteria?: string[] | null },
-  entries: Array<{ area: string; title?: string }>,
+  entries: Array<{ area: string; title?: string; payload?: unknown }>,
   areaCatalog: Array<{
     group: string;
     factoryId: number | null;
@@ -1059,12 +1059,10 @@ function bphfTaskComplete(
     ? BPHF_CRITERIA.filter(criterion => task.bphfCriteria!.includes(criterion))
     : BPHF_CRITERIA;
   if (!expectedCriteria.length) return false;
-  const completedSlots = new Set(
-    entries.map(entry => `${entry.area}::${entry.title ?? ""}`)
-  );
+  const completedSlots = completedCoverageSlots("bphf", entries);
   return expectedAreas.every(area =>
     expectedCriteria.every(criterion =>
-      completedSlots.has(`${area}::${criterion}`)
+      completedSlots.has(coverageSlot("bphf", area, criterion))
     )
   );
 }
@@ -1807,7 +1805,13 @@ async function assessControlAuthorization(
     );
   });
   const matchingTasks = input.plannedTaskId
-    ? eligibleTasks
+    ? eligibleTasks.filter(
+        (item: any) =>
+          item.id === input.plannedTaskId &&
+          (!input.plannedDate ||
+            localDateKey(new Date(item.dueAt)) ===
+              localDateKey(input.plannedDate))
+      )
     : input.plannedDate
       ? eligibleTasks.filter(
           (item: any) =>
@@ -3178,12 +3182,13 @@ export const qualityRouter = router({
                 task.bphfCriteria!.includes(criterion)
               )
             : BPHF_CRITERIA;
-          const completed = new Set(
-            taskEntries.map(entry => `${entry.area}::${entry.title ?? ""}`)
-          );
+          const completed = completedCoverageSlots("bphf", taskEntries);
           const missing = expectedAreas.flatMap(area =>
             expectedCriteria
-              .filter(criterion => !completed.has(`${area}::${criterion}`))
+              .filter(
+                criterion =>
+                  !completed.has(coverageSlot("bphf", area, criterion))
+              )
               .map(criterion => `${area} · ${criterion}`)
           );
           return { count: missing.length, labels: missing };
@@ -3390,16 +3395,15 @@ export const qualityRouter = router({
                 plannedCriteria.has(criterion)
               );
               expected = expectedAreas.length * expectedCriteria.length;
-              const completedSlots = new Set(
-                factoryEntriesToday.map(
-                  entry => `${entry.area}::${entry.title}`
-                )
+              const completedSlots = completedCoverageSlots(
+                "bphf",
+                factoryEntriesToday
               );
               completed = expectedAreas.reduce(
                 (total, area) =>
                   total +
                   expectedCriteria.filter(criterion =>
-                    completedSlots.has(`${area}::${criterion}`)
+                    completedSlots.has(coverageSlot("bphf", area, criterion))
                   ).length,
                 0
               );

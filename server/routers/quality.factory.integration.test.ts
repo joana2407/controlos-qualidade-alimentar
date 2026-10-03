@@ -741,7 +741,7 @@ describe("procedimentos de qualidade por fábrica", () => {
     const plannedTaskId = 519;
     const selectedCriterion = "Higienização das mãos dos manipuladores";
     tasks.push({ id: plannedTaskId, factoryId: 1, status: "pending", dueAt: now, completedAt: null, module: "bphf", area: "Plano do Dia", title: "Plano do Dia — BPHF F1", responsible: "Sabrina Esteves", assigneeProfileIds: [1], bphfCriteria: [selectedCriterion] } as any);
-    entries.push(...["Produção", "Embalagem", "Limpeza"].map((area, index) => ({ id: 519 + index, factoryId: 1, module: "bphf", area, title: selectedCriterion, result: "C", completedAt: now, payload: { plannedTaskId, plannedDate: now.toISOString() } } as any)));
+    entries.push(...["Produção", "Embalagem", "Limpeza"].map((area, index) => ({ id: 519 + index, factoryId: 1, module: "bphf", area, title: "Verificação de BPHF", result: "C", completedAt: now, payload: { criterion: selectedCriterion, plannedTaskId, plannedDate: now.toISOString() } } as any)));
     try {
       const caller = qualityRouter.createCaller(createContext({ id: 1, name: "Sabrina Esteves", title: "Tec. Qualidade", role: "technician" }));
 
@@ -1714,6 +1714,18 @@ describe("procedimentos de qualidade por fábrica", () => {
 
     await expect(caller.controlAuthorization({ module: "sensory", factoryId: 1 })).resolves.toMatchObject({ taskId: 79, isPreviousPending: false });
     await expect(caller.controlAuthorization({ module: "sensory", factoryId: 1, plannedTaskId: 78 })).resolves.toMatchObject({ taskId: 78, isPreviousPending: true, dueAt: previousDueAt });
+  });
+
+  it("rejeita uma pendência quando o plannedTaskId e a plannedDate não correspondem", async () => {
+    const previousDueAt = new Date(2026, 7, 13, 10, 0, 0);
+    tasks.push({ id: 780, factoryId: 1, status: "pending", dueAt: previousDueAt, completedAt: null, module: "sensory", area: "Plano do Dia", title: "Plano do Dia — Sensorial F1 com data incompatível", responsible: "Sabrina Esteves", assigneeProfileIds: [1] });
+    try {
+      const caller = qualityRouter.createCaller(createContext({ id: 1, name: "Sabrina Esteves", title: "Tec. Qualidade", role: "technician" }));
+
+      await expect(caller.controlAuthorization({ module: "sensory", factoryId: 1, plannedTaskId: 780, plannedDate: now })).resolves.toMatchObject({ allowed: false, taskId: null });
+    } finally {
+      tasks.pop();
+    }
   });
 
   it("mantém o controlo sensorial de hoje aberto a registos adicionais quando a completitude já foi atingida", async () => {

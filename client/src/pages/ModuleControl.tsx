@@ -1819,7 +1819,12 @@ function ControlScheduleSummary({
       ? "Está a realizar antecipadamente uma verificação prevista para esta data."
       : "Este formulário corresponde ao Plano do Dia de hoje.";
   const hrefFor = (task: PendingControlTask) => {
-    const params = new URLSearchParams({ plannedTaskId: String(task.id) });
+    const dueDate = new Date(task.dueAt);
+    const plannedDate = `${dueDate.getFullYear()}-${String(dueDate.getMonth() + 1).padStart(2, "0")}-${String(dueDate.getDate()).padStart(2, "0")}`;
+    const params = new URLSearchParams({
+      plannedTaskId: String(task.id),
+      plannedDate,
+    });
     if (task.factoryId !== null)
       params.set("factoryId", String(task.factoryId));
     return `/controlos/${module}?${params.toString()}`;
@@ -2635,8 +2640,7 @@ export default function ModuleControl() {
   const explicitDateKey = queryParams.get("date");
   const storedOperationalDateKey = readControlOperationalDate(module);
   const hasExplicitOperationalDate =
-    isOperationalDateKey(explicitDateKey) ||
-    isOperationalDateKey(storedOperationalDateKey);
+    isOperationalDateKey(explicitDateKey);
   const [operationalDateKey, setOperationalDateKey] = useState(() => {
     if (isOperationalDateKey(explicitDateKey)) return explicitDateKey;
     if (isOperationalDateKey(plannedDateKey)) return plannedDateKey;

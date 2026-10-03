@@ -99,7 +99,7 @@ describe("cabeçalho de controlo — progresso por fábrica", () => {
     const view = render(<ModuleControl />);
     expect(authorizationInputs[0]).toMatchObject({ module: "bphf", factoryId: 1, plannedTaskId: undefined });
 
-    window.history.pushState({}, "", "/controlos/bphf?factoryId=1&plannedTaskId=72");
+    window.history.pushState({}, "", "/controlos/bphf?factoryId=1&plannedTaskId=72&plannedDate=2026-08-18");
     view.rerender(<ModuleControl />);
 
     expect(authorizationInputs.at(-1)).toMatchObject({ module: "bphf", factoryId: 1, plannedTaskId: 72 });
@@ -113,7 +113,7 @@ describe("cabeçalho de controlo — progresso por fábrica", () => {
     expect(screen.getByText("Data em preenchimento: 20/08/2026")).toBeTruthy();
     expect(screen.getByText("Pendências de dias anteriores")).toBeTruthy();
     expect(screen.getByText("Pendente desde 18/08/2026")).toBeTruthy();
-    expect(screen.getByRole("link", { name: /Abrir pendência/ }).getAttribute("href")).toBe("/controlos/bphf?plannedTaskId=72&factoryId=1");
+    expect(screen.getByRole("link", { name: /Abrir pendência/ }).getAttribute("href")).toBe("/controlos/bphf?plannedTaskId=72&plannedDate=2026-08-18&factoryId=1");
     expect(screen.getByText("Resultados registados")).toBeTruthy();
     expect(screen.getAllByText("Higienização das mãos dos manipuladores").length).toBeGreaterThan(1);
     expect(screen.getByText(/Colaborador: Colaborador de teste/)).toBeTruthy();
