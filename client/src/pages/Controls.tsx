@@ -1598,6 +1598,24 @@ export default function Controls() {
                                     {[task.incidenceOrigin.productName && `Produto: ${task.incidenceOrigin.productName}`, task.incidenceOrigin.lotNumber && `Lote: ${task.incidenceOrigin.lotNumber}`, task.incidenceOrigin.notes && `Observações: ${task.incidenceOrigin.notes}`, task.incidenceOrigin.observation && `Detalhe: ${task.incidenceOrigin.observation}`].filter(Boolean).join(" · ")}
                                   </p>
                                 ) : null}
+                                {task.incidenceOrigin.evidencePhotos?.length ? (
+                                  <div className="mt-2 flex flex-wrap items-center gap-2">
+                                    <span className="font-medium text-violet-900">Fotografias da origem:</span>
+                                    {task.incidenceOrigin.evidencePhotos.map(photo => (
+                                      <a key={photo.url} href={photo.url} target="_blank" rel="noreferrer" className="overflow-hidden rounded-md border border-violet-200 focus:outline-none focus:ring-2 focus:ring-violet-700">
+                                        <img src={photo.url} alt={`Evidência da incidência de origem: ${photo.fileName}`} className="h-12 w-12 object-cover" />
+                                      </a>
+                                    ))}
+                                  </div>
+                                ) : null}
+                                {task.incidenceOrigin.sourceEntryId && MODULES.some(item => item.id === task.incidenceOrigin?.module) ? (
+                                  <Link
+                                    href={`/controlos/${task.incidenceOrigin.module}?${new URLSearchParams({ plannedDate: task.incidenceOrigin.occurredOn, entryId: String(task.incidenceOrigin.sourceEntryId), view: "results", ...(task.factoryId ? { factoryId: String(task.factoryId) } : {}) }).toString()}`}
+                                    className="mt-2 inline-flex items-center gap-1 font-semibold text-violet-800 underline-offset-2 hover:underline"
+                                  >
+                                    <Eye className="h-3.5 w-3.5" /> Abrir verificação original
+                                  </Link>
+                                ) : null}
                               </div>
                             ) : null}
                             {task.module === "bphf" && task.area === "Plano do Dia" && task.createdAt && <p className="mt-1 text-xs text-violet-700">Publicado em {dateFormat(task.createdAt, true)} · {task.parentTaskId ? "ligada ao plano original" : "base do plano"}</p>}

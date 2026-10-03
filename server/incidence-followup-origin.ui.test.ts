@@ -10,6 +10,7 @@ describe("contexto da incidência nos seguimentos", () => {
     expect(router).toContain("function incidenceOriginFrom(");
     expect(router).toContain("collaboratorName: textValue(\"collaboratorName\", \"inspectedCollaborator\")");
     expect(router).toContain("productName: textValue(\"product\", \"productName\")");
+    expect(router).toContain("evidencePhotos: verificationEvidencePhotos(payload)");
     expect(router).toContain("incidenceOrigin");
     expect(router).toContain("listIncidenceFollowUpTasks");
   });
@@ -17,7 +18,11 @@ describe("contexto da incidência nos seguimentos", () => {
   it("mostra colaborador e restantes dados no painel Hoje e no detalhe da incidência", () => {
     expect(controls).toContain("Colaborador avaliado:");
     expect(controls).toContain("Incidência de origem");
+    expect(controls).toContain("Abrir verificação original");
+    expect(controls).toContain("Evidência da incidência de origem");
     expect(incidences).toContain("Dados da incidência que originou o seguimento");
+    expect(incidences).toContain("Abrir verificação original");
+    expect(incidences).toContain("Evidência da incidência de origem");
     expect(incidences).toContain("Fábrica/linha:");
     expect(incidences).toContain("Data da ocorrência:");
     expect(incidences).toContain("Validade:");

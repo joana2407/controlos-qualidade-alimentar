@@ -817,6 +817,7 @@ function incidenceOriginFrom(
     expiryDate: textValue("validity", "expiry", "expiryDate"),
     notes: entry.notes?.trim() || null,
     observation: textValue("observations", "observation", "reason"),
+    evidencePhotos: verificationEvidencePhotos(payload),
   };
 }
 

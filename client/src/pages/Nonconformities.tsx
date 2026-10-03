@@ -29,6 +29,7 @@ import {
   CheckCircle2,
   ChevronDown,
   ChevronUp,
+  Eye,
   Factory,
   FileWarning,
   ImagePlus,
@@ -2860,6 +2861,35 @@ export default function Nonconformities() {
                                         <p className="mt-1 whitespace-pre-wrap text-violet-800">
                                           {task.incidenceOrigin.notes ?? task.incidenceOrigin.observation}
                                         </p>
+                                      ) : null}
+                                      {task.incidenceOrigin.evidencePhotos?.length ? (
+                                        <div className="mt-2 flex flex-wrap items-center gap-2">
+                                          <span className="font-medium text-violet-900">Fotografias da origem:</span>
+                                          {task.incidenceOrigin.evidencePhotos.map(photo => (
+                                            <a key={photo.url} href={photo.url} target="_blank" rel="noreferrer" className="overflow-hidden rounded-md border border-violet-200 focus:outline-none focus:ring-2 focus:ring-violet-700">
+                                              <img src={photo.url} alt={`Evidência da incidência de origem: ${photo.fileName}`} className="h-14 w-14 object-cover" />
+                                            </a>
+                                          ))}
+                                        </div>
+                                      ) : null}
+                                      {task.incidenceOrigin.sourceEntryId && MODULES.some(item => item.id === task.incidenceOrigin?.module) ? (
+                                        <Button
+                                          type="button"
+                                          variant="link"
+                                          size="sm"
+                                          className="mt-1 h-auto px-0 text-violet-800"
+                                          onClick={() => {
+                                            const query = new URLSearchParams({
+                                              plannedDate: task.incidenceOrigin!.occurredOn,
+                                              entryId: String(task.incidenceOrigin!.sourceEntryId),
+                                              view: "results",
+                                              ...(selected.factoryId ? { factoryId: String(selected.factoryId) } : {}),
+                                            });
+                                            setLocation(`/controlos/${task.incidenceOrigin!.module}?${query.toString()}`);
+                                          }}
+                                        >
+                                          <Eye className="mr-1 h-3.5 w-3.5" /> Abrir verificação original
+                                        </Button>
                                       ) : null}
                                     </div>
                                   ) : null}
