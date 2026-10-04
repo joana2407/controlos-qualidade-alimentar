@@ -74,7 +74,7 @@ import {
   Truck,
   X,
 } from "lucide-react";
-import React, { FormEvent, useMemo, useState } from "react";
+import React, { FormEvent, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Link, useLocation } from "wouter";
 
@@ -462,6 +462,24 @@ export default function Controls() {
     { enabled: Boolean(observationScope) }
   );
   const tasks = trpc.quality.listTasks.useQuery(taskFilterInput);
+
+  useEffect(() => {
+    const taskId = Number(
+      new URLSearchParams(window.location.search).get("taskId")
+    );
+    if (!Number.isInteger(taskId) || taskId <= 0 || !tasks.data || reportTask)
+      return;
+    const task = tasks.data.find(item => item.id === taskId);
+    if (!task || task.status !== "pending" || !task.sourceEntryId) return;
+    setReportTask({
+      id: task.id,
+      title: task.title,
+      isFollowUp: true,
+      result: "",
+      notes: "",
+      evidencePhotos: [],
+    });
+  }, [reportTask, tasks.data]);
 
   const invalidateTasks = () => {
     utils.quality.dashboard.invalidate();

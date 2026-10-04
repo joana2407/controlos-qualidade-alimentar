@@ -243,6 +243,10 @@ type PendingControlTask = {
   dueAt: Date | string;
   responsible?: string | null;
   factoryId: number | null;
+  title?: string | null;
+  description?: string | null;
+  isFollowUp?: boolean;
+  sourceEntryId?: number | null;
 };
 
 function dailyResultContext(entry: DailyControlEntry) {
@@ -1879,11 +1883,11 @@ function ControlScheduleSummary({
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-base">
             <CircleAlert className="h-4 w-4 text-amber-600" />
-            Pendências de dias anteriores
+            Pendências e seguimentos anteriores
           </CardTitle>
           <CardDescription>
-            Abra cada pendência para preencher o controlo na respetiva data
-            prevista.
+            Abra cada item para preencher o controlo ou registar o resultado do
+            seguimento na respetiva data prevista.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -1900,9 +1904,11 @@ function ControlScheduleSummary({
                 >
                   <div>
                     <p className="font-medium text-slate-950">
-                      Pendente desde{" "}
+                      {task.isFollowUp ? "Seguimento pendente" : "Pendente desde"}{" "}
                       {new Date(task.dueAt).toLocaleDateString("pt-PT")}
                     </p>
+                    {task.title ? <p className="mt-1 text-sm font-medium text-slate-800">{task.title}</p> : null}
+                    {task.description ? <p className="mt-1 text-sm text-slate-600">{task.description}</p> : null}
                     <p className="mt-1 text-sm text-muted-foreground">
                       {task.responsible
                         ? `Responsável atribuído: ${task.responsible}`
@@ -1915,9 +1921,9 @@ function ControlScheduleSummary({
                     variant="outline"
                     className="border-amber-300 bg-amber-50 text-amber-950 hover:bg-amber-100"
                   >
-                    <Link href={hrefFor(task)}>
+                    <Link href={task.isFollowUp ? `/?taskId=${task.id}` : hrefFor(task)}>
                       <ClipboardCheck className="mr-2 h-4 w-4" />
-                      Abrir pendência
+                      {task.isFollowUp ? "Abrir seguimento" : "Abrir pendência"}
                     </Link>
                   </Button>
                 </div>

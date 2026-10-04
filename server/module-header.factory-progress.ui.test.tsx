@@ -119,12 +119,16 @@ describe("cabeçalho de controlo — progresso por fábrica", () => {
     window.history.pushState({}, "", "/controlos/bphf?factoryId=1");
     render(<ModuleControl />);
     expect(screen.getByText("Data em preenchimento: 20/08/2026")).toBeTruthy();
-    expect(screen.getByText("Pendências de dias anteriores")).toBeTruthy();
+    expect(screen.getByText("Pendências e seguimentos anteriores")).toBeTruthy();
     expect(screen.getByText("Pendente desde 18/08/2026")).toBeTruthy();
     expect(screen.getByRole("link", { name: /Abrir pendência/ }).getAttribute("href")).toBe("/controlos/bphf?plannedTaskId=72&plannedDate=2026-08-18&factoryId=1");
     expect(screen.getByText("Resultados registados")).toBeTruthy();
     expect(screen.getAllByText("Higienização das mãos dos manipuladores").length).toBeGreaterThan(1);
     expect(screen.getByText(/Colaborador: Colaborador de teste/)).toBeTruthy();
+    const source = readFileSync("client/src/pages/ModuleControl.tsx", "utf8");
+    expect(source).toContain("Pendências e seguimentos anteriores");
+    expect(source).toContain('`/?taskId=${task.id}`');
+    expect(source).toContain("Abrir seguimento");
     const input = dailyResultsInputs[0] as { module: string; factoryId: number; operationalDate: Date };
     expect(input).toMatchObject({ module: "bphf", factoryId: 1 });
     expect(input.operationalDate.toISOString()).toContain("2026-08-20T12:00:00.000Z");

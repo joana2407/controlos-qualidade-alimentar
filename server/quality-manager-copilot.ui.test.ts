@@ -44,6 +44,8 @@ describe("Copiloto de Qualidade global", () => {
     expect(router).toContain("reconcilePendingQualityTasks");
     expect(router).toContain("const operationalTasks = activeTasks.filter(task => !task.sourceEntryId)");
     expect(router).toContain("const overdueFollowUpTasks = pendingFollowUpTasks");
+    expect(router).toContain("isPendingFollowUpTask");
+    expect(router).toContain("isFollowUp: Boolean(task.sourceEntryId)");
     expect(router).toContain("Reconciliação automática supervisionada");
     expect(router).toContain("reconcilia automaticamente tarefas pendentes");
     expect(copilot).toContain("reconcilia automaticamente apenas tarefas pendentes");

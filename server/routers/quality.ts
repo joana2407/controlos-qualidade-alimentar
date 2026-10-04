@@ -2800,11 +2800,11 @@ export const qualityRouter = router({
           const inScope = isShared
             ? task.factoryId === null
             : task.factoryId === input.factoryId;
-          return (
+          const isFollowUpTask = Boolean(task.sourceEntryId);
+          const isPendingOperationalTask =
             task.area === "Plano do Dia" &&
             task.module === input.module &&
             task.status !== "cancelled" &&
-            inScope &&
             taskDate < today &&
             isBusinessDay(new Date(task.dueAt)) &&
             !isPlanTaskResolved(
@@ -2817,7 +2817,16 @@ export const qualityRouter = router({
               monthlyAreaAssignments,
               monthlyAreaRows,
               fragileCatalog
-            ) &&
+            );
+          const isPendingFollowUpTask =
+            isFollowUpTask &&
+            task.module === input.module &&
+            task.status === "pending" &&
+            taskDate <= today &&
+            isBusinessDay(new Date(task.dueAt));
+          return (
+            inScope &&
+            (isPendingOperationalTask || isPendingFollowUpTask) &&
             (ctx.operatorProfile!.role === "manager" ||
               assignedProfiles.includes(ctx.operatorProfile!.id))
           );
@@ -2827,6 +2836,10 @@ export const qualityRouter = router({
           dueAt: task.dueAt,
           responsible: task.responsible,
           factoryId: task.factoryId,
+          title: task.title,
+          description: task.description,
+          isFollowUp: Boolean(task.sourceEntryId),
+          sourceEntryId: task.sourceEntryId ?? null,
         }))
         .sort(
           (left, right) =>
