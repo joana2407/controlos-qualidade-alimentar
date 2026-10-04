@@ -2634,6 +2634,41 @@ describe("procedimentos de qualidade por fábrica", () => {
     }
   });
 
+  it("seleciona automaticamente o plano da data e ignora inspeções posteriores ao dia consultado", async () => {
+    const plannedTask = {
+      id: 202,
+      factoryId: 1,
+      status: "pending" as const,
+      dueAt: new Date(2026, 8, 17, 12, 0, 0),
+      completedAt: null,
+      module: "fragile_items" as const,
+      area: "Plano do Dia",
+      title: "Quebráveis F1 — 17/09",
+      responsible: "Equipa",
+      assigneeProfileIds: [1],
+      plannedCoverage: ['["fragile",1]'],
+    };
+    const laterEntry = {
+      id: 203,
+      factoryId: 1,
+      module: "fragile_items" as const,
+      area: "Zona Tratamento Térmico",
+      result: "C" as const,
+      completedAt: new Date(2026, 8, 25, 13, 0, 0),
+      payload: { fragileItemId: 1, plannedTaskId: 999, actualVerificationDate: "2026-09-25" },
+    };
+    tasks.push(plannedTask);
+    entries.push(laterEntry);
+    try {
+      const caller = qualityRouter.createCaller(createContext());
+      const pending = await caller.fragilePending({ factoryId: 1, referenceDate: plannedTask.dueAt });
+      expect(pending.map(item => item.id)).toContain(1);
+    } finally {
+      entries.splice(entries.findIndex(entry => entry.id === laterEntry.id), 1);
+      tasks.splice(tasks.findIndex(task => task.id === plannedTask.id), 1);
+    }
+  });
+
   it("devolve as mesmas percentagens de Quebráveis para todos os perfis", async () => {
     const profileTaskIds = [701, 702, 703];
     tasks.push(

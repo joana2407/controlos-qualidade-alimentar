@@ -8156,29 +8156,57 @@ export const qualityRouter = router({
         }
       });
       const referenceDate = input?.referenceDate ?? new Date();
+      const referenceDateKey = localDateKey(referenceDate);
       const plannedTask = input?.plannedTaskId
         ? (await db.select().from(controlTasks).where(eq(controlTasks.id, input.plannedTaskId)).limit(1))[0]
-        : null;
+        : (
+            await db
+              .select()
+              .from(controlTasks)
+              .where(eq(controlTasks.module, "fragile_items"))
+              .orderBy(desc(controlTasks.dueAt))
+          ).find(task =>
+            task.area === "Plano do Dia" &&
+            task.status !== "cancelled" &&
+            !task.sourceEntryId &&
+            task.factoryId === (input?.factoryId ?? null) &&
+            localDateKey(new Date(task.dueAt)) === referenceDateKey
+          );
       const entriesForPlannedTask = plannedTask
-        ? new Set(entries.filter(entry => Number(entryPayload(entry).plannedTaskId) === plannedTask.id)
-            .map(entry => Number(entryPayload(entry).fragileItemId)))
+        ? new Set(
+            entries
+              .filter(entry => Number(entryPayload(entry).plannedTaskId) === plannedTask.id)
+              .map(entry => Number(entryPayload(entry).fragileItemId))
+          )
         : null;
-      const referenceDateKey = localDateKey(referenceDate);
+      const plannedItemIds = plannedTask && Array.isArray(plannedTask.plannedCoverage)
+        ? new Set(
+            plannedTask.plannedCoverage.flatMap(slot => {
+              try {
+                const parsed = JSON.parse(slot);
+                return Array.isArray(parsed) && parsed[0] === "fragile" && typeof parsed[1] === "number"
+                  ? [parsed[1]]
+                  : [];
+              } catch {
+                return [];
+              }
+            })
+          )
+        : null;
       const lastInspectionsBeforeReference = new Map<number, Date>();
-      if (plannedTask) {
-        entries.forEach(entry => {
-          const itemId = Number(entryPayload(entry).fragileItemId);
-          if (!Number.isInteger(itemId) || fragileInspectionOperationalDate(entry) >= referenceDateKey) return;
-          const inspectionAt = fragileInspectionAt(entry);
-          const current = lastInspectionsBeforeReference.get(itemId);
-          if (!current || inspectionAt > current) lastInspectionsBeforeReference.set(itemId, inspectionAt);
-        });
-      }
+      entries.forEach(entry => {
+        const itemId = Number(entryPayload(entry).fragileItemId);
+        if (!Number.isInteger(itemId) || fragileInspectionOperationalDate(entry) >= referenceDateKey) return;
+        const inspectionAt = fragileInspectionAt(entry);
+        const current = lastInspectionsBeforeReference.get(itemId);
+        if (!current || inspectionAt > current) lastInspectionsBeforeReference.set(itemId, inspectionAt);
+      });
       return items
         .filter(
           item =>
             item.status === "active" &&
             (!input?.factoryId || item.factoryId === input.factoryId) &&
+            (!plannedItemIds || plannedItemIds.has(item.id)) &&
             (!input?.periodicity || item.periodicity === input.periodicity)
         )
         .map(item => {
