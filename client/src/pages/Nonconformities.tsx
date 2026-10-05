@@ -920,6 +920,23 @@ export default function Nonconformities() {
       followUpTaskInput,
       { enabled: selected?.type === "incidence" }
     ) ?? { data: [], isLoading: false };
+  const coincidentFollowUpInput = useMemo(
+    () => ({
+      sourceEntryId: selected?.type === "incidence" ? selected.id : 0,
+      dueAt: new Date(`${followUpDueDate || "2099-01-01"}T12:00:00`),
+    }),
+    [followUpDueDate, selected?.id, selected?.type]
+  );
+  const coincidentFollowUpTask =
+    trpc.quality.findCoincidentFollowUpTask?.useQuery?.(
+      coincidentFollowUpInput,
+      {
+        enabled:
+          creatingFollowUpTask &&
+          selected?.type === "incidence" &&
+          Boolean(followUpDueDate),
+      }
+    ) ?? { data: undefined, isLoading: false };
   const createFollowUpTask =
     trpc.quality.createIncidenceFollowUpTask?.useMutation?.({
       onSuccess: () => {
@@ -2961,6 +2978,17 @@ export default function Nonconformities() {
                                   </Select>
                                 </div>
                               </div>
+                              {coincidentFollowUpTask.data?.coincident ? (
+                                <div className="flex gap-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2.5 text-sm text-amber-950" role="alert">
+                                  <span className="mt-0.5 text-base" aria-hidden="true">!</span>
+                                  <div>
+                                    <p className="font-semibold">Já existe um controlo agendado para este ponto</p>
+                                    <p className="mt-1 text-xs leading-5 text-amber-900">
+                                      Esta tarefa será associada ao controlo operacional «{coincidentFollowUpTask.data.task?.title}» do mesmo dia. O histórico do seguimento será preservado e ficará identificado como coincidente.
+                                    </p>
+                                  </div>
+                                </div>
+                              ) : null}
                               <div className="flex flex-wrap gap-2">
                                 <Button type="submit" size="sm" disabled={createFollowUpTask.isPending}>
                                   <Save className="mr-2 h-4 w-4" />

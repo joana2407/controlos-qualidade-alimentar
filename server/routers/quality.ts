@@ -4167,6 +4167,48 @@ export const qualityRouter = router({
       return { success: true };
     }),
 
+  findCoincidentFollowUpTask: qualityManagerProcedure
+    .input(z.object({ sourceEntryId: z.number().int(), dueAt: dateInput }))
+    .query(async ({ input }) => {
+      const db = await requireDb();
+      const sourceEntry = (
+        await db
+          .select()
+          .from(controlEntries)
+          .where(eq(controlEntries.id, input.sourceEntryId))
+          .limit(1)
+      )[0];
+      if (!sourceEntry) return { coincident: false, task: null };
+      const payload =
+        sourceEntry.payload && typeof sourceEntry.payload === "object" && !Array.isArray(sourceEntry.payload)
+          ? (sourceEntry.payload as Record<string, unknown>)
+          : {};
+      const fragileItemId = typeof payload.fragileItemId === "number" ? payload.fragileItemId : null;
+      const tasks = await db
+        .select()
+        .from(controlTasks)
+        .where(eq(controlTasks.module, sourceEntry.module));
+      const task = tasks.find(candidate => {
+        if (candidate.sourceEntryId || candidate.status === "cancelled") return false;
+        if (candidate.factoryId !== sourceEntry.factoryId) return false;
+        if (localDateKey(new Date(candidate.dueAt)) !== localDateKey(input.dueAt)) return false;
+        if (sourceEntry.module === "fragile_items" && fragileItemId !== null) {
+          return Array.isArray(candidate.plannedCoverage) && candidate.plannedCoverage.some(slot => {
+            try {
+              const parsed = JSON.parse(slot);
+              return Array.isArray(parsed) && parsed[0] === "fragile" && parsed[1] === fragileItemId;
+            } catch {
+              return false;
+            }
+          });
+        }
+        return candidate.area === sourceEntry.area;
+      });
+      return task
+        ? { coincident: true, task: { id: task.id, title: task.title, dueAt: task.dueAt, factoryId: task.factoryId } }
+        : { coincident: false, task: null };
+    }),
+
   createIncidenceFollowUpTask: qualityManagerProcedure
     .input(
       z.object({
