@@ -1819,8 +1819,20 @@ async function assessControlAuthorization(
         isExplicitDispatchSupplement ||
         isExplicitInternalAnalysisSupplement ||
         isExplicitInternalAnalysisDate);
+    // Quando a Responsável de Qualidade abre uma pendência concreta, essa
+    // tarefa deve continuar editável até ficar concluída. Isto é importante
+    // para planos históricos com registos parciais associados a uma versão
+    // anterior: a cobertura herdada não pode bloquear o preenchimento dos
+    // pontos que ainda faltam na tarefa explicitamente selecionada.
+    const isExplicitPendingPlan =
+      Boolean(input.plannedTaskId) &&
+      item.id === input.plannedTaskId &&
+      item.status === "pending" &&
+      hasIncompletePlannedCoverage;
     return (
-      (hasIncompletePlannedCoverage || isCompletedPlanOpenForSupplement) &&
+      (hasIncompletePlannedCoverage ||
+        isCompletedPlanOpenForSupplement ||
+        isExplicitPendingPlan) &&
       item.area === "Plano do Dia" &&
       item.module === input.module &&
       item.status !== "cancelled" &&
