@@ -151,7 +151,11 @@ export function fragileInspectionDueDate(periodicity: FragilePeriodicity, lastIn
 export function isFragileInspectionPending(periodicity: FragilePeriodicity, lastInspectionAt: Date | null | undefined, referenceDate = new Date()) {
   const reference = startOfDay(referenceDate);
   if (periodicity === "D") return isBusinessDay(reference) && (!lastInspectionAt || startOfDay(lastInspectionAt) < reference);
-  const dueOperationalDay = nextBusinessDay(fragileInspectionDueDate(periodicity, lastInspectionAt, reference));
+  // fragileInspectionDueDate já normaliza os ciclos semanais, quinzenais e
+  // mensais para a sexta-feira aplicável. Não avançar novamente para a
+  // segunda-feira, caso contrário uma pendência de sexta só aparece depois
+  // do fim de semana.
+  const dueOperationalDay = fragileInspectionDueDate(periodicity, lastInspectionAt, reference);
   return isBusinessDay(reference) && reference.getTime() >= dueOperationalDay.getTime();
 }
 

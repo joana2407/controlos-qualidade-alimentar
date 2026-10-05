@@ -1380,7 +1380,17 @@ export function isHistoricalPlanTaskSatisfied(
   );
   if (Array.isArray(task.plannedCoverage) && task.plannedCoverage.length) {
     const completedSlots = completedCoverageSlots(task.module, taskEntries);
-    return task.plannedCoverage.every(slot => completedSlots.has(slot));
+    const applicableCoverage = task.module === "fragile_items"
+      ? task.plannedCoverage.filter(slot => {
+          try {
+            const parsed = JSON.parse(slot);
+            return !Array.isArray(parsed) || parsed[0] !== "fragile" || fragileCatalog.some(item => item.id === parsed[1] && item.status === "active");
+          } catch {
+            return true;
+          }
+        })
+      : task.plannedCoverage;
+    return applicableCoverage.every(slot => completedSlots.has(slot));
   }
   if (task.module === "bphf")
     return bphfTaskComplete(task, taskEntries, areaCatalog);
@@ -4222,6 +4232,30 @@ export const qualityRouter = router({
           code: "BAD_REQUEST",
           message: "Selecione utilizadores ativos para a tarefa de seguimento.",
         });
+      const sourceFragileItemId =
+        typeof sourcePayload.fragileItemId === "number"
+          ? sourcePayload.fragileItemId
+          : null;
+      const operationalTasks = await db
+        .select()
+        .from(controlTasks)
+        .where(eq(controlTasks.module, sourceEntry.module));
+      const coincidentOperationalTask = operationalTasks.find(task => {
+        if (task.sourceEntryId || task.status === "cancelled") return false;
+        if (task.factoryId !== sourceEntry.factoryId) return false;
+        if (localDateKey(new Date(task.dueAt)) !== localDateKey(input.dueAt)) return false;
+        if (sourceEntry.module === "fragile_items" && sourceFragileItemId !== null) {
+          return Array.isArray(task.plannedCoverage) && task.plannedCoverage.some(slot => {
+            try {
+              const parsed = JSON.parse(slot);
+              return Array.isArray(parsed) && parsed[0] === "fragile" && parsed[1] === sourceFragileItemId;
+            } catch {
+              return false;
+            }
+          });
+        }
+        return task.area === sourceEntry.area;
+      });
       await db.insert(controlTasks).values({
         title: input.title,
         description: input.description,
@@ -4232,6 +4266,7 @@ export const qualityRouter = router({
         responsible: profiles.map(profile => profile.name).join(", "),
         assigneeProfileIds: input.assigneeProfileIds,
         sourceEntryId: sourceEntry.id,
+        parentTaskId: coincidentOperationalTask?.id ?? null,
         createdBy: ctx.user!.openId,
       });
       return { success: true };
@@ -8193,6 +8228,8 @@ export const qualityRouter = router({
             })
           )
         : null;
+      const activeFragileItemIds = new Set(items.filter(item => item.status === "active").map(item => item.id));
+      if (plannedItemIds) for (const id of Array.from(plannedItemIds)) if (!activeFragileItemIds.has(id)) plannedItemIds.delete(id);
       const lastInspectionsBeforeReference = new Map<number, Date>();
       entries.forEach(entry => {
         const itemId = Number(entryPayload(entry).fragileItemId);
@@ -8201,10 +8238,9 @@ export const qualityRouter = router({
         const current = lastInspectionsBeforeReference.get(itemId);
         if (!current || inspectionAt > current) lastInspectionsBeforeReference.set(itemId, inspectionAt);
       });
-      return items
+      const pendingCandidates = items
         .filter(
-          item =>
-            item.status === "active" &&
+          item => item.status === "active" &&
             (!input?.factoryId || item.factoryId === input.factoryId) &&
             (!plannedItemIds || plannedItemIds.has(item.id)) &&
             (!input?.periodicity || item.periodicity === input.periodicity)
@@ -8228,14 +8264,11 @@ export const qualityRouter = router({
             ),
           };
         })
-        .filter(item =>
-          !item.completedForPlannedTask &&
-          isFragileInspectionPending(
-            item.periodicity,
-            item.lastInspectionAt,
-            referenceDate
-          )
-        )
+        .filter(item => {
+          const pending = !item.completedForPlannedTask && isFragileInspectionPending(item.periodicity, item.lastInspectionAt, referenceDate);
+          return pending;
+        })
+      return pendingCandidates
         .sort(
           (left, right) =>
             (left.lastInspectionAt?.getTime() ?? 0) -

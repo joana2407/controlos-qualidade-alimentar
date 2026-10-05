@@ -2833,7 +2833,14 @@ export default function Nonconformities() {
                             <div className="space-y-2">
                               {followUpTasks.data.map(task => (
                                 <div key={task.id} className="rounded-lg border border-violet-100 bg-white px-3 py-2 text-sm text-slate-800">
-                                  <p className="font-medium">{task.title}</p>
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <p className="font-medium">{task.title}</p>
+                                    {task.parentTaskId ? (
+                                      <span className="rounded-full bg-teal-100 px-2 py-0.5 text-[11px] font-semibold text-teal-800">
+                                        Coincidente com controlo operacional
+                                      </span>
+                                    ) : null}
+                                  </div>
                                   <p className="mt-1 text-xs text-slate-600">
                                     {task.responsible} · {dateFormat(task.dueAt, false)} · {task.status === "pending" ? "Por realizar" : task.status === "completed" ? "Concluída" : "Cancelada"}
                                   </p>
