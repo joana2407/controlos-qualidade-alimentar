@@ -27,7 +27,7 @@ describe("navegação lateral dos painéis de controlo", () => {
     ].forEach((label) => expect(source).toContain(label));
     [
       "https://analiseocorrencias.manus.space/login",
-      "https://gestaomateriasprimas.manus.space/",
+      "https://gestaompas.lovable.app",
       "https://id-interno.lovable.app/",
       "https://planocalibracao.manus.space/",
       "https://manutencaoprenventiva-as.manus.space/",
