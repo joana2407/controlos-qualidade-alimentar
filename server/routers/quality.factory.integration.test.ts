@@ -3641,6 +3641,9 @@ describe("procedimentos de qualidade por fábrica", () => {
         collaboratorId: 996,
         collaboratorName: "Colaborador Tratado",
         total: 1,
+        pendingCount: 1,
+        inProgressCount: 0,
+        completedCount: 3,
         requiresNcAssessment: false,
       }));
       expect(similarAlerts.some(alert => alert.collaboratorId === 996)).toBe(false);

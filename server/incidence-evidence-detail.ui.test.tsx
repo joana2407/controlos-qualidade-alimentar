@@ -18,6 +18,9 @@ const { similarAlerts, recurrenceAlerts, updateIncidence, createFollowUpTask } =
     collaboratorId: number;
     collaboratorName: string;
     total: number;
+    pendingCount: number;
+    inProgressCount: number;
+    completedCount: number;
     requiresNcAssessment: boolean;
   }>,
   updateIncidence: vi.fn(),
@@ -246,12 +249,19 @@ describe("detalhe de incidência com evidências", () => {
       collaboratorId: 71,
       collaboratorName: "Maria Silva",
       total: 1,
+      pendingCount: 0,
+      inProgressCount: 1,
+      completedCount: 2,
       requiresNcAssessment: false,
     });
     render(<Nonconformities />);
 
-    expect(screen.getByText("Incidências em acompanhamento por colaborador")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Abrir as 1 incidências ativas de Maria Silva" }).textContent).toMatch(/Maria Silva · 1 incidência ativa/i);
+    expect(screen.getByText("Resumo de incidências por colaborador")).toBeTruthy();
+    const alert = screen.getByRole("button", { name: "Abrir incidências de Maria Silva: 0 pendentes, 1 em tratamento e 2 fechadas" });
+    expect(alert.textContent).toMatch(/Maria Silva.*1 em tratamento.*2 fechadas.*1 ativa/i);
+
+    fireEvent.click(alert);
+    expect(screen.getByRole("combobox", { name: "Filtrar incidências por estado de tratamento" }).textContent).toMatch(/todos os tratamentos/i);
   });
 
   it("oferece um filtro próprio para mostrar apenas NC abertas", () => {

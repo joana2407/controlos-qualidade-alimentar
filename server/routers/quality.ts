@@ -6953,8 +6953,7 @@ export const qualityRouter = router({
           collaboratorId > 0 &&
           Boolean(collaboratorName) &&
           !linkedEntryIds.has(entry.id) &&
-          payload.generatedNonconformity !== true &&
-          !hasCompletedIncidenceTreatment(payload)
+          payload.generatedNonconformity !== true
         );
       })
       .forEach(entry => {
@@ -6970,17 +6969,33 @@ export const qualityRouter = router({
         grouped.set(collaboratorId, current);
       });
     return Array.from(grouped.values())
-      .map(item => ({
-        collaboratorId: item.collaboratorId,
-        collaboratorName: item.collaboratorName,
-        total: item.incidences.length,
-        requiresNcAssessment: item.incidences.length >= 3,
-        mostRecentAt: item.incidences.reduce(
-          (latest, entry) =>
-            entry.completedAt > latest ? entry.completedAt : latest,
-          item.incidences[0].completedAt
-        ),
-      }))
+      .map(item => {
+        const counts = item.incidences.reduce(
+          (current, entry) => {
+            const status = incidenceTreatmentFromPayload(
+              entryPayload(entry)
+            ).status;
+            current[status] += 1;
+            return current;
+          },
+          { pending: 0, in_progress: 0, completed: 0 }
+        );
+        const total = counts.pending + counts.in_progress;
+        return {
+          collaboratorId: item.collaboratorId,
+          collaboratorName: item.collaboratorName,
+          pendingCount: counts.pending,
+          inProgressCount: counts.in_progress,
+          completedCount: counts.completed,
+          total,
+          requiresNcAssessment: total >= 3,
+          mostRecentAt: item.incidences.reduce(
+            (latest, entry) =>
+              entry.completedAt > latest ? entry.completedAt : latest,
+            item.incidences[0].completedAt
+          ),
+        };
+      })
       .sort(
         (left, right) =>
           right.total - left.total ||

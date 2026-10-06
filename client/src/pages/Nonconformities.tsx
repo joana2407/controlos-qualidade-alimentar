@@ -1126,7 +1126,7 @@ export default function Nonconformities() {
     setCollaboratorId(String(alert.collaboratorId));
     setStartDate(since.toISOString().slice(0, 10));
     setEndDate("");
-    setTreatmentFilter("active");
+    setTreatmentFilter("all");
     setOpenNcOnly(false);
     setSelectedKey("");
   };
@@ -1718,12 +1718,12 @@ export default function Nonconformities() {
               <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-700" />
               <div>
                 <p className="font-semibold">
-                  Incidências em acompanhamento por colaborador
+                  Resumo de incidências por colaborador
                 </p>
                 <p className="mt-1 text-sm text-amber-900">
-                  Mostra as incidências ainda ativas e sem NC gerada, nos últimos
-                  6 meses. Quando todas as incidências de um grupo ficam com
-                  tratamento concluído, a respetiva contagem reinicia em zero.
+                  Mostra as incidências sem NC gerada nos últimos 6 meses, por
+                  estado de tratamento. A contagem ativa reinicia em zero quando
+                  todas as incidências do grupo ficam fechadas.
                 </p>
                 <div className="mt-3 flex flex-wrap gap-2">
                   {recurrenceAlerts.data.map(alert => (
@@ -1734,8 +1734,8 @@ export default function Nonconformities() {
                       variant="outline"
                       className={
                         alert.requiresNcAssessment
-                          ? "border-red-300 bg-red-100 text-red-950 hover:bg-red-200"
-                          : "border-amber-300 bg-amber-200 text-amber-950 hover:bg-amber-300"
+                          ? "h-auto max-w-full flex-wrap gap-x-1 whitespace-normal py-2 text-left border-red-300 bg-red-100 text-red-950 hover:bg-red-200"
+                          : "h-auto max-w-full flex-wrap gap-x-1 whitespace-normal py-2 text-left border-amber-300 bg-amber-200 text-amber-950 hover:bg-amber-300"
                       }
                       onClick={() =>
                         openCollaboratorIncidences({
@@ -1743,10 +1743,21 @@ export default function Nonconformities() {
                           collaboratorName: alert.collaboratorName,
                         })
                       }
-                      aria-label={`Abrir as ${alert.total} incidências ativas de ${alert.collaboratorName}`}
+                      aria-label={`Abrir incidências de ${alert.collaboratorName}: ${alert.pendingCount} pendentes, ${alert.inProgressCount} em tratamento e ${alert.completedCount} fechadas`}
                     >
-                      {alert.collaboratorName} · {alert.total} {alert.total === 1 ? "incidência ativa" : "incidências ativas"}
-                      {alert.requiresNcAssessment ? " · avaliar NC" : ""}
+                      <span>{alert.collaboratorName}</span>
+                      <span className="text-xs font-normal">
+                        · {alert.pendingCount} {alert.pendingCount === 1 ? "pendente" : "pendentes"}
+                        {" · "}
+                        {alert.inProgressCount} {alert.inProgressCount === 1 ? "em tratamento" : "em tratamento"}
+                        {" · "}
+                        {alert.completedCount} {alert.completedCount === 1 ? "fechada" : "fechadas"}
+                        {" · "}
+                        {alert.total} {alert.total === 1 ? "ativa" : "ativas"}
+                      </span>
+                      {alert.requiresNcAssessment ? (
+                        <span className="text-xs font-semibold">· avaliar NC</span>
+                      ) : null}
                     </Button>
                   ))}
                 </div>
