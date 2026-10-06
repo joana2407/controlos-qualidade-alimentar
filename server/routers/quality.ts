@@ -2112,17 +2112,43 @@ export async function reconcilePendingQualityTasks(db: any) {
       db.select().from(fragileItems).orderBy(fragileItems.sortOrder),
     ])) as [any[], any[], any[], any[], any[], any[], any[], any[], any[]];
 
-  const candidates = tasks.filter(
-    task =>
-      task.area === "Plano do Dia" &&
-      task.status !== "cancelled" &&
-      localDateKey(task.dueAt) <= localDateKey(new Date())
-  );
+  const candidates = tasks.filter(task => {
+    if (
+      task.area !== "Plano do Dia" ||
+      localDateKey(task.dueAt) > localDateKey(new Date())
+    )
+      return false;
+    if (task.status !== "cancelled") return true;
+    // Uma tarefa pode ter sido eliminada/cancelada no painel depois de o
+    // preenchimento já ter sido guardado. Esses registos continuam a ser
+    // evidência válida e não devem desaparecer da completitude. Só
+    // reconsideramos a tarefa cancelada quando existe pelo menos um registo
+    // ativo explicitamente associado à própria tarefa; tarefas canceladas
+    // sem cobertura permanecem canceladas e não são reabertas.
+    return entries.some(
+      (entry: any) =>
+        !isDeletedControlEntry(entry) && entryMatchesPlannedTask(entry, task)
+    );
+  });
   const repaired: Array<{ id: number; module: string; factoryId: number | null; dueDate: string }> = [];
   for (const task of candidates) {
+    // Recuperação controlada: se uma tarefa foi cancelada depois de os
+    // pontos terem sido registados, o registo histórico eliminado pode
+    // reconstruir a completude da tarefa. O registo não é reativado e a
+    // regra global continua a excluir eliminados das novas coberturas.
+    const entriesForTask =
+      task.status === "cancelled"
+        ? entries.map((entry: any) => {
+            if (!isDeletedControlEntry(entry)) return entry;
+            const payload = entryPayload(entry);
+            return Number(payload.plannedTaskId) === task.id
+              ? { ...entry, payload: { ...payload, recordLifecycle: undefined } }
+              : entry;
+          })
+        : entries;
     const complete = isHistoricalPlanTaskSatisfied(
       task,
-      entries,
+      entriesForTask,
       areaCatalog,
       monthlyItems,
       monthlyAssignments,
@@ -2135,7 +2161,16 @@ export async function reconcilePendingQualityTasks(db: any) {
       complete ||
       isCoveredByCompletedEquivalentPlan(task, tasks) ||
       isCoveredByCombinedSameScopePlans(task, tasks, entries);
-    const targetStatus = reconciledComplete ? "completed" : "pending";
+    // Nunca transformamos uma tarefa cancelada e incompleta numa pendência:
+    // apenas restauramos a conclusão quando a cobertura ativa a comprova.
+    const targetStatus =
+      task.status === "cancelled"
+        ? reconciledComplete
+          ? "completed"
+          : "cancelled"
+        : reconciledComplete
+          ? "completed"
+          : "pending";
     if (task.status === targetStatus) continue;
     const latestMatchingEntry = entries.find((entry: any) =>
       entryMatchesPlannedTask(entry, task)
@@ -9362,6 +9397,7 @@ export const qualityRouter = router({
           ncStatus: z
             .enum(["open", "in_progress", "awaiting_validation", "closed"])
             .optional(),
+          taskId: z.number().int().positive().optional(),
           orderNumber: z.string().trim().min(1).max(80).optional(),
           analysisProduct: z.string().trim().min(1).max(180).optional(),
           analysisClient: z.string().trim().min(1).max(180).optional(),
@@ -9663,15 +9699,23 @@ export const qualityRouter = router({
       };
       const scopedEntries = scopeToFactory(entries, input?.factoryId).filter(
         entry => {
+          const entryPayload = payloadRecord(entry.payload);
+          const entryTaskId =
+            typeof entryPayload.plannedTaskId === "number"
+              ? entryPayload.plannedTaskId
+              : typeof entryPayload.taskId === "number"
+                ? entryPayload.taskId
+                : null;
           const orderNumber =
-            typeof payloadRecord(entry.payload).orderNumber === "string"
-              ? (payloadRecord(entry.payload).orderNumber as string)
+            typeof entryPayload.orderNumber === "string"
+              ? (entryPayload.orderNumber as string)
               : null;
           return (
             !isDeletedEntry(entry) &&
             withinPeriod(entry.completedAt) &&
             (!selectedModules.length || selectedModules.includes(entry.module)) &&
             (!input?.result || entry.result === input.result) &&
+            (!input?.taskId || entryTaskId === input.taskId) &&
             (!input?.orderNumber || orderNumber === input.orderNumber) &&
             (!input?.collaboratorProfileId ||
               entry.registeredByProfileId === input.collaboratorProfileId) &&
@@ -9687,6 +9731,19 @@ export const qualityRouter = router({
           (!input?.collaboratorProfileId ||
             task.completedByProfileId === input.collaboratorProfileId)
       );
+      const taskOptions = Array.from(
+        new Map(
+          scopedTasks
+            .filter(task => !selectedModules.length || selectedModules.includes(task.module))
+            .map(task => [
+              task.id,
+              { id: task.id, title: task.title, module: task.module, dueAt: task.dueAt },
+            ])
+        ).values()
+      ).sort((left, right) => {
+        const dueOrder = new Date(right.dueAt).getTime() - new Date(left.dueAt).getTime();
+        return dueOrder || left.title.localeCompare(right.title, "pt-PT");
+      });
       const scopedNcs = scopeToFactory(ncs, input?.factoryId).filter(
         nc =>
           withinPeriod(nc.detectedAt) &&
@@ -9786,6 +9843,7 @@ export const qualityRouter = router({
           module: input?.module ?? null,
           result: input?.result ?? null,
           ncStatus: input?.ncStatus ?? null,
+          taskId: input?.taskId ?? null,
           orderNumber: input?.orderNumber ?? null,
           analysisProduct: input?.analysisProduct ?? null,
           analysisClient: input?.analysisClient ?? null,
@@ -9808,6 +9866,7 @@ export const qualityRouter = router({
           deliveryNote: input?.deliveryNote ?? null,
           triage: input?.triage ?? null,
         },
+        taskOptions,
       };
     }),
 

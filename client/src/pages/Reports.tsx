@@ -886,6 +886,7 @@ export default function Reports() {
   const [endDate, setEndDate] = useState(today);
   const [selectedModules, setSelectedModules] = useState<string[]>([]);
   const [controlsOpen, setControlsOpen] = useState(false);
+  const [taskId, setTaskId] = useState("");
   const [result, setResult] = useState("");
   const [ncStatus, setNcStatus] = useState("");
   const [orderNumber, setOrderNumber] = useState("");
@@ -948,6 +949,7 @@ export default function Reports() {
       modules: selectedModules.length
         ? (selectedModules as (typeof MODULES)[number]["id"][])
         : undefined,
+      taskId: taskId ? Number(taskId) : undefined,
       result: result ? (result as "C" | "NC" | "N/A") : undefined,
       ncStatus: ncStatus
         ? (ncStatus as
@@ -994,6 +996,7 @@ export default function Reports() {
       selectedInspectedCollaborator,
       selectedModules,
       startDate,
+      taskId,
     ]
   );
   const reports = trpc.quality.reports.useQuery(queryInput);
@@ -1103,6 +1106,7 @@ export default function Reports() {
     setEndDate(today);
     setSelectedModules([]);
     setControlsOpen(false);
+    setTaskId("");
     setResult("");
     setNcStatus("");
     setOrderNumber("");
@@ -1131,6 +1135,9 @@ export default function Reports() {
     Controlo: selectedModules.length
       ? selectedModules.map(item => moduleLabel(item)).join(", ")
       : "Todos os controlos",
+    Tarefa:
+      (data?.taskOptions ?? []).find((task: any) => String(task.id) === taskId)
+        ?.title ?? "Todas as tarefas",
     Resultado: result || "Todos os resultados",
     "Estado da NC": ncStatus || "Todos os estados",
     Encomenda: orderNumber,
@@ -1368,6 +1375,25 @@ export default function Reports() {
                     </div>
                   </PopoverContent>
                 </Popover>
+              </div>
+              <div className="min-w-0 space-y-1">
+                <label className="text-xs font-medium">Tarefa</label>
+                <Select
+                  value={taskId || "all"}
+                  onValueChange={value => setTaskId(value === "all" ? "" : value)}
+                >
+                  <SelectTrigger aria-label="Filtrar por tarefa">
+                    <SelectValue placeholder="Todas as tarefas" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todas as tarefas</SelectItem>
+                    {(data?.taskOptions ?? []).map((task: any) => (
+                      <SelectItem key={task.id} value={String(task.id)}>
+                        {task.title} · {moduleLabel(task.module)} · {dateFormat(task.dueAt, false)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
               <div className="min-w-0 space-y-1">
                 <label className="text-xs font-medium">Colaborador</label>
