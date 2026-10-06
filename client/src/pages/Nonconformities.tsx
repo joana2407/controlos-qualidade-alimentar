@@ -668,7 +668,7 @@ export default function Nonconformities() {
   const [groupTreatmentDraft, setGroupTreatmentDraft] = useState<IncidenceTreatment>(emptyIncidenceTreatment());
   const [groupTreatmentOpen, setGroupTreatmentOpen] = useState(false);
   const [treatmentFilter, setTreatmentFilter] = useState<
-    IncidenceTreatment["status"] | "all" | "follow_up_review_pending"
+    IncidenceTreatment["status"] | "all" | "active" | "follow_up_review_pending"
   >("all");
   const [openNcOnly, setOpenNcOnly] = useState(false);
   const [creatingFollowUpTask, setCreatingFollowUpTask] = useState(false);
@@ -792,7 +792,9 @@ export default function Nonconformities() {
             return (
               matchesSimilar &&
               (treatmentFilter === "all" ||
-                (treatmentFilter === "follow_up_review_pending"
+                (treatmentFilter === "active"
+                  ? !item.generatedNonconformity && treatment.status !== "completed"
+                  : treatmentFilter === "follow_up_review_pending"
                   ? !item.generatedNonconformity && hasFollowUpReviewPending
                   : !item.generatedNonconformity &&
                     treatment.status === treatmentFilter))
@@ -1109,7 +1111,7 @@ export default function Nonconformities() {
     setSearchText("");
     setStartDate(since.toISOString().slice(0, 10));
     setEndDate("");
-    setTreatmentFilter("all");
+    setTreatmentFilter("active");
     setOpenNcOnly(false);
     setSelectedKey("");
   };
@@ -1124,7 +1126,7 @@ export default function Nonconformities() {
     setCollaboratorId(String(alert.collaboratorId));
     setStartDate(since.toISOString().slice(0, 10));
     setEndDate("");
-    setTreatmentFilter("all");
+    setTreatmentFilter("active");
     setOpenNcOnly(false);
     setSelectedKey("");
   };
@@ -1447,6 +1449,7 @@ export default function Nonconformities() {
                   value as
                     | IncidenceTreatment["status"]
                     | "all"
+                    | "active"
                     | "follow_up_review_pending"
                 );
                 setSelectedKey("");
@@ -1461,6 +1464,9 @@ export default function Nonconformities() {
               <SelectContent>
                 <SelectItem value="all">
                   Todos os tratamentos
+                </SelectItem>
+                <SelectItem value="active">
+                  Em acompanhamento (pendentes/em curso)
                 </SelectItem>
                 <SelectItem value="pending">Pendentes</SelectItem>
                 <SelectItem value="in_progress">Em curso</SelectItem>
@@ -1712,11 +1718,12 @@ export default function Nonconformities() {
               <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-700" />
               <div>
                 <p className="font-semibold">
-                  Avaliação de Não Conformidade recomendada
+                  Incidências em acompanhamento por colaborador
                 </p>
                 <p className="mt-1 text-sm text-amber-900">
-                  Os colaboradores abaixo acumularam pelo menos 3 incidências
-                  ainda sem NC gerada nos últimos 6 meses.
+                  Mostra as incidências ainda ativas e sem NC gerada, nos últimos
+                  6 meses. Quando todas as incidências de um grupo ficam com
+                  tratamento concluído, a respetiva contagem reinicia em zero.
                 </p>
                 <div className="mt-3 flex flex-wrap gap-2">
                   {recurrenceAlerts.data.map(alert => (
@@ -1725,16 +1732,21 @@ export default function Nonconformities() {
                       type="button"
                       size="sm"
                       variant="outline"
-                      className="border-amber-300 bg-amber-200 text-amber-950 hover:bg-amber-300"
+                      className={
+                        alert.requiresNcAssessment
+                          ? "border-red-300 bg-red-100 text-red-950 hover:bg-red-200"
+                          : "border-amber-300 bg-amber-200 text-amber-950 hover:bg-amber-300"
+                      }
                       onClick={() =>
                         openCollaboratorIncidences({
                           collaboratorId: alert.collaboratorId,
                           collaboratorName: alert.collaboratorName,
                         })
                       }
-                      aria-label={`Abrir as ${alert.total} incidências de ${alert.collaboratorName}`}
+                      aria-label={`Abrir as ${alert.total} incidências ativas de ${alert.collaboratorName}`}
                     >
-                      {alert.collaboratorName} · {alert.total} incidências
+                      {alert.collaboratorName} · {alert.total} {alert.total === 1 ? "incidência ativa" : "incidências ativas"}
+                      {alert.requiresNcAssessment ? " · avaliar NC" : ""}
                     </Button>
                   ))}
                 </div>

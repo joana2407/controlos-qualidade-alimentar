@@ -3589,11 +3589,12 @@ describe("procedimentos de qualidade por fábrica", () => {
     }
   });
 
-  it("retira dos alertas de recorrência um grupo cujas incidências têm tratamento concluído", async () => {
+  it("reinicia a contagem após tratamento concluído e mostra novas incidências ativas do colaborador", async () => {
     const treatedGroup = [
       { id: 99601, module: "bphf", factoryId: 1, area: "Produção", title: "Utilização correta de fardamento", result: "NC", completedAt: new Date(2026, 7, 10), payload: { collaboratorId: 996, collaboratorName: "Colaborador Tratado", incidenceTreatment: { status: "completed", correction: "Correção aplicada", responsible: "Joana Pina", completedAt: "2026-08-10" } } },
       { id: 99602, module: "bphf", factoryId: 1, area: "Produção", title: "Utilização correta de fardamento", result: "NC", completedAt: new Date(2026, 7, 11), payload: { collaboratorId: 996, collaboratorName: "Colaborador Tratado", incidenceTreatment: { status: "completed", correction: "Correção aplicada", responsible: "Joana Pina", completedAt: "2026-08-11" } } },
       { id: 99603, module: "bphf", factoryId: 1, area: "Produção", title: "Utilização correta de fardamento", result: "NC", completedAt: new Date(2026, 7, 12), payload: { collaboratorId: 996, collaboratorName: "Colaborador Tratado", incidenceTreatment: { status: "completed", correction: "Correção aplicada", responsible: "Joana Pina", completedAt: "2026-08-12" } } },
+      { id: 99604, module: "bphf", factoryId: 1, area: "Produção", title: "Higienização das mãos", result: "NC", completedAt: new Date(2026, 7, 13), payload: { collaboratorId: 996, collaboratorName: "Colaborador Tratado" } },
     ];
     entries.push(...treatedGroup as any[]);
     try {
@@ -3603,7 +3604,12 @@ describe("procedimentos de qualidade por fábrica", () => {
         caller.similarIncidenceAlerts(),
       ]);
 
-      expect(collaboratorAlerts.some(alert => alert.collaboratorId === 996)).toBe(false);
+      expect(collaboratorAlerts).toContainEqual(expect.objectContaining({
+        collaboratorId: 996,
+        collaboratorName: "Colaborador Tratado",
+        total: 1,
+        requiresNcAssessment: false,
+      }));
       expect(similarAlerts.some(alert => alert.collaboratorId === 996)).toBe(false);
     } finally {
       entries.splice(entries.length - treatedGroup.length, treatedGroup.length);

@@ -6970,11 +6970,11 @@ export const qualityRouter = router({
         grouped.set(collaboratorId, current);
       });
     return Array.from(grouped.values())
-      .filter(item => item.incidences.length >= 3)
       .map(item => ({
         collaboratorId: item.collaboratorId,
         collaboratorName: item.collaboratorName,
         total: item.incidences.length,
+        requiresNcAssessment: item.incidences.length >= 3,
         mostRecentAt: item.incidences.reduce(
           (latest, entry) =>
             entry.completedAt > latest ? entry.completedAt : latest,

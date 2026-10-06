@@ -3,7 +3,7 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-const { similarAlerts, updateIncidence, createFollowUpTask } = vi.hoisted(() => ({
+const { similarAlerts, recurrenceAlerts, updateIncidence, createFollowUpTask } = vi.hoisted(() => ({
   similarAlerts: [] as Array<{
     title: string;
     module: string;
@@ -13,6 +13,12 @@ const { similarAlerts, updateIncidence, createFollowUpTask } = vi.hoisted(() => 
     collaboratorId?: number | null;
     collaboratorName?: string | null;
     total: number;
+  }>,
+  recurrenceAlerts: [] as Array<{
+    collaboratorId: number;
+    collaboratorName: string;
+    total: number;
+    requiresNcAssessment: boolean;
   }>,
   updateIncidence: vi.fn(),
   createFollowUpTask: vi.fn(),
@@ -31,7 +37,7 @@ vi.mock("@/lib/trpc", () => ({
       listBphfInspectionEmployees: { useQuery: () => ({ data: [{ id: 71, name: "Maria Silva" }, { id: 72, name: "João Costa" }] }) },
       listIncidences: { useQuery: () => ({ data: [{ id: 9, title: "Incidência com foto", result: "NC", notes: "Evidência registada.", area: "Produção", factoryId: 1, module: "bphf", completedAt: new Date("2026-08-21T10:00:00"), occurredOn: "2026-08-19", generatedNonconformity: false, nonconformityId: null, occurrenceNumber: null, registeredByProfileId: 3, registeredByName: "Joana Pina", registeredByTitle: "Resp. Qualidade", payload: { collaboratorId: 71, collaboratorName: "Maria Silva", criterion: "Higienização das mãos dos manipuladores", product: "Pão de forma", lot: "L-26247", validity: "2026-09-20", reason: "Bolor identificado na amostra.", incidenceTreatment: { status: "completed", correction: "Correção concluída.", responsible: "Joana Pina", completedAt: "2026-08-21" }, incidenceTreatmentHistory: [{ revision: 1, recordedAt: "2026-08-20T10:00:00.000Z", recordedByProfileId: 3, recordedByName: "Joana Pina", recordedByTitle: "Resp. Qualidade", status: "in_progress", correction: "Correção em curso.", responsible: "Neuza Antunes" }, { revision: 2, recordedAt: "2026-08-21T10:30:00.000Z", recordedByProfileId: 3, recordedByName: "Joana Pina", recordedByTitle: "Resp. Qualidade", status: "completed", correction: "Correção concluída.", responsible: "Joana Pina", completedAt: "2026-08-21" }], evidencePhotos: [{ key: "incidences/9/foto.png", url: "/manus-storage/incidences/9/foto.png", fileName: "foto-incidencia.png", mimeType: "image/png" }] } }, { id: 10, title: "Incidência pendente", result: "NC", notes: "Aguardar tratamento.", area: "Embalagem", factoryId: 1, module: "bphf", completedAt: new Date("2026-08-20T10:00:00"), occurredOn: "2026-08-20", generatedNonconformity: false, nonconformityId: null, occurrenceNumber: null, registeredByProfileId: 3, registeredByName: "Joana Pina", registeredByTitle: "Resp. Qualidade", payload: {} }] }) },
       listNcs: { useQuery: () => ({ data: [] }) },
-      incidenceRecurrenceAlerts: { useQuery: () => ({ data: [] }) },
+      incidenceRecurrenceAlerts: { useQuery: () => ({ data: recurrenceAlerts }) },
       similarIncidenceAlerts: { useQuery: () => ({ data: similarAlerts }) },
       incidenceVerificationHistory: { useQuery: () => ({ data: [
         { id: 9, operationalDate: "2026-08-19", completedAt: new Date("2026-08-19T10:00:00"), result: "NC", title: "Inspeção BPHF", area: "Produção", state: null, containmentAction: "", notes: "Bolor identificado na amostra.", registeredByName: "Joana Pina", registeredByTitle: "Resp. Qualidade", collaboratorName: "Maria Silva", product: "Pão de forma", lot: "L-26247", validity: "2026-09-20", evidencePhotos: [{ key: "history/9.png", url: "/manus-storage/history/9.png", fileName: "histórico-9.png", mimeType: "image/png" }], isSourceVerification: true },
@@ -48,7 +54,7 @@ vi.mock("@/lib/trpc", () => ({
 
 import Nonconformities from "../client/src/pages/Nonconformities";
 
-afterEach(() => { cleanup(); similarAlerts.length = 0; updateIncidence.mockReset(); createFollowUpTask.mockReset(); });
+afterEach(() => { cleanup(); similarAlerts.length = 0; recurrenceAlerts.length = 0; updateIncidence.mockReset(); createFollowUpTask.mockReset(); });
 
 describe("detalhe de incidência com evidências", () => {
   it("apresenta a fotografia anexada depois de selecionar a incidência", () => {
@@ -235,6 +241,19 @@ describe("detalhe de incidência com evidências", () => {
     expect(screen.queryByText("Registo de incidências sem internet")).toBeNull();
   });
 
+  it("mostra o contador de incidências ativas atribuído a cada colaborador", () => {
+    recurrenceAlerts.push({
+      collaboratorId: 71,
+      collaboratorName: "Maria Silva",
+      total: 1,
+      requiresNcAssessment: false,
+    });
+    render(<Nonconformities />);
+
+    expect(screen.getByText("Incidências em acompanhamento por colaborador")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Abrir as 1 incidências ativas de Maria Silva" }).textContent).toMatch(/Maria Silva · 1 incidência ativa/i);
+  });
+
   it("oferece um filtro próprio para mostrar apenas NC abertas", () => {
     render(<Nonconformities />);
 
@@ -276,7 +295,7 @@ describe("detalhe de incidência com evidências", () => {
     expect(screen.getByRole("button", { name: /Guardar classificação e tratamento global/i })).toBeTruthy();
   });
 
-  it("limpa filtros concorrentes antes de apresentar um grupo de incidências recorrentes", () => {
+  it("limpa filtros concorrentes e mantém ocultas as incidências concluídas ao abrir um grupo", () => {
     similarAlerts.push({ title: "Colaborador: Maria Silva", module: "bphf", factoryId: 1, factoryName: "Fábrica 1 (Fatiado)", collaboratorId: 71, collaboratorName: "Maria Silva", total: 3 });
     render(<Nonconformities />);
 
@@ -290,8 +309,9 @@ describe("detalhe de incidência com evidências", () => {
     fireEvent.click(screen.getByRole("button", { name: /abrir as 3 incidências semelhantes/i }));
 
     expect((screen.getByLabelText("Pesquisar incidências") as HTMLInputElement).value).toBe("");
-    expect(screen.getByRole("combobox", { name: "Filtrar incidências por estado de tratamento" }).textContent).toMatch(/todos os tratamentos/i);
-    expect(screen.getByRole("button", { name: /Incidência com foto/i })).toBeTruthy();
+    expect(screen.getByRole("combobox", { name: "Filtrar incidências por estado de tratamento" }).textContent).toMatch(/em acompanhamento/i);
+    expect(screen.queryByRole("button", { name: /Incidência com foto/i })).toBeNull();
+    expect(screen.getByText("Sem incidências para os filtros selecionados.")).toBeTruthy();
   });
 
   it("permite abrir a verificação de origem e criar uma tarefa de seguimento para uma técnica", () => {
