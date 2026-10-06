@@ -10,6 +10,8 @@ vi.mock("@/lib/trpc", () => ({
     useUtils: () => ({ quality: { dashboard: { invalidate: vi.fn() }, reports: { invalidate: vi.fn() }, listNcs: { invalidate: vi.fn() } } }),
     quality: {
       calculateDispatchConformity: { useQuery: (input: Parameters<typeof calculateDispatchConformity>[0]) => ({ data: calculateDispatchConformity(input) }) },
+      listDispatchOrders: { useQuery: () => ({ isLoading: false, data: [] }) },
+      createDispatchOrder: { useMutation: () => ({ mutate: vi.fn(), isPending: false }) },
       parseDispatchOrderPdf: { useMutation: () => ({ mutate: vi.fn(), isPending: false }) },
       registerDispatchControl: { useMutation: () => ({ mutate, isPending: false }) },
       uploadVerificationEvidence: { useMutation: () => ({ mutate: vi.fn(), isPending: false }) },

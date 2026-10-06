@@ -344,6 +344,13 @@
       "when": 1790591922210,
       "tag": "0049_sticky_firebrand",
       "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "5",
+      "when": 1791280362720,
+      "tag": "0050_married_wong",
+      "breakpoints": true
     }
   ]
 }

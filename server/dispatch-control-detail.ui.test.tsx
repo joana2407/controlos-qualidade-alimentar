@@ -28,6 +28,7 @@ vi.mock("@/lib/trpc", () => ({
         listNcs: { invalidate: vi.fn() },
         fragilePending: { invalidate: vi.fn() },
         dailyControlResults: { invalidate: vi.fn() },
+        listDispatchOrders: { invalidate: vi.fn() },
       },
     }),
     quality: {
@@ -92,6 +93,7 @@ vi.mock("@/lib/trpc", () => ({
         }),
       },
       pendingControlTasks: { useQuery: () => ({ isLoading: false, data: [] }) },
+      listDispatchOrders: { useQuery: () => ({ isLoading: false, data: [] }) },
       controlAuthorization: {
         useQuery: () => ({
           isLoading: false,
@@ -107,6 +109,7 @@ vi.mock("@/lib/trpc", () => ({
       },
       createEntry: { useMutation: () => ({ isPending: false, mutate: vi.fn() }) },
       uploadVerificationEvidence: { useMutation: () => ({ isPending: false, mutate: vi.fn() }) },
+      createDispatchOrder: { useMutation: () => ({ isPending: false, mutate: vi.fn() }) },
       parseDispatchOrderPdf: { useMutation: () => ({ isPending: false, mutate: vi.fn() }) },
       registerDispatchControl: { useMutation: () => ({ isPending: false, mutate: vi.fn() }) },
       updateControlEntry: {

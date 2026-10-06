@@ -178,6 +178,25 @@ export const controlEntries = mysqlTable("control_entries", {
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 }, (table) => [index("entry_module_idx").on(table.module), index("entry_area_idx").on(table.area), index("entry_completed_idx").on(table.completedAt), index("entry_factory_idx").on(table.factoryId), index("entry_operator_idx").on(table.registeredByProfileId), uniqueIndex("entry_offline_sync_idx").on(table.offlineSyncId)]);
 
+/** Encomendas preparadas pela Responsável de Qualidade para verificação na expedição. */
+export const dispatchOrders = mysqlTable("dispatch_orders", {
+  id: int("id").autoincrement().primaryKey(),
+  operationalDate: date("operationalDate").notNull(),
+  profile: mysqlEnum("dispatch_order_profile", ["ambiente", "congelado"]).notNull(),
+  orderNumber: varchar("orderNumber", { length: 80 }).notNull(),
+  customer: varchar("customer", { length: 160 }).notNull(),
+  deliveryNote: varchar("deliveryNote", { length: 120 }),
+  orderItems: json("orderItems").$type<Array<{ name: string; orderedQuantity: number }>>().notNull(),
+  sourceDocument: json("sourceDocument").$type<{ name: string; url: string } | null>(),
+  status: mysqlEnum("dispatch_order_status", ["pending", "verified", "cancelled"]).default("pending").notNull(),
+  verifiedAt: timestamp("verifiedAt"),
+  verifiedByProfileId: int("verifiedByProfileId"),
+  verifiedByName: varchar("verifiedByName", { length: 160 }),
+  createdByProfileId: int("createdByProfileId").notNull(),
+  createdByName: varchar("createdByName", { length: 160 }).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (table) => [index("dispatch_order_date_idx").on(table.operationalDate), index("dispatch_order_status_idx").on(table.status), uniqueIndex("dispatch_order_date_number_idx").on(table.operationalDate, table.orderNumber)]);
+
 /** Projeto de desenvolvimento de produto acompanhado por avaliações sensoriais sucessivas. */
 export const rdSensoryProjects = mysqlTable("rd_sensory_projects", {
   id: int("id").autoincrement().primaryKey(),

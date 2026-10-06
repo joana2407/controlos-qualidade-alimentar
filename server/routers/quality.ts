@@ -17,6 +17,7 @@ import {
   dailyReportArchives,
   dailyReportArchiveViews,
   correctiveActions,
+  dispatchOrders,
   evidences,
   fragileAreas,
   fragileItems,
@@ -6089,6 +6090,79 @@ export const qualityRouter = router({
     )
     .query(({ input }) => calculateDispatchConformity(input)),
 
+  listDispatchOrders: qualitySessionProcedure
+    .input(
+      z.object({
+        operationalDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+      })
+    )
+    .query(async ({ input }) => {
+      const db = await requireDb();
+      const operationalDate = new Date(`${input.operationalDate}T12:00:00`);
+      return db
+        .select()
+        .from(dispatchOrders)
+        .where(eq(dispatchOrders.operationalDate, operationalDate))
+        .orderBy(desc(dispatchOrders.createdAt));
+    }),
+
+  createDispatchOrder: qualityManagerProcedure
+    .input(
+      z.object({
+        operationalDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+        profile: z.enum(["ambiente", "congelado"]),
+        orderNumber: z.string().trim().min(1).max(80),
+        customer: z.string().trim().min(2).max(160),
+        deliveryNote: z.string().trim().max(120).optional(),
+        orderItems: z
+          .array(
+            z.object({
+              name: z.string().trim().min(1).max(180),
+              orderedQuantity: z.number().int().min(0),
+            })
+          )
+          .min(1)
+          .max(30),
+        sourceDocument: z
+          .object({
+            name: z.string().min(1).max(180),
+            url: z.string().startsWith("/manus-storage/"),
+          })
+          .optional(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const db = await requireDb();
+      const operationalDate = new Date(`${input.operationalDate}T12:00:00`);
+      const existing = await db
+        .select({ id: dispatchOrders.id, status: dispatchOrders.status })
+        .from(dispatchOrders)
+        .where(
+          and(
+            eq(dispatchOrders.operationalDate, operationalDate),
+            eq(dispatchOrders.orderNumber, input.orderNumber)
+          )
+        )
+        .limit(1);
+      if (existing[0])
+        throw new TRPCError({
+          code: "CONFLICT",
+          message: "Já existe uma encomenda com este número na data selecionada.",
+        });
+      const inserted = await db.insert(dispatchOrders).values({
+        operationalDate,
+        profile: input.profile,
+        orderNumber: input.orderNumber,
+        customer: input.customer,
+        deliveryNote: input.deliveryNote || null,
+        orderItems: input.orderItems,
+        sourceDocument: input.sourceDocument ?? null,
+        createdByProfileId: ctx.operatorProfile!.id,
+        createdByName: ctx.operatorProfile!.name,
+      });
+      return { success: true, id: Number(inserted[0].insertId) };
+    }),
+
   parseDispatchOrderPdf: qualityOperatorProcedure
     .input(
       z.object({
@@ -6248,6 +6322,7 @@ export const qualityRouter = router({
             url: z.string().startsWith("/manus-storage/"),
           })
           .optional(),
+        dispatchOrderId: z.number().int().positive().optional(),
         plannedTaskId: z.number().int().optional(),
         performedAt: z
           .string()
@@ -6269,6 +6344,38 @@ export const qualityRouter = router({
         ? localDateKey(new Date(authorization.task.dueAt))
         : null;
       const todayKey = localDateKey(new Date());
+      const operationalDateKey = input.performedAt ?? plannedDateKey ?? todayKey;
+      const dispatchOrder = input.dispatchOrderId
+        ? (
+            await db
+              .select()
+              .from(dispatchOrders)
+              .where(eq(dispatchOrders.id, input.dispatchOrderId))
+              .limit(1)
+          )[0]
+        : null;
+      if (input.dispatchOrderId && !dispatchOrder)
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "A encomenda pré-carregada já não está disponível.",
+        });
+      if (dispatchOrder) {
+        if (dispatchOrder.status !== "pending")
+          throw new TRPCError({
+            code: "CONFLICT",
+            message: "Esta encomenda já foi verificada ou cancelada.",
+          });
+        if (localDateKey(new Date(dispatchOrder.operationalDate)) !== operationalDateKey)
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "A encomenda pré-carregada pertence a outra data operacional.",
+          });
+        if (dispatchOrder.orderNumber !== input.orderNumber)
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "O número da encomenda não coincide com a encomenda pré-carregada.",
+          });
+      }
       if (
         input.performedAt &&
         (!plannedDateKey ||
@@ -6432,6 +6539,7 @@ export const qualityRouter = router({
       const payload = {
         ...input,
         plannedTaskId: authorization.task?.id ?? null,
+        dispatchOrderId: dispatchOrder?.id ?? null,
         plannedDate: authorization.task?.dueAt
           ? new Date(authorization.task.dueAt).toISOString()
           : null,
@@ -6471,6 +6579,16 @@ export const qualityRouter = router({
           registeredByTitle: ctx.operatorProfile!.title,
           createdBy: ctx.user!.openId,
         });
+      if (dispatchOrder)
+        await db
+          .update(dispatchOrders)
+          .set({
+            status: "verified",
+            verifiedAt: new Date(),
+            verifiedByProfileId: ctx.operatorProfile!.id,
+            verifiedByName: ctx.operatorProfile!.name,
+          })
+          .where(eq(dispatchOrders.id, dispatchOrder.id));
       await reconcilePlannedControlTaskStatus(db, authorization.task?.id);
       return {
         success: true,

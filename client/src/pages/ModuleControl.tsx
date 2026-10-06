@@ -3077,6 +3077,7 @@ export default function ModuleControl() {
             )}
             {module === "dispatch_control" && (
               <DispatchControl
+                operationalDateKey={operationalDateKey}
                 plannedTaskId={authorization.data?.taskId}
                 isPreviousPending={Boolean(authorization.data?.isPreviousPending)}
                 performedAt={
@@ -4923,12 +4924,14 @@ const newDispatchProduct = (
 });
 
 export function DispatchControl({
+  operationalDateKey = currentLisbonDateKey(),
   plannedTaskId,
   isPreviousPending = false,
   performedAt,
   retroactiveReason,
   retroactiveJustification,
 }: {
+  operationalDateKey?: string;
   plannedTaskId?: number;
   isPreviousPending?: boolean;
   performedAt?: string;
@@ -4936,6 +4939,12 @@ export function DispatchControl({
   retroactiveJustification?: string;
 } = {}) {
   const utils = trpc.useUtils();
+  const { canManage } = useQualityAccess();
+  const dispatchOrders = trpc.quality.listDispatchOrders.useQuery({
+    operationalDate: operationalDateKey,
+  });
+  const [dispatchOrderId, setDispatchOrderId] = useState<number | undefined>();
+  const [selectedDispatchOrder, setSelectedDispatchOrder] = useState<number | null>(null);
   const [profile, setProfile] = useState<"ambiente" | "congelado">("ambiente");
   const [orderNumber, setOrderNumber] = useState("");
   const [customer, setCustomer] = useState("");
@@ -5021,6 +5030,8 @@ export function DispatchControl({
   const parseOrderPdf = trpc.quality.parseDispatchOrderPdf.useMutation({
     onSuccess: data => {
       setImportedOrder(data);
+      setDispatchOrderId(undefined);
+      setSelectedDispatchOrder(null);
       setOrderNumber(data.orderNumber);
       setCustomer(data.customer);
       setProductChecks(
@@ -5034,6 +5045,13 @@ export function DispatchControl({
       toast.success(
         "Encomenda importada. Valide cada produto e respetivos lotes antes de concluir."
       );
+    },
+    onError: error => toast.error(error.message),
+  });
+  const savePreloadedOrder = trpc.quality.createDispatchOrder.useMutation({
+    onSuccess: () => {
+      utils.quality.listDispatchOrders.invalidate({ operationalDate: operationalDateKey });
+      toast.success("Encomenda guardada para preenchimento pela equipa de qualidade.");
     },
     onError: error => toast.error(error.message),
   });
@@ -5057,6 +5075,8 @@ export function DispatchControl({
       setVehicleTemperature("");
       setVehicleObservations("");
       setImportedOrder(null);
+      setDispatchOrderId(undefined);
+      setSelectedDispatchOrder(null);
       setProductChecks([newDispatchProduct()]);
       setOpenProduct(0);
     },
@@ -5148,6 +5168,7 @@ export function DispatchControl({
       ),
       evidencePhotos,
       sourceOrderDocument: importedOrder?.document,
+      dispatchOrderId,
       plannedTaskId,
       performedAt: isPreviousPending ? performedAt : undefined,
       retroactiveReason: isPreviousPending
@@ -5188,6 +5209,66 @@ export function DispatchControl({
         commonToAllOperations
       />
       <form className="space-y-5" onSubmit={submit}>
+        <Card className="border border-indigo-100 bg-indigo-50/60 shadow-sm">
+          <CardContent className="space-y-3 p-5">
+            <div>
+              <p className="font-medium text-indigo-950">
+                Encomendas carregadas para {operationalDateKey.split("-").reverse().join("/")}
+              </p>
+              <p className="mt-1 text-sm text-indigo-800">
+                A Responsável de Qualidade pode preparar várias encomendas. Selecione uma para iniciar a verificação.
+              </p>
+            </div>
+            {dispatchOrders.isLoading ? (
+              <p className="text-sm text-indigo-800">A carregar encomendas…</p>
+            ) : dispatchOrders.data?.length ? (
+              <div className="divide-y overflow-hidden rounded-xl border border-indigo-100 bg-white">
+                {dispatchOrders.data.map(order => (
+                  <div key={order.id} className="flex flex-col gap-2 p-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <p className="font-medium text-slate-900">{order.orderNumber} · {order.customer}</p>
+                      <p className="text-xs text-slate-600">
+                        {order.profile === "congelado" ? "Congelado" : "Ambiente"} · {order.orderItems.length} produto(s) · {order.status === "pending" ? "Pendente de verificação" : order.status === "verified" ? `Verificada por ${order.verifiedByName ?? "equipa"}` : "Cancelada"}
+                      </p>
+                    </div>
+                    {order.status === "pending" ? (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant={selectedDispatchOrder === order.id ? "default" : "outline"}
+                        onClick={() => {
+                          setSelectedDispatchOrder(order.id);
+                          setDispatchOrderId(order.id);
+                          setProfile(order.profile);
+                          setOrderNumber(order.orderNumber);
+                          setCustomer(order.customer);
+                          setDeliveryNote(order.deliveryNote ?? "");
+                          setProductChecks(order.orderItems.map(item => newDispatchProduct(item.name, item.orderedQuantity)));
+                          setOpenProduct(order.orderItems.length ? 0 : null);
+                          setImportedOrder(order.sourceDocument ? {
+                            orderNumber: order.orderNumber,
+                            customer: order.customer,
+                            products: order.orderItems,
+                            warnings: [],
+                            document: order.sourceDocument,
+                          } : null);
+                        }}
+                      >
+                        {selectedDispatchOrder === order.id ? "Encomenda selecionada" : "Usar encomenda"}
+                      </Button>
+                    ) : (
+                      <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-600">Sem ação</span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="rounded-xl border border-dashed border-indigo-200 bg-white p-3 text-sm text-indigo-800">
+                Ainda não existem encomendas carregadas para esta data. A Responsável pode carregar uma abaixo.
+              </p>
+            )}
+          </CardContent>
+        </Card>
         <Card className="border border-teal-100 bg-teal-50/60 shadow-sm">
           <CardContent className="space-y-4 p-5">
             <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
@@ -5240,6 +5321,26 @@ export function DispatchControl({
                   >
                     Remover importação
                   </Button>
+                  {canManage && !dispatchOrderId && importedOrder.products.length > 0 && (
+                    <Button
+                      type="button"
+                      size="sm"
+                      disabled={savePreloadedOrder.isPending}
+                      onClick={() =>
+                        savePreloadedOrder.mutate({
+                          operationalDate: operationalDateKey,
+                          profile,
+                          orderNumber: importedOrder.orderNumber,
+                          customer: importedOrder.customer,
+                          deliveryNote: deliveryNote || undefined,
+                          orderItems: importedOrder.products,
+                          sourceDocument: importedOrder.document,
+                        })
+                      }
+                    >
+                      {savePreloadedOrder.isPending ? "A guardar…" : "Guardar para a equipa"}
+                    </Button>
+                  )}
                 </div>
                 {importedOrder.products.length ? (
                   <div className="mt-3 divide-y overflow-hidden rounded-xl border border-slate-100">
