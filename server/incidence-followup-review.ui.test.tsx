@@ -124,16 +124,7 @@ describe("alerta de revisão após seguimento", () => {
 
   it("filtra a lista para mostrar apenas as incidências com revisão de tratamento pendente", () => {
     render(<Nonconformities />);
-    fireEvent.click(
-      screen.getByRole("combobox", {
-        name: "Filtrar incidências por estado de tratamento",
-      })
-    );
-    fireEvent.click(
-      screen.getByRole("option", {
-        name: "Revisão de tratamento pendente",
-      })
-    );
+    fireEvent.click(screen.getByRole("button", { name: "Revisão pendente" }));
 
     expect(
       screen.getByRole("button", {

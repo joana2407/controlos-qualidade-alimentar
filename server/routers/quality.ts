@@ -2141,6 +2141,19 @@ export async function reconcilePendingQualityTasks(db: any) {
       db.select().from(fragileItems).orderBy(fragileItems.sortOrder),
     ])) as [any[], any[], any[], any[], any[], any[], any[], any[], any[]];
 
+  const hasApprovedHistoricalCompletionRecovery = (entry: any, task: any) => {
+    if (!isDeletedControlEntry(entry)) return false;
+    const payload = entryPayload(entry);
+    const recovery = payload.historicalCompletionRecovery;
+    return (
+      Number(payload.plannedTaskId) === task.id &&
+      recovery &&
+      typeof recovery === "object" &&
+      !Array.isArray(recovery) &&
+      (recovery as Record<string, unknown>).status === "approved" &&
+      Number((recovery as Record<string, unknown>).plannedTaskId) === task.id
+    );
+  };
   const candidates = tasks.filter(task => {
     if (
       task.area !== "Plano do Dia" ||
@@ -2161,16 +2174,24 @@ export async function reconcilePendingQualityTasks(db: any) {
   });
   const repaired: Array<{ id: number; module: string; factoryId: number | null; dueDate: string }> = [];
   for (const task of candidates) {
-    // Recuperação controlada: se uma tarefa foi cancelada depois de os
-    // pontos terem sido registados, o registo histórico eliminado pode
-    // reconstruir a completude da tarefa. O registo não é reativado e a
-    // regra global continua a excluir eliminados das novas coberturas.
+    // Recuperação controlada: um registo histórico eliminado só pode
+    // reconstruir a completitude quando a Responsável o marcou
+    // explicitamente como recuperação aprovada para a própria tarefa. O
+    // registo não é reativado e a regra global continua a excluir eliminados
+    // das novas coberturas.
     const entriesForTask =
-      task.status === "cancelled"
+      task.status === "cancelled" ||
+      entries.some((entry: any) =>
+        hasApprovedHistoricalCompletionRecovery(entry, task)
+      )
         ? entries.map((entry: any) => {
             if (!isDeletedControlEntry(entry)) return entry;
             const payload = entryPayload(entry);
-            return Number(payload.plannedTaskId) === task.id
+            const mayRecoverDeletedEntry =
+              Number(payload.plannedTaskId) === task.id &&
+              (task.status === "cancelled" ||
+                hasApprovedHistoricalCompletionRecovery(entry, task));
+            return mayRecoverDeletedEntry
               ? { ...entry, payload: { ...payload, recordLifecycle: undefined } }
               : entry;
           })
@@ -6953,7 +6974,8 @@ export const qualityRouter = router({
           collaboratorId > 0 &&
           Boolean(collaboratorName) &&
           !linkedEntryIds.has(entry.id) &&
-          payload.generatedNonconformity !== true
+          payload.generatedNonconformity !== true &&
+          !hasCompletedIncidenceTreatment(payload)
         );
       })
       .forEach(entry => {
@@ -6969,33 +6991,18 @@ export const qualityRouter = router({
         grouped.set(collaboratorId, current);
       });
     return Array.from(grouped.values())
-      .map(item => {
-        const counts = item.incidences.reduce(
-          (current, entry) => {
-            const status = incidenceTreatmentFromPayload(
-              entryPayload(entry)
-            ).status;
-            current[status] += 1;
-            return current;
-          },
-          { pending: 0, in_progress: 0, completed: 0 }
-        );
-        const total = counts.pending + counts.in_progress;
-        return {
-          collaboratorId: item.collaboratorId,
-          collaboratorName: item.collaboratorName,
-          pendingCount: counts.pending,
-          inProgressCount: counts.in_progress,
-          completedCount: counts.completed,
-          total,
-          requiresNcAssessment: total >= 3,
-          mostRecentAt: item.incidences.reduce(
-            (latest, entry) =>
-              entry.completedAt > latest ? entry.completedAt : latest,
-            item.incidences[0].completedAt
-          ),
-        };
-      })
+      .filter(item => item.incidences.length >= 3)
+      .map(item => ({
+        collaboratorId: item.collaboratorId,
+        collaboratorName: item.collaboratorName,
+        total: item.incidences.length,
+        requiresNcAssessment: true,
+        mostRecentAt: item.incidences.reduce(
+          (latest, entry) =>
+            entry.completedAt > latest ? entry.completedAt : latest,
+          item.incidences[0].completedAt
+        ),
+      }))
       .sort(
         (left, right) =>
           right.total - left.total ||

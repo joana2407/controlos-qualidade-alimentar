@@ -668,8 +668,8 @@ export default function Nonconformities() {
   const [groupTreatmentDraft, setGroupTreatmentDraft] = useState<IncidenceTreatment>(emptyIncidenceTreatment());
   const [groupTreatmentOpen, setGroupTreatmentOpen] = useState(false);
   const [treatmentFilter, setTreatmentFilter] = useState<
-    IncidenceTreatment["status"] | "all" | "active" | "follow_up_review_pending"
-  >("all");
+    "active" | "completed" | "follow_up_review_pending"
+  >("active");
   const [openNcOnly, setOpenNcOnly] = useState(false);
   const [creatingFollowUpTask, setCreatingFollowUpTask] = useState(false);
   const [followUpTitle, setFollowUpTitle] = useState("");
@@ -791,13 +791,14 @@ export default function Nonconformities() {
                 matchesSameCollaborator);
             return (
               matchesSimilar &&
-              (treatmentFilter === "all" ||
-                (treatmentFilter === "active"
-                  ? !item.generatedNonconformity && treatment.status !== "completed"
-                  : treatmentFilter === "follow_up_review_pending"
+              (treatmentFilter === "active"
+                ? !item.generatedNonconformity &&
+                  (treatment.status !== "completed" ||
+                    hasFollowUpReviewPending)
+                : treatmentFilter === "follow_up_review_pending"
                   ? !item.generatedNonconformity && hasFollowUpReviewPending
                   : !item.generatedNonconformity &&
-                    treatment.status === treatmentFilter))
+                    treatment.status === "completed")
             );
           })
           .map(item => ({
@@ -874,7 +875,7 @@ export default function Nonconformities() {
             collaboratorName: typeof (item.payload as Record<string, unknown>)?.collaboratorName === "string" ? (item.payload as Record<string, unknown>).collaboratorName as string : null,
             pointKey: controlledPointKey(item),
           })),
-        ...(!similarFilter && (treatmentFilter !== "pending" || openNcOnly)
+        ...(!similarFilter && (treatmentFilter === "active" || openNcOnly)
           ? (ncs.data ?? [])
           : []
         ).map(item => ({
@@ -1095,7 +1096,7 @@ export default function Nonconformities() {
   const clearDates = () => {
     setStartDate("");
     setEndDate("");
-    setTreatmentFilter("all");
+    setTreatmentFilter("active");
     setOpenNcOnly(false);
     setSelectedKey("");
   };
@@ -1126,7 +1127,7 @@ export default function Nonconformities() {
     setCollaboratorId(String(alert.collaboratorId));
     setStartDate(since.toISOString().slice(0, 10));
     setEndDate("");
-    setTreatmentFilter("all");
+    setTreatmentFilter("active");
     setOpenNcOnly(false);
     setSelectedKey("");
   };
@@ -1442,40 +1443,47 @@ export default function Nonconformities() {
                 Tratamentos, incidências abertas e NC geradas nos resultados visíveis.
               </CardDescription>
             </div>
-            <Select
-              value={treatmentFilter}
-              onValueChange={value => {
-                setTreatmentFilter(
-                  value as
-                    | IncidenceTreatment["status"]
-                    | "all"
-                    | "active"
-                    | "follow_up_review_pending"
-                );
-                setSelectedKey("");
-              }}
+            <div
+              aria-label="Filtrar incidências por estado de tratamento"
+              className="flex w-full flex-wrap gap-2 sm:w-auto sm:justify-end"
             >
-              <SelectTrigger
-                aria-label="Filtrar incidências por estado de tratamento"
-                className="w-full bg-white sm:w-64"
+              <Button
+                type="button"
+                size="sm"
+                variant={treatmentFilter === "active" ? "default" : "outline"}
+                aria-pressed={treatmentFilter === "active"}
+                onClick={() => {
+                  setTreatmentFilter("active");
+                  setSelectedKey("");
+                }}
               >
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">
-                  Todos os tratamentos
-                </SelectItem>
-                <SelectItem value="active">
-                  Em acompanhamento (pendentes/em curso)
-                </SelectItem>
-                <SelectItem value="pending">Pendentes</SelectItem>
-                <SelectItem value="in_progress">Em curso</SelectItem>
-                <SelectItem value="completed">Concluídos</SelectItem>
-                <SelectItem value="follow_up_review_pending">
-                  Revisão de tratamento pendente
-                </SelectItem>
-              </SelectContent>
-            </Select>
+                Acompanhamento
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant={treatmentFilter === "completed" ? "default" : "outline"}
+                aria-pressed={treatmentFilter === "completed"}
+                onClick={() => {
+                  setTreatmentFilter("completed");
+                  setSelectedKey("");
+                }}
+              >
+                Concluídos
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant={treatmentFilter === "follow_up_review_pending" ? "default" : "outline"}
+                aria-pressed={treatmentFilter === "follow_up_review_pending"}
+                onClick={() => {
+                  setTreatmentFilter("follow_up_review_pending");
+                  setSelectedKey("");
+                }}
+              >
+                Revisão pendente
+              </Button>
+            </div>
           </CardHeader>
           <CardContent aria-label="Resumo gráfico dos tratamentos" className="space-y-4">
             <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
@@ -1718,12 +1726,12 @@ export default function Nonconformities() {
               <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-700" />
               <div>
                 <p className="font-semibold">
-                  Resumo de incidências por colaborador
+                  Avaliação de Não Conformidade recomendada
                 </p>
                 <p className="mt-1 text-sm text-amber-900">
-                  Mostra as incidências sem NC gerada nos últimos 6 meses, por
-                  estado de tratamento. A contagem ativa reinicia em zero quando
-                  todas as incidências do grupo ficam fechadas.
+                  Apenas são apresentados colaboradores com 3 ou mais incidências
+                  ativas, ainda sem NC gerada, nos últimos 6 meses. As
+                  incidências fechadas não contam para este alerta.
                 </p>
                 <div className="mt-3 flex flex-wrap gap-2">
                   {recurrenceAlerts.data.map(alert => (
@@ -1734,8 +1742,8 @@ export default function Nonconformities() {
                       variant="outline"
                       className={
                         alert.requiresNcAssessment
-                          ? "h-auto max-w-full flex-wrap gap-x-1 whitespace-normal py-2 text-left border-red-300 bg-red-100 text-red-950 hover:bg-red-200"
-                          : "h-auto max-w-full flex-wrap gap-x-1 whitespace-normal py-2 text-left border-amber-300 bg-amber-200 text-amber-950 hover:bg-amber-300"
+                          ? "border-red-300 bg-red-100 text-red-950 hover:bg-red-200"
+                          : "border-amber-300 bg-amber-200 text-amber-950 hover:bg-amber-300"
                       }
                       onClick={() =>
                         openCollaboratorIncidences({
@@ -1743,21 +1751,9 @@ export default function Nonconformities() {
                           collaboratorName: alert.collaboratorName,
                         })
                       }
-                      aria-label={`Abrir incidências de ${alert.collaboratorName}: ${alert.pendingCount} pendentes, ${alert.inProgressCount} em tratamento e ${alert.completedCount} fechadas`}
+                      aria-label={`Abrir as ${alert.total} incidências ativas de ${alert.collaboratorName}`}
                     >
-                      <span>{alert.collaboratorName}</span>
-                      <span className="text-xs font-normal">
-                        · {alert.pendingCount} {alert.pendingCount === 1 ? "pendente" : "pendentes"}
-                        {" · "}
-                        {alert.inProgressCount} {alert.inProgressCount === 1 ? "em tratamento" : "em tratamento"}
-                        {" · "}
-                        {alert.completedCount} {alert.completedCount === 1 ? "fechada" : "fechadas"}
-                        {" · "}
-                        {alert.total} {alert.total === 1 ? "ativa" : "ativas"}
-                      </span>
-                      {alert.requiresNcAssessment ? (
-                        <span className="text-xs font-semibold">· avaliar NC</span>
-                      ) : null}
+                      {alert.collaboratorName} · {alert.total} incidências ativas · avaliar NC
                     </Button>
                   ))}
                 </div>

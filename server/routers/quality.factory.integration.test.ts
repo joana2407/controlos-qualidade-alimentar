@@ -286,6 +286,102 @@ describe("procedimentos de qualidade por fábrica", () => {
     ).toBe(true);
   });
 
+  it("recupera uma tarefa mensal pendente apenas com a aprovação explícita do registo histórico eliminado", async () => {
+    const plannedTaskId = 1500017;
+    const task = {
+      id: plannedTaskId,
+      factoryId: 1,
+      status: "pending",
+      dueAt: new Date(2026, 7, 13, 11, 0, 0),
+      completedAt: null,
+      module: "monthly_checklist" as const,
+      area: "Plano do Dia",
+      title: "Checklist Mensal F1 — recuperação aprovada",
+      responsible: "Joana Pina",
+      assigneeProfileIds: [3],
+      plannedCoverage: ['["monthly",301,"Geral"]'],
+    };
+    const deletedEntry = {
+      id: 1500017,
+      factoryId: 1,
+      module: "monthly_checklist",
+      area: "Geral",
+      result: "C",
+      completedAt: task.dueAt,
+      payload: {
+        plannedTaskId,
+        checklistItemId: 301,
+        recordLifecycle: { status: "deleted" },
+        historicalCompletionRecovery: {
+          status: "approved",
+          plannedTaskId,
+          approvedByName: "Joana Pina",
+        },
+      },
+    };
+    tasks.push(task as any);
+    entries.push(deletedEntry as any);
+    try {
+      const repaired = await reconcilePendingQualityTasks(mockDatabase() as any);
+
+      expect(repaired).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            id: plannedTaskId,
+            module: "monthly_checklist",
+            factoryId: 1,
+          }),
+        ])
+      );
+      expect(dbUpdates).toEqual(
+        expect.arrayContaining([expect.objectContaining({ status: "completed" })])
+      );
+    } finally {
+      tasks.splice(tasks.indexOf(task as any), 1);
+      entries.splice(entries.indexOf(deletedEntry as any), 1);
+    }
+  });
+
+  it("não recupera uma tarefa mensal pendente a partir de um registo eliminado sem aprovação", async () => {
+    const plannedTaskId = 1500018;
+    const task = {
+      id: plannedTaskId,
+      factoryId: 1,
+      status: "pending",
+      dueAt: new Date(2026, 7, 13, 11, 0, 0),
+      completedAt: null,
+      module: "monthly_checklist" as const,
+      area: "Plano do Dia",
+      title: "Checklist Mensal F1 — sem recuperação",
+      responsible: "Joana Pina",
+      assigneeProfileIds: [3],
+      plannedCoverage: ['["monthly",301,"Geral"]'],
+    };
+    const deletedEntry = {
+      id: 1500018,
+      factoryId: 1,
+      module: "monthly_checklist",
+      area: "Geral",
+      result: "C",
+      completedAt: task.dueAt,
+      payload: {
+        plannedTaskId,
+        checklistItemId: 301,
+        recordLifecycle: { status: "deleted" },
+      },
+    };
+    tasks.push(task as any);
+    entries.push(deletedEntry as any);
+    try {
+      const repaired = await reconcilePendingQualityTasks(mockDatabase() as any);
+
+      expect(repaired.some(item => item.id === plannedTaskId)).toBe(false);
+    } finally {
+      tasks.splice(tasks.indexOf(task as any), 1);
+      entries.splice(entries.indexOf(deletedEntry as any), 1);
+    }
+  });
+
   it("mantém a completitude estável pela cobertura planeada em todos os tipos de controlo", () => {
     const slot = (type: string, ...parts: Array<string | number>) =>
       JSON.stringify([type, ...parts]);
@@ -3622,7 +3718,7 @@ describe("procedimentos de qualidade por fábrica", () => {
     }
   });
 
-  it("reinicia a contagem após tratamento concluído e mostra novas incidências ativas do colaborador", async () => {
+  it("reinicia a contagem após tratamento concluído e só reabre o alerta com três incidências ativas", async () => {
     const treatedGroup = [
       { id: 99601, module: "bphf", factoryId: 1, area: "Produção", title: "Utilização correta de fardamento", result: "NC", completedAt: new Date(2026, 7, 10), payload: { collaboratorId: 996, collaboratorName: "Colaborador Tratado", incidenceTreatment: { status: "completed", correction: "Correção aplicada", responsible: "Joana Pina", completedAt: "2026-08-10" } } },
       { id: 99602, module: "bphf", factoryId: 1, area: "Produção", title: "Utilização correta de fardamento", result: "NC", completedAt: new Date(2026, 7, 11), payload: { collaboratorId: 996, collaboratorName: "Colaborador Tratado", incidenceTreatment: { status: "completed", correction: "Correção aplicada", responsible: "Joana Pina", completedAt: "2026-08-11" } } },
@@ -3637,15 +3733,7 @@ describe("procedimentos de qualidade por fábrica", () => {
         caller.similarIncidenceAlerts(),
       ]);
 
-      expect(collaboratorAlerts).toContainEqual(expect.objectContaining({
-        collaboratorId: 996,
-        collaboratorName: "Colaborador Tratado",
-        total: 1,
-        pendingCount: 1,
-        inProgressCount: 0,
-        completedCount: 3,
-        requiresNcAssessment: false,
-      }));
+      expect(collaboratorAlerts.some(alert => alert.collaboratorId === 996)).toBe(false);
       expect(similarAlerts.some(alert => alert.collaboratorId === 996)).toBe(false);
     } finally {
       entries.splice(entries.length - treatedGroup.length, treatedGroup.length);

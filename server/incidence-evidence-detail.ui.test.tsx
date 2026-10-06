@@ -18,9 +18,6 @@ const { similarAlerts, recurrenceAlerts, updateIncidence, createFollowUpTask } =
     collaboratorId: number;
     collaboratorName: string;
     total: number;
-    pendingCount: number;
-    inProgressCount: number;
-    completedCount: number;
     requiresNcAssessment: boolean;
   }>,
   updateIncidence: vi.fn(),
@@ -57,12 +54,16 @@ vi.mock("@/lib/trpc", () => ({
 
 import Nonconformities from "../client/src/pages/Nonconformities";
 
+const renderConcludedIncidences = () => {
+  render(<Nonconformities />);
+  fireEvent.click(screen.getByRole("button", { name: "Concluídos" }));
+};
+
 afterEach(() => { cleanup(); similarAlerts.length = 0; recurrenceAlerts.length = 0; updateIncidence.mockReset(); createFollowUpTask.mockReset(); });
 
 describe("detalhe de incidência com evidências", () => {
   it("apresenta a fotografia anexada depois de selecionar a incidência", () => {
-    render(<Nonconformities />);
-
+    renderConcludedIncidences();
     fireEvent.click(screen.getByRole("button", { name: /Incidência com foto/i }));
 
     expect(screen.getByText("Fotografias de evidência")).toBeTruthy();
@@ -79,7 +80,7 @@ describe("detalhe de incidência com evidências", () => {
   });
 
   it("mostra o histórico do tratamento com data, tipo e responsáveis", () => {
-    render(<Nonconformities />);
+    renderConcludedIncidences();
     fireEvent.click(screen.getByRole("button", { name: /Incidência com foto/i }));
 
     expect(screen.getByText("Histórico do tratamento")).toBeTruthy();
@@ -92,7 +93,7 @@ describe("detalhe de incidência com evidências", () => {
   });
 
   it("mostra no detalhe o colaborador e o critério BPHF inspecionados", () => {
-    render(<Nonconformities />);
+    renderConcludedIncidences();
     fireEvent.click(screen.getByRole("button", { name: /Incidência com foto/i }));
 
     expect(screen.getByText("Contexto da verificação BPHF")).toBeTruthy();
@@ -101,7 +102,7 @@ describe("detalhe de incidência com evidências", () => {
   });
 
   it("mostra os detalhes completos da verificação no resumo da incidência", () => {
-    render(<Nonconformities />);
+    renderConcludedIncidences();
     fireEvent.click(screen.getByRole("button", { name: /Incidência com foto/i }));
 
     expect(screen.getByText("Detalhes da verificação e do desvio")).toBeTruthy();
@@ -112,7 +113,7 @@ describe("detalhe de incidência com evidências", () => {
   });
 
   it("mostra o histórico completo das verificações no mesmo contexto", () => {
-    render(<Nonconformities />);
+    renderConcludedIncidences();
     fireEvent.click(screen.getByRole("button", { name: /Incidência com foto/i }));
 
     expect(screen.getByText("Histórico do colaborador e critério verificados")).toBeTruthy();
@@ -124,7 +125,7 @@ describe("detalhe de incidência com evidências", () => {
   });
 
   it("permite minimizar e reabrir o histórico de verificações", () => {
-    render(<Nonconformities />);
+    renderConcludedIncidences();
     fireEvent.click(screen.getByRole("button", { name: /Incidência com foto/i }));
 
     fireEvent.click(screen.getByRole("button", { name: "Minimizar histórico" }));
@@ -136,7 +137,7 @@ describe("detalhe de incidência com evidências", () => {
   });
 
   it("permite minimizar e reabrir os detalhes técnicos da incidência", () => {
-    render(<Nonconformities />);
+    renderConcludedIncidences();
     fireEvent.click(screen.getByRole("button", { name: /Incidência com foto/i }));
 
     const minimize = screen.getByRole("button", { name: "Minimizar detalhes" });
@@ -150,7 +151,7 @@ describe("detalhe de incidência com evidências", () => {
   });
 
   it("mantém os atalhos da origem e da conversa IA junto ao cabeçalho do detalhe", () => {
-    render(<Nonconformities />);
+    renderConcludedIncidences();
     fireEvent.click(screen.getByRole("button", { name: /Incidência com foto/i }));
 
     expect(screen.getByRole("button", { name: "Abrir verificação de origem" })).toBeTruthy();
@@ -166,7 +167,7 @@ describe("detalhe de incidência com evidências", () => {
   });
 
   it("permite minimizar os contextos e as tarefas de seguimento sem perder a identificação", () => {
-    render(<Nonconformities />);
+    renderConcludedIncidences();
     fireEvent.click(screen.getByRole("button", { name: /Incidência com foto/i }));
 
     fireEvent.click(screen.getByRole("button", { name: "Minimizar contexto BPHF" }));
@@ -191,7 +192,7 @@ describe("detalhe de incidência com evidências", () => {
   });
 
   it("mostra a data de ocorrência e permite atualizá-la ao editar a incidência", () => {
-    render(<Nonconformities />);
+    renderConcludedIncidences();
     fireEvent.click(screen.getByRole("button", { name: /Incidência com foto/i }));
 
     expect(screen.getAllByText(/Ocorrida em 19\/08\/2026/i).length).toBeGreaterThan(0);
@@ -215,24 +216,22 @@ describe("detalhe de incidência com evidências", () => {
     expect(screen.getByRole("button", { name: "Guardar tratamento" })).toBeTruthy();
   });
 
-  it("permite filtrar a lista por tratamento pendente", () => {
+  it("mostra por defeito apenas as incidências que requerem acompanhamento", () => {
     render(<Nonconformities />);
 
-    fireEvent.click(screen.getByRole("combobox", { name: "Filtrar incidências por estado de tratamento" }));
-    fireEvent.click(screen.getByRole("option", { name: "Pendentes" }));
-
-    expect(screen.getByRole("combobox", { name: "Filtrar incidências por estado de tratamento" }).textContent).toMatch(/pendentes/i);
+    expect(screen.getByRole("button", { name: "Acompanhamento" }).getAttribute("aria-pressed")).toBe("true");
     expect(screen.getByRole("button", { name: /Incidência pendente/i })).toBeTruthy();
     expect(screen.queryByRole("button", { name: /Incidência com foto/i })).toBeNull();
   });
 
-  it("mostra na lista o tratamento concluído e o resumo gráfico coerente", () => {
+  it("mostra as incidências fechadas apenas ao selecionar Concluídos", () => {
     render(<Nonconformities />);
+    fireEvent.click(screen.getByRole("button", { name: "Concluídos" }));
 
     expect(screen.getByRole("button", { name: /Incidência com foto/i }).textContent).toMatch(/tratamento concluído/i);
     expect(screen.getByRole("button", { name: /Incidência com foto/i }).textContent).toMatch(/decisão de nc: decisão pendente/i);
     expect(screen.getByLabelText("Resumo gráfico dos tratamentos")).toBeTruthy();
-    expect(screen.getByRole("img", { name: /1 pendentes, 0 em curso e 1 concluídos/i })).toBeTruthy();
+    expect(screen.getByRole("img", { name: /0 pendentes, 0 em curso e 1 concluídos/i })).toBeTruthy();
   });
 
   it("mantém a criação de incidência no cabeçalho e mostra incidências abertas e NC geradas no resumo", () => {
@@ -244,24 +243,21 @@ describe("detalhe de incidência com evidências", () => {
     expect(screen.queryByText("Registo de incidências sem internet")).toBeNull();
   });
 
-  it("mostra o contador de incidências ativas atribuído a cada colaborador", () => {
+  it("mostra apenas o alerta de colaborador com três incidências ativas", () => {
     recurrenceAlerts.push({
       collaboratorId: 71,
       collaboratorName: "Maria Silva",
-      total: 1,
-      pendingCount: 0,
-      inProgressCount: 1,
-      completedCount: 2,
-      requiresNcAssessment: false,
+      total: 3,
+      requiresNcAssessment: true,
     });
     render(<Nonconformities />);
 
-    expect(screen.getByText("Resumo de incidências por colaborador")).toBeTruthy();
-    const alert = screen.getByRole("button", { name: "Abrir incidências de Maria Silva: 0 pendentes, 1 em tratamento e 2 fechadas" });
-    expect(alert.textContent).toMatch(/Maria Silva.*1 em tratamento.*2 fechadas.*1 ativa/i);
+    expect(screen.getByText("Avaliação de Não Conformidade recomendada")).toBeTruthy();
+    const alert = screen.getByRole("button", { name: "Abrir as 3 incidências ativas de Maria Silva" });
+    expect(alert.textContent).toMatch(/Maria Silva · 3 incidências ativas · avaliar NC/i);
 
     fireEvent.click(alert);
-    expect(screen.getByRole("combobox", { name: "Filtrar incidências por estado de tratamento" }).textContent).toMatch(/todos os tratamentos/i);
+    expect(screen.getByRole("button", { name: "Acompanhamento" }).getAttribute("aria-pressed")).toBe("true");
   });
 
   it("oferece um filtro próprio para mostrar apenas NC abertas", () => {
@@ -312,20 +308,18 @@ describe("detalhe de incidência com evidências", () => {
     fireEvent.change(screen.getByLabelText("Pesquisar incidências"), {
       target: { value: "texto que não existe" },
     });
-    fireEvent.click(screen.getByRole("combobox", { name: "Filtrar incidências por estado de tratamento" }));
-    fireEvent.click(screen.getByRole("option", { name: "Pendentes" }));
     expect(screen.queryByRole("button", { name: /Incidência com foto/i })).toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: /abrir as 3 incidências semelhantes/i }));
 
     expect((screen.getByLabelText("Pesquisar incidências") as HTMLInputElement).value).toBe("");
-    expect(screen.getByRole("combobox", { name: "Filtrar incidências por estado de tratamento" }).textContent).toMatch(/em acompanhamento/i);
+    expect(screen.getByRole("button", { name: "Acompanhamento" }).getAttribute("aria-pressed")).toBe("true");
     expect(screen.queryByRole("button", { name: /Incidência com foto/i })).toBeNull();
     expect(screen.getByText("Sem incidências para os filtros selecionados.")).toBeTruthy();
   });
 
   it("permite abrir a verificação de origem e criar uma tarefa de seguimento para uma técnica", () => {
-    render(<Nonconformities />);
+    renderConcludedIncidences();
     fireEvent.click(screen.getByRole("button", { name: /Incidência com foto/i }));
 
     expect(screen.getByRole("button", { name: "Abrir verificação de origem" })).toBeTruthy();
