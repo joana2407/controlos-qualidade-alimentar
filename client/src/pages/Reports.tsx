@@ -1077,6 +1077,7 @@ export default function Reports() {
       ...entry,
       title: entry.title ?? "",
       area: entry.area ?? "",
+      factoryId: entry.factoryId ?? null,
       result: entry.result ?? "C",
       notes: entry.notes ?? "",
       collaboratorId:
@@ -1092,6 +1093,7 @@ export default function Reports() {
       id: editingEntry.id,
       title: editingEntry.title,
       area: editingEntry.area,
+      factoryId: editingEntry.factoryId ?? null,
       result: editingEntry.result,
       notes: editingEntry.notes,
       collaboratorId:
@@ -2225,6 +2227,42 @@ export default function Reports() {
                 </div>
               )}
               <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <label
+                    className="text-sm font-medium"
+                    htmlFor="report-entry-factory"
+                  >
+                    Fábrica
+                  </label>
+                  <Select
+                    value={String(editingEntry?.factoryId ?? "common")}
+                    onValueChange={value =>
+                      setEditingEntry((entry: any) =>
+                        entry
+                          ? {
+                              ...entry,
+                              factoryId: value === "common" ? null : Number(value),
+                            }
+                          : entry
+                      )
+                    }
+                  >
+                    <SelectTrigger
+                      id="report-entry-factory"
+                      aria-label="Fábrica do registo"
+                    >
+                      <SelectValue placeholder="Selecione a fábrica" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="common">Controlo comum</SelectItem>
+                      {(metadata.data?.factories ?? []).map(factory => (
+                        <SelectItem key={factory.id} value={String(factory.id)}>
+                          {factory.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
                 <div className="space-y-2">
                   <label className="text-sm font-medium">Área</label>
                   <Input

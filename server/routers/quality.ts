@@ -5092,6 +5092,18 @@ export const qualityRouter = router({
           code: "NOT_FOUND",
           message: "Registo de controlo não encontrado.",
         });
+      if (input.factoryId !== undefined && input.factoryId !== null) {
+        const selectedFactory = await db
+          .select({ id: factories.id })
+          .from(factories)
+          .where(eq(factories.id, input.factoryId))
+          .limit(1);
+        if (!selectedFactory[0])
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "A fábrica selecionada não existe.",
+          });
+      }
       const isManager = ctx.operatorProfile!.role === "manager";
       const isAuthor =
         entry.registeredByProfileId === ctx.operatorProfile!.id ||
@@ -5425,6 +5437,13 @@ export const qualityRouter = router({
                 byTitle: ctx.operatorProfile!.title,
                 previousResult: entry.result,
                 result: effectiveResult,
+                ...(input.factoryId !== undefined &&
+                input.factoryId !== entry.factoryId
+                  ? {
+                      previousFactoryId: entry.factoryId,
+                      factoryId: input.factoryId,
+                    }
+                  : {}),
                 incidenceResolved:
                   entry.result === "NC" && effectiveResult === "C",
                 ...(entry.module === "fragile_items" &&
