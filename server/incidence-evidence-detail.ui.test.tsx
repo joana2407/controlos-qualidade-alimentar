@@ -29,7 +29,7 @@ vi.mock("@/lib/trpc", () => ({
     quality: {
       metadata: { useQuery: () => ({ data: { factories: [{ id: 1, name: "Fábrica 1 (Fatiado)" }], collaborators: [{ id: 1, name: "Sabrina Esteves", title: "Tec. Qualidade" }, { id: 2, name: "Neuza Antunes", title: "Tec. Qualidade" }, { id: 3, name: "Joana Pina", title: "Resp. Qualidade" }] } }) },
       listBphfInspectionEmployees: { useQuery: () => ({ data: [{ id: 71, name: "Maria Silva" }, { id: 72, name: "João Costa" }] }) },
-      listIncidences: { useQuery: () => ({ data: [{ id: 9, title: "Incidência com foto", notes: "Evidência registada.", area: "Produção", factoryId: 1, module: "bphf", completedAt: new Date("2026-08-21T10:00:00"), occurredOn: "2026-08-19", generatedNonconformity: false, nonconformityId: null, occurrenceNumber: null, registeredByProfileId: 3, registeredByName: "Joana Pina", registeredByTitle: "Resp. Qualidade", payload: { collaboratorId: 71, collaboratorName: "Maria Silva", criterion: "Higienização das mãos dos manipuladores", product: "Pão de forma", lot: "L-26247", validity: "2026-09-20", reason: "Bolor identificado na amostra.", incidenceTreatment: { status: "completed", correction: "Correção concluída.", responsible: "Joana Pina", completedAt: "2026-08-21" }, incidenceTreatmentHistory: [{ revision: 1, recordedAt: "2026-08-20T10:00:00.000Z", recordedByProfileId: 3, recordedByName: "Joana Pina", recordedByTitle: "Resp. Qualidade", status: "in_progress", correction: "Correção em curso.", responsible: "Neuza Antunes" }, { revision: 2, recordedAt: "2026-08-21T10:30:00.000Z", recordedByProfileId: 3, recordedByName: "Joana Pina", recordedByTitle: "Resp. Qualidade", status: "completed", correction: "Correção concluída.", responsible: "Joana Pina", completedAt: "2026-08-21" }], evidencePhotos: [{ key: "incidences/9/foto.png", url: "/manus-storage/incidences/9/foto.png", fileName: "foto-incidencia.png", mimeType: "image/png" }] } }, { id: 10, title: "Incidência pendente", notes: "Aguardar tratamento.", area: "Embalagem", factoryId: 1, module: "bphf", completedAt: new Date("2026-08-20T10:00:00"), occurredOn: "2026-08-20", generatedNonconformity: false, nonconformityId: null, occurrenceNumber: null, registeredByProfileId: 3, registeredByName: "Joana Pina", registeredByTitle: "Resp. Qualidade", payload: {} }] }) },
+      listIncidences: { useQuery: () => ({ data: [{ id: 9, title: "Incidência com foto", result: "NC", notes: "Evidência registada.", area: "Produção", factoryId: 1, module: "bphf", completedAt: new Date("2026-08-21T10:00:00"), occurredOn: "2026-08-19", generatedNonconformity: false, nonconformityId: null, occurrenceNumber: null, registeredByProfileId: 3, registeredByName: "Joana Pina", registeredByTitle: "Resp. Qualidade", payload: { collaboratorId: 71, collaboratorName: "Maria Silva", criterion: "Higienização das mãos dos manipuladores", product: "Pão de forma", lot: "L-26247", validity: "2026-09-20", reason: "Bolor identificado na amostra.", incidenceTreatment: { status: "completed", correction: "Correção concluída.", responsible: "Joana Pina", completedAt: "2026-08-21" }, incidenceTreatmentHistory: [{ revision: 1, recordedAt: "2026-08-20T10:00:00.000Z", recordedByProfileId: 3, recordedByName: "Joana Pina", recordedByTitle: "Resp. Qualidade", status: "in_progress", correction: "Correção em curso.", responsible: "Neuza Antunes" }, { revision: 2, recordedAt: "2026-08-21T10:30:00.000Z", recordedByProfileId: 3, recordedByName: "Joana Pina", recordedByTitle: "Resp. Qualidade", status: "completed", correction: "Correção concluída.", responsible: "Joana Pina", completedAt: "2026-08-21" }], evidencePhotos: [{ key: "incidences/9/foto.png", url: "/manus-storage/incidences/9/foto.png", fileName: "foto-incidencia.png", mimeType: "image/png" }] } }, { id: 10, title: "Incidência pendente", result: "NC", notes: "Aguardar tratamento.", area: "Embalagem", factoryId: 1, module: "bphf", completedAt: new Date("2026-08-20T10:00:00"), occurredOn: "2026-08-20", generatedNonconformity: false, nonconformityId: null, occurrenceNumber: null, registeredByProfileId: 3, registeredByName: "Joana Pina", registeredByTitle: "Resp. Qualidade", payload: {} }] }) },
       listNcs: { useQuery: () => ({ data: [] }) },
       incidenceRecurrenceAlerts: { useQuery: () => ({ data: [] }) },
       similarIncidenceAlerts: { useQuery: () => ({ data: similarAlerts }) },
@@ -272,6 +272,24 @@ describe("detalhe de incidência com evidências", () => {
     expect(screen.getByRole("status").textContent).toMatch(/a visualizar as 3 incidências no mesmo ponto/i);
     expect(screen.getByRole("status").textContent).toMatch(/colaborador inspecionado «Maria Silva»/i);
     expect(screen.getByRole("button", { name: "Limpar acesso direto" })).toBeTruthy();
+  });
+
+  it("limpa filtros concorrentes antes de apresentar um grupo de incidências recorrentes", () => {
+    similarAlerts.push({ title: "Colaborador: Maria Silva", module: "bphf", factoryId: 1, factoryName: "Fábrica 1 (Fatiado)", collaboratorId: 71, collaboratorName: "Maria Silva", total: 3 });
+    render(<Nonconformities />);
+
+    fireEvent.change(screen.getByLabelText("Pesquisar incidências"), {
+      target: { value: "texto que não existe" },
+    });
+    fireEvent.click(screen.getByRole("combobox", { name: "Filtrar incidências por estado de tratamento" }));
+    fireEvent.click(screen.getByRole("option", { name: "Pendentes" }));
+    expect(screen.queryByRole("button", { name: /Incidência com foto/i })).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: /abrir as 3 incidências semelhantes/i }));
+
+    expect((screen.getByLabelText("Pesquisar incidências") as HTMLInputElement).value).toBe("");
+    expect(screen.getByRole("combobox", { name: "Filtrar incidências por estado de tratamento" }).textContent).toMatch(/todos os tratamentos/i);
+    expect(screen.getByRole("button", { name: /Incidência com foto/i })).toBeTruthy();
   });
 
   it("permite abrir a verificação de origem e criar uma tarefa de seguimento para uma técnica", () => {

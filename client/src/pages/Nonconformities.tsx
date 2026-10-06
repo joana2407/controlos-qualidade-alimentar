@@ -1003,8 +1003,15 @@ export default function Nonconformities() {
     since.setMonth(since.getMonth() - 6);
     setSimilarFilter(alert);
     setFactoryId(alert.factoryId ? String(alert.factoryId) : "");
+    // O atalho de recorrência deve apresentar sempre o grupo completo. Os
+    // filtros manuais anteriores não podem esconder as incidências que
+    // motivaram o alerta de abertura obrigatória de NC.
+    setCollaboratorId("");
+    setSearchText("");
     setStartDate(since.toISOString().slice(0, 10));
     setEndDate("");
+    setTreatmentFilter("all");
+    setOpenNcOnly(false);
     setSelectedKey("");
   };
   const openCollaboratorIncidences = (alert: {
