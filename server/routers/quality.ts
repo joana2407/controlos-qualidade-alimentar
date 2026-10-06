@@ -9734,6 +9734,7 @@ export const qualityRouter = router({
       const taskOptions = Array.from(
         new Map(
           scopedTasks
+            .filter(task => task.area !== "Plano do Dia")
             .filter(task => !selectedModules.length || selectedModules.includes(task.module))
             .map(task => [
               task.id,
