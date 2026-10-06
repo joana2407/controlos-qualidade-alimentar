@@ -28,6 +28,11 @@ export type IncidenceAiContext = {
   occurrenceNumber?: string;
   collaboratorName?: string;
   pointKey?: string;
+  relationship?: {
+    kind: "related" | "isolated";
+    label?: string;
+    classifiedByName?: string;
+  };
   totalNonconformingReportsAtPoint?: number;
   fragileRecurrenceHistory?: Array<{
     operationalDate: string;
@@ -208,6 +213,13 @@ export function IncidenceAiAssistant({ incidence, onMinimize }: Props) {
                 ? `A incidência «${incidence.title}» de ${incidence.occurredOn} está selecionada.`
                 : "Nenhuma incidência está selecionada; pode pedir orientação geral."}
             </p>
+            {incidence?.relationship ? (
+              <p className="mt-2 leading-6 text-violet-900">
+                {incidence.relationship.kind === "related"
+                  ? `Classificada como relacionada${incidence.relationship.label ? `: ${incidence.relationship.label}.` : "."}`
+                  : "Classificada sem relação com as restantes incidências do grupo."}
+              </p>
+            ) : null}
             {incidence?.generatedNonconformity && (
               <p className="mt-2 flex gap-2 text-amber-800">
                 <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0" />

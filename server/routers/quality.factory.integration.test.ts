@@ -3509,4 +3509,83 @@ describe("procedimentos de qualidade por fábrica", () => {
       questions: [],
     });
   });
+
+  it("permite à Responsável classificar relações e aplicar tratamento global a cada incidência", async () => {
+    const groupedIncidences = [
+      { id: 99401, module: "bphf", factoryId: 2, area: "Produção", title: "Estado dos cacifos", result: "NC", completedAt: now, payload: {} },
+      { id: 99402, module: "bphf", factoryId: 2, area: "Produção", title: "Estado dos cacifos", result: "NC", completedAt: now, payload: {} },
+      { id: 99403, module: "bphf", factoryId: 2, area: "Produção", title: "Estado dos cacifos", result: "NC", completedAt: now, payload: {} },
+    ];
+    entries.push(...groupedIncidences as any[]);
+    try {
+      const caller = qualityRouter.createCaller(createContext());
+      await expect(caller.applyIncidenceGroupTreatment({
+        incidenceIds: groupedIncidences.map(entry => entry.id),
+        assignments: [
+          { incidenceId: 99401, relationshipLabel: "Causa comum — turno noite" },
+          { incidenceId: 99402, relationshipLabel: null },
+          { incidenceId: 99403, relationshipLabel: "Causa comum — turno noite" },
+        ],
+        decision: "no_nc",
+        treatment: {
+          status: "in_progress",
+          correction: "Reforço de higienização e verificação diária.",
+          responsible: "Joana Pina",
+          dueDate: "2026-08-20",
+          notes: "Aplicado como tratamento conjunto.",
+          evidencePhotos: [],
+        },
+      })).resolves.toMatchObject({ success: true, updatedCount: 3 });
+
+      const updates = dbUpdates.filter(update => "payload" in update);
+      expect(updates).toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          payload: expect.objectContaining({
+            treatmentDecision: "no_nc",
+            incidenceRelationship: expect.objectContaining({ kind: "related", label: "Causa comum — turno noite" }),
+            incidenceTreatment: expect.objectContaining({ responsible: "Joana Pina", status: "in_progress" }),
+            incidenceTreatmentHistory: [expect.objectContaining({ revision: 1, recordedByName: "Joana Pina" })],
+          }),
+        }),
+        expect.objectContaining({
+          payload: expect.objectContaining({
+            incidenceRelationship: expect.objectContaining({ kind: "isolated" }),
+          }),
+        }),
+      ]));
+      expect(dbInserts).toContainEqual(expect.objectContaining({
+        topic: "Classificação de relações entre incidências",
+        guidance: expect.stringContaining("Causa comum — turno noite"),
+        createdByName: "Joana Pina",
+      }));
+
+      const technician = qualityRouter.createCaller(createContext({ id: 1, name: "Sabrina Esteves", title: "Tec. Qualidade", role: "technician" }));
+      await expect(technician.applyIncidenceGroupTreatment({
+        incidenceIds: [99401], assignments: [], decision: "none",
+      })).rejects.toMatchObject({ code: "FORBIDDEN" });
+    } finally {
+      entries.splice(entries.length - groupedIncidences.length, groupedIncidences.length);
+    }
+  });
+
+  it("apresenta as incidências relacionadas num grupo manual distinto e exclui as isoladas", async () => {
+    const manuallyClassified = [
+      { id: 99501, module: "bphf", factoryId: 1, area: "Produção", title: "Cacifos", result: "NC", completedAt: new Date(2026, 7, 10), payload: { incidenceRelationship: { kind: "related", groupId: "rel-turno-noite", label: "Causa comum — turno noite", classifiedAt: "2026-08-14T10:00:00.000Z", classifiedByProfileId: 3, classifiedByName: "Joana Pina" } } },
+      { id: 99502, module: "bphf", factoryId: 2, area: "Produção", title: "Cacifos", result: "NC", completedAt: new Date(2026, 7, 11), payload: { incidenceRelationship: { kind: "related", groupId: "rel-turno-noite", label: "Causa comum — turno noite", classifiedAt: "2026-08-14T10:00:00.000Z", classifiedByProfileId: 3, classifiedByName: "Joana Pina" } } },
+      { id: 99503, module: "bphf", factoryId: 3, area: "Produção", title: "Cacifos", result: "NC", completedAt: new Date(2026, 7, 12), payload: { incidenceRelationship: { kind: "related", groupId: "rel-turno-noite", label: "Causa comum — turno noite", classifiedAt: "2026-08-14T10:00:00.000Z", classifiedByProfileId: 3, classifiedByName: "Joana Pina" } } },
+      { id: 99504, module: "bphf", factoryId: 1, area: "Produção", title: "Cacifos", result: "NC", completedAt: new Date(2026, 7, 12), payload: { incidenceRelationship: { kind: "isolated", classifiedAt: "2026-08-14T10:00:00.000Z", classifiedByProfileId: 3, classifiedByName: "Joana Pina" } } },
+    ];
+    entries.push(...manuallyClassified as any[]);
+    try {
+      const alerts = await qualityRouter.createCaller(createContext()).similarIncidenceAlerts();
+      expect(alerts).toContainEqual(expect.objectContaining({
+        title: "Causa comum — turno noite",
+        relationshipGroupId: "rel-turno-noite",
+        total: 3,
+      }));
+      expect(alerts.some(alert => alert.total === 4 && alert.title === "Cacifos")).toBe(false);
+    } finally {
+      entries.splice(entries.length - manuallyClassified.length, manuallyClassified.length);
+    }
+  });
 });

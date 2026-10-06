@@ -272,6 +272,8 @@ describe("detalhe de incidência com evidências", () => {
     expect(screen.getByRole("status").textContent).toMatch(/a visualizar as 3 incidências no mesmo ponto/i);
     expect(screen.getByRole("status").textContent).toMatch(/colaborador inspecionado «Maria Silva»/i);
     expect(screen.getByRole("button", { name: "Limpar acesso direto" })).toBeTruthy();
+    expect(screen.getByText("Tratamento global e relações")).toBeTruthy();
+    expect(screen.getByRole("button", { name: /Guardar classificação e tratamento global/i })).toBeTruthy();
   });
 
   it("limpa filtros concorrentes antes de apresentar um grupo de incidências recorrentes", () => {

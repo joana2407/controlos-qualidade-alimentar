@@ -138,6 +138,13 @@ const incidenceAiContextSchema = z.object({
   occurrenceNumber: z.string().max(80).optional(),
   collaboratorName: z.string().max(160).optional(),
   pointKey: z.string().max(300).optional(),
+  relationship: z
+    .object({
+      kind: z.enum(["related", "isolated"]),
+      label: z.string().max(120).optional(),
+      classifiedByName: z.string().max(160).optional(),
+    })
+    .optional(),
   totalNonconformingReportsAtPoint: z.number().int().min(1).max(200).optional(),
   fragileRecurrenceHistory: z.array(z.object({
     operationalDate: z.string().max(40),
@@ -299,6 +306,19 @@ const incidenceTreatmentHistoryEntrySchema = incidenceTreatmentSchema.extend({
   recordedByName: z.string().min(1).max(160),
   recordedByTitle: z.string().min(1).max(120),
 });
+const incidenceRelationshipSchema = z.object({
+  kind: z.enum(["related", "isolated"]),
+  groupId: z.string().min(4).max(120).optional(),
+  label: z.string().min(2).max(120).optional(),
+  classifiedAt: z.string().datetime(),
+  classifiedByProfileId: z.number().int().positive(),
+  classifiedByName: z.string().min(1).max(160),
+});
+const incidenceGroupDecisionSchema = z.enum(["none", "no_nc", "nc_generated"]);
+const incidenceGroupAssignmentSchema = z.object({
+  incidenceId: z.number().int().positive(),
+  relationshipLabel: z.string().trim().min(2).max(120).nullable(),
+});
 const fragileRecurrenceHistoryEntrySchema = z.object({
   verificationEntryId: z.number().int().positive().optional(),
   operationalDate: z.string().date(),
@@ -339,6 +359,12 @@ function incidenceTreatmentHistoryFromPayload(payload: Record<string, unknown>) 
     .array(incidenceTreatmentHistoryEntrySchema)
     .safeParse(payload.incidenceTreatmentHistory);
   return parsed.success ? parsed.data : [];
+}
+function incidenceRelationshipFromPayload(payload: Record<string, unknown>) {
+  const parsed = incidenceRelationshipSchema.safeParse(
+    payload.incidenceRelationship
+  );
+  return parsed.success ? parsed.data : null;
 }
 function fragileRecurrenceHistoryFromPayload(payload: Record<string, unknown>) {
   const parsed = z
@@ -6812,6 +6838,7 @@ export const qualityRouter = router({
           );
           const treatment = incidenceTreatmentFromPayload(payload);
           const treatmentHistory = incidenceTreatmentHistoryFromPayload(payload);
+          const incidenceRelationship = incidenceRelationshipFromPayload(payload);
           const followUpReviewAlerts = followUpReviewAlertsFor(entry, payload);
           const originalOccurredOn = incidenceOccurredOnFromPayload(
             payload,
@@ -6840,6 +6867,7 @@ export const qualityRouter = router({
             treatmentProgress: treatment.status,
             treatment,
             treatmentHistory,
+            incidenceRelationship,
             followUpReviewAlerts,
             nonconformityId: linked?.id ?? null,
             occurrenceNumber,
@@ -6983,6 +7011,7 @@ export const qualityRouter = router({
         collaboratorId: number | null;
         collaboratorName: string | null;
         pointKey: string | null;
+        relationshipGroupId: string | null;
         factoryIds: number[];
         entries: typeof entries;
       }
@@ -7002,6 +7031,10 @@ export const qualityRouter = router({
         payload.deletedAt
       )
         return;
+      const relationship = incidenceRelationshipFromPayload(payload);
+      // Uma incidência declarada isolada pela Responsável deixa de pertencer ao
+      // agrupamento automático do mesmo ponto.
+      if (relationship?.kind === "isolated") return;
       const normalizedTitle = (entry.title ?? "")
         .trim()
         .toLocaleLowerCase("pt-PT")
@@ -7014,19 +7047,29 @@ export const qualityRouter = router({
           : "";
       const hasBphfCollaborator =
         collaboratorId > 0 && Boolean(collaboratorName);
-      const key = hasBphfCollaborator
-        ? `${entry.module}|collaborator:${collaboratorId}`
-        : controlledPointKey(entry, payload);
+      const key =
+        relationship?.kind === "related" && relationship.groupId
+          ? `relationship:${relationship.groupId}`
+          : hasBphfCollaborator
+            ? `${entry.module}|collaborator:${collaboratorId}`
+            : controlledPointKey(entry, payload);
       if (!key) return;
       const group = grouped.get(key) ?? {
         title: hasBphfCollaborator
-          ? `Colaborador: ${collaboratorName}`
-          : entry.title,
+          ? relationship?.label ?? `Colaborador: ${collaboratorName}`
+          : relationship?.label ?? entry.title,
         module: entry.module,
         factoryId: hasBphfCollaborator ? null : entry.factoryId,
         collaboratorId: hasBphfCollaborator ? collaboratorId : null,
         collaboratorName: hasBphfCollaborator ? collaboratorName : null,
-        pointKey: hasBphfCollaborator ? null : key,
+        pointKey:
+          relationship?.kind === "related" && relationship.groupId
+            ? null
+            : hasBphfCollaborator
+              ? null
+              : key,
+        relationshipGroupId:
+          relationship?.kind === "related" ? relationship.groupId ?? null : null,
         factoryIds: entry.factoryId ? [entry.factoryId] : [],
         entries: [] as typeof entries,
       };
@@ -7052,6 +7095,7 @@ export const qualityRouter = router({
         collaboratorId: group.collaboratorId,
         collaboratorName: group.collaboratorName,
         pointKey: group.pointKey,
+        relationshipGroupId: group.relationshipGroupId,
         total: group.entries.length,
         mostRecentAt: group.entries.reduce(
           (latest, entry) =>
@@ -7065,6 +7109,203 @@ export const qualityRouter = router({
           right.mostRecentAt.getTime() - left.mostRecentAt.getTime()
       );
   }),
+
+  applyIncidenceGroupTreatment: qualityManagerProcedure
+    .input(
+      z.object({
+        incidenceIds: z.array(z.number().int().positive()).min(1).max(50),
+        assignments: z.array(incidenceGroupAssignmentSchema).max(50),
+        decision: incidenceGroupDecisionSchema.default("none"),
+        occurrenceNumber: z.string().trim().max(80).optional(),
+        treatment: incidenceTreatmentSchema.optional(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const db = await requireDb();
+      const incidenceIds = Array.from(new Set(input.incidenceIds));
+      const assignmentById = new Map(
+        input.assignments
+          .filter(assignment => incidenceIds.includes(assignment.incidenceId))
+          .map(assignment => [
+            assignment.incidenceId,
+            assignment.relationshipLabel?.trim() || null,
+          ])
+      );
+      const entries = await db
+        .select()
+        .from(controlEntries)
+        .where(inArray(controlEntries.id, incidenceIds));
+      const selectedEntries = entries.filter(
+        entry => incidenceIds.includes(entry.id) && entry.result === "NC"
+      );
+      if (selectedEntries.length !== incidenceIds.length)
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message:
+            "O grupo contém uma incidência inválida ou que já não está disponível para tratamento.",
+        });
+      if (input.decision === "nc_generated" && input.treatment !== undefined)
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message:
+            "Quando o grupo é encaminhado para NC, o tratamento passa a ser gerido no sistema externo.",
+        });
+      const correction = input.treatment?.correction?.trim() || "";
+      const responsible = input.treatment?.responsible?.trim() || "";
+      if (
+        input.treatment?.status === "completed" &&
+        (!correction || !responsible || !input.treatment.completedAt)
+      )
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message:
+            "Para concluir o tratamento global, indique a correção, o responsável e a data de conclusão.",
+        });
+      const classifiedAt = new Date().toISOString();
+      const relationshipGroups = new Map<string, string>();
+      Array.from(
+        new Set(Array.from(assignmentById.values()).filter(Boolean))
+      ).forEach(
+        label => {
+          const normalized = label!
+            .toLocaleLowerCase("pt-PT")
+            .replace(/[^a-z0-9]+/g, "-")
+            .replace(/(^-|-$)/g, "")
+            .slice(0, 48);
+          relationshipGroups.set(
+            label!,
+            `rel-${Date.now()}-${normalized || relationshipGroups.size + 1}`
+          );
+        }
+      );
+      for (const entry of selectedEntries) {
+        const payload =
+          entry.payload &&
+          typeof entry.payload === "object" &&
+          !Array.isArray(entry.payload)
+            ? ({ ...entry.payload } as Record<string, unknown>)
+            : {};
+        const relationshipLabel = assignmentById.get(entry.id) ?? null;
+        payload.incidenceRelationship = relationshipLabel
+          ? {
+              kind: "related",
+              groupId: relationshipGroups.get(relationshipLabel),
+              label: relationshipLabel,
+              classifiedAt,
+              classifiedByProfileId: ctx.operatorProfile!.id,
+              classifiedByName: ctx.operatorProfile!.name,
+            }
+          : {
+              kind: "isolated",
+              classifiedAt,
+              classifiedByProfileId: ctx.operatorProfile!.id,
+              classifiedByName: ctx.operatorProfile!.name,
+            };
+        if (input.decision === "nc_generated") {
+          payload.generatedNonconformity = true;
+          payload.treatmentDecision = "nc_generated";
+          if (input.occurrenceNumber !== undefined)
+            payload.nonconformityOccurrenceNumber =
+              input.occurrenceNumber.trim() || null;
+          await db
+            .update(controlTasks)
+            .set({ status: "cancelled" })
+            .where(
+              and(
+                eq(controlTasks.sourceEntryId, entry.id),
+                eq(controlTasks.status, "pending")
+              )
+            );
+        } else if (input.decision === "no_nc") {
+          payload.generatedNonconformity = false;
+          payload.treatmentDecision = "no_nc";
+        }
+        if (input.treatment !== undefined) {
+          if (payload.generatedNonconformity === true)
+            throw new TRPCError({
+              code: "BAD_REQUEST",
+              message:
+                "Não é possível aplicar tratamento interno a uma incidência já encaminhada para NC.",
+            });
+          const nextTreatment = {
+            status: input.treatment.status,
+            correction,
+            responsible,
+            dueDate: input.treatment.dueDate ?? "",
+            completedAt:
+              input.treatment.status === "completed"
+                ? input.treatment.completedAt
+                : "",
+            notes: input.treatment.notes?.trim() || "",
+            evidencePhotos: input.treatment.evidencePhotos ?? [],
+            updatedAt: classifiedAt,
+            updatedByProfileId: ctx.operatorProfile!.id,
+            updatedByName: ctx.operatorProfile!.name,
+          };
+          const treatmentHistory = incidenceTreatmentHistoryFromPayload(payload);
+          payload.incidenceTreatment = nextTreatment;
+          payload.incidenceTreatmentHistory = [
+            ...treatmentHistory,
+            {
+              ...nextTreatment,
+              revision:
+                treatmentHistory.reduce(
+                  (highest, item) => Math.max(highest, item.revision),
+                  0
+                ) + 1,
+              recordedAt: classifiedAt,
+              recordedByProfileId: ctx.operatorProfile!.id,
+              recordedByName: ctx.operatorProfile!.name,
+              recordedByTitle: ctx.operatorProfile!.title,
+            },
+          ];
+        }
+        const groupHistory = Array.isArray(payload.incidenceGroupHistory)
+          ? payload.incidenceGroupHistory
+          : [];
+        payload.incidenceGroupHistory = [
+          ...groupHistory,
+          {
+            action: "group_treatment_and_relationship_classification",
+            at: classifiedAt,
+            decision: input.decision,
+            relationshipLabel,
+            relationshipGroupId: relationshipLabel
+              ? relationshipGroups.get(relationshipLabel)
+              : null,
+            treatmentApplied: input.treatment !== undefined,
+            byProfileId: ctx.operatorProfile!.id,
+            byName: ctx.operatorProfile!.name,
+            byTitle: ctx.operatorProfile!.title,
+          },
+        ];
+        await db
+          .update(controlEntries)
+          .set({ payload })
+          .where(eq(controlEntries.id, entry.id));
+      }
+      const relationSummary = Array.from(relationshipGroups.keys())
+        .map(label => {
+          const total = Array.from(assignmentById.values()).filter(
+            assignment => assignment === label
+          ).length;
+          return `«${label}» (${total} incidência${total === 1 ? "" : "s"})`;
+        })
+        .join("; ");
+      await db.insert(incidenceAiGuidance).values({
+        topic: "Classificação de relações entre incidências",
+        guidance: `Classificação validada pela Responsável de Qualidade em ${classifiedAt}: ${relationSummary || "incidências analisadas como isoladas"}. Decisão global: ${input.decision === "nc_generated" ? "encaminhar para NC externa" : input.decision === "no_nc" ? "não gerar NC" : "sem alteração de decisão"}. Use esta classificação como contexto em análises futuras; não a extrapole para pontos diferentes sem confirmação.`,
+        createdByProfileId: ctx.operatorProfile!.id,
+        createdByName: ctx.operatorProfile!.name,
+      });
+      return {
+        success: true,
+        updatedCount: selectedEntries.length,
+        relationshipGroups: Array.from(relationshipGroups.entries()).map(
+          ([label, groupId]) => ({ label, groupId })
+        ),
+      };
+    }),
 
   updateIncidence: qualityOperatorProcedure
     .input(
@@ -7543,6 +7784,7 @@ export const qualityRouter = router({
           );
           const treatment = incidenceTreatmentFromPayload(payload);
           const treatmentHistory = incidenceTreatmentHistoryFromPayload(payload);
+          const incidenceRelationship = incidenceRelationshipFromPayload(payload);
           const followUpReviewAlerts =
             pendingFollowUpReviewAlertsFromPayload(payload);
           const originalOccurredOn = incidenceOccurredOnFromPayload(payload, entry.completedAt);
@@ -7572,6 +7814,7 @@ export const qualityRouter = router({
             treatmentProgress: treatment.status,
             treatment,
             treatmentHistory,
+            incidenceRelationship,
             fragileRecurrenceHistory: fragileRecurrenceHistoryFromPayload(payload),
             followUpReviewAlerts,
             nonconformityId: linked?.id ?? null,
@@ -10250,7 +10493,7 @@ export const qualityRouter = router({
         messages: [
           {
             role: "system",
-            content: `És o assistente interno de gestão de Incidências do QualiControl. Responde sempre em português europeu, com linguagem técnica, clara e prática para a Responsável de Qualidade. Apoias a análise, priorização, preparação de perguntas, verificação de evidências e próximos passos; não executas alterações, não fechas incidências, não decides uma NC e não substituis a avaliação humana. Se a incidência já gerou uma Não Conformidade, recorda que o tratamento é gerido no sistema externo e não proponhas duplicar esse tratamento neste site. Não inventes requisitos, factos ou evidências. Quando a incidência for de Quebráveis, usa obrigatoriamente totalNonconformingReportsAtPoint e fragileRecurrenceHistory: indica quantas não conformidades foram registadas no mesmo ponto, explica a evolução e propõe o tratamento a confirmar pela Responsável de Qualidade. Distingue o registo inicial das reincidências e, se não houver histórico suficiente, declara essa limitação. Usa as orientações da Joana Pina como preferências operacionais, mas assinala quando uma orientação não é suficiente ou entra em conflito com os dados.\n\nOrientações aprendidas da Joana Pina:\n${guidanceText}`,
+            content: `És o assistente interno de gestão de Incidências do QualiControl. Responde sempre em português europeu, com linguagem técnica, clara e prática para a Responsável de Qualidade. Apoias a análise, priorização, preparação de perguntas, verificação de evidências e próximos passos; não executas alterações, não fechas incidências, não decides uma NC e não substituis a avaliação humana. Se a incidência já gerou uma Não Conformidade, recorda que o tratamento é gerido no sistema externo e não proponhas duplicar esse tratamento neste site. Não inventes requisitos, factos ou evidências. Quando a incidência for de Quebráveis, usa obrigatoriamente totalNonconformingReportsAtPoint e fragileRecurrenceHistory: indica quantas não conformidades foram registadas no mesmo ponto, explica a evolução e propõe o tratamento a confirmar pela Responsável de Qualidade. Distingue o registo inicial das reincidências e, se não houver histórico suficiente, declara essa limitação. Se o contexto tiver relationship, respeita a classificação explícita da Responsável: «related» limita a análise ao respetivo grupo e «isolated» impede inferir uma causa comum sem nova evidência. Usa as orientações da Joana Pina como preferências operacionais, mas assinala quando uma orientação não é suficiente ou entra em conflito com os dados.\n\nOrientações aprendidas da Joana Pina:\n${guidanceText}`,
           },
           {
             role: "user",

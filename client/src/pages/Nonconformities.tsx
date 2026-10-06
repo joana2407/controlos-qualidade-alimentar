@@ -32,6 +32,7 @@ import {
   Eye,
   Factory,
   FileWarning,
+  GitBranch,
   ImagePlus,
   Pencil,
   Plus,
@@ -156,6 +157,13 @@ type OccurrenceItem = {
     registeredByTitle: string;
   }>;
   fragileTreatmentReview: FragileTreatmentReview | null;
+  incidenceRelationship: {
+    kind: "related" | "isolated";
+    groupId?: string;
+    label?: string;
+    classifiedAt: string;
+    classifiedByName: string;
+  } | null;
   pointKey: string;
   plannedTaskId: number | null;
   plannedDate: string | null;
@@ -175,6 +183,7 @@ type SimilarIncidenceFilter = {
   pointKey?: string | null;
   collaboratorId?: number | null;
   collaboratorName?: string | null;
+  relationshipGroupId?: string | null;
   total: number;
 };
 
@@ -236,6 +245,23 @@ const treatmentStatusFor = (item: {
     : item.generatedNonconformity
       ? "nc_generated"
       : "pending";
+const incidenceRelationshipFrom = (value: unknown): OccurrenceItem["incidenceRelationship"] => {
+  const record =
+    value && typeof value === "object" && !Array.isArray(value)
+      ? (value as Record<string, unknown>)
+      : null;
+  if (!record || (record.kind !== "related" && record.kind !== "isolated")) return null;
+  const classifiedAt = typeof record.classifiedAt === "string" ? record.classifiedAt : "";
+  const classifiedByName = typeof record.classifiedByName === "string" ? record.classifiedByName : "";
+  if (!classifiedAt || !classifiedByName) return null;
+  return {
+    kind: record.kind,
+    ...(typeof record.groupId === "string" ? { groupId: record.groupId } : {}),
+    ...(typeof record.label === "string" ? { label: record.label } : {}),
+    classifiedAt,
+    classifiedByName,
+  };
+};
 const incidenceTreatmentFrom = (value: unknown): IncidenceTreatment => {
   const record =
     value && typeof value === "object" && !Array.isArray(value)
@@ -490,6 +516,8 @@ const incidenceDetailHiddenKeys = new Set([
   "fragileItemId",
   "recordLifecycle",
   "editHistory",
+  "incidenceRelationship",
+  "incidenceGroupHistory",
 ]);
 const formatIncidenceDetailValue = (value: unknown): string => {
   if (value === null || value === undefined || value === "") return "Não indicado";
@@ -632,6 +660,13 @@ export default function Nonconformities() {
   const [confirmDeleteIncidence, setConfirmDeleteIncidence] = useState(false);
   const [similarFilter, setSimilarFilter] =
     useState<SimilarIncidenceFilter | null>(null);
+  const [groupRelationshipAssignments, setGroupRelationshipAssignments] = useState<Record<number, string>>({});
+  const [groupRelationshipLabels, setGroupRelationshipLabels] = useState<string[]>([]);
+  const [newRelationshipLabel, setNewRelationshipLabel] = useState("");
+  const [groupDecision, setGroupDecision] = useState<"none" | "no_nc" | "nc_generated">("none");
+  const [groupOccurrenceNumber, setGroupOccurrenceNumber] = useState("");
+  const [groupTreatmentDraft, setGroupTreatmentDraft] = useState<IncidenceTreatment>(emptyIncidenceTreatment());
+  const [groupTreatmentOpen, setGroupTreatmentOpen] = useState(false);
   const [treatmentFilter, setTreatmentFilter] = useState<
     IncidenceTreatment["status"] | "all" | "follow_up_review_pending"
   >("all");
@@ -684,6 +719,18 @@ export default function Nonconformities() {
     },
     onError: error => toast.error(error.message),
   });
+  const applyIncidenceGroupTreatment = trpc.quality.applyIncidenceGroupTreatment?.useMutation?.({
+    onSuccess: result => {
+      invalidateIncidencePanels();
+      setSelectedKey("");
+      setSimilarFilter(null);
+      setGroupTreatmentOpen(false);
+      toast.success(
+        `${result.updatedCount} ${result.updatedCount === 1 ? "incidência atualizada" : "incidências atualizadas"}. A classificação foi guardada e o Copiloto recebeu este contexto.`
+      );
+    },
+    onError: error => toast.error(error.message),
+  }) ?? { mutate: () => undefined, isPending: false };
   const deleteIncidence = trpc.quality.deleteIncidence.useMutation({
     onSuccess: () => {
       invalidateIncidencePanels();
@@ -717,17 +764,23 @@ export default function Nonconformities() {
             const treatment = incidenceTreatmentFrom(
               (item as any).treatment ?? payload.incidenceTreatment
             );
+            const relationship = incidenceRelationshipFrom(
+              (item as any).incidenceRelationship ?? payload.incidenceRelationship
+            );
             const hasFollowUpReviewPending = Array.isArray(
               (item as any).followUpReviewAlerts
             ) && (item as any).followUpReviewAlerts.length > 0;
-            const matchesSameCollaborator = similarFilter?.collaboratorId
-              ? Number(payload.collaboratorId) === similarFilter.collaboratorId
-              : similarFilter?.pointKey
-                ? controlledPointKey(item) === similarFilter.pointKey
-                : normaliseSimilarTitle(item.title) ===
-                  normaliseSimilarTitle(similarFilter?.title ?? "");
+            const matchesSameCollaborator = similarFilter?.relationshipGroupId
+              ? relationship?.kind === "related" &&
+                relationship.groupId === similarFilter.relationshipGroupId
+              : similarFilter?.collaboratorId
+                ? Number(payload.collaboratorId) === similarFilter.collaboratorId
+                : similarFilter?.pointKey
+                  ? controlledPointKey(item) === similarFilter.pointKey
+                  : normaliseSimilarTitle(item.title) ===
+                    normaliseSimilarTitle(similarFilter?.title ?? "");
             const matchesFactory =
-              Boolean(similarFilter?.collaboratorId) ||
+              Boolean(similarFilter?.collaboratorId || similarFilter?.relationshipGroupId) ||
               item.factoryId === similarFilter?.factoryId;
             const matchesSimilar =
               !similarFilter ||
@@ -799,6 +852,10 @@ export default function Nonconformities() {
               ? (item as any).followUpReviewAlerts
               : [],
             fragileTreatmentReview: fragileTreatmentReviewFrom(item.payload),
+            incidenceRelationship: incidenceRelationshipFrom(
+              (item as any).incidenceRelationship ??
+                (item.payload as Record<string, unknown>)?.incidenceRelationship
+            ),
             plannedTaskId:
               Number((item.payload as Record<string, unknown>)?.plannedTaskId) ||
               null,
@@ -850,6 +907,7 @@ export default function Nonconformities() {
           verificationHistory: [],
           followUpReviewAlerts: [],
           fragileTreatmentReview: null,
+          incidenceRelationship: null,
           plannedTaskId: null,
           plannedDate: null,
           bphfContext: null,
@@ -892,6 +950,47 @@ export default function Nonconformities() {
     [incidences.data, ncs.data, openNcOnly, searchText, similarFilter, treatmentFilter]
   );
   const selected = occurrences.find(item => item.key === selectedKey) ?? null;
+  const directGroupIncidences = useMemo(
+    () =>
+      similarFilter
+        ? occurrences.filter(item => item.type === "incidence")
+        : [],
+    [occurrences, similarFilter]
+  );
+  const directGroupSignature = directGroupIncidences
+    .map(item => `${item.id}:${item.incidenceRelationship?.kind ?? ""}:${item.incidenceRelationship?.label ?? ""}`)
+    .join("|");
+  useEffect(() => {
+    if (!similarFilter || !directGroupIncidences.length) return;
+    const relationshipLabels = Array.from(
+      new Set(
+        directGroupIncidences
+          .map(item => item.incidenceRelationship?.label)
+          .filter((label): label is string => Boolean(label))
+      )
+    );
+    setGroupRelationshipLabels(relationshipLabels);
+    setGroupRelationshipAssignments(
+      Object.fromEntries(
+        directGroupIncidences.map(item => [
+          item.id,
+          item.incidenceRelationship?.kind === "related"
+            ? item.incidenceRelationship.label ?? ""
+            : "",
+        ])
+      )
+    );
+    setGroupDecision("none");
+    setGroupOccurrenceNumber("");
+    setGroupTreatmentDraft(emptyIncidenceTreatment());
+    setGroupTreatmentOpen(false);
+  }, [
+    similarFilter?.title,
+    similarFilter?.pointKey,
+    similarFilter?.relationshipGroupId,
+    similarFilter?.collaboratorId,
+    directGroupSignature,
+  ]);
   const verificationHistoryInput = useMemo(
     () => ({ sourceEntryId: selected?.type === "incidence" ? selected.id : 1 }),
     [selected?.id, selected?.type]
@@ -1150,6 +1249,64 @@ export default function Nonconformities() {
         },
       }
     );
+  };
+  const addGroupTreatmentPhoto = async (file?: File) => {
+    const scope = directGroupIncidences[0];
+    if (!file || !scope) return;
+    if (!["image/jpeg", "image/png", "image/webp"].includes(file.type))
+      return toast.error("Selecione uma imagem JPG, PNG ou WEBP.");
+    if (file.size > 5_000_000)
+      return toast.error("A fotografia deve ter no máximo 5 MB.");
+    const dataUrl = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result));
+      reader.onerror = () => reject(new Error("Não foi possível ler a fotografia."));
+      reader.readAsDataURL(file);
+    });
+    uploadIncidencePhoto.mutate(
+      {
+        module: scope.module as any,
+        factoryId: scope.factoryId ?? undefined,
+        fileName: file.name,
+        mimeType: file.type as "image/jpeg" | "image/png" | "image/webp",
+        dataUrl,
+      },
+      {
+        onSuccess: photo => {
+          setGroupTreatmentDraft(current => ({
+            ...current,
+            evidencePhotos: [...current.evidencePhotos, photo],
+          }));
+          toast.success("Fotografia adicionada ao tratamento global.");
+        },
+      }
+    );
+  };
+  const saveGroupTreatment = () => {
+    if (!directGroupIncidences.length) return;
+    if (groupDecision === "nc_generated" && groupTreatmentOpen) {
+      toast.error("Ao encaminhar para NC, o tratamento é gerido no sistema externo.");
+      return;
+    }
+    applyIncidenceGroupTreatment.mutate({
+      incidenceIds: directGroupIncidences.map(item => item.id),
+      assignments: directGroupIncidences.map(item => ({
+        incidenceId: item.id,
+        relationshipLabel: groupRelationshipAssignments[item.id]?.trim() || null,
+      })),
+      decision: groupDecision,
+      occurrenceNumber:
+        groupDecision === "nc_generated" ? groupOccurrenceNumber.trim() : undefined,
+      ...(groupTreatmentOpen
+        ? {
+            treatment: {
+              ...groupTreatmentDraft,
+              dueDate: normaliseIsoDate(groupTreatmentDraft.dueDate),
+              completedAt: normaliseIsoDate(groupTreatmentDraft.completedAt),
+            },
+          }
+        : {}),
+    });
   };
 
   return (
@@ -1660,6 +1817,146 @@ export default function Nonconformities() {
             </Button>
           </div>
         ) : null}
+        {similarFilter && canManage ? (
+          <Card className="border border-violet-200 bg-violet-50/40 shadow-sm">
+            <CardHeader className="border-b border-violet-100 pb-4">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-violet-100 text-violet-800">
+                      <GitBranch className="h-5 w-5" />
+                    </span>
+                    <CardTitle className="text-base">Tratamento global e relações</CardTitle>
+                  </div>
+                  <CardDescription className="mt-2 max-w-3xl">
+                    Aplique uma decisão comum às incidências do grupo e indique quais representam o mesmo desvio. A classificação é registada em cada incidência e passa a orientar o Copiloto nas análises futuras.
+                  </CardDescription>
+                </div>
+                <Badge className="w-fit bg-violet-100 text-violet-900 hover:bg-violet-100">
+                  {directGroupIncidences.length} {directGroupIncidences.length === 1 ? "incidência" : "incidências"}
+                </Badge>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-5 p-5">
+              <div className="grid gap-4 lg:grid-cols-2">
+                <div className="space-y-2">
+                  <Label>Tratamento global</Label>
+                  <Select value={groupDecision} onValueChange={value => setGroupDecision(value as typeof groupDecision)}>
+                    <SelectTrigger aria-label="Tratamento global do grupo"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">Sem alterar a decisão sobre NC</SelectItem>
+                      <SelectItem value="no_nc">Outro tratamento interno — não gera NC</SelectItem>
+                      <SelectItem value="nc_generated">Encaminhar todas para NC externa</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs leading-5 text-violet-900">
+                    A decisão é aplicada a todas as incidências indicadas abaixo, preservando o histórico individual de cada uma.
+                  </p>
+                </div>
+                {groupDecision === "nc_generated" ? (
+                  <div className="space-y-2">
+                    <Label>Número de ocorrência da NC (opcional)</Label>
+                    <Input
+                      aria-label="Número de ocorrência da NC do grupo"
+                      value={groupOccurrenceNumber}
+                      onChange={event => setGroupOccurrenceNumber(event.target.value)}
+                      placeholder="Número no sistema externo"
+                    />
+                    <p className="text-xs leading-5 text-amber-900">Após guardar, o tratamento destas incidências passa a ser gerido exclusivamente no sistema externo de NC.</p>
+                  </div>
+                ) : null}
+              </div>
+
+              <div className="rounded-xl border border-violet-200 bg-white/80 p-4">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+                  <div>
+                    <p className="text-sm font-semibold text-violet-950">Classificar relações entre incidências</p>
+                    <p className="mt-1 text-xs leading-5 text-violet-900">Crie uma relação para cada conjunto com a mesma causa. «Sem relação» mantém a incidência isolada de todos os grupos automáticos.</p>
+                  </div>
+                  <div className="flex w-full gap-2 sm:w-auto">
+                    <Input
+                      aria-label="Nome de uma nova relação entre incidências"
+                      className="bg-white sm:w-72"
+                      value={newRelationshipLabel}
+                      onChange={event => setNewRelationshipLabel(event.target.value)}
+                      placeholder="Ex.: Falha de higienização no turno noite"
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="shrink-0 border-violet-300 bg-white text-violet-950 hover:bg-violet-100"
+                      onClick={() => {
+                        const label = newRelationshipLabel.trim();
+                        if (!label) return toast.error("Indique um nome para a relação.");
+                        if (groupRelationshipLabels.some(item => normaliseSimilarTitle(item) === normaliseSimilarTitle(label))) return toast.error("Esta relação já existe no grupo.");
+                        setGroupRelationshipLabels(current => [...current, label]);
+                        setNewRelationshipLabel("");
+                      }}
+                    >
+                      <Plus className="mr-1 h-4 w-4" />Adicionar
+                    </Button>
+                  </div>
+                </div>
+                <div className="mt-4 space-y-2">
+                  {directGroupIncidences.map(item => (
+                    <div key={item.id} className="grid gap-3 rounded-lg border border-violet-100 bg-white p-3 md:grid-cols-[minmax(0,1fr)_17rem] md:items-center">
+                      <div>
+                        <p className="text-sm font-medium text-slate-950">{item.title}</p>
+                        <p className="mt-1 text-xs text-slate-600">{factoryName(item.factoryId)} · {item.area} · {dateFormat(item.date)}</p>
+                      </div>
+                      <Select
+                        value={groupRelationshipAssignments[item.id] || "isolated"}
+                        onValueChange={value => setGroupRelationshipAssignments(current => ({
+                          ...current,
+                          [item.id]: value === "isolated" ? "" : value,
+                        }))}
+                      >
+                        <SelectTrigger aria-label={`Relação da incidência ${item.title}`} className="bg-white"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="isolated">Sem relação com as restantes</SelectItem>
+                          {groupRelationshipLabels.map(label => <SelectItem key={label} value={label}>{label}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {groupDecision !== "nc_generated" ? (
+                <div className="rounded-xl border border-teal-200 bg-teal-50/45 p-4">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-semibold text-teal-950">Correção e ação de tratamento partilhadas</p>
+                      <p className="mt-1 text-xs leading-5 text-teal-900">Pode registar responsável, prazo, conclusão e evidências para cada incidência do grupo.</p>
+                    </div>
+                    <Button type="button" size="sm" variant="outline" className="border-teal-300 bg-white text-teal-950 hover:bg-teal-100" onClick={() => setGroupTreatmentOpen(current => !current)}>
+                      {groupTreatmentOpen ? "Ocultar tratamento" : "Adicionar tratamento"}
+                    </Button>
+                  </div>
+                  {groupTreatmentOpen ? <div className="mt-4 space-y-4">
+                    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                      <div className="space-y-2"><Label>Estado</Label><Select value={groupTreatmentDraft.status} onValueChange={value => setGroupTreatmentDraft(current => ({ ...current, status: value as IncidenceTreatment["status"] }))}><SelectTrigger aria-label="Estado do tratamento global"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="pending">Tratamento pendente</SelectItem><SelectItem value="in_progress">Em tratamento</SelectItem><SelectItem value="completed">Tratamento concluído</SelectItem></SelectContent></Select></div>
+                      <div className="space-y-2"><Label>Responsável</Label><Input aria-label="Responsável pelo tratamento global" value={groupTreatmentDraft.responsible} onChange={event => setGroupTreatmentDraft(current => ({ ...current, responsible: event.target.value }))} placeholder="Nome do responsável" /></div>
+                      <div className="space-y-2"><Label>Prazo</Label><Input aria-label="Prazo do tratamento global" type="date" value={groupTreatmentDraft.dueDate} onChange={event => setGroupTreatmentDraft(current => ({ ...current, dueDate: event.target.value }))} /></div>
+                      <div className="space-y-2"><Label>Data de conclusão</Label><Input aria-label="Data de conclusão do tratamento global" type="date" value={groupTreatmentDraft.completedAt} disabled={groupTreatmentDraft.status !== "completed"} onChange={event => setGroupTreatmentDraft(current => ({ ...current, completedAt: event.target.value }))} /></div>
+                    </div>
+                    <div className="space-y-2"><Label>Correção / tratamento efetuado</Label><Textarea aria-label="Correção ou tratamento global efetuado" value={groupTreatmentDraft.correction} onChange={event => setGroupTreatmentDraft(current => ({ ...current, correction: event.target.value }))} rows={3} /></div>
+                    <div className="space-y-2"><Label>Observações da ação corretiva</Label><Textarea aria-label="Observações do tratamento global" value={groupTreatmentDraft.notes} onChange={event => setGroupTreatmentDraft(current => ({ ...current, notes: event.target.value }))} rows={3} /></div>
+                    <div className="space-y-2"><Label htmlFor="group-treatment-photo">Evidências do tratamento</Label><Input id="group-treatment-photo" type="file" accept="image/jpeg,image/png,image/webp" onChange={event => addGroupTreatmentPhoto(event.target.files?.[0])} disabled={uploadIncidencePhoto.isPending} />
+                      {groupTreatmentDraft.evidencePhotos.length ? <div className="flex flex-wrap gap-2">{groupTreatmentDraft.evidencePhotos.map((photo, index) => <div key={`${photo.url}-${index}`} className="relative"><img src={photo.url} alt={photo.fileName} className="h-16 w-16 rounded-lg border border-teal-200 object-cover" /><Button type="button" size="icon" variant="destructive" className="absolute -right-2 -top-2 h-5 w-5" aria-label={`Remover ${photo.fileName} do tratamento global`} onClick={() => setGroupTreatmentDraft(current => ({ ...current, evidencePhotos: current.evidencePhotos.filter((_, photoIndex) => photoIndex !== index) }))}><Trash2 className="h-3 w-3" /></Button></div>)}</div> : null}
+                    </div>
+                  </div> : null}
+                </div>
+              ) : null}
+              <div className="flex justify-end">
+                <Button type="button" onClick={saveGroupTreatment} disabled={applyIncidenceGroupTreatment.isPending || uploadIncidencePhoto.isPending}>
+                  <Save className="mr-2 h-4 w-4" />
+                  {applyIncidenceGroupTreatment.isPending ? "A guardar…" : "Guardar classificação e tratamento global"}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        ) : null}
         <div className="grid gap-6 xl:grid-cols-[1.05fr_0.95fr]">
           <Card className="border-0 panel-shadow">
             <CardHeader className="border-b border-slate-100">
@@ -1719,6 +2016,25 @@ export default function Nonconformities() {
                               {item.fragileRecurrenceHistory.length === 1
                                 ? "1 reincidência"
                                 : `${item.fragileRecurrenceHistory.length} reincidências`}
+                            </Badge>
+                          ) : null}
+                          {item.type === "incidence" && item.incidenceRelationship ? (
+                            <Badge
+                              className={
+                                item.incidenceRelationship.kind === "related"
+                                  ? "bg-violet-100 text-violet-900 hover:bg-violet-100"
+                                  : "bg-slate-100 text-slate-700 hover:bg-slate-100"
+                              }
+                              aria-label={
+                                item.incidenceRelationship.kind === "related"
+                                  ? `Relação: ${item.incidenceRelationship.label ?? "grupo relacionado"}`
+                                  : "Incidência sem relação com as restantes"
+                              }
+                            >
+                              <GitBranch className="mr-1 h-3 w-3" />
+                              {item.incidenceRelationship.kind === "related"
+                                ? item.incidenceRelationship.label ?? "Grupo relacionado"
+                                : "Sem relação"}
                             </Badge>
                           ) : null}
                           <Badge
@@ -1900,6 +2216,13 @@ export default function Nonconformities() {
                         occurrenceNumber: selected.occurrenceNumber ?? undefined,
                         collaboratorName: selected.collaboratorName ?? undefined,
                         pointKey: selected.pointKey,
+                        relationship: selected.incidenceRelationship
+                          ? {
+                              kind: selected.incidenceRelationship.kind,
+                              label: selected.incidenceRelationship.label,
+                              classifiedByName: selected.incidenceRelationship.classifiedByName,
+                            }
+                          : undefined,
                         totalNonconformingReportsAtPoint: 1 + selected.fragileRecurrenceHistory.length,
                         fragileRecurrenceHistory: selected.fragileRecurrenceHistory.map(recurrence => ({
                           operationalDate: recurrence.operationalDate,
