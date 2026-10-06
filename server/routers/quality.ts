@@ -8797,7 +8797,7 @@ export const qualityRouter = router({
             id: entry.id,
             state: normalizedState,
             result: entry.result,
-            notes: normalizedState === "Íntegro" ? null : entry.notes,
+            notes: entry.notes,
             completedAt: entry.completedAt,
             registeredByName: entry.registeredByName,
             registeredByTitle: entry.registeredByTitle,

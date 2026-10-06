@@ -2728,6 +2728,39 @@ describe("procedimentos de qualidade por fábrica", () => {
     }
   });
 
+  it("mantém as observações no histórico de uma verificação de Quebráveis classificada como íntegra", async () => {
+    const intactEntry = {
+      id: 952,
+      factoryId: 3,
+      module: "fragile_items",
+      area: "Embalagem",
+      title: "Quebrável — Proteção acrílica",
+      result: "C",
+      notes: "Proteção limpa, fixa e sem fissuras.",
+      completedAt: new Date(2026, 7, 14, 10, 0, 0),
+      registeredByName: "Neuza Antunes",
+      registeredByTitle: "Tec. Qualidade",
+      payload: { fragileItemId: 9952, state: "Íntegro", evidencePhotos: [] },
+    };
+    entries.push(intactEntry);
+    try {
+      const history = await qualityRouter
+        .createCaller(createContext())
+        .fragileInspectionHistory({ itemId: 9952 });
+
+      expect(history).toEqual([
+        expect.objectContaining({
+          id: 952,
+          state: "Íntegro",
+          result: "C",
+          notes: "Proteção limpa, fixa e sem fissuras.",
+        }),
+      ]);
+    } finally {
+      entries.splice(entries.length - 1, 1);
+    }
+  });
+
   it("devolve apenas os resultados do controlo, fábrica e data operacional consultados", async () => {
     const caller = qualityRouter.createCaller(createContext());
     const results = await caller.dailyControlResults({ module: "bphf", factoryId: 1, operationalDate: now });
