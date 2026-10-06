@@ -354,6 +354,9 @@ function incidenceTreatmentFromPayload(payload: Record<string, unknown>) {
   const parsed = incidenceTreatmentSchema.safeParse(payload.incidenceTreatment);
   return parsed.success ? parsed.data : { status: "pending" as const };
 }
+function hasCompletedIncidenceTreatment(payload: Record<string, unknown>) {
+  return incidenceTreatmentFromPayload(payload).status === "completed";
+}
 function incidenceTreatmentHistoryFromPayload(payload: Record<string, unknown>) {
   const parsed = z
     .array(incidenceTreatmentHistoryEntrySchema)
@@ -6950,7 +6953,8 @@ export const qualityRouter = router({
           collaboratorId > 0 &&
           Boolean(collaboratorName) &&
           !linkedEntryIds.has(entry.id) &&
-          payload.generatedNonconformity !== true
+          payload.generatedNonconformity !== true &&
+          !hasCompletedIncidenceTreatment(payload)
         );
       })
       .forEach(entry => {
@@ -7028,6 +7032,7 @@ export const qualityRouter = router({
         entry.completedAt < since ||
         linkedEntryIds.has(entry.id) ||
         payload.generatedNonconformity === true ||
+        hasCompletedIncidenceTreatment(payload) ||
         payload.deletedAt
       )
         return;

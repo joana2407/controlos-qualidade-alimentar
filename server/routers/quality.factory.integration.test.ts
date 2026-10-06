@@ -3588,4 +3588,25 @@ describe("procedimentos de qualidade por fábrica", () => {
       entries.splice(entries.length - manuallyClassified.length, manuallyClassified.length);
     }
   });
+
+  it("retira dos alertas de recorrência um grupo cujas incidências têm tratamento concluído", async () => {
+    const treatedGroup = [
+      { id: 99601, module: "bphf", factoryId: 1, area: "Produção", title: "Utilização correta de fardamento", result: "NC", completedAt: new Date(2026, 7, 10), payload: { collaboratorId: 996, collaboratorName: "Colaborador Tratado", incidenceTreatment: { status: "completed", correction: "Correção aplicada", responsible: "Joana Pina", completedAt: "2026-08-10" } } },
+      { id: 99602, module: "bphf", factoryId: 1, area: "Produção", title: "Utilização correta de fardamento", result: "NC", completedAt: new Date(2026, 7, 11), payload: { collaboratorId: 996, collaboratorName: "Colaborador Tratado", incidenceTreatment: { status: "completed", correction: "Correção aplicada", responsible: "Joana Pina", completedAt: "2026-08-11" } } },
+      { id: 99603, module: "bphf", factoryId: 1, area: "Produção", title: "Utilização correta de fardamento", result: "NC", completedAt: new Date(2026, 7, 12), payload: { collaboratorId: 996, collaboratorName: "Colaborador Tratado", incidenceTreatment: { status: "completed", correction: "Correção aplicada", responsible: "Joana Pina", completedAt: "2026-08-12" } } },
+    ];
+    entries.push(...treatedGroup as any[]);
+    try {
+      const caller = qualityRouter.createCaller(createContext());
+      const [collaboratorAlerts, similarAlerts] = await Promise.all([
+        caller.incidenceRecurrenceAlerts(),
+        caller.similarIncidenceAlerts(),
+      ]);
+
+      expect(collaboratorAlerts.some(alert => alert.collaboratorId === 996)).toBe(false);
+      expect(similarAlerts.some(alert => alert.collaboratorId === 996)).toBe(false);
+    } finally {
+      entries.splice(entries.length - treatedGroup.length, treatedGroup.length);
+    }
+  });
 });
