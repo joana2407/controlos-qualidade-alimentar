@@ -118,7 +118,7 @@ describe("cabeçalho de controlo — progresso por fábrica", () => {
   it("apresenta abaixo do formulário os resultados registados para a data consultada", () => {
     window.history.pushState({}, "", "/controlos/bphf?factoryId=1");
     render(<ModuleControl />);
-    expect(screen.getByText("Data em preenchimento: 20/08/2026")).toBeTruthy();
+    expect(screen.queryByText("Data em preenchimento: 20/08/2026")).toBeNull();
     expect(screen.getByText("Pendências e seguimentos anteriores")).toBeTruthy();
     expect(screen.getByText("Pendente desde 18/08/2026")).toBeTruthy();
     expect(screen.getByRole("link", { name: /Abrir pendência/ }).getAttribute("href")).toBe("/controlos/bphf?plannedTaskId=72&plannedDate=2026-08-18&factoryId=1");

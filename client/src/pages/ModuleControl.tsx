@@ -1815,17 +1815,6 @@ function ControlScheduleSummary({
   pendingTasks: PendingControlTask[];
   isLoading: boolean;
 }) {
-  const dateLabel = operationalDate.toLocaleDateString("pt-PT");
-  const status = isPreviousPending
-    ? "Preenchimento de pendência"
-    : isFuturePlanned
-      ? "Controlo antecipado"
-      : "Preenchimento de hoje";
-  const description = isPreviousPending
-    ? "Está a preencher uma pendência. A data prevista mantém-se associada ao registo."
-    : isFuturePlanned
-      ? "Está a realizar antecipadamente uma verificação prevista para esta data."
-      : "Este formulário corresponde ao Plano do Dia de hoje.";
   const hrefFor = (task: PendingControlTask) => {
     const dueDate = new Date(task.dueAt);
     const plannedDate = `${dueDate.getFullYear()}-${String(dueDate.getMonth() + 1).padStart(2, "0")}-${String(dueDate.getDate()).padStart(2, "0")}`;
@@ -1838,47 +1827,6 @@ function ControlScheduleSummary({
     return `/controlos/${module}?${params.toString()}`;
   };
   return (
-    <>
-      <Card
-        className={
-          isPreviousPending
-            ? "border border-amber-200 bg-amber-50/70 shadow-sm"
-            : isFuturePlanned
-              ? "border border-sky-200 bg-sky-50/70 shadow-sm"
-              : "border border-teal-100 bg-teal-50/70 shadow-sm"
-        }
-      >
-        <CardContent className="flex flex-col gap-3 p-5 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex items-start gap-3">
-            <div
-              className={
-                isPreviousPending
-                  ? "rounded-xl bg-amber-100 p-3 text-amber-800"
-                  : isFuturePlanned
-                    ? "rounded-xl bg-sky-100 p-3 text-sky-800"
-                    : "rounded-xl bg-teal-100 p-3 text-teal-800"
-              }
-            >
-              <CalendarClock className="h-5 w-5" />
-            </div>
-            <div>
-              <p className="font-mono-ui text-xs font-semibold uppercase tracking-[0.14em]">
-                {status}
-              </p>
-              <p className="mt-1 text-lg font-semibold text-slate-950">
-                Data em preenchimento: {dateLabel}
-              </p>
-              <p className="mt-1 text-sm text-slate-700">{description}</p>
-            </div>
-          </div>
-          <Badge
-            variant="outline"
-            className="w-fit border-slate-200 bg-white text-slate-700"
-          >
-            {dateLabel}
-          </Badge>
-        </CardContent>
-      </Card>
       <Card className="border-0 panel-shadow">
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-base">
@@ -1936,7 +1884,6 @@ function ControlScheduleSummary({
           )}
         </CardContent>
       </Card>
-    </>
   );
 }
 
