@@ -1,5 +1,5 @@
 import { TRPCError } from "@trpc/server";
-import { and, desc, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { z } from "zod";
 import {
   areas,
@@ -6098,11 +6098,12 @@ export const qualityRouter = router({
     )
     .query(async ({ input }) => {
       const db = await requireDb();
-      const operationalDate = new Date(`${input.operationalDate}T12:00:00`);
       return db
         .select()
         .from(dispatchOrders)
-        .where(eq(dispatchOrders.operationalDate, operationalDate))
+        .where(
+          sql`DATE(${dispatchOrders.operationalDate}) = ${input.operationalDate}`
+        )
         .orderBy(desc(dispatchOrders.createdAt));
     }),
 
@@ -6133,13 +6134,12 @@ export const qualityRouter = router({
     )
     .mutation(async ({ ctx, input }) => {
       const db = await requireDb();
-      const operationalDate = new Date(`${input.operationalDate}T12:00:00`);
       const existing = await db
         .select({ id: dispatchOrders.id, status: dispatchOrders.status })
         .from(dispatchOrders)
         .where(
           and(
-            eq(dispatchOrders.operationalDate, operationalDate),
+            sql`DATE(${dispatchOrders.operationalDate}) = ${input.operationalDate}`,
             eq(dispatchOrders.orderNumber, input.orderNumber)
           )
         )
@@ -6150,7 +6150,7 @@ export const qualityRouter = router({
           message: "Já existe uma encomenda com este número na data selecionada.",
         });
       const inserted = await db.insert(dispatchOrders).values({
-        operationalDate,
+        operationalDate: new Date(`${input.operationalDate}T12:00:00`),
         profile: input.profile,
         orderNumber: input.orderNumber,
         customer: input.customer,
