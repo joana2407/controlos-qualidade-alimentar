@@ -4470,6 +4470,15 @@ export const qualityRouter = router({
         typeof sourcePayload.fragileItemId === "number"
           ? sourcePayload.fragileItemId
           : null;
+      const sourceCollaboratorId = Number(
+        sourcePayload.collaboratorId ?? sourcePayload.inspectedCollaboratorId
+      );
+      const sourceCollaboratorName =
+        typeof sourcePayload.collaboratorName === "string" && sourcePayload.collaboratorName.trim()
+          ? sourcePayload.collaboratorName.trim()
+          : typeof sourcePayload.inspectedCollaborator === "string" && sourcePayload.inspectedCollaborator.trim()
+            ? sourcePayload.inspectedCollaborator.trim()
+            : null;
       const operationalTasks = await db
         .select()
         .from(controlTasks)
@@ -4490,9 +4499,13 @@ export const qualityRouter = router({
         }
         return task.area === sourceEntry.area;
       });
+      const descriptionWithOriginCollaborator = sourceCollaboratorName &&
+        !input.description.toLocaleLowerCase("pt-PT").includes(sourceCollaboratorName.toLocaleLowerCase("pt-PT"))
+        ? `${input.description}\nColaborador da incidência de origem: ${sourceCollaboratorName}.`
+        : input.description;
       await db.insert(controlTasks).values({
         title: input.title,
-        description: input.description,
+        description: descriptionWithOriginCollaborator,
         module: sourceEntry.module,
         area: sourceEntry.area,
         factoryId: sourceEntry.factoryId,
@@ -5174,6 +5187,28 @@ export const qualityRouter = router({
           })
           .where(eq(controlTasks.id, canonicalTask.id));
       }
+      const sourceIncidenceEntry = mergedSourceEntryId
+        ? (
+            await db
+              .select()
+              .from(controlEntries)
+              .where(eq(controlEntries.id, mergedSourceEntryId))
+              .limit(1)
+          )[0]
+        : undefined;
+      const sourceIncidencePayload = sourceIncidenceEntry
+        ? entryPayload(sourceIncidenceEntry)
+        : {};
+      const sourceCollaboratorId = Number(
+        sourceIncidencePayload.collaboratorId ??
+          sourceIncidencePayload.inspectedCollaboratorId
+      );
+      const sourceCollaboratorName =
+        typeof sourceIncidencePayload.collaboratorName === "string"
+          ? sourceIncidencePayload.collaboratorName.trim()
+          : typeof sourceIncidencePayload.inspectedCollaborator === "string"
+            ? sourceIncidencePayload.inspectedCollaborator.trim()
+            : "";
       const existingCanonicalEntry = (
         await db.select().from(controlEntries)
       ).find(entry => entry.payload?.taskId === canonicalTask.id);
@@ -5182,6 +5217,12 @@ export const qualityRouter = router({
         taskId: canonicalTask.id,
         sourceEntryId: mergedSourceEntryId,
         followUpTaskId: mergedFollowUpTask?.id ?? null,
+        ...(Number.isInteger(sourceCollaboratorId) && sourceCollaboratorId > 0
+          ? { collaboratorId: sourceCollaboratorId }
+          : {}),
+        ...(sourceCollaboratorName
+          ? { collaboratorName: sourceCollaboratorName }
+          : {}),
         executionReport: { evidencePhotos: input.evidencePhotos ?? [] },
       };
       if (existingCanonicalEntry) {
@@ -5216,13 +5257,7 @@ export const qualityRouter = router({
       const isFollowUpTask = Boolean(mergedFollowUpTask);
       let incidenceReviewRequired = false;
       if (mergedSourceEntryId) {
-        const sourceEntry = (
-          await db
-            .select()
-            .from(controlEntries)
-            .where(eq(controlEntries.id, mergedSourceEntryId))
-            .limit(1)
-        )[0];
+        const sourceEntry = sourceIncidenceEntry;
         if (sourceEntry && sourceEntry.result === "NC" && !isDeletedControlEntry(sourceEntry)) {
           const sourcePayload = entryPayload(sourceEntry);
           const completedFollowUps = followUpReviewAlertsFromPayload(sourcePayload)
