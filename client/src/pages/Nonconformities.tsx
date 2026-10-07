@@ -682,7 +682,7 @@ export default function Nonconformities() {
   const [groupTreatmentDraft, setGroupTreatmentDraft] = useState<IncidenceTreatment>(emptyIncidenceTreatment());
   const [groupTreatmentOpen, setGroupTreatmentOpen] = useState(false);
   const [treatmentFilter, setTreatmentFilter] = useState<
-    "active" | "completed" | "follow_up_review_pending"
+    "active" | "pending" | "completed" | "follow_up_review_pending"
   >("active");
   const [openNcOnly, setOpenNcOnly] = useState(false);
   const [creatingFollowUpTask, setCreatingFollowUpTask] = useState(false);
@@ -818,7 +818,9 @@ export default function Nonconformities() {
                 matchesSameCollaborator);
             return (
               matchesSimilar &&
-              (treatmentFilter === "active"
+              (treatmentFilter === "pending"
+                ? !item.generatedNonconformity && treatment.status === "pending"
+                : treatmentFilter === "active"
                 ? !item.generatedNonconformity &&
                   (treatment.status !== "completed" ||
                     hasFollowUpReviewPending)
@@ -1493,6 +1495,18 @@ export default function Nonconformities() {
                 }}
               >
                 Acompanhamento
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant={treatmentFilter === "pending" ? "default" : "outline"}
+                aria-pressed={treatmentFilter === "pending"}
+                onClick={() => {
+                  setTreatmentFilter("pending");
+                  setSelectedKey("");
+                }}
+              >
+                Tratamento pendente
               </Button>
               <Button
                 type="button"

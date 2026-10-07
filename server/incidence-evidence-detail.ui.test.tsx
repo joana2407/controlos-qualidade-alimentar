@@ -224,6 +224,15 @@ describe("detalhe de incidência com evidências", () => {
     expect(screen.queryByRole("button", { name: /Incidência com foto/i })).toBeNull();
   });
 
+  it("permite filtrar apenas as incidências com tratamento pendente", () => {
+    render(<Nonconformities />);
+    fireEvent.click(screen.getByRole("button", { name: "Tratamento pendente" }));
+
+    expect(screen.getByRole("button", { name: "Tratamento pendente" }).getAttribute("aria-pressed")).toBe("true");
+    expect(screen.getByRole("button", { name: /Incidência pendente/i })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /Incidência com foto/i })).toBeNull();
+  });
+
   it("mostra as incidências fechadas apenas ao selecionar Concluídos", () => {
     render(<Nonconformities />);
     fireEvent.click(screen.getByRole("button", { name: "Concluídos" }));
