@@ -411,6 +411,20 @@ function recurrenceOccurrencesFromEntry<
     : [];
   return [entry, ...followUps];
 }
+function isFollowUpVerificationEntry(
+  entry: { payload?: unknown },
+  followUpTaskIds: ReadonlySet<number>
+) {
+  const payload = entryPayload(entry);
+  const sourceEntryId = Number(payload.sourceEntryId);
+  const taskId = Number(payload.taskId);
+  const followUpTaskId = Number(payload.followUpTaskId);
+  return (
+    (Number.isInteger(sourceEntryId) && sourceEntryId > 0) ||
+    (Number.isInteger(taskId) && followUpTaskIds.has(taskId)) ||
+    (Number.isInteger(followUpTaskId) && followUpTaskIds.has(followUpTaskId))
+  );
+}
 function incidenceTreatmentHistoryFromPayload(payload: Record<string, unknown>) {
   const parsed = z
     .array(incidenceTreatmentHistoryEntrySchema)
@@ -773,8 +787,6 @@ export function verificationHistoryKey(
   },
   payload: Record<string, unknown>
 ) {
-  const persistentPoint = controlledPointKey(entry, payload);
-  if (persistentPoint) return persistentPoint;
   const normalize = (value: unknown) =>
     typeof value === "string"
       ? value.trim().toLocaleLowerCase("pt-PT").replace(/\s+/g, " ")
@@ -782,8 +794,20 @@ export function verificationHistoryKey(
   const factory = entry.factoryId ?? "none";
   const collaboratorId = Number(payload.collaboratorId);
   const criterion = normalize(payload.criterion);
-  if (entry.module === "bphf" && collaboratorId > 0 && criterion)
-    return `bphf|${factory}|collaborator:${collaboratorId}|criterion:${criterion}`;
+  const collaboratorName = normalize(
+    payload.collaboratorName ?? payload.inspectedCollaborator
+  );
+  // No BPHF, o colaborador e o critério identificam o contexto. Esta regra
+  // antecede qualquer identificador genérico de ponto, pois um mesmo ponto
+  // pode ser observado para colaboradores diferentes.
+  if (entry.module === "bphf" && criterion) {
+    if (collaboratorId > 0)
+      return `bphf|${factory}|collaborator:${collaboratorId}|criterion:${criterion}`;
+    if (collaboratorName)
+      return `bphf|${factory}|collaborator-name:${collaboratorName}|criterion:${criterion}`;
+  }
+  const persistentPoint = controlledPointKey(entry, payload);
+  if (persistentPoint) return persistentPoint;
   const product = normalize(payload.product ?? payload.productName);
   if (product) {
     const lot = normalize(
@@ -6958,6 +6982,14 @@ export const qualityRouter = router({
       const factoryNames = new Map(
         factoryRows.map(factory => [factory.id, factory.name])
       );
+      const followUpTaskIds = new Set(
+        followUpTasks
+          .filter(
+            task =>
+              Number.isInteger(task.sourceEntryId) && task.sourceEntryId! > 0
+          )
+          .map(task => task.id)
+      );
       const followUpReportsByTaskId = new Map(
         entries
           .map(entry => {
@@ -7040,6 +7072,7 @@ export const qualityRouter = router({
           return (
             entry.result === "NC" &&
             !payload.deletedAt &&
+            !isFollowUpVerificationEntry(entry, followUpTaskIds) &&
             !isMergedFragileRecurrenceEntry(entry) &&
             ((occurredAt >= start && occurredAt < end) ||
               (entry.module === "fragile_items" &&
@@ -7170,17 +7203,26 @@ export const qualityRouter = router({
 
   incidenceRecurrenceAlerts: qualitySessionProcedure.query(async () => {
     const db = await requireDb();
-    const [entries, ncs] = await Promise.all([
+    const [entries, ncs, followUpTasks] = await Promise.all([
       db
         .select()
         .from(controlEntries)
         .orderBy(desc(controlEntries.completedAt)),
       db.select().from(nonconformities),
+      db.select().from(controlTasks),
     ]);
     const since = new Date();
     since.setMonth(since.getMonth() - 6);
     const linkedEntryIds = new Set(
       ncs.map(nc => nc.sourceEntryId).filter((id): id is number => Boolean(id))
+    );
+    const followUpTaskIds = new Set(
+      followUpTasks
+        .filter(
+          task =>
+            Number.isInteger(task.sourceEntryId) && task.sourceEntryId! > 0
+        )
+        .map(task => task.id)
     );
     const grouped = new Map<
       number,
@@ -7191,6 +7233,7 @@ export const qualityRouter = router({
       }
     >();
     entries
+      .filter(entry => !isFollowUpVerificationEntry(entry, followUpTaskIds))
       .flatMap(recurrenceOccurrencesFromEntry)
       .filter(entry => {
         const payload =
@@ -7232,6 +7275,9 @@ export const qualityRouter = router({
         collaboratorId: item.collaboratorId,
         collaboratorName: item.collaboratorName,
         total: item.incidences.length,
+        incidenceCount: item.incidences.filter(
+          entry => entryPayload(entry).recurrenceOccurrence !== true
+        ).length,
         requiresNcAssessment: true,
         mostRecentAt: item.incidences.reduce(
           (latest, entry) =>
@@ -7248,18 +7294,27 @@ export const qualityRouter = router({
 
   similarIncidenceAlerts: qualitySessionProcedure.query(async () => {
     const db = await requireDb();
-    const [entries, ncs, factoryRows] = await Promise.all([
+    const [entries, ncs, factoryRows, followUpTasks] = await Promise.all([
       db
         .select()
         .from(controlEntries)
         .orderBy(desc(controlEntries.completedAt)),
       db.select().from(nonconformities),
       db.select().from(factories),
+      db.select().from(controlTasks),
     ]);
     const since = new Date();
     since.setMonth(since.getMonth() - 6);
     const linkedEntryIds = new Set(
       ncs.map(nc => nc.sourceEntryId).filter((id): id is number => Boolean(id))
+    );
+    const followUpTaskIds = new Set(
+      followUpTasks
+        .filter(
+          task =>
+            Number.isInteger(task.sourceEntryId) && task.sourceEntryId! > 0
+        )
+        .map(task => task.id)
     );
     const factoryNames = new Map(
       factoryRows.map(factory => [factory.id, factory.name])
@@ -7279,7 +7334,10 @@ export const qualityRouter = router({
         entries: typeof entries;
       }
     >();
-    entries.flatMap(recurrenceOccurrencesFromEntry).forEach(entry => {
+    entries
+      .filter(entry => !isFollowUpVerificationEntry(entry, followUpTaskIds))
+      .flatMap(recurrenceOccurrencesFromEntry)
+      .forEach(entry => {
       const payload =
         entry.payload &&
         typeof entry.payload === "object" &&
@@ -7369,6 +7427,9 @@ export const qualityRouter = router({
         pointKey: group.pointKey,
         relationshipGroupId: group.relationshipGroupId,
         total: group.entries.length,
+        incidenceCount: group.entries.filter(
+          entry => entryPayload(entry).recurrenceOccurrence !== true
+        ).length,
         mostRecentAt: group.entries.reduce(
           (latest, entry) =>
             entry.completedAt > latest ? entry.completedAt : latest,

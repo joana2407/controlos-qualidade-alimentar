@@ -180,7 +180,7 @@ type OccurrenceItem = {
 
 type SimilarIncidenceFilter = {
   title: string;
-  module: string;
+  module: string | null;
   factoryId: number | null;
   lotNumber?: string | null;
   pointKey?: string | null;
@@ -188,6 +188,7 @@ type SimilarIncidenceFilter = {
   collaboratorName?: string | null;
   relationshipGroupId?: string | null;
   total: number;
+  incidenceCount?: number;
 };
 
 const normaliseSimilarTitle = (value: string) =>
@@ -813,7 +814,7 @@ export default function Nonconformities() {
               !similarFilter ||
               (item.result === "NC" &&
                 !item.generatedNonconformity &&
-                item.module === similarFilter.module &&
+                (!similarFilter.module || item.module === similarFilter.module) &&
                 matchesFactory &&
                 matchesSameCollaborator);
             return (
@@ -1149,16 +1150,20 @@ export default function Nonconformities() {
     collaboratorId: number;
     collaboratorName: string;
     total?: number;
+    incidenceCount?: number;
   }) => {
     const since = new Date();
     since.setMonth(since.getMonth() - 6);
     setSimilarFilter({
       title: `Colaborador: ${alert.collaboratorName}`,
-      module: "bphf",
+      // O alerta pode incluir incidências manuais registadas noutro módulo.
+      // Mantemos o colaborador como critério exclusivo de agrupamento.
+      module: null,
       factoryId: null,
       collaboratorId: alert.collaboratorId,
       collaboratorName: alert.collaboratorName,
       total: alert.total ?? 0,
+      incidenceCount: alert.incidenceCount,
     });
     setFactoryId("");
     setCollaboratorId(String(alert.collaboratorId));
@@ -1799,11 +1804,16 @@ export default function Nonconformities() {
                           collaboratorId: alert.collaboratorId,
                           collaboratorName: alert.collaboratorName,
                           total: alert.total,
+                          incidenceCount: alert.incidenceCount,
                         })
                       }
-                      aria-label={`Abrir as ${alert.total} incidências ativas de ${alert.collaboratorName}`}
+                      aria-label={`Abrir o grupo de ${alert.total} ocorrências NC de ${alert.collaboratorName}`}
                     >
-                      {alert.collaboratorName} · {alert.total} incidências ativas · avaliar NC
+                      {alert.collaboratorName} · {alert.total} ocorrências NC
+                      {alert.incidenceCount !== undefined &&
+                      alert.incidenceCount !== alert.total
+                        ? ` · ${alert.incidenceCount} incidências ativas`
+                        : ""} · avaliar NC
                     </Button>
                   ))}
                 </div>
@@ -1843,6 +1853,7 @@ export default function Nonconformities() {
                           collaboratorId: alert.collaboratorId,
                           collaboratorName: alert.collaboratorName,
                           total: alert.total,
+                          incidenceCount: alert.incidenceCount,
                         })
                       }
                       aria-label={`Abrir as ${alert.total} incidências semelhantes: ${alert.title}, ${alert.factoryName}`}
@@ -1863,11 +1874,11 @@ export default function Nonconformities() {
           >
             <p>
               A visualizar as{" "}
-              <strong>{similarFilter.total} incidências no mesmo ponto</strong>
+              <strong>{similarFilter.incidenceCount ?? similarFilter.total} incidências ativas</strong>
               {similarFilter.collaboratorName ? (
                 <>
                   {" "}
-                  do colaborador inspecionado «{similarFilter.collaboratorName}»
+                  atribuídas ao colaborador «{similarFilter.collaboratorName}»
                 </>
               ) : (
                 <> de «{similarFilter.title}»{similarFilter.lotNumber ? ` · lote ${similarFilter.lotNumber}` : ""}</>

@@ -262,8 +262,8 @@ describe("detalhe de incidência com evidências", () => {
     render(<Nonconformities />);
 
     expect(screen.getByText("Avaliação de Não Conformidade recomendada")).toBeTruthy();
-    const alert = screen.getByRole("button", { name: "Abrir as 3 incidências ativas de Maria Silva" });
-    expect(alert.textContent).toMatch(/Maria Silva · 3 incidências ativas · avaliar NC/i);
+    const alert = screen.getByRole("button", { name: "Abrir o grupo de 3 ocorrências NC de Maria Silva" });
+    expect(alert.textContent).toMatch(/Maria Silva · 3 ocorrências NC · avaliar NC/i);
 
     fireEvent.click(alert);
     expect(screen.getByRole("button", { name: "Acompanhamento" }).getAttribute("aria-pressed")).toBe("true");
@@ -280,7 +280,7 @@ describe("detalhe de incidência com evidências", () => {
     });
     render(<Nonconformities />);
 
-    fireEvent.click(screen.getByRole("button", { name: "Abrir as 3 incidências ativas de Maria Silva" }));
+    fireEvent.click(screen.getByRole("button", { name: "Abrir o grupo de 3 ocorrências NC de Maria Silva" }));
 
     expect(screen.getByText("Tratamento global e relações")).toBeTruthy();
     expect(screen.getByRole("button", { name: /Guardar classificação e tratamento global/i })).toBeTruthy();
@@ -320,8 +320,8 @@ describe("detalhe de incidência com evidências", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /abrir as 3 incidências semelhantes/i }));
 
-    expect(screen.getByRole("status").textContent).toMatch(/a visualizar as 3 incidências no mesmo ponto/i);
-    expect(screen.getByRole("status").textContent).toMatch(/colaborador inspecionado «Maria Silva»/i);
+    expect(screen.getByRole("status").textContent).toMatch(/a visualizar as 3 incidências ativas/i);
+    expect(screen.getByRole("status").textContent).toMatch(/atribuídas ao colaborador «Maria Silva»/i);
     expect(screen.getByRole("button", { name: "Limpar acesso direto" })).toBeTruthy();
     expect(screen.getByText("Tratamento global e relações")).toBeTruthy();
     expect(screen.getByRole("button", { name: /Guardar classificação e tratamento global/i })).toBeTruthy();

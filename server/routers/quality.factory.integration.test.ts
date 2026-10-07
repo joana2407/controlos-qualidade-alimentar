@@ -3981,4 +3981,53 @@ describe("procedimentos de qualidade por fábrica", () => {
       entries.splice(entries.length - treatedGroup.length, treatedGroup.length);
     }
   });
+
+  it("conta o seguimento NC na origem sem o apresentar como incidência autónoma", async () => {
+    const followUpTask = {
+      ...tasks[0],
+      id: 99710,
+      sourceEntryId: 99701,
+      status: "completed",
+      dueAt: new Date(2026, 7, 12),
+      completedAt: new Date(2026, 7, 12),
+    };
+    const groupedEntries = [
+      { id: 99701, module: "bphf", factoryId: 1, area: "Produção", title: "Estado dos cacifos", result: "NC", completedAt: new Date(2026, 7, 10), payload: { collaboratorId: 997, collaboratorName: "Colaborador com seguimento", criterion: "Estado dos cacifos", incidenceTreatment: { status: "in_progress" }, followUpReviewAlerts: [{ followUpTaskId: 99710, title: "Seguimento — Estado dos cacifos", result: "NC", notes: "A situação voltou a verificar-se.", completedAt: "2026-08-12T10:00:00.000Z", registeredByProfileId: 1, registeredByName: "Sabrina Esteves", registeredByTitle: "Tec. Qualidade" }] } },
+      { id: 99702, module: "bphf", factoryId: 1, area: "Produção", title: "Seguimento — Estado dos cacifos", result: "NC", completedAt: new Date(2026, 7, 12), payload: { taskId: 99710, collaboratorId: 997, collaboratorName: "Colaborador com seguimento" } },
+      { id: 99703, module: "not_applicable", factoryId: 1, area: "Produção", title: "Incidência manual ligada ao colaborador", result: "NC", completedAt: new Date(2026, 7, 13), payload: { collaboratorId: 997, collaboratorName: "Colaborador com seguimento", incidenceTreatment: { status: "pending" } } },
+    ];
+    tasks.push(followUpTask as any);
+    entries.push(...groupedEntries as any[]);
+    try {
+      const caller = qualityRouter.createCaller(createContext());
+      const [alerts, listedIncidences, similarAlerts] = await Promise.all([
+        caller.incidenceRecurrenceAlerts(),
+        caller.listIncidences({ collaboratorId: 997, startDate: new Date(2026, 7, 1) }),
+        caller.similarIncidenceAlerts(),
+      ]);
+      expect(alerts).toContainEqual(expect.objectContaining({ collaboratorId: 997, total: 3, incidenceCount: 2 }));
+      expect(listedIncidences.map(incidence => incidence.id)).toEqual([99701, 99703]);
+      expect(similarAlerts.some(alert => alert.collaboratorId === 997)).toBe(false);
+    } finally {
+      entries.splice(entries.length - groupedEntries.length, groupedEntries.length);
+      tasks.splice(tasks.findIndex(task => task.id === followUpTask.id), 1);
+    }
+  });
+
+  it("separa o histórico BPHF de colaboradores diferentes no mesmo critério", async () => {
+    const bphfEntries = [
+      { id: 99801, module: "bphf", factoryId: 1, area: "Produção", title: "Estado dos cacifos", result: "NC", completedAt: new Date(2026, 7, 10), payload: { collaboratorId: 998, collaboratorName: "Colaborador A", criterion: "Estado dos cacifos", checklistItemId: 501 } },
+      { id: 99802, module: "bphf", factoryId: 1, area: "Produção", title: "Estado dos cacifos", result: "NC", completedAt: new Date(2026, 7, 11), payload: { collaboratorId: 999, collaboratorName: "Colaborador B", criterion: "Estado dos cacifos", checklistItemId: 501 } },
+    ];
+    entries.push(...bphfEntries as any[]);
+    try {
+      expect(
+        verificationHistoryKey(bphfEntries[0], bphfEntries[0].payload)
+      ).not.toBe(
+        verificationHistoryKey(bphfEntries[1], bphfEntries[1].payload)
+      );
+    } finally {
+      entries.splice(entries.length - bphfEntries.length, bphfEntries.length);
+    }
+  });
 });
