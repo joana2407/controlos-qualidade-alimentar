@@ -784,11 +784,24 @@ export default function Nonconformities() {
             const hasFollowUpReviewPending = Array.isArray(
               (item as any).followUpReviewAlerts
             ) && (item as any).followUpReviewAlerts.length > 0;
+            const payloadCollaboratorName = [
+              payload.collaboratorName,
+              payload.inspectedCollaboratorName,
+              payload.employeeName,
+            ].find(value => typeof value === "string" && value.trim());
+            const normalizedPayloadCollaboratorName = payloadCollaboratorName
+              ? normaliseSimilarTitle(String(payloadCollaboratorName))
+              : "";
+            const selectedCollaboratorName = similarFilter?.collaboratorName
+              ? normaliseSimilarTitle(similarFilter.collaboratorName)
+              : "";
             const matchesSameCollaborator = similarFilter?.relationshipGroupId
               ? relationship?.kind === "related" &&
                 relationship.groupId === similarFilter.relationshipGroupId
               : similarFilter?.collaboratorId
-                ? Number(payload.collaboratorId) === similarFilter.collaboratorId
+                ? Number(payload.collaboratorId) === similarFilter.collaboratorId ||
+                  (Boolean(selectedCollaboratorName) &&
+                    normalizedPayloadCollaboratorName === selectedCollaboratorName)
                 : similarFilter?.pointKey
                   ? controlledPointKey(item) === similarFilter.pointKey
                   : normaliseSimilarTitle(item.title) ===
