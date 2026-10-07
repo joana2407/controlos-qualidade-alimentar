@@ -3217,6 +3217,68 @@ describe("procedimentos de qualidade por fábrica", () => {
     }
   });
 
+  it("inclui no histórico o seguimento associado mesmo quando ocorre no mesmo dia do controlo", async () => {
+    const sourceIncidence = {
+      id: 9081,
+      factoryId: 1,
+      module: "fragile_items",
+      area: "Produção",
+      title: "Quebrável — Balanças",
+      result: "NC",
+      completedAt: new Date(2026, 8, 25, 10, 0, 0),
+      payload: { fragileItemId: 1, state: "Danificado" },
+    };
+    const operationalVerification = {
+      id: 9082,
+      factoryId: 1,
+      module: "fragile_items",
+      area: "Produção",
+      title: "Quebrável — Balanças",
+      result: "C",
+      completedAt: new Date(2026, 9, 2, 10, 0, 0),
+      payload: { fragileItemId: 1, state: "Íntegro" },
+    };
+    const followUpTask = {
+      id: 9083,
+      factoryId: 1,
+      status: "completed" as const,
+      dueAt: new Date(2026, 9, 2, 11, 0, 0),
+      completedAt: new Date(2026, 9, 2, 12, 0, 0),
+      module: "fragile_items" as const,
+      area: "Produção",
+      title: "Seguimento — Quebrável — Balanças",
+      assigneeProfileIds: [2],
+      sourceEntryId: sourceIncidence.id,
+    };
+    const followUpReport = {
+      id: 9084,
+      factoryId: 1,
+      module: "fragile_items",
+      area: "Produção",
+      title: "Seguimento — Quebrável — Balanças",
+      result: "NC",
+      notes: "Mantém-se.",
+      completedAt: new Date(2026, 9, 2, 12, 0, 0),
+      registeredByName: "Neuza Antunes",
+      registeredByTitle: "Tec. Qualidade",
+      payload: { taskId: followUpTask.id },
+    };
+    entries.unshift(sourceIncidence as any, operationalVerification as any, followUpReport as any);
+    tasks.unshift(followUpTask as any);
+    try {
+      const history = await qualityRouter.createCaller(createContext()).incidenceVerificationHistory({
+        sourceEntryId: sourceIncidence.id,
+      });
+      expect(history).toEqual(expect.arrayContaining([
+        expect.objectContaining({ id: operationalVerification.id, result: "C", isFollowUpVerification: false }),
+        expect.objectContaining({ id: followUpReport.id, result: "NC", isFollowUpVerification: true, followUpTaskId: followUpTask.id }),
+      ]));
+    } finally {
+      entries.splice(0, 3);
+      tasks.splice(0, 1);
+    }
+  });
+
   it("aceita a data de conclusão portuguesa ao guardar o tratamento da incidência", async () => {
     const incidence = { id: 908, factoryId: 1, module: "fragile_items", area: "Produção", title: "Quebrável — Quadro elétrico", result: "NC", completedAt: now, payload: {} };
     entries.unshift(incidence);

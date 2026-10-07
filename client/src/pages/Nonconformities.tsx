@@ -103,6 +103,8 @@ type VerificationHistoryEntry = {
   validity: string;
   evidencePhotos: IncidenceTreatment["evidencePhotos"];
   isSourceVerification: boolean;
+  isFollowUpVerification: boolean;
+  followUpTaskId: number | null;
 };
 const emptyIncidenceTreatment = (): IncidenceTreatment => ({
   status: "pending",
@@ -452,6 +454,9 @@ const verificationHistoryFrom = (value: unknown): VerificationHistoryEntry[] =>
         validity: typeof record.validity === "string" ? record.validity : "",
         evidencePhotos,
         isSourceVerification: record.isSourceVerification === true,
+        isFollowUpVerification: record.isFollowUpVerification === true,
+        followUpTaskId:
+          typeof record.followUpTaskId === "number" ? record.followUpTaskId : null,
       };
     })
     .filter(
@@ -2483,6 +2488,9 @@ export default function Nonconformities() {
                                 <div className="flex flex-wrap items-center gap-2">
                                   {verification.isSourceVerification ? (
                                     <Badge className="bg-amber-100 text-amber-900 hover:bg-amber-100">Origem da incidência</Badge>
+                                  ) : null}
+                                  {verification.isFollowUpVerification ? (
+                                    <Badge className="bg-violet-100 text-violet-900 hover:bg-violet-100">Seguimento da incidência</Badge>
                                   ) : null}
                                   <Badge
                                     className={

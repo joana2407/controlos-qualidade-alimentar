@@ -6923,13 +6923,17 @@ export const qualityRouter = router({
     .input(z.object({ sourceEntryId: z.number().int().positive() }))
     .query(async ({ input }) => {
       const db = await requireDb();
-      const [source, entries] = await Promise.all([
+      const [source, entries, followUpTasks] = await Promise.all([
         db
           .select()
           .from(controlEntries)
           .where(eq(controlEntries.id, input.sourceEntryId))
           .limit(1),
         db.select().from(controlEntries).orderBy(desc(controlEntries.completedAt)),
+        db
+          .select()
+          .from(controlTasks)
+          .where(eq(controlTasks.sourceEntryId, input.sourceEntryId)),
       ]);
       const sourceEntry = source[0];
       if (!sourceEntry || isDeletedControlEntry(sourceEntry))
@@ -6939,17 +6943,38 @@ export const qualityRouter = router({
         });
       const sourcePayload = entryPayload(sourceEntry);
       const contextKey = verificationHistoryKey(sourceEntry, sourcePayload);
-      return entries
+      const followUpTaskByReportId = new Map(
+        followUpTasks
+          .map(task => {
+            const report = entries.find(entry => entry.payload?.taskId === task.id);
+            return report ? [report.id, task.id] as const : null;
+          })
+          .filter((item): item is readonly [number, number] => item !== null)
+      );
+      const operationalHistory = entries
         .filter(entry => !isDeletedControlEntry(entry))
         .filter(
           entry =>
             verificationHistoryKey(entry, entryPayload(entry)) === contextKey
         )
-        .slice(0, 50)
         .map(entry => ({
           ...verificationHistoryItemFrom(entry),
           isSourceVerification: entry.id === sourceEntry.id,
+          isFollowUpVerification: false,
+          followUpTaskId: null,
         }));
+      const followUpHistory = entries
+        .filter(entry => !isDeletedControlEntry(entry))
+        .filter(entry => followUpTaskByReportId.has(entry.id))
+        .map(entry => ({
+          ...verificationHistoryItemFrom(entry),
+          isSourceVerification: false,
+          isFollowUpVerification: true,
+          followUpTaskId: followUpTaskByReportId.get(entry.id) ?? null,
+        }));
+      return [...operationalHistory, ...followUpHistory]
+        .sort((left, right) => right.completedAt.getTime() - left.completedAt.getTime())
+        .slice(0, 50);
     }),
 
   incidenceRecurrenceAlerts: qualitySessionProcedure.query(async () => {
