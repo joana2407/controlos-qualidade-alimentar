@@ -1255,6 +1255,22 @@ describe("procedimentos de qualidade por fábrica", () => {
     }
   });
 
+  it("mantém o Shelf-life acessível para registos adicionais na data do plano já concluído", async () => {
+    const previousDate = new Date(2026, 7, 13, 10, 0, 0);
+    const shelfLifePlan = { id: 5141, factoryId: 3, status: "completed", dueAt: previousDate, completedAt: previousDate, module: "shelf_life", area: "Plano do Dia", title: "Plano do Dia — Shelf-life F3", responsible: "Sabrina Esteves", assigneeProfileIds: [1] };
+    const shelfLifeEntry = { id: 51411, factoryId: 3, module: "shelf_life", area: "Shelf-life", title: "Shelf-life — Conforme", result: "C", completedAt: previousDate, payload: { plannedTaskId: shelfLifePlan.id, plannedDate: previousDate.toISOString() } };
+    tasks.push(shelfLifePlan as any);
+    entries.push(shelfLifeEntry as any);
+    try {
+      const caller = qualityRouter.createCaller(createContext({ id: 1, name: "Sabrina Esteves", title: "Tec. Qualidade", role: "technician" }));
+
+      await expect(caller.controlAuthorization({ module: "shelf_life", factoryId: 3, plannedDate: previousDate })).resolves.toMatchObject({ allowed: true, taskId: shelfLifePlan.id, isPreviousPending: true });
+    } finally {
+      entries.splice(entries.indexOf(shelfLifeEntry as any), 1);
+      tasks.splice(tasks.indexOf(shelfLifePlan as any), 1);
+    }
+  });
+
   it("mantém as Análises internas do dia acessíveis para validar outra análise após a primeira", async () => {
     tasks.push({ id: 517, factoryId: null, status: "completed", dueAt: now, completedAt: now, module: "internal_analysis", area: "Plano do Dia", title: "Plano do Dia — Análises internas", responsible: "Sabrina Esteves", assigneeProfileIds: [1] });
     try {

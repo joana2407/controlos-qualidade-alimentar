@@ -1925,13 +1925,18 @@ async function assessControlAuthorization(
       input.module === "internal_analysis" &&
       Boolean(input.plannedDate) &&
       !isCurrentDay;
+    const isExplicitShelfLifeDate =
+      input.module === "shelf_life" &&
+      Boolean(input.plannedDate) &&
+      localDateKey(input.plannedDate!) <= today;
     const isCompletedPlanOpenForSupplement =
       allowsSupplementaryDailyEntries &&
       plannedCoverageSatisfied &&
       (isCurrentDay ||
         isExplicitDispatchSupplement ||
         isExplicitInternalAnalysisSupplement ||
-        isExplicitInternalAnalysisDate);
+        isExplicitInternalAnalysisDate ||
+        isExplicitShelfLifeDate);
     // Quando a Responsável de Qualidade abre uma pendência concreta, essa
     // tarefa deve continuar editável até ficar concluída. Isto é importante
     // para planos históricos com registos parciais associados a uma versão
