@@ -2009,6 +2009,77 @@ describe("procedimentos de qualidade por fábrica", () => {
     }
   });
 
+  it("funde um seguimento coincidente com a verificação operacional num único resultado", async () => {
+    const sourceEntry = {
+      id: 9078,
+      factoryId: 1,
+      module: "fragile_items",
+      area: "Produção",
+      title: "Quebrável — Balanças",
+      result: "NC",
+      completedAt: new Date(2026, 8, 25, 10, 0, 0),
+      payload: { fragileItemId: 1, state: "Danificado" },
+    };
+    const operationalTask = {
+      id: 9085,
+      factoryId: 1,
+      status: "pending" as const,
+      dueAt: new Date(2026, 9, 2, 11, 0, 0),
+      completedAt: null,
+      module: "fragile_items" as const,
+      area: "Produção",
+      title: "Quebrável — Balanças",
+      responsible: "Neuza Antunes",
+      assigneeProfileIds: [2],
+      sourceEntryId: null,
+      plannedCoverage: [JSON.stringify(["fragile", 1])],
+    };
+    const followUpTask = {
+      id: 9086,
+      factoryId: 1,
+      status: "pending" as const,
+      dueAt: operationalTask.dueAt,
+      completedAt: null,
+      module: "fragile_items" as const,
+      area: "Produção",
+      title: "Seguimento — Quebrável — Balanças",
+      responsible: "Neuza Antunes",
+      assigneeProfileIds: [2],
+      sourceEntryId: sourceEntry.id,
+      parentTaskId: operationalTask.id,
+    };
+    const operationalEntry = {
+      id: 9087,
+      factoryId: 1,
+      module: "fragile_items",
+      area: "Produção",
+      title: operationalTask.title,
+      result: "C",
+      completedAt: new Date(2026, 9, 2, 12, 0, 0),
+      payload: { taskId: operationalTask.id, fragileItemId: 1, state: "Íntegro" },
+    };
+    entries.unshift(sourceEntry as any, operationalEntry as any);
+    tasks.unshift(operationalTask as any, followUpTask as any);
+    try {
+      const result = await qualityRouter.createCaller(createContext({ id: 2, name: "Neuza Antunes", title: "Tec. Qualidade", role: "technician" })).completeTask({
+        id: followUpTask.id,
+        result: "C",
+        notes: "Ponto verificado no controlo operacional coincidente.",
+      });
+      expect(result).toMatchObject({ followUpCompleted: true });
+      expect(dbUpdates).toEqual(expect.arrayContaining([
+        expect.objectContaining({ status: "completed" }),
+        expect.objectContaining({ result: "C", notes: "Ponto verificado no controlo operacional coincidente." }),
+      ]));
+      expect(dbInserts).not.toEqual(expect.arrayContaining([
+        expect.objectContaining({ payload: expect.objectContaining({ taskId: followUpTask.id }) }),
+      ]));
+    } finally {
+      tasks.splice(0, 2);
+      entries.splice(0, 2);
+    }
+  });
+
   it("encaminha uma incidência com NC gerada para gestão externa sem tratamento ou seguimento interno", async () => {
     const incidence = {
       id: 9076,

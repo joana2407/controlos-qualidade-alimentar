@@ -4165,7 +4165,10 @@ export const qualityRouter = router({
                 }
               : task;
           const report = entries.find(
-            entry => entry.payload?.taskId === task.id
+            entry =>
+              entry.payload?.taskId === task.id ||
+              entry.payload?.followUpTaskId === task.id ||
+              (typeof task.parentTaskId === "number" && entry.payload?.taskId === task.parentTaskId)
           );
           const storedPhotos =
             report?.payload &&
@@ -4454,7 +4457,12 @@ export const qualityRouter = router({
           : [];
         return profile.role === "manager" || assignees.includes(profile.id);
       }).map(task => {
-        const report = entries.find(entry => entry.payload?.taskId === task.id);
+        const report = entries.find(
+          entry =>
+            entry.payload?.taskId === task.id ||
+            entry.payload?.followUpTaskId === task.id ||
+            (typeof task.parentTaskId === "number" && entry.payload?.taskId === task.parentTaskId)
+        );
         return report
           ? {
               ...task,
@@ -5030,6 +5038,28 @@ export const qualityRouter = router({
           code: "BAD_REQUEST",
           message: "Esta tarefa já não está pendente.",
         });
+      const linkedOperationalTask = task.parentTaskId
+        ? (
+            await db
+              .select()
+              .from(controlTasks)
+              .where(eq(controlTasks.id, task.parentTaskId))
+              .limit(1)
+          )[0]
+        : undefined;
+      const coincidentFollowUpTask = !task.sourceEntryId
+        ? (
+            await db
+              .select()
+              .from(controlTasks)
+              .where(eq(controlTasks.parentTaskId, task.id))
+          ).find(candidate => candidate.sourceEntryId && candidate.status === "pending")
+        : undefined;
+      const canonicalTask = linkedOperationalTask ?? task;
+      const mergedFollowUpTask =
+        linkedOperationalTask ?? (task.sourceEntryId ? task : coincidentFollowUpTask);
+      const mergedSourceEntryId =
+        mergedFollowUpTask?.sourceEntryId ?? task.sourceEntryId ?? null;
       const completedAt = new Date();
       await db
         .update(controlTasks)
@@ -5041,33 +5071,77 @@ export const qualityRouter = router({
           completedByTitle: ctx.operatorProfile!.title,
         })
         .where(eq(controlTasks.id, input.id));
-      await db.insert(controlEntries).values({
-        module: task.module,
-        title: task.title,
-        area: task.area,
-        factoryId: task.factoryId,
-        result: input.result,
-        notes: input.notes,
-        payload: {
-          taskId: task.id,
-          sourceEntryId: task.sourceEntryId ?? null,
-          followUpTaskId: task.sourceEntryId ? task.id : null,
-          executionReport: { evidencePhotos: input.evidencePhotos ?? [] },
-        },
-        completedAt,
-        registeredByProfileId: ctx.operatorProfile!.id,
-        registeredByName: ctx.operatorProfile!.name,
-        registeredByTitle: ctx.operatorProfile!.title,
-        createdBy: ctx.user!.openId,
-      });
-      const isFollowUpTask = Boolean(task.sourceEntryId);
+      if (mergedFollowUpTask && mergedFollowUpTask.id !== task.id) {
+        await db
+          .update(controlTasks)
+          .set({
+            status: "completed",
+            completedAt,
+            completedByProfileId: ctx.operatorProfile!.id,
+            completedByName: ctx.operatorProfile!.name,
+            completedByTitle: ctx.operatorProfile!.title,
+          })
+          .where(eq(controlTasks.id, mergedFollowUpTask.id));
+      }
+      if (canonicalTask.id !== task.id) {
+        await db
+          .update(controlTasks)
+          .set({
+            status: "completed",
+            completedAt,
+            completedByProfileId: ctx.operatorProfile!.id,
+            completedByName: ctx.operatorProfile!.name,
+            completedByTitle: ctx.operatorProfile!.title,
+          })
+          .where(eq(controlTasks.id, canonicalTask.id));
+      }
+      const existingCanonicalEntry = (
+        await db.select().from(controlEntries)
+      ).find(entry => entry.payload?.taskId === canonicalTask.id);
+      const canonicalPayload = {
+        ... (existingCanonicalEntry ? entryPayload(existingCanonicalEntry) : {}),
+        taskId: canonicalTask.id,
+        sourceEntryId: mergedSourceEntryId,
+        followUpTaskId: mergedFollowUpTask?.id ?? null,
+        executionReport: { evidencePhotos: input.evidencePhotos ?? [] },
+      };
+      if (existingCanonicalEntry) {
+        await db
+          .update(controlEntries)
+          .set({
+            result: input.result,
+            notes: input.notes,
+            payload: canonicalPayload,
+            completedAt,
+            registeredByProfileId: ctx.operatorProfile!.id,
+            registeredByName: ctx.operatorProfile!.name,
+            registeredByTitle: ctx.operatorProfile!.title,
+          })
+          .where(eq(controlEntries.id, existingCanonicalEntry.id));
+      } else {
+        await db.insert(controlEntries).values({
+          module: canonicalTask.module,
+          title: canonicalTask.title,
+          area: canonicalTask.area,
+          factoryId: canonicalTask.factoryId,
+          result: input.result,
+          notes: input.notes,
+          payload: canonicalPayload,
+          completedAt,
+          registeredByProfileId: ctx.operatorProfile!.id,
+          registeredByName: ctx.operatorProfile!.name,
+          registeredByTitle: ctx.operatorProfile!.title,
+          createdBy: ctx.user!.openId,
+        });
+      }
+      const isFollowUpTask = Boolean(mergedFollowUpTask);
       let incidenceReviewRequired = false;
-      if (task.sourceEntryId) {
+      if (mergedSourceEntryId) {
         const sourceEntry = (
           await db
             .select()
             .from(controlEntries)
-            .where(eq(controlEntries.id, task.sourceEntryId))
+            .where(eq(controlEntries.id, mergedSourceEntryId))
             .limit(1)
         )[0];
         if (sourceEntry && sourceEntry.result === "NC" && !isDeletedControlEntry(sourceEntry)) {
@@ -5077,8 +5151,8 @@ export const qualityRouter = router({
           sourcePayload.followUpReviewAlerts = [
             ...completedFollowUps,
             {
-              followUpTaskId: task.id,
-              title: task.title,
+              followUpTaskId: mergedFollowUpTask?.id ?? task.id,
+              title: canonicalTask.title,
               result: input.result,
               notes: input.notes,
               completedAt: completedAt.toISOString(),
@@ -6946,6 +7020,9 @@ export const qualityRouter = router({
       const followUpTaskByReportId = new Map(
         followUpTasks
           .map(task => {
+            // Um registo fundido mantém taskId da tarefa operacional e apenas
+            // referencia o seguimento para rastreabilidade; não deve criar um
+            // segundo cartão no histórico.
             const report = entries.find(entry => entry.payload?.taskId === task.id);
             return report ? [report.id, task.id] as const : null;
           })
