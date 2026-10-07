@@ -1602,7 +1602,7 @@ export default function Controls() {
                               {factoryName(task.factoryId)} · {task.responsible}{" "}
                               · {dateFormat(task.dueAt, false)}
                             </p>
-                            {task.sourceEntryId && task.incidenceOrigin && task.status === "pending" ? (
+                            {task.sourceEntryId && task.incidenceOrigin ? (
                               <div className="mt-3 rounded-lg border border-violet-200 bg-violet-50 px-3 py-2 text-xs leading-5 text-violet-950">
                                 <p className="font-semibold">Incidência de origem · {task.incidenceOrigin.title}</p>
                                 <p className="mt-1">

@@ -819,7 +819,8 @@ function incidenceOriginFrom(
     completedAt: Date;
     payload?: unknown;
   } | undefined,
-  factoryNames: Map<number, string>
+  factoryNames: Map<number, string>,
+  collaboratorNames: Map<number, string> = new Map()
 ) {
   if (!entry) return null;
   const payload = entryPayload(entry);
@@ -830,6 +831,14 @@ function incidenceOriginFrom(
     }
     return null;
   };
+  const collaboratorId = Number(
+    payload.collaboratorId ?? payload.inspectedCollaboratorId
+  );
+  const collaboratorName =
+    textValue("collaboratorName", "inspectedCollaborator") ??
+    (Number.isInteger(collaboratorId) && collaboratorId > 0
+      ? collaboratorNames.get(collaboratorId) ?? null
+      : null);
   return {
     sourceEntryId: entry.id,
     module: entry.module,
@@ -841,7 +850,7 @@ function incidenceOriginFrom(
       : "Sem fábrica/linha",
     result: entry.result,
     occurredOn: incidenceOccurredOnFromPayload(payload, entry.completedAt),
-    collaboratorName: textValue("collaboratorName", "inspectedCollaborator"),
+    collaboratorName,
     productName: textValue("product", "productName"),
     lotNumber: textValue("lot", "lotNumber", "productionLot"),
     expiryDate: textValue("validity", "expiry", "expiryDate"),
@@ -4087,6 +4096,7 @@ export const qualityRouter = router({
         monthlyAreaRows,
         factoryCatalog,
         fragileCatalog,
+        collaboratorCatalog,
       ] = await Promise.all([
         db.select().from(controlTasks).orderBy(controlTasks.dueAt),
         db
@@ -4103,6 +4113,7 @@ export const qualityRouter = router({
         db.select().from(checklistAreas),
         db.select().from(factories).orderBy(factories.name),
         db.select().from(fragileItems).orderBy(fragileItems.sortOrder),
+        db.select().from(bphfInspectionEmployees).orderBy(bphfInspectionEmployees.name),
       ]);
       const profile = ctx.operatorProfile!;
       return scopeToFactory(tasks, input?.factoryId)
@@ -4189,7 +4200,8 @@ export const qualityRouter = router({
           const incidenceOrigin = task.sourceEntryId
             ? incidenceOriginFrom(
                 entries.find(entry => entry.id === task.sourceEntryId),
-                new Map(factoryCatalog.map(factory => [factory.id, factory.name]))
+                new Map(factoryCatalog.map(factory => [factory.id, factory.name])),
+                new Map(collaboratorCatalog.map(collaborator => [collaborator.id, collaborator.name]))
               )
             : null;
           return report
@@ -4417,7 +4429,7 @@ export const qualityRouter = router({
     .query(async ({ ctx, input }) => {
       const db = await requireDb();
       const profile = ctx.operatorProfile!;
-      const [tasks, entries, factoryRows] = await Promise.all([
+      const [tasks, entries, factoryRows, collaboratorRows] = await Promise.all([
         db
           .select()
           .from(controlTasks)
@@ -4425,12 +4437,17 @@ export const qualityRouter = router({
           .orderBy(controlTasks.dueAt),
         db.select().from(controlEntries).orderBy(desc(controlEntries.completedAt)),
         db.select().from(factories).orderBy(factories.name),
+        db.select().from(bphfInspectionEmployees).orderBy(bphfInspectionEmployees.name),
       ]);
       const factoryNames = new Map(
         factoryRows.map(factory => [factory.id, factory.name])
       );
       const sourceEntry = entries.find(entry => entry.id === input.sourceEntryId);
-      const incidenceOrigin = incidenceOriginFrom(sourceEntry, factoryNames);
+      const incidenceOrigin = incidenceOriginFrom(
+        sourceEntry,
+        factoryNames,
+        new Map(collaboratorRows.map(collaborator => [collaborator.id, collaborator.name]))
+      );
       return tasks.filter(task => {
         const assignees = Array.isArray(task.assigneeProfileIds)
           ? task.assigneeProfileIds
@@ -5033,6 +5050,8 @@ export const qualityRouter = router({
         notes: input.notes,
         payload: {
           taskId: task.id,
+          sourceEntryId: task.sourceEntryId ?? null,
+          followUpTaskId: task.sourceEntryId ? task.id : null,
           executionReport: { evidencePhotos: input.evidencePhotos ?? [] },
         },
         completedAt,

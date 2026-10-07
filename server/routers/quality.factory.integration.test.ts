@@ -2380,12 +2380,38 @@ describe("procedimentos de qualidade por fábrica", () => {
         expect.arrayContaining([
           expect.objectContaining({
             notes: "Cacifo revisto e conforme na nova verificação.",
+            payload: expect.objectContaining({
+              taskId: task.id,
+              sourceEntryId: task.sourceEntryId,
+              followUpTaskId: task.id,
+            }),
           }),
         ])
       );
       expect(notifyOwner).not.toHaveBeenCalled();
     } finally {
       Object.assign(task, originalTask);
+    }
+  });
+
+  it("mostra o colaborador da incidência de origem mesmo quando o seguimento já terminou", async () => {
+    const task = tasks[0]!;
+    const sourceEntry = entries[0]!;
+    const originalSourcePayload = sourceEntry.payload;
+    const originalSourceEntryId = (task as any).sourceEntryId;
+    sourceEntry.payload = { collaboratorId: 71, criterion: "Cacifos" };
+    (task as any).sourceEntryId = sourceEntry.id;
+    try {
+      const listed = await qualityRouter.createCaller(createContext()).listTasks({ factoryId: 1 });
+      expect(listed).toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          id: task.id,
+          incidenceOrigin: expect.objectContaining({ collaboratorName: "Maria Silva" }),
+        }),
+      ]));
+    } finally {
+      sourceEntry.payload = originalSourcePayload;
+      (task as any).sourceEntryId = originalSourceEntryId;
     }
   });
 
