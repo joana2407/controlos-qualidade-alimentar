@@ -182,6 +182,7 @@ type SimilarIncidenceFilter = {
   title: string;
   module: string;
   factoryId: number | null;
+  lotNumber?: string | null;
   pointKey?: string | null;
   collaboratorId?: number | null;
   collaboratorName?: string | null;
@@ -232,8 +233,16 @@ const controlledPointKey = (item: {
     item.area,
     item.title,
   ].find(value => typeof value === "string" && value.trim());
+  const shelfLifeProduct = payload.product ?? payload.productName;
+  const shelfLifeLot = payload.lot ?? payload.lotNumber ?? payload.productionLot;
   const discriminator =
-    pointId !== undefined
+    item.module === "shelf_life" &&
+    typeof shelfLifeProduct === "string" &&
+    typeof shelfLifeLot === "string" &&
+    shelfLifeProduct.trim() &&
+    shelfLifeLot.trim()
+      ? `product:${normaliseSimilarTitle(shelfLifeProduct)}|lot:${normaliseSimilarTitle(shelfLifeLot)}`
+      : pointId !== undefined
       ? `id:${String(pointId)}`
       : `name:${normaliseSimilarTitle(String(pointName ?? "Ponto não identificado"))}`;
   return `${item.module}|${item.factoryId ?? "none"}|${discriminator}`;
@@ -1797,11 +1806,12 @@ export default function Nonconformities() {
                       size="sm"
                       variant="outline"
                       className="border-red-200 bg-red-100 text-red-950 hover:bg-red-200"
-                      onClick={() =>
+                        onClick={() =>
                         openSimilarIncidences({
                           title: alert.title,
                           module: alert.module,
                           factoryId: alert.factoryId,
+                          lotNumber: alert.lotNumber,
                           pointKey: alert.pointKey,
                           collaboratorId: alert.collaboratorId,
                           collaboratorName: alert.collaboratorName,
@@ -1811,6 +1821,7 @@ export default function Nonconformities() {
                       aria-label={`Abrir as ${alert.total} incidências semelhantes: ${alert.title}, ${alert.factoryName}`}
                     >
                       {alert.total} × {alert.title} · {alert.factoryName}
+                      {alert.lotNumber ? ` · Lote ${alert.lotNumber}` : ""}
                     </Button>
                   ))}
                 </div>
@@ -1832,7 +1843,7 @@ export default function Nonconformities() {
                   do colaborador inspecionado «{similarFilter.collaboratorName}»
                 </>
               ) : (
-                <> de «{similarFilter.title}»</>
+                <> de «{similarFilter.title}»{similarFilter.lotNumber ? ` · lote ${similarFilter.lotNumber}` : ""}</>
               )}{" "}
               sem NC associada, nos últimos seis meses.
             </p>

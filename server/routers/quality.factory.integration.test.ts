@@ -5,7 +5,7 @@ import { getDb } from "../db";
 import { storageGetSignedUrl, storagePut } from "../storage";
 import { invokeLLM } from "../_core/llm";
 import { notifyOwner } from "../_core/notification";
-import { completedCoverageSlots, entryMatchesPlannedTask, isCoveredByCombinedSameScopePlans, isHistoricalPlanTaskSatisfied, qualityRouter, reconcileFactoryCompletion, reconcilePendingQualityTasks } from "./quality";
+import { completedCoverageSlots, entryMatchesPlannedTask, isCoveredByCombinedSameScopePlans, isHistoricalPlanTaskSatisfied, qualityRouter, reconcileFactoryCompletion, reconcilePendingQualityTasks, verificationHistoryKey } from "./quality";
 
 vi.mock("../db", () => ({ getDb: vi.fn() }));
 vi.mock("../storage", () => ({ storagePut: vi.fn(), storageGetSignedUrl: vi.fn() }));
@@ -157,6 +157,26 @@ describe("procedimentos de qualidade por fábrica", () => {
 
     expect(entryMatchesPlannedTask(otherTaskEntry, task)).toBe(false);
     expect(entryMatchesPlannedTask(legacyEntry, task)).toBe(true);
+  });
+
+  it("separa o histórico Shelf-life por lote, mesmo com o mesmo produto e fábrica", () => {
+    const base = {
+      module: "shelf_life",
+      factoryId: 3,
+      title: "Incidência shelf-life — Broa de Milho",
+      area: "Shelf-life",
+    };
+    const lot26259 = verificationHistoryKey(base, {
+      product: "Broa de Milho",
+      lot: "26259",
+    });
+    const lot26246 = verificationHistoryKey(base, {
+      product: "Broa de milho",
+      lot: "26246",
+    });
+
+    expect(lot26259).toContain("product:broa de milho|lot:26259");
+    expect(lot26259).not.toBe(lot26246);
   });
 
   beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(now); tasks.splice(0, tasks.length, ...initialTasks.map((task) => ({ ...task, assigneeProfileIds: [...task.assigneeProfileIds] }))); monthlyAreaRows.splice(0, monthlyAreaRows.length, { id: 201, name: "Geral", active: "true" }); monthlyRows.splice(0, monthlyRows.length, { id: 301, area: "Geral", active: "true" }, { id: 302, area: "Geral", active: "true" }); monthlyAreaAssignments.splice(0, monthlyAreaAssignments.length, { checklistItemId: 301, checklistAreaId: 201 }, { checklistItemId: 302, checklistAreaId: 201 }); plans.length = 0; archiveRows.length = 0; archiveViewRows.length = 0; dbUpdates.length = 0; dbInserts.length = 0; persistInsertedControlEntries = false; vi.clearAllMocks(); vi.mocked(getDb).mockResolvedValue(mockDatabase() as any); vi.mocked(storagePut).mockResolvedValue({ key: "dispatch-orders/3/encomenda.pdf", url: "/manus-storage/dispatch-orders/3/encomenda.pdf" }); vi.mocked(storageGetSignedUrl).mockResolvedValue("https://storage.example/encomenda.pdf"); });

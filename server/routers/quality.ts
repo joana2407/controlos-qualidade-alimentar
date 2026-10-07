@@ -497,6 +497,19 @@ function controlledPointKey(
   ]
     .map(key => payload[key])
     .find(value => typeof value === "number" || typeof value === "string");
+  const normalize = (value: unknown) =>
+    typeof value === "string"
+      ? value.trim().toLocaleLowerCase("pt-PT").replace(/\s+/g, " ")
+      : "";
+  if (entry.module === "shelf_life") {
+    const product = normalize(payload.product ?? payload.productName);
+    const lot = normalize(
+      payload.lot ?? payload.lotNumber ?? payload.productionLot
+    );
+    if (product && lot) {
+      return `${entry.module}|${entry.factoryId ?? "none"}|product:${product}|lot:${lot}`;
+    }
+  }
   // Um título, produto ou área em texto livre não identifica de forma segura o
   // mesmo ponto controlado. Sem um identificador persistido não há base para
   // somar incidências distintas e recomendar automaticamente a abertura de NC.
@@ -751,7 +764,7 @@ function isDeletedControlEntry(entry: { payload?: unknown }) {
   );
 }
 
-function verificationHistoryKey(
+export function verificationHistoryKey(
   entry: {
     module: string;
     factoryId: number | null;
@@ -771,8 +784,15 @@ function verificationHistoryKey(
   const criterion = normalize(payload.criterion);
   if (entry.module === "bphf" && collaboratorId > 0 && criterion)
     return `bphf|${factory}|collaborator:${collaboratorId}|criterion:${criterion}`;
-  const product = normalize(payload.product);
-  if (product) return `${entry.module}|${factory}|product:${product}`;
+  const product = normalize(payload.product ?? payload.productName);
+  if (product) {
+    const lot = normalize(
+      payload.lot ?? payload.lotNumber ?? payload.productionLot
+    );
+    return lot
+      ? `${entry.module}|${factory}|product:${product}|lot:${lot}`
+      : `${entry.module}|${factory}|product:${product}`;
+  }
   const area = normalize(entry.area);
   const title = normalize(entry.title);
   return `${entry.module}|${factory}|area:${area}|title:${title}`;
@@ -7210,6 +7230,7 @@ export const qualityRouter = router({
         title: string;
         module: (typeof qualityModuleValues)[number];
         factoryId: number | null;
+        lotNumber: string | null;
         collaboratorId: number | null;
         collaboratorName: string | null;
         pointKey: string | null;
@@ -7248,6 +7269,12 @@ export const qualityRouter = router({
         entry.module === "bphf" && typeof payload.collaboratorName === "string"
           ? payload.collaboratorName.trim()
           : "";
+      const lotNumber =
+        entry.module === "shelf_life"
+          ? typeof (payload.lot ?? payload.lotNumber ?? payload.productionLot) === "string"
+            ? String(payload.lot ?? payload.lotNumber ?? payload.productionLot).trim()
+            : null
+          : null;
       const hasBphfCollaborator =
         collaboratorId > 0 && Boolean(collaboratorName);
       const key =
@@ -7263,6 +7290,7 @@ export const qualityRouter = router({
           : relationship?.label ?? entry.title,
         module: entry.module,
         factoryId: hasBphfCollaborator ? null : entry.factoryId,
+        lotNumber,
         collaboratorId: hasBphfCollaborator ? collaboratorId : null,
         collaboratorName: hasBphfCollaborator ? collaboratorName : null,
         pointKey:
@@ -7297,6 +7325,7 @@ export const qualityRouter = router({
             : "Sem fábrica/linha",
         collaboratorId: group.collaboratorId,
         collaboratorName: group.collaboratorName,
+        lotNumber: group.lotNumber,
         pointKey: group.pointKey,
         relationshipGroupId: group.relationshipGroupId,
         total: group.entries.length,
