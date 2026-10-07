@@ -357,6 +357,60 @@ function incidenceTreatmentFromPayload(payload: Record<string, unknown>) {
 function hasCompletedIncidenceTreatment(payload: Record<string, unknown>) {
   return incidenceTreatmentFromPayload(payload).status === "completed";
 }
+function recurrenceOccurrencesFromEntry<
+  T extends {
+    id: number;
+    completedAt: Date;
+    payload: unknown;
+    registeredByProfileId: number | null;
+    registeredByName: string | null;
+    registeredByTitle: string | null;
+  }
+>(
+  entry: T
+): T[] {
+  const payload =
+    entry.payload && typeof entry.payload === "object" && !Array.isArray(entry.payload)
+      ? (entry.payload as Record<string, unknown>)
+      : {};
+  const followUps = Array.isArray(payload.followUpReviewAlerts)
+    ? payload.followUpReviewAlerts
+        .filter(
+          (item): item is Record<string, unknown> =>
+            Boolean(item) && typeof item === "object" && !Array.isArray(item)
+        )
+        .filter(item => item.result === "NC")
+        .map((item, index) => {
+          const completedAt = new Date(String(item.completedAt ?? ""));
+          return Number.isNaN(completedAt.getTime())
+            ? null
+            : ({
+                ...entry,
+                id: -(entry.id * 1000 + index + 1),
+                completedAt,
+                registeredByProfileId:
+                  typeof item.registeredByProfileId === "number"
+                    ? item.registeredByProfileId
+                    : entry.registeredByProfileId,
+                registeredByName:
+                  typeof item.registeredByName === "string"
+                    ? item.registeredByName
+                    : entry.registeredByName,
+                registeredByTitle:
+                  typeof item.registeredByTitle === "string"
+                    ? item.registeredByTitle
+                    : entry.registeredByTitle,
+                payload: {
+                  ...payload,
+                  recurrenceOccurrence: true,
+                  followUpTaskId: item.followUpTaskId ?? null,
+                },
+              } as T);
+        })
+        .filter((item): item is T => item !== null)
+    : [];
+  return [entry, ...followUps];
+}
 function incidenceTreatmentHistoryFromPayload(payload: Record<string, unknown>) {
   const parsed = z
     .array(incidenceTreatmentHistoryEntrySchema)
@@ -7077,6 +7131,7 @@ export const qualityRouter = router({
       }
     >();
     entries
+      .flatMap(recurrenceOccurrencesFromEntry)
       .filter(entry => {
         const payload =
           entry.payload &&
@@ -7163,7 +7218,7 @@ export const qualityRouter = router({
         entries: typeof entries;
       }
     >();
-    entries.forEach(entry => {
+    entries.flatMap(recurrenceOccurrencesFromEntry).forEach(entry => {
       const payload =
         entry.payload &&
         typeof entry.payload === "object" &&

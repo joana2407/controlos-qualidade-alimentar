@@ -1779,6 +1779,53 @@ describe("procedimentos de qualidade por fábrica", () => {
     entries.splice(0, entries.length, ...originalEntries);
   });
 
+  it("conta seguimentos NC como reincidências sem criar novas incidências", async () => {
+    const originalEntries = [...entries];
+    entries.push({
+      id: 940,
+      factoryId: 1,
+      module: "bphf",
+      area: "Produção",
+      result: "NC",
+      completedAt: new Date(2026, 8, 7),
+      payload: {
+        collaboratorId: 990001,
+        collaboratorName: "Baljit Singh",
+        criterion: "Estado de limpeza e organização dos cacifos",
+        incidenceTreatment: { status: "in_progress", responsible: "Neuza Antunes" },
+        followUpReviewAlerts: [
+          {
+            followUpTaskId: 941,
+            completedAt: new Date(2026, 8, 10).toISOString(),
+            result: "NC",
+            notes: "Mantém-se.",
+            registeredByName: "Neuza Antunes",
+          },
+          {
+            followUpTaskId: 942,
+            completedAt: new Date(2026, 8, 28).toISOString(),
+            result: "NC",
+            notes: "Reincidência confirmada.",
+            registeredByName: "Neuza Antunes",
+          },
+        ],
+      },
+    });
+    try {
+      const caller = qualityRouter.createCaller(createContext());
+      const collaboratorAlerts = await caller.incidenceRecurrenceAlerts();
+      const pointAlerts = await caller.similarIncidenceAlerts();
+      expect(collaboratorAlerts).toContainEqual(
+        expect.objectContaining({ collaboratorId: 990001, total: 3 })
+      );
+      expect(pointAlerts).toContainEqual(
+        expect.objectContaining({ collaboratorId: 990001, total: 3 })
+      );
+    } finally {
+      entries.splice(0, entries.length, ...originalEntries);
+    }
+  });
+
   it("aceita uma data inicial e final iguais para consultar um único dia", async () => {
     const caller = qualityRouter.createCaller(createContext());
     const sameDay = new Date(2026, 7, 14);
