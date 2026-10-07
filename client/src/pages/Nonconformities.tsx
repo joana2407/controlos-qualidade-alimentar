@@ -1124,10 +1124,18 @@ export default function Nonconformities() {
   const openCollaboratorIncidences = (alert: {
     collaboratorId: number;
     collaboratorName: string;
+    total?: number;
   }) => {
     const since = new Date();
     since.setMonth(since.getMonth() - 6);
-    setSimilarFilter(null);
+    setSimilarFilter({
+      title: `Colaborador: ${alert.collaboratorName}`,
+      module: "bphf",
+      factoryId: null,
+      collaboratorId: alert.collaboratorId,
+      collaboratorName: alert.collaboratorName,
+      total: alert.total ?? 0,
+    });
     setFactoryId("");
     setCollaboratorId(String(alert.collaboratorId));
     setStartDate(since.toISOString().slice(0, 10));
@@ -1754,6 +1762,7 @@ export default function Nonconformities() {
                         openCollaboratorIncidences({
                           collaboratorId: alert.collaboratorId,
                           collaboratorName: alert.collaboratorName,
+                          total: alert.total,
                         })
                       }
                       aria-label={`Abrir as ${alert.total} incidências ativas de ${alert.collaboratorName}`}

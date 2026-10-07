@@ -258,6 +258,8 @@ describe("detalhe de incidência com evidências", () => {
 
     fireEvent.click(alert);
     expect(screen.getByRole("button", { name: "Acompanhamento" }).getAttribute("aria-pressed")).toBe("true");
+    expect(screen.getByText("Tratamento global e relações")).toBeTruthy();
+    expect(screen.getByRole("button", { name: /Guardar classificação e tratamento global/i })).toBeTruthy();
   });
 
   it("oferece um filtro próprio para mostrar apenas NC abertas", () => {
