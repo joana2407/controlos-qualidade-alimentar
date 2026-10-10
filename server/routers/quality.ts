@@ -7546,6 +7546,7 @@ export const qualityRouter = router({
             ? ({ ...entry.payload } as Record<string, unknown>)
             : {};
         const relationshipLabel = assignmentById.get(entry.id) ?? null;
+        if (relationshipLabel) payload.incidenceTheme = relationshipLabel;
         payload.incidenceRelationship = relationshipLabel
           ? {
               kind: "related",

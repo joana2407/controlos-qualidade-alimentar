@@ -159,6 +159,7 @@ type OccurrenceItem = {
     registeredByTitle: string;
   }>;
   fragileTreatmentReview: FragileTreatmentReview | null;
+  theme: string | null;
   incidenceRelationship: {
     kind: "related" | "isolated";
     groupId?: string;
@@ -642,6 +643,7 @@ export default function Nonconformities() {
   const [, setLocation] = useLocation();
   const [factoryId, setFactoryId] = useState("");
   const [collaboratorId, setCollaboratorId] = useState("");
+  const [themeFilter, setThemeFilter] = useState("");
   const [searchText, setSearchText] = useState("");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
@@ -709,6 +711,11 @@ export default function Nonconformities() {
   const metadata = trpc.quality.metadata.useQuery();
   const bphfEmployees = trpc.quality.listBphfInspectionEmployees.useQuery();
   const incidences = trpc.quality.listIncidences.useQuery(filters);
+  const incidenceThemes = useMemo(() => Array.from(new Set((incidences.data ?? []).map(item => {
+    const payload = item.payload && typeof item.payload === "object" && !Array.isArray(item.payload) ? item.payload as Record<string, unknown> : {};
+    const relationship = payload.incidenceRelationship && typeof payload.incidenceRelationship === "object" && !Array.isArray(payload.incidenceRelationship) ? payload.incidenceRelationship as Record<string, unknown> : {};
+    return typeof payload.incidenceTheme === "string" && payload.incidenceTheme.trim() ? payload.incidenceTheme.trim() : typeof relationship.label === "string" && relationship.label.trim() ? relationship.label.trim() : "";
+  }).filter(Boolean))).sort((a, b) => a.localeCompare(b, "pt-PT")), [incidences.data]);
   const ncs = trpc.quality.listNcs.useQuery(filters);
   const recurrenceAlerts = trpc.quality.incidenceRecurrenceAlerts.useQuery(
     undefined,
@@ -812,6 +819,13 @@ export default function Nonconformities() {
             const matchesFactory =
               Boolean(similarFilter?.collaboratorId || similarFilter?.relationshipGroupId) ||
               item.factoryId === similarFilter?.factoryId;
+            const incidenceTheme =
+              typeof payload.incidenceTheme === "string" && payload.incidenceTheme.trim()
+                ? payload.incidenceTheme.trim()
+                : payload.incidenceRelationship && typeof payload.incidenceRelationship === "object" && !Array.isArray(payload.incidenceRelationship) && typeof (payload.incidenceRelationship as Record<string, unknown>).label === "string"
+                  ? String((payload.incidenceRelationship as Record<string, unknown>).label).trim()
+                  : "";
+            const matchesTheme = !themeFilter || incidenceTheme === themeFilter;
             const matchesSimilar =
               !similarFilter ||
               (item.result === "NC" &&
@@ -821,6 +835,7 @@ export default function Nonconformities() {
                 matchesSameCollaborator);
             return (
               matchesSimilar &&
+              matchesTheme &&
               (treatmentFilter === "all"
                 ? true
                 : treatmentFilter === "pending"
@@ -886,6 +901,10 @@ export default function Nonconformities() {
               ? (item as any).followUpReviewAlerts
               : [],
             fragileTreatmentReview: fragileTreatmentReviewFrom(item.payload),
+            theme:
+              typeof ((item.payload as Record<string, unknown>)?.incidenceTheme) === "string"
+                ? String((item.payload as Record<string, unknown>).incidenceTheme)
+                : incidenceRelationshipFrom((item as any).incidenceRelationship ?? (item.payload as Record<string, unknown>)?.incidenceRelationship)?.label ?? null,
             incidenceRelationship: incidenceRelationshipFrom(
               (item as any).incidenceRelationship ??
                 (item.payload as Record<string, unknown>)?.incidenceRelationship
@@ -941,6 +960,7 @@ export default function Nonconformities() {
           verificationHistory: [],
           followUpReviewAlerts: [],
           fragileTreatmentReview: null,
+          theme: null,
           incidenceRelationship: null,
           plannedTaskId: null,
           plannedDate: null,
@@ -972,6 +992,7 @@ export default function Nonconformities() {
             item.registeredByName ?? "",
             item.occurrenceNumber ?? "",
             item.occurredOn,
+            item.theme ?? "",
           ]
             .join(" ")
             .toLocaleLowerCase("pt-PT");
@@ -981,7 +1002,7 @@ export default function Nonconformities() {
         (left, right) =>
           new Date(right.date).getTime() - new Date(left.date).getTime()
       ),
-    [incidences.data, ncs.data, openNcOnly, searchText, similarFilter, treatmentFilter]
+    [incidences.data, ncs.data, openNcOnly, searchText, similarFilter, themeFilter, treatmentFilter]
   );
   const selected = occurrences.find(item => item.key === selectedKey) ?? null;
   const directGroupIncidences = useMemo(
@@ -1436,6 +1457,13 @@ export default function Nonconformities() {
                       </SelectItem>
                     ))}
                   </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label className="mb-1 block text-xs">Tema / classificação</Label>
+                <Select value={themeFilter || "all"} onValueChange={value => { setThemeFilter(value === "all" ? "" : value); setSelectedKey(""); }}>
+                  <SelectTrigger aria-label="Filtrar incidências por tema"><SelectValue placeholder="Todos os temas" /></SelectTrigger>
+                  <SelectContent><SelectItem value="all">Todos os temas</SelectItem>{incidenceThemes.map(theme => <SelectItem key={theme} value={theme}>{theme}</SelectItem>)}</SelectContent>
                 </Select>
               </div>
               <div>
@@ -2159,6 +2187,7 @@ export default function Nonconformities() {
                                 : "Sem relação"}
                             </Badge>
                           ) : null}
+                          {item.type === "incidence" && item.theme ? <Badge className="bg-violet-100 text-violet-900 hover:bg-violet-100" aria-label={`Tema: ${item.theme}`}><GitBranch className="mr-1 h-3 w-3" />{item.theme}</Badge> : null}
                           <Badge
                             className={
                               item.type === "incidence"

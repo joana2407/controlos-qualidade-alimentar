@@ -14,6 +14,7 @@ export const offlineIncidenceInputSchema = z.object({
   area: z.string().trim().min(2).max(120).optional().default("Não aplicável"),
   collaboratorId: z.number().int().positive().nullable().optional(),
   module: z.enum(qualityModuleValues),
+  theme: z.string().trim().max(160).optional(),
   photos: z.array(z.object({ fileName: z.string().min(1).max(255), mimeType: z.enum(["image/jpeg", "image/png", "image/webp"]), dataUrl: z.string().min(20).max(7_000_000) })).max(5).optional().default([]),
   occurredOn: z.string().date().optional(),
   occurredAt: z.string().datetime(),
@@ -57,6 +58,7 @@ export async function persistOfflineIncidence(input: OfflineIncidenceInput, oper
     notes: input.description,
     payload: {
       offlineManualIncidence: true,
+      ...(input.theme ? { incidenceTheme: input.theme } : {}),
       occurredOn: input.occurredOn ?? lisbonDateInputValue(new Date(input.occurredAt)),
       ...(collaborator
         ? {
