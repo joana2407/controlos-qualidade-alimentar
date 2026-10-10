@@ -675,6 +675,7 @@ export default function Nonconformities() {
   const [confirmDeleteIncidence, setConfirmDeleteIncidence] = useState(false);
   const [similarFilter, setSimilarFilter] =
     useState<SimilarIncidenceFilter | null>(null);
+  const [manualGroupIncidenceIds, setManualGroupIncidenceIds] = useState<number[]>([]);
   const [groupRelationshipAssignments, setGroupRelationshipAssignments] = useState<Record<number, string>>({});
   const [groupRelationshipLabels, setGroupRelationshipLabels] = useState<string[]>([]);
   const [newRelationshipLabel, setNewRelationshipLabel] = useState("");
@@ -739,6 +740,7 @@ export default function Nonconformities() {
       invalidateIncidencePanels();
       setSelectedKey("");
       setSimilarFilter(null);
+      setManualGroupIncidenceIds([]);
       setGroupTreatmentOpen(false);
       toast.success(
         `${result.updatedCount} ${result.updatedCount === 1 ? "incidência atualizada" : "incidências atualizadas"}. A classificação foi guardada e o Copiloto recebeu este contexto.`
@@ -986,14 +988,19 @@ export default function Nonconformities() {
     () =>
       similarFilter
         ? occurrences.filter(item => item.type === "incidence")
-        : [],
-    [occurrences, similarFilter]
+        : occurrences.filter(
+            item =>
+              item.type === "incidence" &&
+              manualGroupIncidenceIds.includes(item.id)
+          ),
+    [manualGroupIncidenceIds, occurrences, similarFilter]
   );
+  const hasManualGroupSelection = !similarFilter && directGroupIncidences.length >= 2;
   const directGroupSignature = directGroupIncidences
     .map(item => `${item.id}:${item.incidenceRelationship?.kind ?? ""}:${item.incidenceRelationship?.label ?? ""}`)
     .join("|");
   useEffect(() => {
-    if (!similarFilter || !directGroupIncidences.length) return;
+    if ((!similarFilter && !hasManualGroupSelection) || !directGroupIncidences.length) return;
     const relationshipLabels = Array.from(
       new Set(
         directGroupIncidences
@@ -1021,6 +1028,8 @@ export default function Nonconformities() {
     similarFilter?.pointKey,
     similarFilter?.relationshipGroupId,
     similarFilter?.collaboratorId,
+    hasManualGroupSelection,
+    manualGroupIncidenceIds.join(","),
     directGroupSignature,
   ]);
   const verificationHistoryInput = useMemo(
@@ -1903,6 +1912,7 @@ export default function Nonconformities() {
               className="border-red-200 bg-white text-red-900 hover:bg-red-100"
               onClick={() => {
                 setSimilarFilter(null);
+                setManualGroupIncidenceIds([]);
                 setSelectedKey("");
               }}
             >
@@ -1910,7 +1920,7 @@ export default function Nonconformities() {
             </Button>
           </div>
         ) : null}
-        {similarFilter && canManage ? (
+        {(similarFilter || hasManualGroupSelection) && canManage ? (
           <Card className="border border-violet-200 bg-violet-50/40 shadow-sm">
             <CardHeader className="border-b border-violet-100 pb-4">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -2057,6 +2067,7 @@ export default function Nonconformities() {
               <CardDescription>
                 O estado de geração de NC é apresentado em cada incidência,
                 respeitando os filtros selecionados.
+                {canManage ? " Selecione duas ou mais incidências para aplicar uma classificação e tratamento global." : ""}
               </CardDescription>
             </CardHeader>
             <CardContent className="max-h-[680px] space-y-3 overflow-auto p-4">
@@ -2064,14 +2075,32 @@ export default function Nonconformities() {
                 <p className="text-sm text-muted-foreground">A carregar…</p>
               ) : occurrences.length ? (
                 occurrences.map(item => (
-                  <button
-                    onClick={() => {
-                      setSelectedKey(item.key);
-                      setDetailsExpanded(true);
-                    }}
-                    key={item.key}
-                    className={`w-full rounded-xl border p-4 text-left transition-colors ${selectedKey === item.key ? "border-teal-400 bg-teal-50" : "border-slate-100 bg-white hover:border-slate-300"}`}
-                  >
+                  <div key={item.key} className="relative">
+                    {canManage && item.type === "incidence" && !item.generatedNonconformity ? (
+                      <label className="absolute right-3 top-3 z-10 flex items-center gap-2 rounded-md bg-white/95 px-2 py-1 text-xs text-slate-700 shadow-sm">
+                        <input
+                          type="checkbox"
+                          aria-label={`Selecionar incidência ${item.title}`}
+                          checked={manualGroupIncidenceIds.includes(item.id)}
+                          onChange={() => {
+                            setSimilarFilter(null);
+                            setManualGroupIncidenceIds(current =>
+                              current.includes(item.id)
+                                ? current.filter(id => id !== item.id)
+                                : [...current, item.id]
+                            );
+                          }}
+                        />
+                        Selecionar
+                      </label>
+                    ) : null}
+                    <button
+                      onClick={() => {
+                        setSelectedKey(item.key);
+                        setDetailsExpanded(true);
+                      }}
+                      className={`w-full rounded-xl border p-4 text-left transition-colors ${selectedKey === item.key ? "border-teal-400 bg-teal-50" : "border-slate-100 bg-white hover:border-slate-300"}`}
+                    >
                     <div className="flex items-start justify-between gap-3">
                       <div>
                         <div className="flex flex-wrap items-center gap-2">
@@ -2194,7 +2223,8 @@ export default function Nonconformities() {
                         <StatusBadge value={item.status as any} />
                       )}
                     </div>
-                  </button>
+                    </button>
+                  </div>
                 ))
               ) : (
                 <div className="rounded-xl bg-emerald-50 p-8 text-center text-sm text-emerald-800">

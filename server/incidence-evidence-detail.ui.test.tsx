@@ -242,6 +242,17 @@ describe("detalhe de incidência com evidências", () => {
     expect(screen.queryByRole("button", { name: /Incidência com foto/i })).toBeNull();
   });
 
+  it("permite selecionar várias incidências para tratamento global", () => {
+    render(<Nonconformities />);
+
+    fireEvent.click(screen.getByRole("checkbox", { name: /Incidência com foto/i }));
+    fireEvent.click(screen.getByRole("checkbox", { name: /Incidência pendente/i }));
+
+    expect(screen.getByText("Tratamento global e relações")).toBeTruthy();
+    expect(screen.getByText("2 incidências")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Guardar classificação e tratamento global" })).toBeTruthy();
+  });
+
   it("mostra as incidências fechadas na vista Todas e em Concluídos", () => {
     render(<Nonconformities />);
     fireEvent.click(screen.getByRole("button", { name: "Concluídos" }));
