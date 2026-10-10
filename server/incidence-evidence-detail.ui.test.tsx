@@ -86,7 +86,7 @@ describe("detalhe de incidência com evidências", () => {
     expect(screen.getByText("Histórico do tratamento")).toBeTruthy();
     expect(screen.getByText("2 edições")).toBeTruthy();
     expect(screen.getByText("Edição 2")).toBeTruthy();
-    expect(screen.getByText("Em tratamento")).toBeTruthy();
+    expect(screen.getAllByText("Em tratamento").length).toBeGreaterThan(0);
     expect(screen.getAllByText(/Responsável pelo tratamento:/i).length).toBeGreaterThan(0);
     expect(screen.getAllByText("Joana Pina").length).toBeGreaterThan(0);
     expect(screen.getAllByText(/21\/08\/2026/i).length).toBeGreaterThan(0);
@@ -230,6 +230,15 @@ describe("detalhe de incidência com evidências", () => {
 
     expect(screen.getByRole("button", { name: "Tratamento pendente" }).getAttribute("aria-pressed")).toBe("true");
     expect(screen.getByRole("button", { name: /Incidência pendente/i })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /Incidência com foto/i })).toBeNull();
+  });
+
+  it("permite filtrar apenas as incidências em tratamento", () => {
+    render(<Nonconformities />);
+    fireEvent.click(screen.getByRole("button", { name: "Em tratamento" }));
+
+    expect(screen.getByRole("button", { name: "Em tratamento" }).getAttribute("aria-pressed")).toBe("true");
+    expect(screen.queryByRole("button", { name: /Incidência pendente/i })).toBeNull();
     expect(screen.queryByRole("button", { name: /Incidência com foto/i })).toBeNull();
   });
 
