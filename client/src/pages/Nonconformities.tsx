@@ -819,7 +819,9 @@ export default function Nonconformities() {
                 matchesSameCollaborator);
             return (
               matchesSimilar &&
-              (treatmentFilter === "pending"
+              (treatmentFilter === "all"
+                ? true
+                : treatmentFilter === "pending"
                 ? !item.generatedNonconformity && treatment.status === "pending"
                 : treatmentFilter === "in_progress"
                 ? !item.generatedNonconformity && treatment.status === "in_progress"

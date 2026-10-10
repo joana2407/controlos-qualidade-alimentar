@@ -10616,6 +10616,13 @@ export const qualityRouter = router({
       const relevantIncidences = entriesInPeriod.filter(
         entry => entry.result === "NC"
       );
+      const generatedIncidenceEntries = relevantIncidences.filter(entry => {
+        const payload = entryPayload(entry);
+        return (
+          payload.generatedNonconformity === true ||
+          ncs.some(nc => nc.sourceEntryId === entry.id)
+        );
+      });
       const incidenceStatus = ["pending", "in_progress", "completed"] as const;
       const incidenceByTreatment = incidenceStatus.map(status => ({
         status,
@@ -10642,6 +10649,16 @@ export const qualityRouter = router({
           }).length,
         }));
       const ncsInPeriod = ncs.filter(nc => isWithinPeriod(nc.detectedAt));
+      const generatedEntryIds = new Set(
+        generatedIncidenceEntries.map(entry => entry.id)
+      );
+      const unlinkedFormalNcsInPeriod = ncsInPeriod.filter(
+        nc =>
+          !Number.isInteger(nc.sourceEntryId) ||
+          !generatedEntryIds.has(nc.sourceEntryId!)
+      );
+      const generatedNonconformityTotal =
+        generatedIncidenceEntries.length + unlinkedFormalNcsInPeriod.length;
       const nonconformityStatuses = [
         "open",
         "in_progress",
@@ -10678,27 +10695,14 @@ export const qualityRouter = router({
         technician.entries.push(entry);
         technicians.set(key, technician);
       });
-      const sourceEntriesById = new Map(
-        activeEntries.map(entry => [entry.id, entry])
-      );
       const activityByTechnician = Array.from(technicians.values())
         .map(technician => {
-          const generatedNonconformities = ncsInPeriod.filter(nc => {
-            const sourceEntry = nc.sourceEntryId
-              ? sourceEntriesById.get(nc.sourceEntryId)
-              : undefined;
+          const generatedNonconformities = generatedIncidenceEntries.filter(entry => {
+            const sourceEntry = entry;
             if (technician.profileId !== null) {
-              return (
-                nc.reportedByProfileId === technician.profileId ||
-                (nc.reportedByProfileId === null &&
-                  sourceEntry?.registeredByProfileId === technician.profileId)
-              );
+              return sourceEntry.registeredByProfileId === technician.profileId;
             }
-            return (
-              nc.reportedByName?.trim() === technician.name ||
-              (!nc.reportedByName &&
-                sourceEntry?.registeredByName?.trim() === technician.name)
-            );
+            return sourceEntry.registeredByName?.trim() === technician.name;
           }).length;
           const incidences = technician.entries.filter(
             entry => entry.result === "NC"
@@ -10734,8 +10738,8 @@ export const qualityRouter = router({
           label: new Intl.DateTimeFormat("pt-PT", { timeZone: "Europe/Lisbon", day: "2-digit", month: "2-digit" }).format(dayStart),
           registrations: dayEntries.length,
           incidences: dayEntries.filter(entry => entry.result === "NC").length,
-          generatedNonconformities: ncsInPeriod.filter(
-            nc => nc.detectedAt >= dayStart && nc.detectedAt < dayEnd
+          generatedNonconformities: generatedIncidenceEntries.filter(
+            entry => entry.completedAt >= dayStart && entry.completedAt < dayEnd
           ).length,
           completedTasks: dayTasks.filter(task => task.completed).length,
           plannedTasks: dayTasks.length,
@@ -10754,7 +10758,7 @@ export const qualityRouter = router({
           byTreatment: incidenceByTreatment,
           byDecision: incidenceByDecision,
           nonconformities: {
-            total: ncsInPeriod.length,
+            total: generatedNonconformityTotal,
             byStatus: nonconformityStatuses,
             bySeverity: nonconformityBySeverity,
           },
