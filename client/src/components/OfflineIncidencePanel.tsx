@@ -26,11 +26,15 @@ export function OfflineIncidencePanel({
   const metadata = trpc.quality.metadata.useQuery();
   const bphfEmployees = trpc.quality.listBphfInspectionEmployees.useQuery();
   const existingIncidences = trpc.quality.listIncidences.useQuery({});
-  const themes = Array.from(new Set((existingIncidences.data ?? []).map((item) => {
-    const payload = item.payload && typeof item.payload === "object" && !Array.isArray(item.payload) ? item.payload as Record<string, unknown> : {};
-    const relationship = payload.incidenceRelationship && typeof payload.incidenceRelationship === "object" && !Array.isArray(payload.incidenceRelationship) ? payload.incidenceRelationship as Record<string, unknown> : {};
-    return typeof payload.incidenceTheme === "string" && payload.incidenceTheme.trim() ? payload.incidenceTheme.trim() : typeof relationship.label === "string" && relationship.label.trim() ? relationship.label.trim() : "";
-  }).filter(Boolean))).sort((a, b) => a.localeCompare(b, "pt-PT"));
+  const themeCatalog = trpc.quality.listIncidenceThemes.useQuery();
+  const themes = Array.from(new Set([
+    ...(themeCatalog.data ?? []).map((theme: { name: string }) => theme.name),
+    ...(existingIncidences.data ?? []).map((item) => {
+      const payload = item.payload && typeof item.payload === "object" && !Array.isArray(item.payload) ? item.payload as Record<string, unknown> : {};
+      const relationship = payload.incidenceRelationship && typeof payload.incidenceRelationship === "object" && !Array.isArray(payload.incidenceRelationship) ? payload.incidenceRelationship as Record<string, unknown> : {};
+      return typeof payload.incidenceTheme === "string" && payload.incidenceTheme.trim() ? payload.incidenceTheme.trim() : typeof relationship.label === "string" && relationship.label.trim() ? relationship.label.trim() : "";
+    }).filter(Boolean),
+  ])).sort((a, b) => a.localeCompare(b, "pt-PT"));
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState(initialDraft);
   const [pending, setPending] = useState<OfflineIncidenceDraft[]>([]);

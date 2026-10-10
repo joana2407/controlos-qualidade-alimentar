@@ -70,6 +70,34 @@ export const incidenceAiGuidance = mysqlTable("incidence_ai_guidance", {
   index("incidence_ai_guidance_created_idx").on(table.createdAt),
 ]);
 
+/** Catálogo governado de temas/classificações de incidências. Os nomes antigos ficam preservados no payload histórico. */
+export const incidenceThemes = mysqlTable("incidence_themes", {
+  id: int("id").autoincrement().primaryKey(),
+  name: varchar("name", { length: 160 }).notNull().unique(),
+  description: text("description"),
+  active: mysqlEnum("incidence_theme_active", ["true", "false"]).default("true").notNull(),
+  createdBy: varchar("createdBy", { length: 64 }).notNull(),
+  createdByProfileId: int("createdByProfileId"),
+  createdByName: varchar("createdByName", { length: 160 }),
+  updatedBy: varchar("updatedBy", { length: 64 }),
+  updatedByProfileId: int("updatedByProfileId"),
+  updatedByName: varchar("updatedByName", { length: 160 }),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, (table) => [index("incidence_theme_active_idx").on(table.active), index("incidence_theme_name_idx").on(table.name)]);
+export const incidenceThemeMerges = mysqlTable("incidence_theme_merges", {
+  id: int("id").autoincrement().primaryKey(),
+  sourceThemeId: int("sourceThemeId").notNull(),
+  targetThemeId: int("targetThemeId").notNull(),
+  sourceName: varchar("sourceName", { length: 160 }).notNull(),
+  targetName: varchar("targetName", { length: 160 }).notNull(),
+  reason: varchar("reason", { length: 500 }).notNull(),
+  affectedEntries: int("affectedEntries").default(0).notNull(),
+  mergedBy: varchar("mergedBy", { length: 64 }).notNull(),
+  mergedByName: varchar("mergedByName", { length: 160 }),
+  mergedAt: timestamp("mergedAt").defaultNow().notNull(),
+}, (table) => [index("incidence_theme_merge_source_idx").on(table.sourceThemeId), index("incidence_theme_merge_target_idx").on(table.targetThemeId)]);
+
 /** Colaboradores que podem ser identificados numa inspeção BPHF de cacifos. */
 export const bphfInspectionEmployees = mysqlTable("bphf_inspection_employees", {
   id: int("id").autoincrement().primaryKey(),

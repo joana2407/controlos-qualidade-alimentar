@@ -711,11 +711,17 @@ export default function Nonconformities() {
   const metadata = trpc.quality.metadata.useQuery();
   const bphfEmployees = trpc.quality.listBphfInspectionEmployees.useQuery();
   const incidences = trpc.quality.listIncidences.useQuery(filters);
-  const incidenceThemes = useMemo(() => Array.from(new Set((incidences.data ?? []).map(item => {
-    const payload = item.payload && typeof item.payload === "object" && !Array.isArray(item.payload) ? item.payload as Record<string, unknown> : {};
-    const relationship = payload.incidenceRelationship && typeof payload.incidenceRelationship === "object" && !Array.isArray(payload.incidenceRelationship) ? payload.incidenceRelationship as Record<string, unknown> : {};
-    return typeof payload.incidenceTheme === "string" && payload.incidenceTheme.trim() ? payload.incidenceTheme.trim() : typeof relationship.label === "string" && relationship.label.trim() ? relationship.label.trim() : "";
-  }).filter(Boolean))).sort((a, b) => a.localeCompare(b, "pt-PT")), [incidences.data]);
+  const incidenceThemeCatalog = trpc.quality.listIncidenceThemes?.useQuery
+    ? trpc.quality.listIncidenceThemes.useQuery()
+    : { data: [] as Array<{ name: string }> };
+  const incidenceThemes = useMemo(() => Array.from(new Set([
+    ...(incidenceThemeCatalog.data ?? []).map((theme: { name: string }) => theme.name),
+    ...(incidences.data ?? []).map(item => {
+      const payload = item.payload && typeof item.payload === "object" && !Array.isArray(item.payload) ? item.payload as Record<string, unknown> : {};
+      const relationship = payload.incidenceRelationship && typeof payload.incidenceRelationship === "object" && !Array.isArray(payload.incidenceRelationship) ? payload.incidenceRelationship as Record<string, unknown> : {};
+      return typeof payload.incidenceTheme === "string" && payload.incidenceTheme.trim() ? payload.incidenceTheme.trim() : typeof relationship.label === "string" && relationship.label.trim() ? relationship.label.trim() : "";
+    }).filter(Boolean),
+  ])).sort((a, b) => a.localeCompare(b, "pt-PT")), [incidenceThemeCatalog.data, incidences.data]);
   const ncs = trpc.quality.listNcs.useQuery(filters);
   const recurrenceAlerts = trpc.quality.incidenceRecurrenceAlerts.useQuery(
     undefined,

@@ -5,9 +5,11 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
+import { Badge } from "@/components/ui/badge";
 import { trpc } from "@/lib/trpc";
 import { QUALITY_EXTERNAL_PANEL_KEYS, QUALITY_EXTERNAL_PANEL_OPTIONS, QUALITY_PANEL_KEYS, QUALITY_PANEL_OPTIONS, type QualityExternalPanelKey, type QualityPanelKey } from "@shared/quality-panel-access";
-import { KeyRound, LockKeyhole, Pencil, Plus, Settings2, ShieldCheck, Trash2, UserCog, UsersRound } from "lucide-react";
+import { ArchiveX, GitMerge, KeyRound, LockKeyhole, Pencil, Plus, Settings2, ShieldCheck, Trash2, UserCog, UsersRound } from "lucide-react";
 import { FormEvent, useState } from "react";
 import { toast } from "sonner";
 
@@ -48,8 +50,442 @@ export default function Configuration() {
 
   return <div className="app-grid min-h-full -m-4 p-4 md:-m-6 md:p-6"><section className="mx-auto max-w-6xl space-y-6"><header><p className="font-mono-ui text-xs uppercase tracking-[0.18em] text-teal-700">Governação operacional</p><h1 className="mt-2 text-3xl font-semibold tracking-tight">Configuração</h1><p className="mt-1 max-w-3xl text-sm text-muted-foreground">Gira os perfis operacionais, os PINs de acesso e os painéis disponíveis para cada elemento da equipa.</p></header>
     <TeamAccessSettings profiles={access.data?.profiles ?? []} activeProfileId={access.data?.activeProfile?.id ?? null} />
+    <IncidenceThemeSettings />
     <Card className="border-0 panel-shadow"><CardHeader><CardTitle className="flex items-center gap-2"><Settings2 className="h-5 w-5 text-teal-700" />Configuração operacional organizada</CardTitle><CardDescription>A criação e manutenção de áreas, pontos, linhas, planos e itens de checklist é efetuada diretamente no módulo a que pertence, evitando alterações acidentais na configuração geral.</CardDescription></CardHeader></Card>
   </section></div>;
+}
+
+type IncidenceTheme = {
+  id: number;
+  name: string;
+  description: string | null;
+  active: "true" | "false";
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+function IncidenceThemeSettings() {
+  const utils = trpc.useUtils();
+  const themes = trpc.quality.listIncidenceThemes.useQuery();
+  const merges = trpc.quality.listIncidenceThemeMerges.useQuery();
+  const [newName, setNewName] = useState("");
+  const [newDescription, setNewDescription] = useState("");
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [editingName, setEditingName] = useState("");
+  const [editingDescription, setEditingDescription] = useState("");
+  const [sourceId, setSourceId] = useState("");
+  const [targetId, setTargetId] = useState("");
+  const [mergeReason, setMergeReason] = useState("");
+  const activeThemes = (themes.data ?? []).filter(
+    (theme: IncidenceTheme) => theme.active === "true"
+  ) as IncidenceTheme[];
+  const inactiveThemes = (themes.data ?? []).filter(
+    (theme: IncidenceTheme) => theme.active !== "true"
+  ) as IncidenceTheme[];
+  const mergePreview = trpc.quality.previewIncidenceThemeMerge.useQuery(
+    {
+      sourceThemeId: Number(sourceId) || 1,
+      targetThemeId: Number(targetId) || 1,
+    },
+    { enabled: Boolean(sourceId && targetId && sourceId !== targetId) }
+  );
+  const refresh = async () => {
+    await utils.quality.listIncidenceThemes.invalidate();
+    await utils.quality.listIncidenceThemeMerges.invalidate();
+    await utils.quality.listIncidences.invalidate();
+  };
+  const createTheme = trpc.quality.createIncidenceTheme.useMutation({
+    onSuccess: async result => {
+      setNewName("");
+      setNewDescription("");
+      await refresh();
+      toast.success(result.reactivated ? "Tema reativado." : "Tema criado.");
+    },
+    onError: error => toast.error(error.message),
+  });
+  const updateTheme = trpc.quality.updateIncidenceTheme.useMutation({
+    onSuccess: async result => {
+      setEditingId(null);
+      setEditingName("");
+      setEditingDescription("");
+      await refresh();
+      toast.success(
+        `Tema atualizado. ${result.affectedEntries} registo(s) histórico(s) foram sincronizados.`
+      );
+    },
+    onError: error => toast.error(error.message),
+  });
+  const deactivateTheme = trpc.quality.deactivateIncidenceTheme.useMutation({
+    onSuccess: async () => {
+      await refresh();
+      toast.success("Tema desativado. O histórico foi preservado.");
+    },
+    onError: error => toast.error(error.message),
+  });
+  const mergeThemes = trpc.quality.mergeIncidenceThemes.useMutation({
+    onSuccess: async result => {
+      setSourceId("");
+      setTargetId("");
+      setMergeReason("");
+      await refresh();
+      toast.success(
+        `Fusão concluída. ${result.affectedEntries} registo(s) foram associados ao tema correto.`
+      );
+    },
+    onError: error => toast.error(error.message),
+  });
+  const submitCreate = (event: FormEvent) => {
+    event.preventDefault();
+    if (newName.trim().length >= 2)
+      createTheme.mutate({
+        name: newName.trim(),
+        description: newDescription.trim() || undefined,
+      });
+  };
+  const beginEdit = (theme: IncidenceTheme) => {
+    setEditingId(theme.id);
+    setEditingName(theme.name);
+    setEditingDescription(theme.description ?? "");
+  };
+  const submitEdit = (event: FormEvent) => {
+    event.preventDefault();
+    if (editingId !== null && editingName.trim().length >= 2)
+      updateTheme.mutate({
+        id: editingId,
+        name: editingName.trim(),
+        description: editingDescription.trim() || undefined,
+      });
+  };
+  const submitMerge = (event: FormEvent) => {
+    event.preventDefault();
+    if (!mergePreview.data)
+      return toast.error("Aguarde a pré-visualização dos registos afetados.");
+    if (mergeReason.trim().length < 3)
+      return toast.error("Indique o motivo da fusão.");
+    if (
+      window.confirm(
+        `Confirma fundir «${mergePreview.data.source.name}» em «${mergePreview.data.target.name}»? ${mergePreview.data.affectedEntries} registo(s) serão atualizados e o tema de origem ficará inativo.`
+      )
+    ) {
+      mergeThemes.mutate({
+        sourceThemeId: Number(sourceId),
+        targetThemeId: Number(targetId),
+        reason: mergeReason.trim(),
+      });
+    }
+  };
+  return (
+    <Card className="border-0 panel-shadow">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <GitMerge className="h-5 w-5 text-violet-700" />
+          Catálogo de temas de incidências
+        </CardTitle>
+        <CardDescription>
+          Catálogo exclusivo da Responsável de Qualidade para normalizar
+          classificações. Editar e fundir atualiza os registos associados com
+          auditoria; desativar impede novas utilizações sem apagar o histórico.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-5">
+        <form
+          className="grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]"
+          onSubmit={submitCreate}
+        >
+          <div className="space-y-1">
+            <Label htmlFor="new-incidence-theme">Novo tema</Label>
+            <Input
+              id="new-incidence-theme"
+              value={newName}
+              onChange={event => setNewName(event.target.value)}
+              placeholder="Ex.: Higiene pessoal"
+            />
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor="new-incidence-theme-description">
+              Descrição (opcional)
+            </Label>
+            <Input
+              id="new-incidence-theme-description"
+              value={newDescription}
+              onChange={event => setNewDescription(event.target.value)}
+              placeholder="Quando utilizar este tema"
+            />
+          </div>
+          <Button
+            type="submit"
+            className="self-end"
+            disabled={newName.trim().length < 2 || createTheme.isPending}
+          >
+            <Plus className="mr-2 h-4 w-4" />
+            Criar tema
+          </Button>
+        </form>
+        <div className="space-y-2" aria-live="polite">
+          {activeThemes.length ? (
+            activeThemes.map(theme => (
+              <div
+                key={theme.id}
+                className="rounded-xl border border-slate-100 bg-slate-50 p-3"
+              >
+                {editingId === theme.id ? (
+                  <form
+                    className="grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto_auto]"
+                    onSubmit={submitEdit}
+                  >
+                    <div>
+                      <Label
+                        htmlFor={`edit-theme-name-${theme.id}`}
+                        className="sr-only"
+                      >
+                        Nome do tema
+                      </Label>
+                      <Input
+                        id={`edit-theme-name-${theme.id}`}
+                        value={editingName}
+                        onChange={event => setEditingName(event.target.value)}
+                        autoFocus
+                      />
+                    </div>
+                    <div>
+                      <Label
+                        htmlFor={`edit-theme-description-${theme.id}`}
+                        className="sr-only"
+                      >
+                        Descrição do tema
+                      </Label>
+                      <Input
+                        id={`edit-theme-description-${theme.id}`}
+                        value={editingDescription}
+                        onChange={event =>
+                          setEditingDescription(event.target.value)
+                        }
+                      />
+                    </div>
+                    <Button
+                      type="submit"
+                      size="sm"
+                      disabled={
+                        editingName.trim().length < 2 || updateTheme.isPending
+                      }
+                    >
+                      Guardar
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setEditingId(null)}
+                    >
+                      Cancelar
+                    </Button>
+                  </form>
+                ) : (
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="font-semibold text-slate-900">
+                          {theme.name}
+                        </p>
+                        <Badge className="bg-emerald-100 text-emerald-800 hover:bg-emerald-100">
+                          Ativo
+                        </Badge>
+                      </div>
+                      <p className="mt-1 text-sm text-slate-600">
+                        {theme.description || "Sem descrição."}
+                      </p>
+                    </div>
+                    <div className="flex shrink-0 gap-2">
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={() => beginEdit(theme)}
+                      >
+                        <Pencil className="mr-1.5 h-3.5 w-3.5" />
+                        Editar
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className="text-red-700 hover:bg-red-50 hover:text-red-800"
+                        disabled={deactivateTheme.isPending}
+                        onClick={() => {
+                          if (
+                            window.confirm(
+                              `Desativar o tema «${theme.name}»? O histórico não será eliminado.`
+                            )
+                          )
+                            deactivateTheme.mutate({ id: theme.id });
+                        }}
+                      >
+                        <ArchiveX className="mr-1.5 h-3.5 w-3.5" />
+                        Desativar
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ))
+          ) : (
+            <p className="rounded-xl border border-dashed border-slate-200 p-4 text-sm text-slate-500">
+              Ainda não existem temas ativos. Os temas antigos serão migrados
+              automaticamente quando existirem registos classificados.
+            </p>
+          )}
+        </div>
+        {inactiveThemes.length ? (
+          <details className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+            <summary className="cursor-pointer text-sm font-medium text-slate-700">
+              Temas desativados ({inactiveThemes.length})
+            </summary>
+            <div className="mt-3 space-y-2">
+              {inactiveThemes.map(theme => (
+                <div
+                  key={theme.id}
+                  className="flex items-center justify-between rounded-lg bg-white px-3 py-2 text-sm"
+                >
+                  <span className="text-slate-600">{theme.name}</span>
+                  <Badge variant="outline">Inativo</Badge>
+                </div>
+              ))}
+            </div>
+          </details>
+        ) : null}
+        <div className="space-y-4 rounded-2xl border border-violet-100 bg-violet-50/60 p-4">
+          <div>
+            <h3 className="font-semibold text-violet-950">Fundir temas</h3>
+            <p className="mt-1 text-sm leading-6 text-violet-900">
+              Use quando duas classificações representam o mesmo assunto. O tema
+              de origem fica inativo, os registos passam para o tema correto e
+              cada alteração fica guardada no histórico do registo.
+            </p>
+          </div>
+          <form className="grid gap-3 md:grid-cols-2" onSubmit={submitMerge}>
+            <div className="space-y-2">
+              <Label>Tema de origem</Label>
+              <Select value={sourceId} onValueChange={setSourceId}>
+                <SelectTrigger aria-label="Tema de origem">
+                  <SelectValue placeholder="Selecionar tema a fundir" />
+                </SelectTrigger>
+                <SelectContent>
+                  {activeThemes.map(theme => (
+                    <SelectItem key={theme.id} value={String(theme.id)}>
+                      {theme.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Tema correto</Label>
+              <Select value={targetId} onValueChange={setTargetId}>
+                <SelectTrigger aria-label="Tema correto">
+                  <SelectValue placeholder="Selecionar tema de destino" />
+                </SelectTrigger>
+                <SelectContent>
+                  {activeThemes
+                    .filter(theme => String(theme.id) !== sourceId)
+                    .map(theme => (
+                      <SelectItem key={theme.id} value={String(theme.id)}>
+                        {theme.name}
+                      </SelectItem>
+                    ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2 md:col-span-2">
+              <Label htmlFor="theme-merge-reason">Motivo da fusão</Label>
+              <Textarea
+                id="theme-merge-reason"
+                value={mergeReason}
+                onChange={event => setMergeReason(event.target.value)}
+                placeholder="Ex.: duas classificações usadas para o mesmo tipo de desvio"
+                maxLength={500}
+              />
+            </div>
+            {mergePreview.isFetching ? (
+              <p className="text-sm text-violet-800 md:col-span-2">
+                A calcular os registos afetados…
+              </p>
+            ) : null}
+            {mergePreview.data ? (
+              <div className="rounded-xl border border-violet-200 bg-white p-3 text-sm md:col-span-2">
+                <p className="font-semibold text-violet-950">
+                  Pré-visualização
+                </p>
+                <p className="mt-1 text-violet-900">
+                  «{mergePreview.data.source.name}» será fundido em «
+                  {mergePreview.data.target.name}».
+                </p>
+                <p className="mt-1 text-violet-900">
+                  <strong>{mergePreview.data.affectedEntries}</strong>{" "}
+                  registo(s) serão atualizados.
+                </p>
+                <p className="mt-1 text-xs text-slate-600">
+                  {mergePreview.data.byModule.length
+                    ? mergePreview.data.byModule
+                        .map(item => `${item.total} · ${item.module}`)
+                        .join("  |  ")
+                    : "Não foram encontrados registos associados."}
+                </p>
+                {mergePreview.data.sample.length ? (
+                  <details className="mt-2">
+                    <summary className="cursor-pointer text-xs font-medium text-violet-900">
+                      Ver amostra dos registos
+                    </summary>
+                    <ul className="mt-2 space-y-1 text-xs text-slate-600">
+                      {mergePreview.data.sample.map(item => (
+                        <li key={item.id}>
+                          #{item.id} · {item.module} · {item.title}
+                        </li>
+                      ))}
+                    </ul>
+                  </details>
+                ) : null}
+              </div>
+            ) : null}
+            <Button
+              type="submit"
+              className="md:col-span-2"
+              disabled={
+                !mergePreview.data ||
+                mergeReason.trim().length < 3 ||
+                mergeThemes.isPending
+              }
+            >
+              {mergeThemes.isPending ? "A fundir…" : "Confirmar fusão"}
+            </Button>
+          </form>
+        </div>
+        {merges.data?.length ? (
+          <details className="rounded-xl border border-violet-100 bg-white p-3">
+            <summary className="cursor-pointer text-sm font-medium text-violet-900">
+              Histórico de fusões ({merges.data.length})
+            </summary>
+            <div className="mt-3 space-y-2">
+              {merges.data.map(merge => (
+                <div
+                  key={merge.id}
+                  className="rounded-lg bg-violet-50/60 px-3 py-2 text-sm"
+                >
+                  <p className="font-medium text-violet-950">
+                    {merge.sourceName} → {merge.targetName}
+                  </p>
+                  <p className="mt-1 text-xs text-violet-800">
+                    {merge.affectedEntries} registo(s) ·{" "}
+                    {new Date(merge.mergedAt).toLocaleString("pt-PT")} · Motivo:{" "}
+                    {merge.reason}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </details>
+        ) : null}
+      </CardContent>
+    </Card>
+  );
 }
 
 function BphfEmployeeSettings() {

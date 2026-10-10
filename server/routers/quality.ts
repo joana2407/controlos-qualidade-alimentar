@@ -22,6 +22,8 @@ import {
   fragileAreas,
   fragileItems,
   incidenceAiGuidance,
+  incidenceThemes,
+  incidenceThemeMerges,
   nonconformities,
   qualityPanelAccess,
   qualityPinProfiles,
@@ -732,6 +734,72 @@ function entryPayload(entry: { payload?: unknown }) {
     ? (entry.payload as Record<string, unknown>)
     : {};
 }
+function normalizeIncidenceThemeName(name: string) {
+  return name.replace(/\s+/g, " ").trim();
+}
+function incidenceThemeNameFromPayload(payload: Record<string, unknown>) {
+  const explicit =
+    typeof payload.incidenceTheme === "string" ? payload.incidenceTheme : "";
+  if (explicit.trim()) return normalizeIncidenceThemeName(explicit);
+  const relationship = incidenceRelationshipFromPayload(payload);
+  return relationship?.label
+    ? normalizeIncidenceThemeName(relationship.label)
+    : "";
+}
+function incidenceThemeHistoryFromPayload(payload: Record<string, unknown>) {
+  return Array.isArray(payload.incidenceThemeHistory)
+    ? payload.incidenceThemeHistory.filter(
+        item => item && typeof item === "object" && !Array.isArray(item)
+      )
+    : [];
+}
+async function syncIncidenceThemeCatalog(
+  db: any,
+  createdBy: string,
+  createdByName: string
+) {
+  const entries = await db.select().from(controlEntries);
+  const catalog = await db
+    .select()
+    .from(incidenceThemes)
+    .orderBy(incidenceThemes.name);
+  const known = new Set(
+    catalog.map((theme: { name: string }) =>
+      theme.name.toLocaleLowerCase("pt-PT")
+    )
+  );
+  for (const entry of entries) {
+    const name = incidenceThemeNameFromPayload(entryPayload(entry));
+    const key = name.toLocaleLowerCase("pt-PT");
+    if (!name || known.has(key)) continue;
+    await db.insert(incidenceThemes).values({
+      name,
+      description: "Tema migrado automaticamente dos registos históricos.",
+      active: "true",
+      createdBy,
+      createdByName,
+    });
+    known.add(key);
+  }
+  return db.select().from(incidenceThemes).orderBy(incidenceThemes.name);
+}
+function payloadWithIncidenceTheme(
+  payload: Record<string, unknown>,
+  oldName: string,
+  newName: string,
+  audit: Record<string, unknown>
+): Record<string, unknown> {
+  const history = incidenceThemeHistoryFromPayload(payload);
+  return {
+    ...payload,
+    incidenceTheme: newName,
+    incidenceThemeHistory: [
+      ...history,
+      { from: oldName, to: newName, ...audit },
+    ],
+  };
+}
+
 
 function entryOperationalDate(entry: { completedAt: Date; payload?: unknown }) {
   const payload = entryPayload(entry);
@@ -6960,6 +7028,358 @@ export const qualityRouter = router({
       };
     }),
 
+  listIncidenceThemes: qualitySessionProcedure.query(async ({ ctx }) => {
+    const db = await requireDb();
+    if (ctx.operatorProfile?.role === "manager") {
+      return syncIncidenceThemeCatalog(
+        db,
+        ctx.user?.openId ?? `quality-profile-${ctx.operatorProfile.id}`,
+        ctx.operatorProfile.name
+      );
+    }
+    return db.select().from(incidenceThemes).where(eq(incidenceThemes.active, "true")).orderBy(incidenceThemes.name);
+  }),
+  listIncidenceThemeMerges: qualityManagerProcedure.query(async () => {
+    const db = await requireDb();
+    return db
+      .select()
+      .from(incidenceThemeMerges)
+      .orderBy(desc(incidenceThemeMerges.mergedAt));
+  }),
+  createIncidenceTheme: qualityManagerProcedure
+    .input(
+      z.object({
+        name: z.string().trim().min(2).max(160),
+        description: z.string().trim().max(1000).optional(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const db = await requireDb();
+      const name = normalizeIncidenceThemeName(input.name);
+      const existing = await db.select().from(incidenceThemes);
+      const duplicate = existing.find(
+        theme =>
+          theme.name.toLocaleLowerCase("pt-PT") ===
+          name.toLocaleLowerCase("pt-PT")
+      );
+      if (duplicate) {
+        if (duplicate.active !== "true") {
+          await db
+            .update(incidenceThemes)
+            .set({
+              active: "true",
+              description: input.description?.trim() || duplicate.description,
+              updatedBy: ctx.user!.openId,
+              updatedByProfileId: ctx.operatorProfile!.id,
+              updatedByName: ctx.operatorProfile!.name,
+            })
+            .where(eq(incidenceThemes.id, duplicate.id));
+          return { success: true, id: duplicate.id, reactivated: true };
+        }
+        throw new TRPCError({
+          code: "CONFLICT",
+          message: "Já existe um tema com esse nome.",
+        });
+      }
+      const inserted = await db
+        .insert(incidenceThemes)
+        .values({
+          name,
+          description: input.description?.trim() || null,
+          active: "true",
+          createdBy: ctx.user!.openId,
+          createdByProfileId: ctx.operatorProfile!.id,
+          createdByName: ctx.operatorProfile!.name,
+        });
+      return {
+        success: true,
+        id: Number(inserted[0].insertId),
+        reactivated: false,
+      };
+    }),
+  updateIncidenceTheme: qualityManagerProcedure
+    .input(
+      z.object({
+        id: z.number().int().positive(),
+        name: z.string().trim().min(2).max(160),
+        description: z.string().trim().max(1000).optional(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const db = await requireDb();
+      const current = (
+        await db
+          .select()
+          .from(incidenceThemes)
+          .where(eq(incidenceThemes.id, input.id))
+          .limit(1)
+      )[0];
+      if (!current)
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Tema não encontrado.",
+        });
+      const name = normalizeIncidenceThemeName(input.name);
+      const allThemes = await db.select().from(incidenceThemes);
+      if (
+        allThemes.some(
+          theme =>
+            theme.id !== current.id &&
+            theme.name.toLocaleLowerCase("pt-PT") ===
+              name.toLocaleLowerCase("pt-PT")
+        )
+      )
+        throw new TRPCError({
+          code: "CONFLICT",
+          message: "Já existe outro tema com esse nome.",
+        });
+      const changed = current.name !== name;
+      const entries = changed ? await db.select().from(controlEntries) : [];
+      let affectedEntries = 0;
+      for (const entry of entries) {
+        const payload = entryPayload(entry);
+        const currentTheme = incidenceThemeNameFromPayload(payload);
+        if (
+          currentTheme.toLocaleLowerCase("pt-PT") !==
+          current.name.toLocaleLowerCase("pt-PT")
+        )
+          continue;
+        const nextPayload = payloadWithIncidenceTheme(
+          payload,
+          current.name,
+          name,
+          {
+            action: "edit",
+            changedAt: new Date().toISOString(),
+            changedByName: ctx.operatorProfile!.name,
+          }
+        );
+        const relationship = nextPayload.incidenceRelationship;
+        if (
+          relationship &&
+          typeof relationship === "object" &&
+          !Array.isArray(relationship) &&
+          (relationship as Record<string, unknown>).label === current.name
+        )
+          nextPayload.incidenceRelationship = {
+            ...(relationship as Record<string, unknown>),
+            label: name,
+          };
+        await db
+          .update(controlEntries)
+          .set({ payload: nextPayload })
+          .where(eq(controlEntries.id, entry.id));
+        affectedEntries++;
+      }
+      await db
+        .update(incidenceThemes)
+        .set({
+          name,
+          description: input.description?.trim() || null,
+          updatedBy: ctx.user!.openId,
+          updatedByProfileId: ctx.operatorProfile!.id,
+          updatedByName: ctx.operatorProfile!.name,
+        })
+        .where(eq(incidenceThemes.id, current.id));
+      return { success: true, affectedEntries };
+    }),
+  deactivateIncidenceTheme: qualityManagerProcedure
+    .input(z.object({ id: z.number().int().positive() }))
+    .mutation(async ({ ctx, input }) => {
+      const db = await requireDb();
+      const current = (
+        await db
+          .select()
+          .from(incidenceThemes)
+          .where(eq(incidenceThemes.id, input.id))
+          .limit(1)
+      )[0];
+      if (!current)
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Tema não encontrado.",
+        });
+      await db
+        .update(incidenceThemes)
+        .set({
+          active: "false",
+          updatedBy: ctx.user!.openId,
+          updatedByProfileId: ctx.operatorProfile!.id,
+          updatedByName: ctx.operatorProfile!.name,
+        })
+        .where(eq(incidenceThemes.id, current.id));
+      return { success: true, id: current.id };
+    }),
+  previewIncidenceThemeMerge: qualityManagerProcedure
+    .input(
+      z.object({
+        sourceThemeId: z.number().int().positive(),
+        targetThemeId: z.number().int().positive(),
+      })
+    )
+    .query(async ({ input }) => {
+      if (input.sourceThemeId === input.targetThemeId)
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Escolha dois temas diferentes.",
+        });
+      const db = await requireDb();
+      const [sourceRows, targetRows] = await Promise.all([
+        db
+          .select()
+          .from(incidenceThemes)
+          .where(eq(incidenceThemes.id, input.sourceThemeId))
+          .limit(1),
+        db
+          .select()
+          .from(incidenceThemes)
+          .where(eq(incidenceThemes.id, input.targetThemeId))
+          .limit(1),
+      ]);
+      const source = sourceRows[0];
+      const target = targetRows[0];
+      if (!source || !target)
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Tema não encontrado.",
+        });
+      if (source.active !== "true" || target.active !== "true")
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "A fusão requer dois temas ativos.",
+        });
+      const entries = await db.select().from(controlEntries);
+      const affected = entries.filter(
+        entry =>
+          incidenceThemeNameFromPayload(entryPayload(entry)).toLocaleLowerCase(
+            "pt-PT"
+          ) === source.name.toLocaleLowerCase("pt-PT")
+      );
+      return {
+        source: { id: source.id, name: source.name },
+        target: { id: target.id, name: target.name },
+        affectedEntries: affected.length,
+        byModule: Array.from(
+          affected.reduce(
+            (map, entry) =>
+              map.set(entry.module, (map.get(entry.module) ?? 0) + 1),
+            new Map<string, number>()
+          ),
+          ([module, total]) => ({ module, total })
+        ),
+        sample: affected
+          .slice(0, 8)
+          .map(entry => ({
+            id: entry.id,
+            module: entry.module,
+            title: entry.title,
+            completedAt: entry.completedAt,
+          })),
+      };
+    }),
+  mergeIncidenceThemes: qualityManagerProcedure
+    .input(
+      z.object({
+        sourceThemeId: z.number().int().positive(),
+        targetThemeId: z.number().int().positive(),
+        reason: z.string().trim().min(3).max(500),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      if (input.sourceThemeId === input.targetThemeId)
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Escolha dois temas diferentes.",
+        });
+      const db = await requireDb();
+      const [sourceRows, targetRows] = await Promise.all([
+        db
+          .select()
+          .from(incidenceThemes)
+          .where(eq(incidenceThemes.id, input.sourceThemeId))
+          .limit(1),
+        db
+          .select()
+          .from(incidenceThemes)
+          .where(eq(incidenceThemes.id, input.targetThemeId))
+          .limit(1),
+      ]);
+      const source = sourceRows[0];
+      const target = targetRows[0];
+      if (!source || !target)
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Tema não encontrado.",
+        });
+      if (source.active !== "true" || target.active !== "true")
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "A fusão requer dois temas ativos.",
+        });
+      const entries = await db.select().from(controlEntries);
+      const affected = entries.filter(
+        entry =>
+          incidenceThemeNameFromPayload(entryPayload(entry)).toLocaleLowerCase(
+            "pt-PT"
+          ) === source.name.toLocaleLowerCase("pt-PT")
+      );
+      const mergedAt = new Date();
+      for (const entry of affected) {
+        const payload = entryPayload(entry);
+        const nextPayload = payloadWithIncidenceTheme(
+          payload,
+          source.name,
+          target.name,
+          {
+            action: "merge",
+            mergedAt: mergedAt.toISOString(),
+            mergedByName: ctx.operatorProfile!.name,
+          }
+        );
+        const relationship = nextPayload.incidenceRelationship;
+        if (
+          relationship &&
+          typeof relationship === "object" &&
+          !Array.isArray(relationship) &&
+          (relationship as Record<string, unknown>).label === source.name
+        )
+          nextPayload.incidenceRelationship = {
+            ...(relationship as Record<string, unknown>),
+            label: target.name,
+          };
+        await db
+          .update(controlEntries)
+          .set({ payload: nextPayload })
+          .where(eq(controlEntries.id, entry.id));
+      }
+      await db
+        .update(incidenceThemes)
+        .set({
+          active: "false",
+          updatedBy: ctx.user!.openId,
+          updatedByProfileId: ctx.operatorProfile!.id,
+          updatedByName: ctx.operatorProfile!.name,
+        })
+        .where(eq(incidenceThemes.id, source.id));
+      const audit = await db
+        .insert(incidenceThemeMerges)
+        .values({
+          sourceThemeId: source.id,
+          targetThemeId: target.id,
+          sourceName: source.name,
+          targetName: target.name,
+          reason: input.reason.trim(),
+          affectedEntries: affected.length,
+          mergedBy: ctx.user!.openId,
+          mergedByName: ctx.operatorProfile!.name,
+          mergedAt,
+        });
+      return {
+        success: true,
+        auditId: Number(audit[0].insertId),
+        affectedEntries: affected.length,
+      };
+    }),
   listIncidences: qualitySessionProcedure
     .input(
       z
