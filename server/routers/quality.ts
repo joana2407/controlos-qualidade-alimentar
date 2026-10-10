@@ -3665,10 +3665,37 @@ export const qualityRouter = router({
               ? 0
               : factoryControls.filter(isPlannedControlCompleted).length;
             if (module === "fragile_items") {
+              // O catálogo inclui pontos ativos que podem não ter sido
+              // publicados no Plano do Dia. Quando existe cobertura explícita
+              // na tarefa, o resumo deve usar exatamente esse conjunto;
+              // caso contrário, um ponto fora do plano cria uma pendência
+              // falsa (como a Fábrica 1 em 09/10/2026).
+              const plannedFragileItemIds = new Set<number>();
+              let hasExplicitFragileCoverage = false;
+              factoryControls.forEach(task => {
+                if (!Array.isArray(task.plannedCoverage)) return;
+                for (const slot of task.plannedCoverage) {
+                  try {
+                    const parsed = JSON.parse(slot);
+                    if (
+                      Array.isArray(parsed) &&
+                      parsed[0] === "fragile" &&
+                      typeof parsed[1] === "number"
+                    ) {
+                      hasExplicitFragileCoverage = true;
+                      plannedFragileItemIds.add(parsed[1]);
+                    }
+                  } catch {
+                    // Ignora slots antigos inválidos sem interromper o resumo.
+                  }
+                }
+              });
               const applicablePoints = fragileCatalog.filter(
                 item =>
                   item.factoryId === factory.id &&
                   item.status === "active" &&
+                  (!hasExplicitFragileCoverage ||
+                    plannedFragileItemIds.has(item.id)) &&
                   isFragileInspectionPending(
                     item.periodicity,
                     lastFragileInspectionsBeforeDay.get(item.id),

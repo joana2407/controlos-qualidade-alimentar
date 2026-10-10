@@ -2986,6 +2986,39 @@ describe("procedimentos de qualidade por fábrica", () => {
     }
   });
 
+  it("calcula Quebráveis apenas com os pontos publicados no Plano do Dia", async () => {
+    const plannedTask = {
+      id: 704,
+      factoryId: 1,
+      status: "completed" as const,
+      dueAt: now,
+      completedAt: now,
+      module: "fragile_items" as const,
+      area: "Plano do Dia",
+      title: "Plano do Dia — Quebráveis F1",
+      responsible: "Equipa",
+      assigneeProfileIds: [1],
+      plannedCoverage: ['["fragile",1]'],
+    };
+    tasks.push(plannedTask);
+    try {
+      const dashboard = await qualityRouter
+        .createCaller(createContext())
+        .dashboard({ date: now });
+      const progress = dashboard.moduleProgressByFactory.fragile_items.find(
+        item => item.factoryId === 1
+      );
+
+      expect(progress).toMatchObject({
+        expected: 1,
+        completed: 1,
+        percentage: 100,
+      });
+    } finally {
+      tasks.splice(tasks.findIndex(task => task.id === plannedTask.id), 1);
+    }
+  });
+
   it("lista o histórico anterior do ponto de Quebráveis com estado, autoria e observações", async () => {
     const historyEntries = [
       { id: 950, factoryId: 1, module: "fragile_items", area: "Zona Tratamento Térmico", title: "Quebrável — Portas forno Anelar 1", result: "NC", notes: "Substituir proteção antes do próximo turno.", completedAt: new Date(2026, 7, 13, 9, 30, 0), registeredByName: "Sabrina Esteves", registeredByTitle: "Tec. Qualidade", payload: { fragileItemId: 1, state: "Danificado", evidencePhotos: [{ url: "/manus-storage/dano.png", fileName: "dano.png" }] } },
