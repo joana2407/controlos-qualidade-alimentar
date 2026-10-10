@@ -683,8 +683,8 @@ export default function Nonconformities() {
   const [groupTreatmentDraft, setGroupTreatmentDraft] = useState<IncidenceTreatment>(emptyIncidenceTreatment());
   const [groupTreatmentOpen, setGroupTreatmentOpen] = useState(false);
   const [treatmentFilter, setTreatmentFilter] = useState<
-    "active" | "pending" | "in_progress" | "completed" | "follow_up_review_pending"
-  >("active");
+    "all" | "pending" | "in_progress" | "completed" | "follow_up_review_pending"
+  >("all");
   const [openNcOnly, setOpenNcOnly] = useState(false);
   const [creatingFollowUpTask, setCreatingFollowUpTask] = useState(false);
   const [followUpTitle, setFollowUpTitle] = useState("");
@@ -823,14 +823,9 @@ export default function Nonconformities() {
                 ? !item.generatedNonconformity && treatment.status === "pending"
                 : treatmentFilter === "in_progress"
                 ? !item.generatedNonconformity && treatment.status === "in_progress"
-                : treatmentFilter === "active"
-                ? !item.generatedNonconformity &&
-                  (treatment.status !== "completed" ||
-                    hasFollowUpReviewPending)
                 : treatmentFilter === "follow_up_review_pending"
                   ? !item.generatedNonconformity && hasFollowUpReviewPending
-                  : !item.generatedNonconformity &&
-                    treatment.status === "completed")
+                  : !item.generatedNonconformity)
             );
           })
           .map(item => ({
@@ -907,7 +902,7 @@ export default function Nonconformities() {
             collaboratorName: typeof (item.payload as Record<string, unknown>)?.collaboratorName === "string" ? (item.payload as Record<string, unknown>).collaboratorName as string : null,
             pointKey: controlledPointKey(item),
           })),
-        ...(!similarFilter && (treatmentFilter === "active" || openNcOnly)
+        ...(!similarFilter && (treatmentFilter === "all" || openNcOnly)
           ? (ncs.data ?? [])
           : []
         ).map(item => ({
@@ -1128,7 +1123,7 @@ export default function Nonconformities() {
   const clearDates = () => {
     setStartDate("");
     setEndDate("");
-    setTreatmentFilter("active");
+    setTreatmentFilter("all");
     setOpenNcOnly(false);
     setSelectedKey("");
   };
@@ -1144,7 +1139,7 @@ export default function Nonconformities() {
     setSearchText("");
     setStartDate(since.toISOString().slice(0, 10));
     setEndDate("");
-    setTreatmentFilter("active");
+    setTreatmentFilter("all");
     setOpenNcOnly(false);
     setSelectedKey("");
   };
@@ -1171,7 +1166,7 @@ export default function Nonconformities() {
     setCollaboratorId(String(alert.collaboratorId));
     setStartDate(since.toISOString().slice(0, 10));
     setEndDate("");
-    setTreatmentFilter("active");
+    setTreatmentFilter("all");
     setOpenNcOnly(false);
     setSelectedKey("");
   };
@@ -1494,14 +1489,14 @@ export default function Nonconformities() {
               <Button
                 type="button"
                 size="sm"
-                variant={treatmentFilter === "active" ? "default" : "outline"}
-                aria-pressed={treatmentFilter === "active"}
+                variant={treatmentFilter === "all" ? "default" : "outline"}
+                aria-pressed={treatmentFilter === "all"}
                 onClick={() => {
-                  setTreatmentFilter("active");
+                  setTreatmentFilter("all");
                   setSelectedKey("");
                 }}
               >
-                Acompanhamento
+                Todas
               </Button>
               <Button
                 type="button"

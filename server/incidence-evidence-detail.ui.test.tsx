@@ -216,12 +216,12 @@ describe("detalhe de incidência com evidências", () => {
     expect(screen.getByRole("button", { name: "Guardar tratamento" })).toBeTruthy();
   });
 
-  it("mostra por defeito apenas as incidências que requerem acompanhamento", () => {
+  it("mostra por defeito todas as incidências", () => {
     render(<Nonconformities />);
 
-    expect(screen.getByRole("button", { name: "Acompanhamento" }).getAttribute("aria-pressed")).toBe("true");
+    expect(screen.getByRole("button", { name: "Todas" }).getAttribute("aria-pressed")).toBe("true");
     expect(screen.getByRole("button", { name: /Incidência pendente/i })).toBeTruthy();
-    expect(screen.queryByRole("button", { name: /Incidência com foto/i })).toBeNull();
+    expect(screen.getByRole("button", { name: /Incidência com foto/i })).toBeTruthy();
   });
 
   it("permite filtrar apenas as incidências com tratamento pendente", () => {
@@ -242,14 +242,14 @@ describe("detalhe de incidência com evidências", () => {
     expect(screen.queryByRole("button", { name: /Incidência com foto/i })).toBeNull();
   });
 
-  it("mostra as incidências fechadas apenas ao selecionar Concluídos", () => {
+  it("mostra as incidências fechadas na vista Todas e em Concluídos", () => {
     render(<Nonconformities />);
     fireEvent.click(screen.getByRole("button", { name: "Concluídos" }));
 
     expect(screen.getByRole("button", { name: /Incidência com foto/i }).textContent).toMatch(/tratamento concluído/i);
     expect(screen.getByRole("button", { name: /Incidência com foto/i }).textContent).toMatch(/decisão de nc: decisão pendente/i);
     expect(screen.getByLabelText("Resumo gráfico dos tratamentos")).toBeTruthy();
-    expect(screen.getByRole("img", { name: /0 pendentes, 0 em curso e 1 concluídos/i })).toBeTruthy();
+    expect(screen.getByRole("img", { name: /1 pendentes, 0 em curso e 1 concluídos/i })).toBeTruthy();
   });
 
   it("mantém a criação de incidência no cabeçalho e mostra incidências abertas e NC geradas no resumo", () => {
@@ -275,7 +275,7 @@ describe("detalhe de incidência com evidências", () => {
     expect(alert.textContent).toMatch(/Maria Silva · 3 ocorrências NC · avaliar NC/i);
 
     fireEvent.click(alert);
-    expect(screen.getByRole("button", { name: "Acompanhamento" }).getAttribute("aria-pressed")).toBe("true");
+    expect(screen.getByRole("button", { name: "Todas" }).getAttribute("aria-pressed")).toBe("true");
     expect(screen.getByText("Tratamento global e relações")).toBeTruthy();
     expect(screen.getByRole("button", { name: /Guardar classificação e tratamento global/i })).toBeTruthy();
   });
@@ -336,7 +336,7 @@ describe("detalhe de incidência com evidências", () => {
     expect(screen.getByRole("button", { name: /Guardar classificação e tratamento global/i })).toBeTruthy();
   });
 
-  it("limpa filtros concorrentes e mantém ocultas as incidências concluídas ao abrir um grupo", () => {
+  it("limpa filtros concorrentes e mantém a vista Todas ao abrir um grupo", () => {
     similarAlerts.push({ title: "Colaborador: Maria Silva", module: "bphf", factoryId: 1, factoryName: "Fábrica 1 (Fatiado)", collaboratorId: 71, collaboratorName: "Maria Silva", total: 3 });
     render(<Nonconformities />);
 
@@ -348,8 +348,8 @@ describe("detalhe de incidência com evidências", () => {
     fireEvent.click(screen.getByRole("button", { name: /abrir as 3 incidências semelhantes/i }));
 
     expect((screen.getByLabelText("Pesquisar incidências") as HTMLInputElement).value).toBe("");
-    expect(screen.getByRole("button", { name: "Acompanhamento" }).getAttribute("aria-pressed")).toBe("true");
-    expect(screen.queryByRole("button", { name: /Incidência com foto/i })).toBeNull();
+    expect(screen.getByRole("button", { name: "Todas" }).getAttribute("aria-pressed")).toBe("true");
+    expect(screen.getByRole("button", { name: /Incidência com foto/i })).toBeTruthy();
     expect(screen.getAllByText("Incidência pendente").length).toBeGreaterThan(0);
   });
 
