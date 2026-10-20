@@ -7,9 +7,12 @@ import { defineConfig, type Plugin, type ViteDevServer } from "vite";
 import { vitePluginManusRuntime } from "vite-plugin-manus-runtime";
 import { VitePWA } from "vite-plugin-pwa";
 
-// No GitHub Pages a aplicação é publicada numa subpasta do repositório.
-// Em desenvolvimento mantemos a raiz para preservar o URL local habitual.
-const APP_BASE = process.env.NODE_ENV === "production" ? "/qualicontrol/" : "/";
+// O Vercel publica a aplicação na raiz. Para GitHub Pages pode ser definido
+// VITE_BASE_PATH=/qualicontrol/ durante o build, sem alterar o código.
+const configuredBase = process.env.VITE_BASE_PATH?.trim();
+const APP_BASE = configuredBase
+  ? `${configuredBase.startsWith("/") ? "" : "/"}${configuredBase.endsWith("/") ? configuredBase : `${configuredBase}/`}`
+  : "/";
 
 // =============================================================================
 // Manus Debug Collector - Vite Plugin
