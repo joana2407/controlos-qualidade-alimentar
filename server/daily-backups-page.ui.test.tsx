@@ -30,6 +30,8 @@ describe("pasta de backups diários", () => {
     expect(screen.getByText("Guardado")).toBeTruthy();
     expect(screen.getByRole("link", { name: /descarregar/i }).getAttribute("href")).toContain("/manus-storage/qualicontrol/backups-diarios/");
     expect(screen.getByRole("button", { name: /gerar 1 em falta/i })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Exportar Cópia de Segurança" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Importar Cópia de Segurança" })).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: /gerar 1 em falta/i }));
     expect(backupMocks.bulk).toHaveBeenCalledTimes(1);

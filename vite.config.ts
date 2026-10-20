@@ -180,8 +180,8 @@ const plugins = [
       theme_color: "#101b34",
       background_color: "#101b34",
       icons: [
-        { src: "/manus-storage/qualicontrol-pwa-192_fc456895.png", sizes: "192x192", type: "image/png", purpose: "any" },
-        { src: "/manus-storage/qualicontrol-pwa-512_d191e79d.png", sizes: "512x512", type: "image/png", purpose: "any maskable" },
+        { src: `${APP_BASE}assets/qualicontrol-favicon.png`, sizes: "128x128", type: "image/png", purpose: "any" },
+        { src: `${APP_BASE}assets/qualicontrol-logo.png`, sizes: "110x92", type: "image/png", purpose: "any maskable" },
       ],
     },
     injectManifest: {

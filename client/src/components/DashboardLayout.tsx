@@ -288,7 +288,7 @@ function DashboardLayoutContent({
               >
                 <PanelLeft className="h-4 w-4 text-muted-foreground" />
               </button>
-              <img src="/manus-storage/qualicontrol-logo_e5bfd122.png" alt="Logótipo A&S" className="h-9 w-10 shrink-0 object-contain" />
+              <img src={`${import.meta.env.BASE_URL}assets/qualicontrol-logo.png`} alt="Logótipo QualiControl" className="h-9 w-10 shrink-0 object-contain" />
               {!isCollapsed ? (
                 <div className="flex items-center gap-2 min-w-0">
                   <div className="flex flex-col leading-tight">
