@@ -7,6 +7,10 @@ import { defineConfig, type Plugin, type ViteDevServer } from "vite";
 import { vitePluginManusRuntime } from "vite-plugin-manus-runtime";
 import { VitePWA } from "vite-plugin-pwa";
 
+// No GitHub Pages a aplicação é publicada numa subpasta do repositório.
+// Em desenvolvimento mantemos a raiz para preservar o URL local habitual.
+const APP_BASE = process.env.NODE_ENV === "production" ? "/qualicontrol/" : "/";
+
 // =============================================================================
 // Manus Debug Collector - Vite Plugin
 // Writes browser logs directly to files, trimmed when exceeding size limit
@@ -167,8 +171,8 @@ const plugins = [
       short_name: "QualiControl",
       description: "Gestão operacional de controlos de qualidade e segurança alimentar.",
       lang: "pt-PT",
-      start_url: "/",
-      scope: "/",
+      start_url: APP_BASE,
+      scope: APP_BASE,
       display: "standalone",
       theme_color: "#101b34",
       background_color: "#101b34",
@@ -185,6 +189,7 @@ const plugins = [
 ];
 
 export default defineConfig({
+  base: APP_BASE,
   plugins,
   resolve: {
     alias: {
