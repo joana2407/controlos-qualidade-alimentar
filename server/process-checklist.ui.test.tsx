@@ -23,6 +23,11 @@ describe("Checklist de Processos", () => {
     fireEvent.click(screen.getAllByRole("combobox")[1]);
     fireEvent.click(screen.getByText("Broa de Milho"));
     expect(screen.getByText("Verificação dos lotes a uso")).toBeTruthy();
+    expect(screen.getByLabelText("MP")).toBeTruthy();
+    expect(screen.getByLabelText("Lote")).toBeTruthy();
+    expect(screen.getByLabelText("Validade")).toBeTruthy();
+    expect(screen.getAllByRole("button", { name: "C" }).length).toBeGreaterThanOrEqual(3);
+    expect(screen.getAllByRole("button", { name: "NC" }).length).toBeGreaterThanOrEqual(3);
     expect(screen.getByText("Guardar checklist")).toBeTruthy();
   });
 });
