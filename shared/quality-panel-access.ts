@@ -35,7 +35,7 @@ export function isQualityExternalPanelKey(value: string): value is QualityExtern
 export function panelsForQualityPath(pathname: string): QualityPanelKey | null {
   if (pathname === "/" || pathname === "/qualicontrol") return "dashboard";
   if (pathname === "/plataforma" || pathname === "/ajuda") return "platform";
-  if (pathname === "/controlos" || pathname.startsWith("/controlos/")) return "operational_controls";
+  if (pathname === "/controlos" || pathname.startsWith("/controlos/") || pathname === "/checklist-processos") return "operational_controls";
   if (pathname === "/incidencias" || pathname === "/nao-conformidades") return "incidents";
   if (pathname === "/relatorios") return "reports";
   if (pathname === "/analise-operacional") return "analytics";

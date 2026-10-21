@@ -15,6 +15,7 @@ const Configuration = React.lazy(() => import("./pages/Configuration"));
 import PlatformOverview from "./pages/PlatformOverview";
 const DailyBackups = React.lazy(() => import("./pages/DailyBackups"));
 const OperationalAnalytics = React.lazy(() => import("./pages/OperationalAnalytics"));
+const ProcessChecklist = React.lazy(() => import("./pages/ProcessChecklist"));
 
 function Router() {
   // make sure to consider if you need authentication for certain routes
@@ -32,6 +33,7 @@ function Router() {
       <Route path={"/plataforma"} component={PlatformOverview} />
       <Route path={"/ajuda"} component={() => <Redirect to="/plataforma" />} />
       <Route path={"/controlos"} component={Controls} />
+      <Route path={"/checklist-processos"} component={ProcessChecklist} />
       <Route path={"/controlos/:module"} component={ModuleControl} />
       <Route path={"/incidencias"} component={Nonconformities} />
       <Route path={"/nao-conformidades"} component={Nonconformities} />
