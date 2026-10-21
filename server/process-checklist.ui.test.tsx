@@ -28,6 +28,10 @@ describe("Checklist de Processos", () => {
     expect(screen.getByLabelText("Validade")).toBeTruthy();
     expect(screen.getAllByRole("button", { name: "C" }).length).toBeGreaterThanOrEqual(3);
     expect(screen.getAllByRole("button", { name: "NC" }).length).toBeGreaterThanOrEqual(3);
+    fireEvent.click(screen.getByRole("button", { name: "Adicionar MP" }));
+    expect(screen.getAllByLabelText("MP")).toHaveLength(2);
+    expect(screen.getAllByLabelText("Lote")).toHaveLength(2);
+    expect(screen.getAllByLabelText("Validade")).toHaveLength(2);
     expect(screen.getByText("Guardar checklist")).toBeTruthy();
   });
 });

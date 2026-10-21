@@ -14,7 +14,8 @@ import { toast } from "sonner";
 type CheckResult = "C" | "NC" | "NA";
 type LotFieldKey = "mp" | "lot" | "expiry";
 type LotField = { value: string; result: Exclude<CheckResult, "NA"> | "" };
-type ProcessCheck = { parameter: string; result: CheckResult | ""; observedValue: string; notes: string; correctiveAction: string; lotFields?: Record<LotFieldKey, LotField> };
+type LotRow = Record<LotFieldKey, LotField>;
+type ProcessCheck = { parameter: string; result: CheckResult | ""; observedValue: string; notes: string; correctiveAction: string; lotRows?: LotRow[] };
 type ProcessRecord = { id: string; createdAt: string; date: string; shift: string; responsible: string; factoryId: string; product: string; lot: string; phase: string; checks: ProcessCheck[]; overallResult: CheckResult };
 const STORAGE_KEY = "qualicontrol-process-checklist-v1";
 const today = () => new Date().toISOString().slice(0, 10);
@@ -25,7 +26,7 @@ const emptyCheck = (parameter: string): ProcessCheck => ({
   observedValue: "",
   notes: "",
   correctiveAction: "",
-  ...(isLotVerification(parameter) ? { lotFields: { mp: { value: "", result: "" }, lot: { value: "", result: "" }, expiry: { value: "", result: "" } } } : {}),
+  ...(isLotVerification(parameter) ? { lotRows: [{ mp: { value: "", result: "" }, lot: { value: "", result: "" }, expiry: { value: "", result: "" } }] } : {}),
 });
 
 function readRecords(): ProcessRecord[] {
@@ -62,16 +63,24 @@ export default function ProcessChecklist() {
     setChecks((PROCESS_CONTROL_CATALOG[factoryId]?.products[product]?.[Number(value) as 1 | 2 | 3] ?? []).map(emptyCheck));
   };
   const updateCheck = (index: number, patch: Partial<ProcessCheck>) => setChecks(current => current.map((item, itemIndex) => itemIndex === index ? { ...item, ...patch } : item));
-  const updateLotField = (index: number, field: LotFieldKey, patch: Partial<LotField>) => setChecks(current => current.map((item, itemIndex) => {
-    if (itemIndex !== index || !item.lotFields) return item;
-    const lotFields = { ...item.lotFields, [field]: { ...item.lotFields[field], ...patch } };
-    const fieldResults = Object.values(lotFields).map(value => value.result);
+  const updateLotField = (index: number, rowIndex: number, field: LotFieldKey, patch: Partial<LotField>) => setChecks(current => current.map((item, itemIndex) => {
+    if (itemIndex !== index || !item.lotRows?.[rowIndex]) return item;
+    const lotRows = item.lotRows.map((row, currentRowIndex) => currentRowIndex === rowIndex ? { ...row, [field]: { ...row[field], ...patch } } : row);
+    const fieldResults = lotRows.flatMap(row => Object.values(row).map(value => value.result));
     const result: CheckResult | "" = fieldResults.some(value => value === "NC") ? "NC" : fieldResults.every(value => value === "C") ? "C" : "";
-    return { ...item, lotFields, result };
+    return { ...item, lotRows, result };
+  }));
+  const addLotRow = (index: number) => setChecks(current => current.map((item, itemIndex) => itemIndex === index ? { ...item, lotRows: [...(item.lotRows ?? []), { mp: { value: "", result: "" }, lot: { value: "", result: "" }, expiry: { value: "", result: "" } }], result: "" } : item));
+  const removeLotRow = (index: number, rowIndex: number) => setChecks(current => current.map((item, itemIndex) => {
+    if (itemIndex !== index || !item.lotRows || item.lotRows.length <= 1) return item;
+    const lotRows = item.lotRows.filter((_, currentRowIndex) => currentRowIndex !== rowIndex);
+    const fieldResults = lotRows.flatMap(row => Object.values(row).map(value => value.result));
+    const result: CheckResult | "" = fieldResults.some(value => value === "NC") ? "NC" : fieldResults.every(value => value === "C") ? "C" : "";
+    return { ...item, lotRows, result };
   }));
   const save = () => {
     if (!date || !shift || !responsible.trim() || !product || !checks.length) return toast.error("Preencha a data, turno, responsável, produto e fase antes de guardar.");
-    if (checks.some(check => isLotVerification(check.parameter) && (!check.lotFields || Object.values(check.lotFields).some(field => !field.value.trim() || !field.result)))) return toast.error("No ponto de lotes, preencha MP, Lote e Validade e valide cada campo como C ou NC.");
+    if (checks.some(check => isLotVerification(check.parameter) && (!check.lotRows?.length || check.lotRows.some(row => Object.values(row).some(field => !field.value.trim() || !field.result))))) return toast.error("No ponto de lotes, preencha todas as MP, os respetivos lotes e validades e valide cada campo como C ou NC.");
     if (checks.some(check => !check.result)) return toast.error("Valide todos os pontos da fase como Conforme, Não conforme ou Não aplicável.");
     if (checks.some(check => check.result === "NC" && !check.correctiveAction.trim())) return toast.error("Para cada ponto Não conforme, indique a ação corretiva ou de contenção.");
     const overallResult: CheckResult = checks.some(check => check.result === "NC") ? "NC" : checks.every(check => check.result === "NA") ? "NA" : "C";
@@ -83,16 +92,16 @@ export default function ProcessChecklist() {
   const removeRecord = (id: string) => { const next = records.filter(record => record.id !== id); setRecords(next); localStorage.setItem(STORAGE_KEY, JSON.stringify(next)); toast.success("Registo removido do histórico local."); };
   const exportRecords = () => { const blob = new Blob([JSON.stringify(records, null, 2)], { type: "application/json" }); const url = URL.createObjectURL(blob); const anchor = document.createElement("a"); anchor.href = url; anchor.download = `checklist-processos-${today()}.json`; anchor.click(); URL.revokeObjectURL(url); };
   const renderCheck = (check: ProcessCheck, index: number) => {
-    const lotFields = check.lotFields;
-    if (lotFields) {
+    const lotRows = check.lotRows;
+    if (lotRows) {
       const lotFieldDefinitions: Array<{ key: LotFieldKey; label: string; placeholder: string; type?: string }> = [
         { key: "mp", label: "MP", placeholder: "Matéria-prima" },
         { key: "lot", label: "Lote", placeholder: "Referência do lote" },
         { key: "expiry", label: "Validade", placeholder: "Data de validade", type: "date" },
       ];
       return <div key={`${check.parameter}-${index}`} className={`rounded-xl border p-4 ${check.result === "NC" ? "border-red-200 bg-red-50/40" : "border-slate-200 bg-white"}`}>
-        <div className="mb-4"><p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Ponto {index + 1}</p><p className="mt-1 text-sm font-medium leading-6 text-slate-900">{check.parameter}</p><p className="mt-1 text-xs leading-5 text-teal-800"><span className="font-semibold">Validação individual obrigatória:</span> confirme a MP, o lote e a validade usados na produção.</p></div>
-        <div className="grid gap-3 lg:grid-cols-3">{lotFieldDefinitions.map(field => <div key={field.key} className="rounded-lg border border-slate-200 bg-slate-50/70 p-3"><Label htmlFor={`lot-${field.key}-${index}`}>{field.label}</Label><Input id={`lot-${field.key}-${index}`} type={field.type ?? "text"} placeholder={field.placeholder} value={lotFields[field.key].value} onChange={event => updateLotField(index, field.key, { value: event.target.value })} className="mt-2 bg-white" /><p className="mt-3 text-xs font-medium text-slate-600">Validação de {field.label}</p><div className="mt-2 grid grid-cols-2 gap-2"><Button type="button" size="sm" variant={lotFields[field.key].result === "C" ? "default" : "outline"} onClick={() => updateLotField(index, field.key, { result: "C" })}>C</Button><Button type="button" size="sm" variant={lotFields[field.key].result === "NC" ? "destructive" : "outline"} onClick={() => updateLotField(index, field.key, { result: "NC" })}>NC</Button></div><p className="mt-1 text-[11px] text-slate-500">{resultLabel(lotFields[field.key].result)}</p></div>)}</div>
+        <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between"><div><p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Ponto {index + 1}</p><p className="mt-1 text-sm font-medium leading-6 text-slate-900">{check.parameter}</p><p className="mt-1 text-xs leading-5 text-teal-800"><span className="font-semibold">Validação individual obrigatória:</span> cada MP deve ter o seu lote e validade confirmados.</p></div><Button type="button" size="sm" variant="outline" onClick={() => addLotRow(index)}>Adicionar MP</Button></div>
+        <div className="space-y-3">{lotRows.map((row, rowIndex) => <div key={rowIndex} className="rounded-lg border border-slate-200 bg-slate-50/70 p-3"><div className="mb-2 flex items-center justify-between"><p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Matéria-prima {rowIndex + 1}</p>{lotRows.length > 1 ? <Button type="button" size="sm" variant="ghost" className="h-7 text-red-700 hover:bg-red-50 hover:text-red-800" onClick={() => removeLotRow(index, rowIndex)}>Remover</Button> : null}</div><div className="grid gap-3 lg:grid-cols-3">{lotFieldDefinitions.map(field => <div key={field.key}><Label htmlFor={`lot-${field.key}-${index}-${rowIndex}`}>{field.label}</Label><Input id={`lot-${field.key}-${index}-${rowIndex}`} type={field.type ?? "text"} placeholder={field.placeholder} value={row[field.key].value} onChange={event => updateLotField(index, rowIndex, field.key, { value: event.target.value })} className="mt-2 bg-white" /><p className="mt-3 text-xs font-medium text-slate-600">Validação de {field.label}</p><div className="mt-2 grid grid-cols-2 gap-2"><Button type="button" size="sm" variant={row[field.key].result === "C" ? "default" : "outline"} onClick={() => updateLotField(index, rowIndex, field.key, { result: "C" })}>C</Button><Button type="button" size="sm" variant={row[field.key].result === "NC" ? "destructive" : "outline"} onClick={() => updateLotField(index, rowIndex, field.key, { result: "NC" })}>NC</Button></div><p className="mt-1 text-[11px] text-slate-500">{resultLabel(row[field.key].result)}</p></div>)}</div></div>)}</div>
         <div className="mt-3 space-y-2"><Label htmlFor={`notes-${index}`}>Observações</Label><Textarea id={`notes-${index}`} rows={2} placeholder="Evidência, desvio ou observação" value={check.notes} onChange={event => updateCheck(index, { notes: event.target.value })} /></div>
         {check.result === "NC" ? <div className="mt-3 space-y-2"><Label htmlFor={`action-${index}`}>Ação corretiva / contenção</Label><Textarea id={`action-${index}`} rows={2} placeholder="Ação imediata, responsável e prazo" value={check.correctiveAction} onChange={event => updateCheck(index, { correctiveAction: event.target.value })} /></div> : null}
       </div>;
