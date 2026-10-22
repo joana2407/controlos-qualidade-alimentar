@@ -23,6 +23,21 @@ describe("Checklist de Processos", () => {
     expect(PROCESS_CONTROL_CATALOG["2"].products["Trigo Pão da Serra"][1]).toContain("PESAGEM DE MP");
   });
 
+  it("disponibiliza os horários predefinidos e muda o turno ao trocar de fábrica", () => {
+    render(<ProcessChecklist />);
+    expect((screen.getByLabelText("Horário do turno") as HTMLButtonElement).textContent).toContain("15h-23h");
+    fireEvent.click(screen.getByLabelText("Fábrica"));
+    fireEvent.click(screen.getByText("Fábrica 2 · Granel"));
+    expect((screen.getByLabelText("Horário do turno") as HTMLButtonElement).textContent).toContain("15-23h");
+    fireEvent.click(screen.getByLabelText("Horário do turno"));
+    expect(screen.getByText("23h-7h")).toBeTruthy();
+    fireEvent.click(screen.getByLabelText("Fábrica"));
+    fireEvent.click(screen.getByText("Fábrica 3 · SG"));
+    expect((screen.getByLabelText("Horário do turno") as HTMLButtonElement).textContent).toContain("14h-22h");
+    fireEvent.click(screen.getByLabelText("Horário do turno"));
+    expect(screen.getByText("6h-14h")).toBeTruthy();
+  });
+
   it("disponibiliza o ponto de lotes para todos os produtos das três fábricas", () => {
     for (const factory of Object.values(PROCESS_CONTROL_CATALOG)) {
       for (const product of Object.values(factory.products)) {
@@ -33,7 +48,7 @@ describe("Checklist de Processos", () => {
 
   it("carrega os pontos da fase selecionada e valida campos obrigatórios", () => {
     render(<ProcessChecklist />);
-    fireEvent.click(screen.getAllByRole("combobox")[1]);
+    fireEvent.click(screen.getAllByRole("combobox")[2]);
     fireEvent.click(screen.getByText("Broa de Milho"));
     expect(screen.getByText("PESAGEM DE MP")).toBeTruthy();
     expect(screen.getByLabelText("MP")).toBeTruthy();
@@ -50,9 +65,9 @@ describe("Checklist de Processos", () => {
 
   it("apresenta empelos por massa no tender e motivos no ponto de quebras", () => {
     render(<ProcessChecklist />);
-    fireEvent.click(screen.getAllByRole("combobox")[1]);
-    fireEvent.click(screen.getByText("Broa de Milho"));
     fireEvent.click(screen.getAllByRole("combobox")[2]);
+    fireEvent.click(screen.getByText("Broa de Milho"));
+    fireEvent.click(screen.getAllByRole("combobox")[3]);
     fireEvent.click(screen.getByText("Fase final"));
     expect(screen.getByText("Motivos de quebra")).toBeTruthy();
     expect(screen.getByText("Nº Quebras")).toBeTruthy();
@@ -67,9 +82,9 @@ describe("Checklist de Processos", () => {
 
   it("calcula unidades de venda, percentagem de quebra e rentabilidade no embalamento", () => {
     render(<ProcessChecklist />);
-    fireEvent.click(screen.getAllByRole("combobox")[1]);
-    fireEvent.click(screen.getByText("Broa de Milho"));
     fireEvent.click(screen.getAllByRole("combobox")[2]);
+    fireEvent.click(screen.getByText("Broa de Milho"));
+    fireEvent.click(screen.getAllByRole("combobox")[3]);
     fireEvent.click(screen.getByText("Fase de produção"));
     fireEvent.change(screen.getByLabelText("Forma de embalamento primário"), { target: { value: "Saco" } });
     fireEvent.change(screen.getByLabelText("N.º unidades / unidade de venda"), { target: { value: "2" } });
@@ -90,11 +105,11 @@ describe("Checklist de Processos", () => {
     fireEvent.click(screen.getByText("Fábrica 3 · SG"));
     expect((screen.getByLabelText("Código da receita") as HTMLInputElement).value).toBe("REC-F1-042");
 
-    fireEvent.click(screen.getAllByRole("combobox")[1]);
-    fireEvent.click(screen.getByText("Bolo Avó Mármore"));
     fireEvent.click(screen.getAllByRole("combobox")[2]);
+    fireEvent.click(screen.getByText("Bolo Avó Mármore"));
+    fireEvent.click(screen.getAllByRole("combobox")[3]);
     fireEvent.click(screen.getByText("Fase final"));
-    fireEvent.change(screen.getByPlaceholderText("Ex.: 06:00–14:00 / Turno A"), { target: { value: "06:00–14:00" } });
+    expect((screen.getByLabelText("Horário do turno") as HTMLButtonElement).textContent).toContain("14h-22h");
     fireEvent.change(screen.getByPlaceholderText("Nome do responsável"), { target: { value: "Técnica de teste" } });
     fireEvent.click(screen.getByLabelText("Responsável pela fase"));
     fireEvent.click(screen.getByText("Responsável da produção"));
@@ -141,9 +156,9 @@ describe("Checklist de Processos", () => {
       { name: "Saco individual", unitsPerSalesUnit: "1", unitsPerBox: "30" },
     ]);
     fireEvent.click(screen.getByRole("button", { name: "Cancelar" }));
-    fireEvent.click(screen.getAllByRole("combobox")[1]);
-    fireEvent.click(screen.getByText("Broa de Milho"));
     fireEvent.click(screen.getAllByRole("combobox")[2]);
+    fireEvent.click(screen.getByText("Broa de Milho"));
+    fireEvent.click(screen.getAllByRole("combobox")[3]);
     fireEvent.click(screen.getByText("Fase de produção"));
     expect((screen.getByLabelText("Forma de embalamento primário") as HTMLInputElement).value).toBe("Saco 5 un");
     expect((screen.getByLabelText("N.º unidades / unidade de venda") as HTMLInputElement).value).toBe("5");
