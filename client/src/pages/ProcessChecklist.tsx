@@ -19,7 +19,7 @@ type ProcessCheck = { parameter: string; result: CheckResult | ""; observedValue
 type ProcessRecord = { id: string; createdAt: string; date: string; shift: string; responsible: string; factoryId: string; product: string; lot: string; phase: string; checks: ProcessCheck[]; overallResult: CheckResult };
 const STORAGE_KEY = "qualicontrol-process-checklist-v1";
 const today = () => new Date().toISOString().slice(0, 10);
-const isLotVerification = (parameter: string) => parameter.toLocaleLowerCase("pt-PT").includes("verificação dos lotes");
+const isLotVerification = (parameter: string) => parameter.toLocaleLowerCase("pt-PT").includes("lote");
 const emptyCheck = (parameter: string): ProcessCheck => ({
   parameter,
   result: "",

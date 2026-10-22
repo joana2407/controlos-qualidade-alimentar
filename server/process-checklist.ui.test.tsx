@@ -18,6 +18,14 @@ describe("Checklist de Processos", () => {
     expect(PROCESS_CONTROL_CATALOG["2"].products["Trigo Pão da Serra"][1]).toContain("Verificação dos lotes a uso");
   });
 
+  it("disponibiliza o ponto de lotes para todos os produtos das três fábricas", () => {
+    for (const factory of Object.values(PROCESS_CONTROL_CATALOG)) {
+      for (const product of Object.values(factory.products)) {
+        expect(product[1].some(parameter => parameter.toLocaleLowerCase("pt-PT").includes("lote"))).toBe(true);
+      }
+    }
+  });
+
   it("carrega os pontos da fase selecionada e valida campos obrigatórios", () => {
     render(<ProcessChecklist />);
     fireEvent.click(screen.getAllByRole("combobox")[1]);
