@@ -7,6 +7,7 @@ import { PROCESS_CONTROL_CATALOG } from "../client/src/lib/processControlCatalog
 
 const qualityAccess = vi.hoisted(() => ({ canManage: true }));
 vi.mock("@/contexts/QualityAccessContext", () => ({ useQualityAccess: () => ({ activeProfile: { id: 3, name: "Joana Pina", title: "Resp. Qualidade", role: "manager" }, canManage: qualityAccess.canManage, canOperate: true }) }));
+vi.mock("@/lib/trpc", () => ({ trpc: { quality: { listBphfInspectionEmployees: { useQuery: () => ({ data: [{ id: 1, name: "Responsável da produção" }] }) } } } }));
 
 afterEach(() => {
   cleanup();
@@ -95,7 +96,8 @@ describe("Checklist de Processos", () => {
     fireEvent.click(screen.getByText("Fase final"));
     fireEvent.change(screen.getByPlaceholderText("Ex.: 06:00–14:00 / Turno A"), { target: { value: "06:00–14:00" } });
     fireEvent.change(screen.getByPlaceholderText("Nome do responsável"), { target: { value: "Técnica de teste" } });
-    fireEvent.change(screen.getByLabelText("Responsável pela fase"), { target: { value: "Responsável da produção" } });
+    fireEvent.click(screen.getByLabelText("Responsável pela fase"));
+    fireEvent.click(screen.getByText("Responsável da produção"));
     screen.getAllByRole("button", { name: "C" }).forEach((button) => fireEvent.click(button));
     fireEvent.click(screen.getByRole("button", { name: "Guardar checklist" }));
 
