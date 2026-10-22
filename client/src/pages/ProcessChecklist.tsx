@@ -16,6 +16,8 @@ type CheckResult = "C" | "NC" | "NA";
 type LotFieldKey = "mp" | "lot" | "expiry";
 type LotField = { value: string; result: Exclude<CheckResult, "NA"> | "" };
 type LotRow = Record<LotFieldKey, LotField>;
+type PackagingFormat = { name: string; unitsPerSalesUnit: string; unitsPerBox: string };
+type PackagingCatalog = Record<string, Record<string, PackagingFormat[]>>;
 type ProcessCheck = { parameter: string; result: CheckResult | ""; observedValue: string; notes: string; correctiveAction: string; empelosPerMass?: string; breakReasons?: string[]; breakOtherReason?: string; packagingFormat?: string; unitsPerSalesUnit?: string; unitsPerBox?: string; producedUnits?: string; packedUnits?: string; lotRows?: LotRow[] };
 type ProcessRecord = { id: string; createdAt: string; date: string; shift: string; responsible: string; factoryId: string; product: string; recipeCode: string; lot: string; phase: string; checks: ProcessCheck[]; overallResult: CheckResult };
 type PhaseDrafts = Record<ProcessPhase, string>;
@@ -23,6 +25,7 @@ type CatalogStorage = { version: 1; catalog: ProcessCatalog };
 
 const STORAGE_KEY = "qualicontrol-process-checklist-v1";
 const CATALOG_STORAGE_KEY = "qualicontrol-process-catalog-v1";
+const PACKAGING_CATALOG_STORAGE_KEY = "qualicontrol-process-packaging-catalog-v1";
 const NEW_PRODUCT_VALUE = "__novo_produto__";
 const PHASES: ProcessPhase[] = [1, 2, 3];
 const BREAK_REASON_OPTIONS = ["Metal", "Aspeto", "Sem peso", "Queimado", "Mal cozido", "Bneijado", "Partido", "Com óleo", "Outro"] as const;
@@ -33,6 +36,17 @@ const isEmpelosVerification = (parameter: string) => /tender|dividir\s+a\s+massa
 const isBreakVerification = (parameter: string) => /n[ºo]?\s*quebras/i.test(parameter);
 const isPackagingVerification = (parameter: string) => /embala|flowpack|flow-pack/i.test(parameter);
 const selectedBreakReasons = (check: ProcessCheck) => Array.isArray(check.breakReasons) ? check.breakReasons : check.breakReasons ? [check.breakReasons] : [];
+const readPackagingCatalog = (): PackagingCatalog => {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(PACKAGING_CATALOG_STORAGE_KEY) ?? "{}");
+    return parsed && typeof parsed === "object" ? parsed as PackagingCatalog : {};
+  } catch { return {}; }
+};
+const parsePackagingFormats = (value: string): PackagingFormat[] => value.split("\n").map(line => line.trim()).filter(Boolean).map(line => {
+  const [name = "", unitsPerSalesUnit = "", unitsPerBox = ""] = line.split("|").map(item => item.trim());
+  return { name, unitsPerSalesUnit, unitsPerBox };
+}).filter(format => format.name && Number(format.unitsPerSalesUnit) > 0 && Number(format.unitsPerBox) > 0);
+const packagingFormatsToDraft = (formats?: PackagingFormat[]) => (formats ?? []).map(format => `${format.name} | ${format.unitsPerSalesUnit} | ${format.unitsPerBox}`).join("\n");
 const displayParameter = (parameter: string) => {
   const value = parameter.toLocaleLowerCase("pt-PT");
   if (isLotVerification(parameter)) return "PESAGEM DE MP";
@@ -101,6 +115,8 @@ export default function ProcessChecklist() {
   const [catalogProductKey, setCatalogProductKey] = useState(NEW_PRODUCT_VALUE);
   const [catalogProductName, setCatalogProductName] = useState("");
   const [phaseDrafts, setPhaseDrafts] = useState<PhaseDrafts>(emptyPhaseDrafts);
+  const [packagingCatalog, setPackagingCatalog] = useState<PackagingCatalog>(readPackagingCatalog);
+  const [packagingFormatsDraft, setPackagingFormatsDraft] = useState("");
 
   const products = useMemo(() => Object.keys(catalog[factoryId]?.products ?? {}), [catalog, factoryId]);
   const parameters = useMemo(() => catalog[factoryId]?.products[product]?.[Number(phase) as ProcessPhase] ?? [], [catalog, factoryId, product, phase]);
@@ -110,21 +126,28 @@ export default function ProcessChecklist() {
     return records.filter(record => !query || [record.product, record.recipeCode, record.responsible, record.lot, PROCESS_FACTORY_LABELS[record.factoryId], PROCESS_PHASE_LABELS[record.phase]].join(" ").toLocaleLowerCase("pt-PT").includes(query)).slice(0, 30);
   }, [historySearch, records]);
 
+  const createChecks = (nextFactoryId: string, nextProductKey: string, nextPhase: string, formatsCatalog = packagingCatalog) => (catalog[nextFactoryId]?.products[nextProductKey]?.[Number(nextPhase) as ProcessPhase] ?? []).map(parameter => {
+    const check = emptyCheck(parameter);
+    const defaultFormat = isPackagingVerification(parameter) ? formatsCatalog[nextFactoryId]?.[nextProductKey]?.[0] : undefined;
+    return defaultFormat ? { ...check, packagingFormat: defaultFormat.name, unitsPerSalesUnit: defaultFormat.unitsPerSalesUnit, unitsPerBox: defaultFormat.unitsPerBox } : check;
+  });
+
   const setDraftForProduct = (nextFactoryId: string, nextProductKey: string) => {
     setCatalogProductKey(nextProductKey);
     const selectedProduct = nextProductKey === NEW_PRODUCT_VALUE ? undefined : catalog[nextFactoryId]?.products[nextProductKey];
     setCatalogProductName(nextProductKey === NEW_PRODUCT_VALUE ? "" : nextProductKey);
     setPhaseDrafts(listToDrafts(selectedProduct));
+    setPackagingFormatsDraft(nextProductKey === NEW_PRODUCT_VALUE ? "" : packagingFormatsToDraft(packagingCatalog[nextFactoryId]?.[nextProductKey]));
   };
 
   const chooseFactory = (value: string) => { setFactoryId(value); setProduct(""); setChecks([]); };
   const chooseProduct = (value: string) => {
     setProduct(value);
-    setChecks((catalog[factoryId]?.products[value]?.[Number(phase) as ProcessPhase] ?? []).map(emptyCheck));
+    setChecks(createChecks(factoryId, value, phase));
   };
   const choosePhase = (value: string) => {
     setPhase(value);
-    setChecks((catalog[factoryId]?.products[product]?.[Number(value) as ProcessPhase] ?? []).map(emptyCheck));
+    setChecks(createChecks(factoryId, product, value));
   };
 
   const updateCheck = (index: number, patch: Partial<ProcessCheck>) => setChecks(current => current.map((item, itemIndex) => itemIndex === index ? { ...item, ...patch } : item));
@@ -155,25 +178,36 @@ export default function ProcessChecklist() {
   const saveProductConfiguration = () => {
     if (!canManage) return toast.error("Apenas a Responsável de Qualidade pode alterar o catálogo de processos.");
     const normalizedName = catalogProductName.trim().replace(/\s+/g, " ");
+    const nextPackagingFormats = parsePackagingFormats(packagingFormatsDraft);
+    const packagingLines = packagingFormatsDraft.split("\n").map(line => line.trim()).filter(Boolean);
     const nextPhases = PHASES.reduce((result, currentPhase) => ({ ...result, [currentPhase]: linesToParameters(phaseDrafts[currentPhase]) }), {} as Record<ProcessPhase, string[]>);
     if (!normalizedName) return toast.error("Indique o nome do produto.");
     const missingPhase = PHASES.find((currentPhase) => !nextPhases[currentPhase].length);
     if (missingPhase) return toast.error(`Defina pelo menos um parâmetro para a ${PROCESS_PHASE_LABELS[missingPhase]}.`);
+    if (packagingLines.length !== nextPackagingFormats.length) return toast.error("Cada formato de embalagem deve seguir o formato: Nome | unidades por unidade de venda | unidades por caixa.");
     const nextCatalog = cloneCatalog(catalog);
+    const nextPackagingCatalog = JSON.parse(JSON.stringify(packagingCatalog)) as PackagingCatalog;
     const targetProducts = nextCatalog[catalogFactoryId].products;
     if (catalogProductKey !== NEW_PRODUCT_VALUE && catalogProductKey !== normalizedName) delete targetProducts[catalogProductKey];
     if (catalogProductKey === NEW_PRODUCT_VALUE && targetProducts[normalizedName]) return toast.error("Já existe um produto com este nome nesta fábrica. Selecione-o para editar.");
     if (catalogProductKey !== NEW_PRODUCT_VALUE && catalogProductKey !== normalizedName && targetProducts[normalizedName]) return toast.error("Já existe outro produto com este nome nesta fábrica.");
     targetProducts[normalizedName] = nextPhases;
+    const factoryPackaging = nextPackagingCatalog[catalogFactoryId] ?? {};
+    if (catalogProductKey !== NEW_PRODUCT_VALUE && catalogProductKey !== normalizedName) delete factoryPackaging[catalogProductKey];
+    factoryPackaging[normalizedName] = nextPackagingFormats;
+    nextPackagingCatalog[catalogFactoryId] = factoryPackaging;
     const storage: CatalogStorage = { version: 1, catalog: nextCatalog };
     localStorage.setItem(CATALOG_STORAGE_KEY, JSON.stringify(storage));
+    localStorage.setItem(PACKAGING_CATALOG_STORAGE_KEY, JSON.stringify(nextPackagingCatalog));
     setCatalog(nextCatalog);
+    setPackagingCatalog(nextPackagingCatalog);
     setCatalogProductKey(normalizedName);
     setCatalogProductName(normalizedName);
     setPhaseDrafts(listToDrafts(nextPhases));
+    setPackagingFormatsDraft(packagingFormatsToDraft(nextPackagingFormats));
     if (factoryId === catalogFactoryId && (product === catalogProductKey || catalogProductKey === NEW_PRODUCT_VALUE)) {
       setProduct(normalizedName);
-      setChecks((nextPhases[Number(phase) as ProcessPhase] ?? []).map(emptyCheck));
+      setChecks(createChecks(catalogFactoryId, normalizedName, phase, nextPackagingCatalog));
     }
     toast.success(catalogProductKey === NEW_PRODUCT_VALUE ? "Novo produto criado com as três fases configuradas." : "Configuração do produto atualizada.");
   };
@@ -181,6 +215,7 @@ export default function ProcessChecklist() {
   const save = () => {
     if (!date || !shift || !responsible.trim() || !product || !checks.length) return toast.error("Preencha a data, turno, responsável, produto e fase antes de guardar.");
     if (checks.some(check => isLotVerification(check.parameter) && (!check.lotRows?.length || check.lotRows.some(row => Object.values(row).some(field => !field.value.trim() || !field.result))))) return toast.error("No ponto de lotes, preencha todas as MP, os respetivos lotes e validades e valide cada campo como C ou NC.");
+    if (checks.some(check => isEmpelosVerification(check.parameter) && (!check.empelosPerMass?.trim() || Number(check.empelosPerMass) <= 0))) return toast.error("Indique o N.º de empelos por massa antes de guardar a checklist.");
     if (checks.some(check => isBreakVerification(check.parameter) && selectedBreakReasons(check).includes("Outro") && !check.breakOtherReason?.trim())) return toast.error("Especifique o motivo quando selecionar Outro em N.º Quebras.");
     if (checks.some(check => isPackagingVerification(check.parameter) && ([check.unitsPerSalesUnit, check.unitsPerBox, check.producedUnits, check.packedUnits].some(value => !value?.trim() || Number(value) <= 0)))) return toast.error("No ponto de Embalamento, preencha os quatro valores numéricos: unidades por unidade de venda, unidades por caixa, unidades produzidas e unidades embaladas.");
     if (checks.some(check => isPackagingVerification(check.parameter) && Number(check.packedUnits) > Number(check.producedUnits))) return toast.error("As unidades embaladas não podem ser superiores às unidades produzidas.");
@@ -230,6 +265,6 @@ export default function ProcessChecklist() {
       <Card className="border-0 shadow-sm"><CardHeader><div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between"><div><CardTitle className="flex items-center gap-2"><History className="h-5 w-5 text-teal-700" />Histórico local de checklists</CardTitle><CardDescription>Registos preservados neste dispositivo. Inclua-os no Backup JSON da aplicação.</CardDescription></div><div className="relative w-full md:w-80"><Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" /><Input className="pl-9" placeholder="Pesquisar produto, receita, lote ou responsável" value={historySearch} onChange={event => setHistorySearch(event.target.value)} /></div></div></CardHeader><CardContent>{filteredRecords.length ? <div className="space-y-2">{filteredRecords.map(record => <div key={record.id} className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-white p-4 md:flex-row md:items-center md:justify-between"><div><div className="flex flex-wrap items-center gap-2"><p className="font-medium text-slate-900">{record.product}</p><Badge className={record.overallResult === "NC" ? "bg-red-100 text-red-800 hover:bg-red-100" : "bg-emerald-100 text-emerald-800 hover:bg-emerald-100"}>{resultLabel(record.overallResult)}</Badge></div><p className="mt-1 text-xs text-slate-600">{PROCESS_FACTORY_LABELS[record.factoryId]} · {PROCESS_PHASE_LABELS[record.phase]} · {record.date} · {record.shift}</p><p className="mt-1 text-xs text-slate-500">Responsável: {record.responsible}{record.recipeCode ? ` · Receita: ${record.recipeCode}` : ""}{record.lot ? ` · Lote: ${record.lot}` : ""} · {record.checks.length} ponto(s)</p></div><Button variant="ghost" size="sm" className="text-red-700 hover:bg-red-50 hover:text-red-800" onClick={() => removeRecord(record.id)}><Trash2 className="mr-1.5 h-4 w-4" />Eliminar</Button></div>)}</div> : <div className="rounded-xl border border-dashed border-slate-300 p-8 text-center text-sm text-slate-500">Ainda não existem registos guardados neste dispositivo.</div>}</CardContent></Card>
     </section>
 
-    <Dialog open={catalogOpen} onOpenChange={setCatalogOpen}><DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-4xl"><DialogHeader><DialogTitle>Catálogo de produtos e parâmetros</DialogTitle><DialogDescription>Disponível exclusivamente para a Responsável de Qualidade. Defina uma linha por parâmetro; cada produto deve ter configuração nas três fases.</DialogDescription></DialogHeader><div className="grid gap-4 md:grid-cols-2"><div className="space-y-2"><Label htmlFor="catalog-factory">Fábrica</Label><Select value={catalogFactoryId} onValueChange={(value) => { setCatalogFactoryId(value); setDraftForProduct(value, Object.keys(catalog[value]?.products ?? {})[0] ?? NEW_PRODUCT_VALUE); }}><SelectTrigger id="catalog-factory"><SelectValue /></SelectTrigger><SelectContent>{Object.entries(PROCESS_FACTORY_LABELS).map(([id, label]) => <SelectItem key={id} value={id}>{label}</SelectItem>)}</SelectContent></Select></div><div className="space-y-2"><Label htmlFor="catalog-product">Produto a configurar</Label><div className="flex gap-2"><Select value={catalogProductKey} onValueChange={(value) => setDraftForProduct(catalogFactoryId, value)}><SelectTrigger id="catalog-product"><SelectValue /></SelectTrigger><SelectContent><SelectItem value={NEW_PRODUCT_VALUE}>Novo produto…</SelectItem>{catalogProducts.map((item) => <SelectItem key={item} value={item}>{item}</SelectItem>)}</SelectContent></Select><Button type="button" variant="outline" size="icon" title="Criar novo produto" aria-label="Criar novo produto" onClick={() => setDraftForProduct(catalogFactoryId, NEW_PRODUCT_VALUE)}><Plus className="h-4 w-4" /></Button></div></div></div><div className="space-y-2"><Label htmlFor="catalog-product-name">Nome do produto</Label><Input id="catalog-product-name" placeholder="Ex.: Pão de sementes" value={catalogProductName} onChange={(event) => setCatalogProductName(event.target.value)} /><p className="text-xs text-slate-500">Ao alterar o nome de um produto existente, o catálogo passa a usar a nova designação. Os registos já guardados mantêm o seu histórico original.</p></div><div className="space-y-4">{PHASES.map((currentPhase) => <div key={currentPhase} className="rounded-xl border border-slate-200 bg-slate-50/70 p-4"><Label htmlFor={`phase-${currentPhase}`} className="font-semibold text-slate-900">{PROCESS_PHASE_LABELS[currentPhase]}</Label><p className="mt-1 text-xs leading-5 text-slate-600">Escreva um parâmetro por linha. Inclua referências de gramagem, tempo, temperatura, velocidade e operações a controlar.</p><Textarea id={`phase-${currentPhase}`} className="mt-3 min-h-32 bg-white" placeholder="Um parâmetro por linha" value={phaseDrafts[currentPhase]} onChange={(event) => setPhaseDrafts((current) => ({ ...current, [currentPhase]: event.target.value }))} /></div>)}</div><DialogFooter><Button type="button" variant="outline" onClick={() => setCatalogOpen(false)}>Cancelar</Button><Button type="button" onClick={saveProductConfiguration}><Save className="mr-2 h-4 w-4" />Guardar configuração</Button></DialogFooter></DialogContent></Dialog>
+    <Dialog open={catalogOpen} onOpenChange={setCatalogOpen}><DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-4xl"><DialogHeader><DialogTitle>Catálogo de produtos e parâmetros</DialogTitle><DialogDescription>Disponível exclusivamente para a Responsável de Qualidade. Defina uma linha por parâmetro; cada produto deve ter configuração nas três fases.</DialogDescription></DialogHeader><div className="grid gap-4 md:grid-cols-2"><div className="space-y-2"><Label htmlFor="catalog-factory">Fábrica</Label><Select value={catalogFactoryId} onValueChange={(value) => { setCatalogFactoryId(value); setDraftForProduct(value, Object.keys(catalog[value]?.products ?? {})[0] ?? NEW_PRODUCT_VALUE); }}><SelectTrigger id="catalog-factory"><SelectValue /></SelectTrigger><SelectContent>{Object.entries(PROCESS_FACTORY_LABELS).map(([id, label]) => <SelectItem key={id} value={id}>{label}</SelectItem>)}</SelectContent></Select></div><div className="space-y-2"><Label htmlFor="catalog-product">Produto a configurar</Label><div className="flex gap-2"><Select value={catalogProductKey} onValueChange={(value) => setDraftForProduct(catalogFactoryId, value)}><SelectTrigger id="catalog-product"><SelectValue /></SelectTrigger><SelectContent><SelectItem value={NEW_PRODUCT_VALUE}>Novo produto…</SelectItem>{catalogProducts.map((item) => <SelectItem key={item} value={item}>{item}</SelectItem>)}</SelectContent></Select><Button type="button" variant="outline" size="icon" title="Criar novo produto" aria-label="Criar novo produto" onClick={() => setDraftForProduct(catalogFactoryId, NEW_PRODUCT_VALUE)}><Plus className="h-4 w-4" /></Button></div></div></div><div className="space-y-2"><Label htmlFor="catalog-product-name">Nome do produto</Label><Input id="catalog-product-name" placeholder="Ex.: Pão de sementes" value={catalogProductName} onChange={(event) => setCatalogProductName(event.target.value)} /><p className="text-xs text-slate-500">Ao alterar o nome de um produto existente, o catálogo passa a usar a nova designação. Os registos já guardados mantêm o seu histórico original.</p></div><div className="rounded-xl border border-teal-100 bg-teal-50/60 p-4"><Label htmlFor="packaging-formats">Formatos de embalagem</Label><p className="mt-1 text-xs leading-5 text-teal-800">Defina um formato por linha, usando: <strong>Nome | unidades por unidade de venda | unidades por caixa</strong>. Ex.: Saco 5 un | 5 | 20.</p><Textarea id="packaging-formats" className="mt-3 min-h-24 bg-white" placeholder="Saco 5 un | 5 | 20\nSaco individual | 1 | 30" value={packagingFormatsDraft} onChange={(event) => setPackagingFormatsDraft(event.target.value)} /></div><div className="space-y-4">{PHASES.map((currentPhase) => <div key={currentPhase} className="rounded-xl border border-slate-200 bg-slate-50/70 p-4"><Label htmlFor={`phase-${currentPhase}`} className="font-semibold text-slate-900">{PROCESS_PHASE_LABELS[currentPhase]}</Label><p className="mt-1 text-xs leading-5 text-slate-600">Escreva um parâmetro por linha. Inclua referências de gramagem, tempo, temperatura, velocidade e operações a controlar.</p><Textarea id={`phase-${currentPhase}`} className="mt-3 min-h-32 bg-white" placeholder="Um parâmetro por linha" value={phaseDrafts[currentPhase]} onChange={(event) => setPhaseDrafts((current) => ({ ...current, [currentPhase]: event.target.value }))} /></div>)}</div><DialogFooter><Button type="button" variant="outline" onClick={() => setCatalogOpen(false)}>Cancelar</Button><Button type="button" onClick={saveProductConfiguration}><Save className="mr-2 h-4 w-4" />Guardar configuração</Button></DialogFooter></DialogContent></Dialog>
   </div>;
 }

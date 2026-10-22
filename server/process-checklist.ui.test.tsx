@@ -125,10 +125,24 @@ describe("Checklist de Processos", () => {
     render(<ProcessChecklist />);
     fireEvent.click(screen.getByRole("button", { name: "Gerir produtos e parâmetros" }));
     fireEvent.change(screen.getByLabelText("Fase inicial"), { target: { value: "PESAGEM DE MP\nParâmetro revisto" } });
+    fireEvent.change(screen.getByLabelText("Formatos de embalagem"), { target: { value: "Saco 5 un | 5 | 20\nSaco individual | 1 | 30" } });
     fireEvent.click(screen.getByRole("button", { name: "Guardar configuração" }));
 
     const stored = JSON.parse(localStorage.getItem("qualicontrol-process-catalog-v1") ?? "{}");
     expect(stored.catalog["1"].products["Broa de Milho"][1]).toEqual(["PESAGEM DE MP", "Parâmetro revisto"]);
+    const packaging = JSON.parse(localStorage.getItem("qualicontrol-process-packaging-catalog-v1") ?? "{}");
+    expect(packaging["1"]["Broa de Milho"]).toEqual([
+      { name: "Saco 5 un", unitsPerSalesUnit: "5", unitsPerBox: "20" },
+      { name: "Saco individual", unitsPerSalesUnit: "1", unitsPerBox: "30" },
+    ]);
+    fireEvent.click(screen.getByRole("button", { name: "Cancelar" }));
+    fireEvent.click(screen.getAllByRole("combobox")[1]);
+    fireEvent.click(screen.getByText("Broa de Milho"));
+    fireEvent.click(screen.getAllByRole("combobox")[2]);
+    fireEvent.click(screen.getByText("Fase de produção"));
+    expect((screen.getByLabelText("Forma de embalamento primário") as HTMLInputElement).value).toBe("Saco 5 un");
+    expect((screen.getByLabelText("N.º unidades / unidade de venda") as HTMLInputElement).value).toBe("5");
+    expect((screen.getByLabelText("N.º unidades / caixa") as HTMLInputElement).value).toBe("20");
   });
 
   it("oculta a gestão de configurações para perfis sem autorização de Responsável", () => {
