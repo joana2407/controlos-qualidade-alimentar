@@ -53,8 +53,15 @@ describe("Checklist de Processos", () => {
     fireEvent.click(screen.getByText("Broa de Milho"));
     fireEvent.click(screen.getAllByRole("combobox")[2]);
     fireEvent.click(screen.getByText("Fase final"));
-    expect(screen.getByLabelText("Motivos de quebra")).toBeTruthy();
+    expect(screen.getByText("Motivos de quebra")).toBeTruthy();
     expect(screen.getByText("Nº Quebras")).toBeTruthy();
+    expect(screen.getByLabelText("Metal")).toBeTruthy();
+    expect(screen.getByLabelText("Mal cozido")).toBeTruthy();
+    fireEvent.click(screen.getByLabelText("Metal"));
+    fireEvent.click(screen.getByLabelText("Outro"));
+    expect(screen.getByLabelText("Outro motivo — qual?")).toBeTruthy();
+    fireEvent.change(screen.getByLabelText("Outro motivo — qual?"), { target: { value: "Falha na linha" } });
+    expect((screen.getByLabelText("Outro motivo — qual?") as HTMLInputElement).value).toBe("Falha na linha");
   });
 
   it("regista o código de receita em qualquer fábrica e preserva-o no histórico", () => {
