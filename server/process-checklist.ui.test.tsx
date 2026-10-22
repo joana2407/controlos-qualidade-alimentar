@@ -95,11 +95,14 @@ describe("Checklist de Processos", () => {
     fireEvent.click(screen.getByText("Fase final"));
     fireEvent.change(screen.getByPlaceholderText("Ex.: 06:00–14:00 / Turno A"), { target: { value: "06:00–14:00" } });
     fireEvent.change(screen.getByPlaceholderText("Nome do responsável"), { target: { value: "Técnica de teste" } });
+    fireEvent.change(screen.getByLabelText("Responsável pela fase"), { target: { value: "Responsável da produção" } });
     screen.getAllByRole("button", { name: "C" }).forEach((button) => fireEvent.click(button));
     fireEvent.click(screen.getByRole("button", { name: "Guardar checklist" }));
 
     const stored = JSON.parse(localStorage.getItem("qualicontrol-process-checklist-v1") ?? "[]");
     expect(stored[0].recipeCode).toBe("REC-F1-042");
+    expect(stored[0].responsiblePhase).toBe("Responsável da produção");
+    expect(screen.getByText(/Responsável da fase: Responsável da produção/)).toBeTruthy();
     expect(screen.getByText(/Receita: REC-F1-042/)).toBeTruthy();
   });
 
