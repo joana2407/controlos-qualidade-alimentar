@@ -47,6 +47,28 @@ describe("Checklist de Processos", () => {
     expect(screen.getByText("Guardar checklist")).toBeTruthy();
   });
 
+  it("regista o código de receita em qualquer fábrica e preserva-o no histórico", () => {
+    render(<ProcessChecklist />);
+    const recipeCode = screen.getByLabelText("Código da receita") as HTMLInputElement;
+    fireEvent.change(recipeCode, { target: { value: "REC-F1-042" } });
+    fireEvent.click(screen.getAllByRole("combobox")[0]);
+    fireEvent.click(screen.getByText("Fábrica 3 · SG"));
+    expect((screen.getByLabelText("Código da receita") as HTMLInputElement).value).toBe("REC-F1-042");
+
+    fireEvent.click(screen.getAllByRole("combobox")[1]);
+    fireEvent.click(screen.getByText("Bolo Avó Mármore"));
+    fireEvent.click(screen.getAllByRole("combobox")[2]);
+    fireEvent.click(screen.getByText("Fase final"));
+    fireEvent.change(screen.getByPlaceholderText("Ex.: 06:00–14:00 / Turno A"), { target: { value: "06:00–14:00" } });
+    fireEvent.change(screen.getByPlaceholderText("Nome do responsável"), { target: { value: "Técnica de teste" } });
+    screen.getAllByRole("button", { name: "C" }).forEach((button) => fireEvent.click(button));
+    fireEvent.click(screen.getByRole("button", { name: "Guardar checklist" }));
+
+    const stored = JSON.parse(localStorage.getItem("qualicontrol-process-checklist-v1") ?? "[]");
+    expect(stored[0].recipeCode).toBe("REC-F1-042");
+    expect(screen.getByText(/Receita: REC-F1-042/)).toBeTruthy();
+  });
+
   it("permite à Responsável criar um produto e definir os parâmetros das três fases", () => {
     render(<ProcessChecklist />);
     fireEvent.click(screen.getByRole("button", { name: "Gerir produtos e parâmetros" }));
