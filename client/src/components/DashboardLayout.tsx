@@ -46,7 +46,7 @@ const menuItems = [
 ];
 
 const controlPanels = [
-  { icon: ClipboardList, label: "Checklist de Processos", path: "/checklist-processos" },
+  { icon: ClipboardList, label: "Controlo de Processos", path: "/checklist-processos" },
   { icon: ShieldCheck, label: "BPHF", path: "/controlos/bphf" },
   { icon: Magnet, label: "Detetores de metais", path: "/controlos/metal_detectors" },
   { icon: FlaskConical, label: "Controlo sensorial", path: "/controlos/sensory" },
