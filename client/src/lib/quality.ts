@@ -3,7 +3,7 @@ export const MODULES = [
   { id: "metal_detectors", label: "Verificação de detetores de metais", shortLabel: "Detetores", description: "Validação por linha e produto", color: "red" },
   { id: "sensory", label: "Controlo sensorial de produto acabado", shortLabel: "Sensorial", description: "Avaliação ponderada de produto acabado", color: "violet" },
   { id: "shelf_life", label: "Controlo de amostras em shelf-life", shortLabel: "Shelf-life", description: "Acompanhamento diário de amostras", color: "cyan" },
-  { id: "monthly_checklist", label: "Checklist mensal por área", shortLabel: "Checklist", description: "Inspeção configurável por zona", color: "blue" },
+  { id: "monthly_checklist", label: "Checklist mensal por área", shortLabel: "Checklist Mensal", description: "Inspeção configurável por zona", color: "blue" },
   { id: "suggestion_boxes", label: "Verificação de caixas de sugestões", shortLabel: "Sugestões", description: "Recolha e triagem de registos", color: "lime" },
   { id: "fragile_items", label: "Verificação de quebráveis", shortLabel: "Quebráveis", description: "Inventário e inspeção de integridade", color: "orange" },
   { id: "dispatch_control", label: "Controlo à expedição", shortLabel: "Expedição", description: "Encomenda, rotulagem, quantidades e temperaturas", color: "teal" },

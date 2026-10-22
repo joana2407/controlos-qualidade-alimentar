@@ -1,5 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { describe, expect, it } from "vitest";
+import { MODULES } from "../client/src/lib/quality";
 
 describe("navegação lateral dos painéis de controlo", () => {
   it("expõe atalhos para todos os módulos operacionais", async () => {
@@ -44,5 +45,9 @@ describe("navegação lateral dos painéis de controlo", () => {
       "/controlos/fragile_items",
       "/controlos/dispatch_control",
     ].forEach((path) => expect(source).toContain(path));
+  });
+
+  it("identifica explicitamente a Checklist Mensal no seletor de controlos", () => {
+    expect(MODULES.find((module) => module.id === "monthly_checklist")?.shortLabel).toBe("Checklist Mensal");
   });
 });
