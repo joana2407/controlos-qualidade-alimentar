@@ -8,7 +8,7 @@ export const PROCESS_CONTROL_CATALOG: ProcessCatalog = {
     "products": {
       "Broa de Milho": {
         "1": [
-          "Verificação dos lotes a uso",
+          "PESAGEM DE MP",
           "Escalda da farinha de milho juntamente com a restante MP, com exceção de T65 e a levedura: Vel. 1 durante 5 min",
           "Adição da farinha de trigo",
           "Amassadeira: 5 min na Vel. 1 e 10 min na Vel. 2"
@@ -21,15 +21,14 @@ export const PROCESS_CONTROL_CATALOG: ProcessCatalog = {
           "Rotulagem"
         ],
         "3": [
-          "Nº Unidades Por massa",
-          "Nº Quebras e Motivos",
+                    "Nº Quebras",
           "Nº Sobras",
-          "Nº Caixas por massa"
+          "Nº Cx Massa"
         ]
       },
       "Centeio SERRÃO": {
         "1": [
-          "Verificação do registo correto dos lotes a uso",
+          "PESAGEM DE MP",
           "Amassadeira: 5 min, Vel. 1 e 10 a 15 min, Vel.2",
           "Estanca da Massa: 30 a 50 min",
           "Gramagem: 1,150 kg",
@@ -41,15 +40,14 @@ export const PROCESS_CONTROL_CATALOG: ProcessCatalog = {
           "Rotulagem correta"
         ],
         "3": [
-          "Nº Unidades Por massa",
-          "Nº Quebras e Motivos",
+                    "Nº Quebras",
           "Nº Sobras",
-          "Nº Caixas por massa"
+          "Nº Cx Massa"
         ]
       },
       "Trigo SERRÃO": {
         "1": [
-          "Verificação do registo correto dos lotes a uso",
+          "PESAGEM DE MP",
           "Amassadeira: 5 min Vel. 1, 10 a 15 min Vel.2",
           "Estanca da Massa: 30 a 50 min",
           "Gramagem: 1,150 kg",
@@ -61,15 +59,14 @@ export const PROCESS_CONTROL_CATALOG: ProcessCatalog = {
           "Rotulagem correta"
         ],
         "3": [
-          "Nº Unidades Por massa",
-          "Nº Quebras e Motivos",
+                    "Nº Quebras",
           "Nº Sobras",
-          "Nº Caixas por massa"
+          "Nº Cx Massa"
         ]
       },
       "Integral SERRÃO": {
         "1": [
-          "Verificação do registo correto dos lotes a uso",
+          "PESAGEM DE MP",
           "Amassadeira: 5 min, Vel. 1 e 10 a 15 min, Vel.2",
           "Estanca da Massa: 30 a 50 min na bacia",
           "Gramagem: 1,150 kg",
@@ -81,15 +78,14 @@ export const PROCESS_CONTROL_CATALOG: ProcessCatalog = {
           "Rotulagem correta"
         ],
         "3": [
-          "Nº Unidades Por massa",
-          "Nº Quebras e Motivos",
+                    "Nº Quebras",
           "Nº Sobras",
-          "Nº Caixas por massa"
+          "Nº Cx Massa"
         ]
       },
       "Aveia SERRÃO": {
         "1": [
-          "Verificação do registo correto dos lotes a uso",
+          "PESAGEM DE MP",
           "Amassadeira: 5 min, Vel. 1 e 10 a 15 min, Vel.2",
           "Estanca da Massa: 30 a 50 min na bacia",
           "Gramagem: 0,950 kg",
@@ -101,15 +97,14 @@ export const PROCESS_CONTROL_CATALOG: ProcessCatalog = {
           "Rotulagem correta"
         ],
         "3": [
-          "Nº Unidades Por massa",
-          "Nº Quebras e Motivos",
+                    "Nº Quebras",
           "Nº Sobras",
-          "Nº Caixas por massa"
+          "Nº Cx Massa"
         ]
       },
       "Multigrãos SERRÃO": {
         "1": [
-          "Verificação do registo correto dos lotes a uso",
+          "PESAGEM DE MP",
           "Amassadeira: 5 min na Vel. 1 e 10 a 15 min na Vel.2",
           "Estanca da Massa: 30 a 50 min na bacia",
           "Gramagem: 1,150 kg",
@@ -121,15 +116,14 @@ export const PROCESS_CONTROL_CATALOG: ProcessCatalog = {
           "Rotulagem correta"
         ],
         "3": [
-          "Nº Unidades Por massa",
-          "Nº Quebras e Motivos",
+                    "Nº Quebras",
           "Nº Sobras",
-          "Nº Caixas por massa"
+          "Nº Cx Massa"
         ]
       },
       "Pão Rústico Centeio": {
         "1": [
-          "Verificação do registo correto dos lotes a uso",
+          "PESAGEM DE MP",
           "Amassadeira: 5 min na Vel. 1 e 10 a 15 min na Vel.2",
           "Descansar 1h na bacia",
           "Gramagem: 1,150 kg",
@@ -141,15 +135,14 @@ export const PROCESS_CONTROL_CATALOG: ProcessCatalog = {
           "Rotulagem correta"
         ],
         "3": [
-          "Nº Unidades Por massa",
-          "Nº Quebras e Motivos",
+                    "Nº Quebras",
           "Nº Sobras",
-          "Nº Caixas por massa"
+          "Nº Cx Massa"
         ]
       },
       "Pão Rústico Mistura": {
         "1": [
-          "Verificação do registo correto dos lotes a uso",
+          "PESAGEM DE MP",
           "Amassadeira: 5 min na Vel. 1 e 10 a 15 min na Vel.2",
           "Descansar 1h na bacia",
           "Gramagem: 1,150 kg",
@@ -162,15 +155,14 @@ export const PROCESS_CONTROL_CATALOG: ProcessCatalog = {
           "Rotulagem correta"
         ],
         "3": [
-          "Nº Unidades Por massa",
-          "Nº Quebras e Motivos",
+                    "Nº Quebras",
           "Nº Sobras",
-          "Nº Caixas por massa"
+          "Nº Cx Massa"
         ]
       },
       "Pão Rústico Cereais": {
         "1": [
-          "Verificação do registo correto dos lotes a uso",
+          "PESAGEM DE MP",
           "Amassadeira: 5 min na Vel. 1 e 10 a 15 min na Vel.2",
           "Descansar 1h na bacia",
           "Gramagem: 1,150 kg",
@@ -183,15 +175,14 @@ export const PROCESS_CONTROL_CATALOG: ProcessCatalog = {
           "Rotulagem correta"
         ],
         "3": [
-          "Nº Unidades Por massa",
-          "Nº Quebras e Motivos",
+                    "Nº Quebras",
           "Nº Sobras",
-          "Nº Caixas por massa"
+          "Nº Cx Massa"
         ]
       },
       "Pão Rústico Trigo Alentejano": {
         "1": [
-          "Verificação do registo correto dos lotes a uso",
+          "PESAGEM DE MP",
           "Amassadeira: 5 min na Vel. 1 e 10 a 15 min na Vel.2",
           "Descansar 1h na bacia",
           "Gramagem: 1,150 kg",
@@ -203,15 +194,14 @@ export const PROCESS_CONTROL_CATALOG: ProcessCatalog = {
           "Rotulagem Correta"
         ],
         "3": [
-          "Nº Unidades Por massa",
-          "Nº Quebras e Motivos",
+                    "Nº Quebras",
           "Nº Sobras",
-          "Nº Caixas por massa"
+          "Nº Cx Massa"
         ]
       },
       "Diabético": {
         "1": [
-          "Verificação do registo correto dos lotes a uso",
+          "PESAGEM DE MP",
           "Amassadeira: 5 min na Vel.1 e 15 min na Vel. 2",
           "Gramagem: 900g"
         ],
@@ -222,15 +212,14 @@ export const PROCESS_CONTROL_CATALOG: ProcessCatalog = {
           "Rotulagem correta"
         ],
         "3": [
-          "Nº Unidades Por massa",
-          "Nº Quebras e Motivos",
+                    "Nº Quebras",
           "Nº Sobras",
-          "Nº Caixas por massa"
+          "Nº Cx Massa"
         ]
       },
       "Centeio Pingo Doce": {
         "1": [
-          "Verificação do registo correto dos lotes a uso",
+          "PESAGEM DE MP",
           "Amassadeira: 5 min na Vel. 1 e 5 min na Vel.2",
           "Gramagem: 0,600 kg",
           "Estufa até massa estar pronta",
@@ -242,15 +231,14 @@ export const PROCESS_CONTROL_CATALOG: ProcessCatalog = {
           "Rotulagem correta"
         ],
         "3": [
-          "Nº Unidades Por massa",
-          "Nº Quebras e Motivos",
+                    "Nº Quebras",
           "Nº Sobras",
-          "Nº Caixas por massa"
+          "Nº Cx Massa"
         ]
       },
       "Croutons": {
         "1": [
-          "Verificação do registo correto dos lotes a uso",
+          "PESAGEM DE MP",
           "Amassadeira: 8 min Vel. 1 e 10 min Vel.2",
           "Gramagem: 800 g",
           "Moldar na formadora de baguetes: ovalado",
@@ -265,15 +253,14 @@ export const PROCESS_CONTROL_CATALOG: ProcessCatalog = {
           "Embalamento"
         ],
         "3": [
-          "Nº Unidades Por massa",
-          "Nº Quebras e Motivos",
+                    "Nº Quebras",
           "Nº Sobras",
-          "Nº Caixas por massa"
+          "Nº Cx Massa"
         ]
       },
       "Multigrãos Congelado": {
         "1": [
-          "Verificação do registo correto dos lotes a uso",
+          "PESAGEM DE MP",
           "Amassadeira: 5 min, Vel.1 e 15 min, Vel. 2",
           "Gramagem: 1,100 kg"
         ],
@@ -284,15 +271,14 @@ export const PROCESS_CONTROL_CATALOG: ProcessCatalog = {
           "Desenfornar o Pão para os carros de arrefecimento"
         ],
         "3": [
-          "Nº Unidades Por massa",
-          "Nº Quebras e Motivos",
+                    "Nº Quebras",
           "Nº Sobras",
-          "Nº Caixas por massa"
+          "Nº Cx Massa"
         ]
       },
       "Aveia Congelado": {
         "1": [
-          "Verificação do registo correto dos lotes a uso",
+          "PESAGEM DE MP",
           "Amassadeira: 5 min, Vel. 1 e 15 min, Vel. 2",
           "Gramagem: 0,900 kg"
         ],
@@ -304,15 +290,14 @@ export const PROCESS_CONTROL_CATALOG: ProcessCatalog = {
           "Rotulagem correta"
         ],
         "3": [
-          "Nº Unidades Por massa",
-          "Nº Quebras e Motivos",
+                    "Nº Quebras",
           "Nº Sobras",
-          "Nº Caixas por massa"
+          "Nº Cx Massa"
         ]
       },
       "Centeio Congelado 350g": {
         "1": [
-          "Verificação do registo correto dos lotes a uso",
+          "PESAGEM DE MP",
           "Amassadeira: 5 min na Vel. 1 e 20 min na Vel. 2",
           "Gramagem: 0,950 kg",
           "Estufa: até estar \"pronta\""
@@ -323,15 +308,14 @@ export const PROCESS_CONTROL_CATALOG: ProcessCatalog = {
           "Rotulagem correta"
         ],
         "3": [
-          "Nº Unidades Por massa",
-          "Nº Quebras e Motivos",
+                    "Nº Quebras",
           "Nº Sobras",
-          "Nº Caixas por massa"
+          "Nº Cx Massa"
         ]
       },
       "Trigo ITMP": {
         "1": [
-          "Verificação do registo correto dos lotes a uso",
+          "PESAGEM DE MP",
           "Amassadeira: 5 min na Vel.1 e 15 min na Vel. 2",
           "Gramagem:"
         ],
@@ -342,15 +326,14 @@ export const PROCESS_CONTROL_CATALOG: ProcessCatalog = {
           "Rotulagem correta"
         ],
         "3": [
-          "Nº Unidades Por massa",
-          "Nº Quebras e Motivos",
+                    "Nº Quebras",
           "Nº Sobras",
-          "Nº Caixas por massa"
+          "Nº Cx Massa"
         ]
       },
       "Triga Milha ITMP": {
         "1": [
-          "Verificação do registo correto dos lotes a uso",
+          "PESAGEM DE MP",
           "Amassadeira: 5 min, Vel.1 e 20 min, Vel. 2",
           "Gramagem: 1,150 kg"
         ],
@@ -362,15 +345,14 @@ export const PROCESS_CONTROL_CATALOG: ProcessCatalog = {
           "Rotulagem correta"
         ],
         "3": [
-          "Nº Unidades Por massa",
-          "Nº Quebras e Motivos",
+                    "Nº Quebras",
           "Nº Sobras",
-          "Nº Caixas por massa"
+          "Nº Cx Massa"
         ]
       },
       "Shape": {
         "1": [
-          "Verificação do registo correto dos lotes a uso",
+          "PESAGEM DE MP",
           "Amassadeira: 10 min, exceto fermento",
           "Amassar: durante 10 min na Vel.1 e 15 a 20 min na Vel. 2",
           "Gramagem: 0,470 kg"
@@ -384,15 +366,14 @@ export const PROCESS_CONTROL_CATALOG: ProcessCatalog = {
           "Rotulagem correta"
         ],
         "3": [
-          "Nº Unidades Por massa",
-          "Nº Quebras e Motivos",
+                    "Nº Quebras",
           "Nº Sobras",
-          "Nº Caixas por massa"
+          "Nº Cx Massa"
         ]
       },
       "Trigo Massa Madre": {
         "1": [
-          "Verificação dos lotes a uso",
+          "PESAGEM DE MP",
           "Amassadeira: 5 min Vel 1, 20 min Vel. 2",
           "Gramagem: 0,530 kg",
           "Estufa: 40 a 50 min"
@@ -403,15 +384,14 @@ export const PROCESS_CONTROL_CATALOG: ProcessCatalog = {
           "Rotulagem correta"
         ],
         "3": [
-          "Nº Unidades Por massa",
-          "Nº Quebras e Motivos",
+                    "Nº Quebras",
           "Nº Sobras",
-          "Nº Caixas por massa"
+          "Nº Cx Massa"
         ]
       },
       "Pão Mama Mia": {
         "1": [
-          "Verificação do registo correto dos lotes a uso",
+          "PESAGEM DE MP",
           "Misturar mix Mamma Mia com água e Baslight e hidratar 45 a 60 min",
           "Amassadeira: farinha de trigo e centeio e sal, 5 min à Vel. 10",
           "Gramagem: 0,600 kg"
@@ -425,15 +405,14 @@ export const PROCESS_CONTROL_CATALOG: ProcessCatalog = {
           "Rotulagem correta"
         ],
         "3": [
-          "Nº Unidades Por massa",
-          "Nº Quebras e Motivos",
+                    "Nº Quebras",
           "Nº Sobras",
-          "Nº Caixas por massa"
+          "Nº Cx Massa"
         ]
       },
       "Pão Rústico de Trigo LIDL": {
         "1": [
-          "Verificação do registo correto dos lotes a uso",
+          "PESAGEM DE MP",
           "Amassadeira: 5 min Vel. 1, 10 a 15 min Vel.2",
           "Descansar 1h na bacia",
           "Gramagem: 1,150 kg"
@@ -445,15 +424,14 @@ export const PROCESS_CONTROL_CATALOG: ProcessCatalog = {
           "Rotulagem correta"
         ],
         "3": [
-          "Nº Unidades Por massa",
-          "Nº Quebras e Motivos",
+                    "Nº Quebras",
           "Nº Sobras",
-          "Nº Caixas por massa"
+          "Nº Cx Massa"
         ]
       },
       "Pão Multigrãos LIDL": {
         "1": [
-          "Verificação do registo correto dos lotes a uso",
+          "PESAGEM DE MP",
           "Amassadeira: 5 min Vel.1 e 15 min na Vel. 2",
           "Gramagem: 1,150 kg"
         ],
@@ -465,10 +443,9 @@ export const PROCESS_CONTROL_CATALOG: ProcessCatalog = {
           "Rotulagem correta"
         ],
         "3": [
-          "Nº Unidades Por massa",
-          "Nº Quebras e Motivos",
+                    "Nº Quebras",
           "Nº Sobras",
-          "Nº Caixas por massa"
+          "Nº Cx Massa"
         ]
       }
     }
@@ -478,7 +455,7 @@ export const PROCESS_CONTROL_CATALOG: ProcessCatalog = {
     "products": {
       "Broa Milho da Serra": {
         "1": [
-          "Verificação dos lotes a uso",
+          "PESAGEM DE MP",
           "Introdução da farinha de milho, sal e água a ferver",
           "Misturar: 25 minutos",
           "Arrefecimento: 3 horas"
@@ -494,15 +471,14 @@ export const PROCESS_CONTROL_CATALOG: ProcessCatalog = {
           "Rotulagem correta"
         ],
         "3": [
-          "Nº Unidades Por massa",
-          "Nº Quebras e Motivos",
+                    "Nº Quebras",
           "Nº Sobras",
-          "Nº Caixas por massa"
+          "Nº Cx Massa"
         ]
       },
       "Trigo Pão da Serra": {
         "1": [
-          "Verificação dos lotes a uso",
+          "PESAGEM DE MP",
           "Amassadeira: farinha de trigo + massa mãe de centeio, sal, Hydrapan e GB fresh + 44L água/gelo e amassar 5 min na Vel. 1",
           "Amassadeira: Vel. 2 e água (6L) em 4 adições durante 6 a 8 minutos",
           "A 5 minutos do final adicionar a levedura",
@@ -518,15 +494,14 @@ export const PROCESS_CONTROL_CATALOG: ProcessCatalog = {
         ],
         "3": [
           "Embalamento a granel",
-          "Nº Unidades Por massa",
-          "Nº Quebras e Motivos",
+                    "Nº Quebras",
           "Nº Sobras",
-          "Nº Caixas por massa"
+          "Nº Cx Massa"
         ]
       },
       "Centeio da Serra": {
         "1": [
-          "Verificação dos lotes a uso",
+          "PESAGEM DE MP",
           "Verificação da Pesagem da Receita",
           "Amassamento: 5 minutos Vel.1 e 10 a 15 minutos na Vel.2 (+ ou - 3 minutos)",
           "Estanca da Massa: deixar a massa descansar  durante 30 a 50 min na bacia"
@@ -540,10 +515,9 @@ export const PROCESS_CONTROL_CATALOG: ProcessCatalog = {
           "Rotulagem correta"
         ],
         "3": [
-          "Nº Unidades Por massa",
-          "Nº Quebras e Motivos",
+                    "Nº Quebras",
           "Nº Sobras",
-          "Nº Caixas por massa"
+          "Nº Cx Massa"
         ]
       }
     }
@@ -553,7 +527,7 @@ export const PROCESS_CONTROL_CATALOG: ProcessCatalog = {
     "products": {
       "Mini Bolos de Arroz": {
         "1": [
-          "Verificação dos lotes a uso",
+          "PESAGEM DE MP",
           "Batedeira: 2-3 min, Vel.5",
           "MultiDrop: 0,045 kg",
           "Dispor 28 porções por tabuleiro"
@@ -565,15 +539,14 @@ export const PROCESS_CONTROL_CATALOG: ProcessCatalog = {
           "Rotulagem"
         ],
         "3": [
-          "Nº Unidades Por massa",
-          "Nº Quebras e Motivos",
+                    "Nº Quebras",
           "Nº Sobras",
-          "Nº Caixas por massa"
+          "Nº Cx Massa"
         ]
       },
       "Mini Muffins Chocolate": {
         "1": [
-          "Verificação dos lotes a uso",
+          "PESAGEM DE MP",
           "Batedeira: 2-3 min, Vel.5",
           "Dispor mini tulipas de cor preto fosco nos tabuleiros de suporte de formas",
           "MultiDrop: 0,045 kg"
@@ -586,15 +559,14 @@ export const PROCESS_CONTROL_CATALOG: ProcessCatalog = {
           "Rotulagem"
         ],
         "3": [
-          "Nº Unidades Por massa",
-          "Nº Quebras e Motivos",
+                    "Nº Quebras",
           "Nº Sobras",
-          "Nº Caixas por massa"
+          "Nº Cx Massa"
         ]
       },
       "Mini Muffins Limão e Papoila": {
         "1": [
-          "Verificação dos lotes a uso",
+          "PESAGEM DE MP",
           "Batedeira: 2-3 min, Vel.5",
           "Dispor mini tulipas de cor preto fosco nos tabuleiros de suporte de formas",
           "MultiDrop: 0,045 kg"
@@ -605,15 +577,14 @@ export const PROCESS_CONTROL_CATALOG: ProcessCatalog = {
           "Rotulagem correta"
         ],
         "3": [
-          "Nº Unidades Por massa",
-          "Nº Quebras e Motivos",
+                    "Nº Quebras",
           "Nº Sobras",
-          "Nº Caixas por massa"
+          "Nº Cx Massa"
         ]
       },
       "Bolo Avó Laranja": {
         "1": [
-          "Verificação dos lotes a uso",
+          "PESAGEM DE MP",
           "Batedeira: 2-3 min, Vel.5",
           "Gramagem: 0,450 kg"
         ],
@@ -624,15 +595,14 @@ export const PROCESS_CONTROL_CATALOG: ProcessCatalog = {
           "Rotulagem correta"
         ],
         "3": [
-          "Nº Unidades Por massa",
-          "Nº Quebras e Motivos",
+                    "Nº Quebras",
           "Nº Sobras",
-          "Nº Caixas por massa"
+          "Nº Cx Massa"
         ]
       },
       "Bolo Avó Chocolate": {
         "1": [
-          "Verificação dos lotes a uso",
+          "PESAGEM DE MP",
           "Batedeira: 2-3 min, Vel.5",
           "Gramagem: 0,450 kg"
         ],
@@ -643,15 +613,14 @@ export const PROCESS_CONTROL_CATALOG: ProcessCatalog = {
           "Rotulagem correta"
         ],
         "3": [
-          "Nº Unidades Por massa",
-          "Nº Quebras e Motivos",
+                    "Nº Quebras",
           "Nº Sobras",
-          "Nº Caixas por massa"
+          "Nº Cx Massa"
         ]
       },
       "Bolo Avó Mármore": {
         "1": [
-          "Verificação dos lotes a uso",
+          "PESAGEM DE MP",
           "Batedeira: 2-3 min, Vel.5",
           "Gramagem: 0,450 kg"
         ],
@@ -662,15 +631,14 @@ export const PROCESS_CONTROL_CATALOG: ProcessCatalog = {
           "Rotulagem correta"
         ],
         "3": [
-          "Nº Unidades Por massa",
-          "Nº Quebras e Motivos",
+                    "Nº Quebras",
           "Nº Sobras",
-          "Nº Caixas por massa"
+          "Nº Cx Massa"
         ]
       },
       "Biscoitos Originais": {
         "1": [
-          "Verificação dos lotes a uso",
+          "PESAGEM DE MP",
           "Batedeira: 2-3 min, Vel.5",
           "MultiDrop: 0,030 kg",
           "Dispor 28 porções por tabuleiro"
@@ -682,15 +650,14 @@ export const PROCESS_CONTROL_CATALOG: ProcessCatalog = {
           "Rotulagem correta"
         ],
         "3": [
-          "Nº Unidades Por massa",
-          "Nº Quebras e Motivos",
+                    "Nº Quebras",
           "Nº Sobras",
-          "Nº Caixas por massa"
+          "Nº Cx Massa"
         ]
       },
       "Biscoitos Canela": {
         "1": [
-          "Verificação dos lotes a uso",
+          "PESAGEM DE MP",
           "Batedeira: 2-3 min, Vel.5",
           "MultiDrop: 0,030 kg",
           "Dispor 28 porções por tabuleiro"
@@ -702,15 +669,14 @@ export const PROCESS_CONTROL_CATALOG: ProcessCatalog = {
           "Rotulagem correta"
         ],
         "3": [
-          "Nº Unidades Por massa",
-          "Nº Quebras e Motivos",
+                    "Nº Quebras",
           "Nº Sobras",
-          "Nº Caixas por massa"
+          "Nº Cx Massa"
         ]
       },
       "Biscoitos Laranja": {
         "1": [
-          "Verificação dos lotes a uso",
+          "PESAGEM DE MP",
           "Batedeira: 2-3 min, Vel.5",
           "MultiDrop: 0,030 kg",
           "Dispor 28 porções por tabuleiro"
@@ -722,15 +688,14 @@ export const PROCESS_CONTROL_CATALOG: ProcessCatalog = {
           "Rotulagem correta"
         ],
         "3": [
-          "Nº Unidades Por massa",
-          "Nº Quebras e Motivos",
+                    "Nº Quebras",
           "Nº Sobras",
-          "Nº Caixas por massa"
+          "Nº Cx Massa"
         ]
       },
       "Almendrados": {
         "1": [
-          "Verificação dos lotes a uso",
+          "PESAGEM DE MP",
           "Batedeira: à Vel. 8 durante 8 min - Margarina",
           "Batedeira: secos + margarina, à Vel. 1 durante 30 seg",
           "Batedeira: ovo e bater à Vel. 1, 1 a 2 minutos",
@@ -743,15 +708,14 @@ export const PROCESS_CONTROL_CATALOG: ProcessCatalog = {
           "Flow-pack: Filme BOPP 300 mm"
         ],
         "3": [
-          "Nº Unidades Por massa",
-          "Nº Quebras e Motivos",
+                    "Nº Quebras",
           "Nº Sobras",
-          "Nº Caixas por massa"
+          "Nº Cx Massa"
         ]
       },
       "Grissinos Simples": {
         "1": [
-          "Verificação dos lotes a uso",
+          "PESAGEM DE MP",
           "Batedeira: 4 min à Vel. 5",
           "Dispor a massa em tabuleiros e cortar em parcelas iguais com um cortador próprio para o efeito"
         ],
@@ -762,15 +726,14 @@ export const PROCESS_CONTROL_CATALOG: ProcessCatalog = {
           "Rotulagem correta"
         ],
         "3": [
-          "Nº Unidades Por massa",
-          "Nº Quebras e Motivos",
+                    "Nº Quebras",
           "Nº Sobras",
-          "Nº Caixas por massa"
+          "Nº Cx Massa"
         ]
       },
       "Grissinos Sésamo": {
         "1": [
-          "Verificação dos lotes a uso",
+          "PESAGEM DE MP",
           "Batedeira: 4 min à Vel. 5",
           "Dispor a massa em tabuleiros e cortar em parcelas iguais com um cortador próprio para o efeito"
         ],
@@ -781,15 +744,14 @@ export const PROCESS_CONTROL_CATALOG: ProcessCatalog = {
           "Rotulagem correta"
         ],
         "3": [
-          "Nº Unidades Por massa",
-          "Nº Quebras e Motivos",
+                    "Nº Quebras",
           "Nº Sobras",
-          "Nº Caixas por massa"
+          "Nº Cx Massa"
         ]
       },
       "Tostas Mistura": {
         "1": [
-          "Verificação dos lotes a uso",
+          "PESAGEM DE MP",
           "Batedeira: água e a levedura até total dissolução da levedura + restantes ingredientes",
           "Batedeira: 5 min na Vel. 1 + 5 min na Vel. 2",
           "Gramagem: 0,320 kg"
@@ -803,15 +765,14 @@ export const PROCESS_CONTROL_CATALOG: ProcessCatalog = {
           "Rotulagem correta"
         ],
         "3": [
-          "Nº Unidades Por massa",
-          "Nº Quebras e Motivos",
+                    "Nº Quebras",
           "Nº Sobras",
-          "Nº Caixas por massa"
+          "Nº Cx Massa"
         ]
       },
       "Tostas Multicereais": {
         "1": [
-          "Verificação dos lotes a uso",
+          "PESAGEM DE MP",
           "Batedeira: água e a levedura até total dissolução da levedura + restantes ingredientes",
           "Batedeira: 5 min, na Vel. 1 + 5 min, na Vel. 2",
           "Gramagem: 0,320 kg"
@@ -825,15 +786,14 @@ export const PROCESS_CONTROL_CATALOG: ProcessCatalog = {
           "Rotulagem correta"
         ],
         "3": [
-          "Nº Unidades Por massa",
-          "Nº Quebras e Motivos",
+                    "Nº Quebras",
           "Nº Sobras",
-          "Nº Caixas por massa"
+          "Nº Cx Massa"
         ]
       },
       "Tostas Tomate e Oregãos": {
         "1": [
-          "Verificação dos lotes a uso",
+          "PESAGEM DE MP",
           "Batedeira: água e a levedura até total dissolução da levedura + restantes ingredientes",
           "Batedeira: 5 min, na Vel. 1 + 5 min, na Vel. 2",
           "Gramagem: 0,320 kg"
@@ -847,15 +807,14 @@ export const PROCESS_CONTROL_CATALOG: ProcessCatalog = {
           "Rotulagem correta"
         ],
         "3": [
-          "Nº Unidades Por massa",
-          "Nº Quebras e Motivos",
+                    "Nº Quebras",
           "Nº Sobras",
-          "Nº Caixas por massa"
+          "Nº Cx Massa"
         ]
       },
       "Broa De Milho": {
         "1": [
-          "Verificação dos lotes a uso",
+          "PESAGEM DE MP",
           "Batedeira: água e a levedura até total dissolução da levedura + restantes ingredientes",
           "Batedeira: 4 min, na Vel. 1 + 4 min, na Vel. 2",
           "Gramagem: 0,500 kg"
@@ -867,15 +826,14 @@ export const PROCESS_CONTROL_CATALOG: ProcessCatalog = {
           "Rotulagem correta"
         ],
         "3": [
-          "Nº Unidades Por massa",
-          "Nº Quebras e Motivos",
+                    "Nº Quebras",
           "Nº Sobras",
-          "Nº Caixas por massa"
+          "Nº Cx Massa"
         ]
       },
       "Fatias Pão Branco": {
         "1": [
-          "Verificação dos lotes a uso",
+          "PESAGEM DE MP",
           "Batedeira: água e a levedura até total dissolução da levedura + restantes ingredientes",
           "Batedeira: 3 a 4 min, na Vel. 1 + 4 a 5 min, na Vel. 2",
           "Gramagem: 0,500 kg"
@@ -887,15 +845,14 @@ export const PROCESS_CONTROL_CATALOG: ProcessCatalog = {
           "Rotulagem correta"
         ],
         "3": [
-          "Nº Unidades Por massa",
-          "Nº Quebras e Motivos",
+                    "Nº Quebras",
           "Nº Sobras",
-          "Nº Caixas por massa"
+          "Nº Cx Massa"
         ]
       },
       "Fatias Pão 5 Sementes": {
         "1": [
-          "Verificação dos lotes a uso",
+          "PESAGEM DE MP",
           "Batedeira: água e a levedura até total dissolução da levedura + restantes ingredientes",
           "Batedeira: 3 a 4 min, na Vel. 1 + 4 a 5 min, na Vel. 2",
           "Gramagem: 0,500 kg"
@@ -907,15 +864,14 @@ export const PROCESS_CONTROL_CATALOG: ProcessCatalog = {
           "Rotulagem correta"
         ],
         "3": [
-          "Nº Unidades Por massa",
-          "Nº Quebras e Motivos",
+                    "Nº Quebras",
           "Nº Sobras",
-          "Nº Caixas por massa"
+          "Nº Cx Massa"
         ]
       },
       "Pão de Forma Escuro": {
         "1": [
-          "Verificação dos lotes a uso",
+          "PESAGEM DE MP",
           "Batedeira: água e a levedura até total dissolução da levedura + restantes ingredientes",
           "Batedeira: 3 a 4 min, na Vel. 1 + 4 a 5 min, na Vel. 2",
           "Gramagem: 0,400 kg"
@@ -927,15 +883,14 @@ export const PROCESS_CONTROL_CATALOG: ProcessCatalog = {
           "Rotulagem correta"
         ],
         "3": [
-          "Nº Unidades Por massa",
-          "Nº Quebras e Motivos",
+                    "Nº Quebras",
           "Nº Sobras",
-          "Nº Caixas por massa"
+          "Nº Cx Massa"
         ]
       },
       "Pão de Forma Branco": {
         "1": [
-          "Verificação dos lotes a uso",
+          "PESAGEM DE MP",
           "Batedeira: água e a levedura até total dissolução da levedura + restantes ingredientes",
           "Batedeira: 3 a 4 min, na Vel. 1 + 4 a 5 min, na Vel. 2",
           "Gramagem: 0,400 kg"
@@ -947,15 +902,14 @@ export const PROCESS_CONTROL_CATALOG: ProcessCatalog = {
           "Rotulagem correta"
         ],
         "3": [
-          "Nº Unidades Por massa",
-          "Nº Quebras e Motivos",
+                    "Nº Quebras",
           "Nº Sobras",
-          "Nº Caixas por massa"
+          "Nº Cx Massa"
         ]
       },
       "Pão de Forma 5 Sementes": {
         "1": [
-          "Verificação dos lotes a uso",
+          "PESAGEM DE MP",
           "Batedeira: água e a levedura até total dissolução da levedura + restantes ingredientes",
           "Batedeira: 3 a 4 min, na Vel. 1 + 4 a 5 min, na Vel. 2",
           "Gramagem: 0,400 kg"
@@ -967,15 +921,14 @@ export const PROCESS_CONTROL_CATALOG: ProcessCatalog = {
           "Rotulagem correta"
         ],
         "3": [
-          "Nº Unidades Por massa",
-          "Nº Quebras e Motivos",
+                    "Nº Quebras",
           "Nº Sobras",
-          "Nº Caixas por massa"
+          "Nº Cx Massa"
         ]
       },
       "Pão de Salsicharia": {
         "1": [
-          "Verificação dos lotes a uso",
+          "PESAGEM DE MP",
           "Batedeira: água e a levedura até total dissolução da levedura + restantes ingredientes",
           "Batedeira: 5 min Vel. 1 e 20 min na Vel. 2",
           "Gramagem: 1,200 kg",
@@ -987,15 +940,14 @@ export const PROCESS_CONTROL_CATALOG: ProcessCatalog = {
           "Rotulagem correta"
         ],
         "3": [
-          "Nº Unidades Por massa",
-          "Nº Quebras e Motivos",
+                    "Nº Quebras",
           "Nº Sobras",
-          "Nº Caixas por massa"
+          "Nº Cx Massa"
         ]
       },
       "Pão de Ló": {
         "1": [
-          "Verificação dos lotes a uso",
+          "PESAGEM DE MP",
           "Batedeira: 11-14 min à Vel. 20",
           "Gramagem: 0,220 kg",
           "Colocar as formas"
@@ -1006,15 +958,14 @@ export const PROCESS_CONTROL_CATALOG: ProcessCatalog = {
           "Rotulagem correta"
         ],
         "3": [
-          "Nº Unidades Por massa",
-          "Nº Quebras e Motivos",
+                    "Nº Quebras",
           "Nº Sobras",
-          "Nº Caixas por massa"
+          "Nº Cx Massa"
         ]
       },
       "Pão de Ló Chocolate": {
         "1": [
-          "Verificação dos lotes a uso",
+          "PESAGEM DE MP",
           "Batedeira: 11-14 min à Vel. 20",
           "Gramagem: 0,240 kg",
           "Colocar as formas"
@@ -1025,15 +976,14 @@ export const PROCESS_CONTROL_CATALOG: ProcessCatalog = {
           "Rotulagem correta"
         ],
         "3": [
-          "Nº Unidades Por massa",
-          "Nº Quebras e Motivos",
+                    "Nº Quebras",
           "Nº Sobras",
-          "Nº Caixas por massa"
+          "Nº Cx Massa"
         ]
       },
       "Folar": {
         "1": [
-          "Verificação dos lotes a uso",
+          "PESAGEM DE MP",
           "Batedeira: margarina e acúcar à Vel. 10, 8 min",
           "Batedeira: restantes ingredientes, Vel. 1 - 5 min e Vel.2 - 2min",
           "Gramagem: 0,450 kg"
@@ -1044,15 +994,14 @@ export const PROCESS_CONTROL_CATALOG: ProcessCatalog = {
           "Rotulagem correta"
         ],
         "3": [
-          "Nº Unidades Por massa",
-          "Nº Quebras e Motivos",
+                    "Nº Quebras",
           "Nº Sobras",
-          "Nº Caixas por massa"
+          "Nº Cx Massa"
         ]
       },
       "Pão de Ló Húmido": {
         "1": [
-          "Verificação dos lotes a uso",
+          "PESAGEM DE MP",
           "Batedeira: 12 min - Vel. 20 e 2 min - Vel. Menos"
         ],
         "2": [
@@ -1061,15 +1010,14 @@ export const PROCESS_CONTROL_CATALOG: ProcessCatalog = {
           "Rotulagem correta"
         ],
         "3": [
-          "Nº Unidades Por massa",
-          "Nº Quebras e Motivos",
+                    "Nº Quebras",
           "Nº Sobras",
-          "Nº Caixas por massa"
+          "Nº Cx Massa"
         ]
       },
       "Bolo Rei": {
         "1": [
-          "Verificação dos lotes a uso",
+          "PESAGEM DE MP",
           "Colocação das sultanas no vinho do porto",
           "Juntar ovo, óleo, margarina com o açúcar e os aromas na amassadeira. Envolver.",
           "Colocar a farinha, fermento, e conservantes e começar a amassar na Vel. 2",
@@ -1086,15 +1034,14 @@ export const PROCESS_CONTROL_CATALOG: ProcessCatalog = {
         ],
         "3": [
           "Embalamento na FlowPack",
-          "Nº Unidades Por massa",
-          "Nº Quebras e Motivos",
+                    "Nº Quebras",
           "Nº Sobras",
-          "Nº Caixas por massa"
+          "Nº Cx Massa"
         ]
       },
       "Bolo Rainha": {
         "1": [
-          "Verificação dos lotes a uso",
+          "PESAGEM DE MP",
           "Colocação das sultanas no vinho do porto",
           "Juntar ovo, óleo, margarina com o açúcar e os aromas na amassadeira. Envolver.",
           "Colocar a farinha, fermento, e conservantes e começar a amassar na Vel. 2"
@@ -1111,15 +1058,14 @@ export const PROCESS_CONTROL_CATALOG: ProcessCatalog = {
         ],
         "3": [
           "Embalamento na FlowPack",
-          "Nº Unidades Por massa",
-          "Nº Quebras e Motivos",
+                    "Nº Quebras",
           "Nº Sobras",
-          "Nº Caixas por massa"
+          "Nº Cx Massa"
         ]
       },
       "Bolinhas Brancas DF": {
         "1": [
-          "Verificação dos lotes a uso",
+          "PESAGEM DE MP",
           "Misturar a água, levedura e óleo até total dissolução da levedura",
           "Amassadeira: 4 min - Vel. 1; 4 - min - Vel. 2"
         ],
@@ -1132,15 +1078,14 @@ export const PROCESS_CONTROL_CATALOG: ProcessCatalog = {
           "Rotulagem correta"
         ],
         "3": [
-          "Nº Unidades Por massa",
-          "Nº Quebras e Motivos",
+                    "Nº Quebras",
           "Nº Sobras",
-          "Nº Caixas por massa"
+          "Nº Cx Massa"
         ]
       },
       "Bolinha Alfarroba DF": {
         "1": [
-          "Verificação dos lotes a uso",
+          "PESAGEM DE MP",
           "Batedeira: misturar água, levedura e óleo até total dissolução da levedura",
           "Batedeira: adicionar restantes ingredientes à mistura + 3 min - Vel.1 e 4 min - Vel.2"
         ],
@@ -1153,15 +1098,14 @@ export const PROCESS_CONTROL_CATALOG: ProcessCatalog = {
           "Rotulagem correta"
         ],
         "3": [
-          "Nº Unidades Por massa",
-          "Nº Quebras e Motivos",
+                    "Nº Quebras",
           "Nº Sobras",
-          "Nº Caixas por massa"
+          "Nº Cx Massa"
         ]
       },
       "Baguete Branca DF": {
         "1": [
-          "Verificação dos lotes a uso",
+          "PESAGEM DE MP",
           "Batedeira: misturar água, levedura e óleo até total dissolução da levedura",
           "Batedeira: adicionar restantes ingredientes à mistura + 4 min - Vel.1 e 4 min - Vel.2"
         ],
@@ -1173,15 +1117,14 @@ export const PROCESS_CONTROL_CATALOG: ProcessCatalog = {
           "Rotulagem correta"
         ],
         "3": [
-          "Nº Unidades Por massa",
-          "Nº Quebras e Motivos",
+                    "Nº Quebras",
           "Nº Sobras",
-          "Nº Caixas por massa"
+          "Nº Cx Massa"
         ]
       },
       "Bolinha 5 Sementes DF": {
         "1": [
-          "Verificação dos lotes a uso",
+          "PESAGEM DE MP",
           "Batedeira: misturar água, levedura e óleo até total dissolução da levedura",
           "Batedeira: adicionar restantes ingredientes à mistura + 3 min - Vel.1 e 4 min - Vel.2"
         ],
@@ -1194,15 +1137,14 @@ export const PROCESS_CONTROL_CATALOG: ProcessCatalog = {
           "Rotulagem correta"
         ],
         "3": [
-          "Nº Unidades Por massa",
-          "Nº Quebras e Motivos",
+                    "Nº Quebras",
           "Nº Sobras",
-          "Nº Caixas por massa"
+          "Nº Cx Massa"
         ]
       },
       "Baguete 5 Sementes DF": {
         "1": [
-          "Verificação dos lotes a uso",
+          "PESAGEM DE MP",
           "Batedeira: misturar água, levedura e óleo até total dissolução da levedura",
           "Batedeira: adicionar restantes ingredientes à mistura + 3 min - Vel.1 e 4 min - Vel.2"
         ],
@@ -1215,15 +1157,14 @@ export const PROCESS_CONTROL_CATALOG: ProcessCatalog = {
           "Rotulagem correta"
         ],
         "3": [
-          "Nº Unidades Por massa",
-          "Nº Quebras e Motivos",
+                    "Nº Quebras",
           "Nº Sobras",
-          "Nº Caixas por massa"
+          "Nº Cx Massa"
         ]
       },
       "Pão Brioche DF": {
         "1": [
-          "Verificação do registo correto dos lotes a uso",
+          "PESAGEM DE MP",
           "Misturar todos os ingredientes, 3 min Vel. 1 e 4 min Vel. 2",
           "Multidrop: 100 a 120 g",
           "Colocar 24 unidades por tabuleiro de teflon"
@@ -1235,15 +1176,14 @@ export const PROCESS_CONTROL_CATALOG: ProcessCatalog = {
           "Rotulagem correta"
         ],
         "3": [
-          "Nº Unidades Por massa",
-          "Nº Quebras e Motivos",
+                    "Nº Quebras",
           "Nº Sobras",
-          "Nº Caixas por massa"
+          "Nº Cx Massa"
         ]
       },
       "Pão Saloio DF": {
         "1": [
-          "Verificação dos lotes a uso",
+          "PESAGEM DE MP",
           "Misturar água, levedura e óleo até dissolução da levedura",
           "Pesar todos os ingredientes e juntar na batedeira",
           "Batedeira: 4 min a Vel. 1 e 4 min a Vel. 2"
@@ -1258,15 +1198,14 @@ export const PROCESS_CONTROL_CATALOG: ProcessCatalog = {
           "Rotulagem correta"
         ],
         "3": [
-          "Nº Unidades Por massa",
-          "Nº Quebras e Motivos",
+                    "Nº Quebras",
           "Nº Sobras",
-          "Nº Caixas por massa"
+          "Nº Cx Massa"
         ]
       },
       "Pão de Forma DF": {
         "1": [
-          "Verificação dos lotes a uso",
+          "PESAGEM DE MP",
           "Batedeira: misturar água, levedura e óleo até total dissolução da levedura",
           "Pesar os ingredientes e adicionar à mistura",
           "Batedeira: 3 min Vel.1 e 4 min Vel. 2"
@@ -1279,15 +1218,14 @@ export const PROCESS_CONTROL_CATALOG: ProcessCatalog = {
           "Rotulagem correta"
         ],
         "3": [
-          "Nº Unidades Por massa",
-          "Nº Quebras e Motivos",
+                    "Nº Quebras",
           "Nº Sobras",
-          "Nº Caixas por massa"
+          "Nº Cx Massa"
         ]
       },
       "Muffins Simples DF": {
         "1": [
-          "Verificação dos lotes a uso",
+          "PESAGEM DE MP",
           "Batedeira: óleo, ovos e açúcar - 5 min à Vel. 1",
           "Batedeira: farinha, fermento - 2 min à Vel.1",
           "Tulipas de cor castanha"
@@ -1299,15 +1237,14 @@ export const PROCESS_CONTROL_CATALOG: ProcessCatalog = {
           "Rotulagem correta"
         ],
         "3": [
-          "Nº Unidades Por massa",
-          "Nº Quebras e Motivos",
+                    "Nº Quebras",
           "Nº Sobras",
-          "Nº Caixas por massa"
+          "Nº Cx Massa"
         ]
       },
       "Muffins Frutos Vermelhos DF": {
         "1": [
-          "Verificação dos lotes a uso",
+          "PESAGEM DE MP",
           "Batedeira: óleo, ovos e açúcar - 5 min na Vel. 1",
           "Batedeira: 2 min a Vel.1",
           "Tulipas de cor vermelha"
@@ -1320,15 +1257,14 @@ export const PROCESS_CONTROL_CATALOG: ProcessCatalog = {
           "Rotulagem correta"
         ],
         "3": [
-          "Nº Unidades Por massa",
-          "Nº Quebras e Motivos",
+                    "Nº Quebras",
           "Nº Sobras",
-          "Nº Caixas por massa"
+          "Nº Cx Massa"
         ]
       },
       "Muffins Chocolate DF": {
         "1": [
-          "Verificação do registo correto dos lotes a uso",
+          "PESAGEM DE MP",
           "Batedeira: 3 min Vel. 5",
           "Tulipas de cor lilás"
         ],
@@ -1339,15 +1275,14 @@ export const PROCESS_CONTROL_CATALOG: ProcessCatalog = {
           "Rotulagem correta"
         ],
         "3": [
-          "Nº Unidades Por massa",
-          "Nº Quebras e Motivos",
+                    "Nº Quebras",
           "Nº Sobras",
-          "Nº Caixas por massa"
+          "Nº Cx Massa"
         ]
       },
       "Muffins Limão e Papoila DF": {
         "1": [
-          "Verificação dos lotes a uso",
+          "PESAGEM DE MP",
           "Batedeira: 3 min Vel. 5",
           "Tulipas Preto Fosco"
         ],
@@ -1358,15 +1293,14 @@ export const PROCESS_CONTROL_CATALOG: ProcessCatalog = {
           "Rotulagem correta"
         ],
         "3": [
-          "Nº Unidades Por massa",
-          "Nº Quebras e Motivos",
+                    "Nº Quebras",
           "Nº Sobras",
-          "Nº Caixas por massa"
+          "Nº Cx Massa"
         ]
       },
       "Pastel de Nata DF": {
         "1": [
-          "Verificação dos lotes a uso",
+          "PESAGEM DE MP",
           "Misturar e amassar todos os ingredientes da massa para o pastel",
           "Tender na multidrop em porções na gramagem definida",
           "Colocar em formas de alumínio"
@@ -1383,15 +1317,14 @@ export const PROCESS_CONTROL_CATALOG: ProcessCatalog = {
           "Cozer a 215 ºC durante 24-30 min"
         ],
         "3": [
-          "Nº Unidades Por massa",
-          "Nº Quebras e Motivos",
+                    "Nº Quebras",
           "Nº Sobras",
-          "Nº Caixas por massa"
+          "Nº Cx Massa"
         ]
       },
       "Mini Muffins Chocolate DF": {
         "1": [
-          "Verificação do registo correto dos lotes a uso",
+          "PESAGEM DE MP",
           "Pesagem correta dos ingredientes e juntar na batedeira",
           "Batedeira: 2 a 3 min na Vel. 5",
           "Multidrop: 0,045 kg"
@@ -1402,15 +1335,14 @@ export const PROCESS_CONTROL_CATALOG: ProcessCatalog = {
           "Embalamento"
         ],
         "3": [
-          "Nº Unidades Por massa",
-          "Nº Quebras e Motivos",
+                    "Nº Quebras",
           "Nº Sobras",
-          "Nº Caixas por massa"
+          "Nº Cx Massa"
         ]
       },
       "Mini Bolos de Arroz DF": {
         "1": [
-          "Verificação dos lotes a uso",
+          "PESAGEM DE MP",
           "Batedeira: 2-3 min, Vel. 5",
           "Multidrop: 0,045 kg"
         ],
@@ -1420,15 +1352,14 @@ export const PROCESS_CONTROL_CATALOG: ProcessCatalog = {
           "Embalamento"
         ],
         "3": [
-          "Nº Unidades Por massa",
-          "Nº Quebras e Motivos",
+                    "Nº Quebras",
           "Nº Sobras",
-          "Nº Caixas por massa"
+          "Nº Cx Massa"
         ]
       },
       "Mini Muffins Limão e Papoila DF": {
         "1": [
-          "Verificação do registo correto dos lotes a uso",
+          "PESAGEM DE MP",
           "Batedeira: 2-3 min, Vel. 5",
           "Multidrop: 0,045 kg"
         ],
@@ -1439,15 +1370,14 @@ export const PROCESS_CONTROL_CATALOG: ProcessCatalog = {
           "Rotulagem correta"
         ],
         "3": [
-          "Nº Unidades Por massa",
-          "Nº Quebras e Motivos",
+                    "Nº Quebras",
           "Nº Sobras",
-          "Nº Caixas por massa"
+          "Nº Cx Massa"
         ]
       },
       "Croissants Vegan DF": {
         "1": [
-          "Verificação dos lotes a uso",
+          "PESAGEM DE MP",
           "Batedeira: 3 min na Vel. 1, e 4 min na Vel. 2",
           "Repouso: 5 min",
           "Laminar a massa"
@@ -1461,15 +1391,14 @@ export const PROCESS_CONTROL_CATALOG: ProcessCatalog = {
           "Rotulagem correta"
         ],
         "3": [
-          "Nº Unidades Por massa",
-          "Nº Quebras e Motivos",
+                    "Nº Quebras",
           "Nº Sobras",
-          "Nº Caixas por massa"
+          "Nº Cx Massa"
         ]
       },
       "Croissants Brioche DF": {
         "1": [
-          "Verificação dos lotes a uso",
+          "PESAGEM DE MP",
           "Batedeira: 4 min na Vel.1 e 4 min na Vel.2",
           "Laminar a massa",
           "Gramagem: 100 a 120g"
@@ -1481,15 +1410,14 @@ export const PROCESS_CONTROL_CATALOG: ProcessCatalog = {
           "Forno: 160ºC, 28 a 35 min"
         ],
         "3": [
-          "Nº Unidades Por massa",
-          "Nº Quebras e Motivos",
+                    "Nº Quebras",
           "Nº Sobras",
-          "Nº Caixas por massa"
+          "Nº Cx Massa"
         ]
       },
       "Bolinhas Brioche DF": {
         "1": [
-          "Verificação dos lotes a uso",
+          "PESAGEM DE MP",
           "Amassadeira: 4 min na Vel. 1 e 4 min na Vel. 2",
           "Multidrop: 80 a 90g",
           "Colocar 15 uni por tabuleiro teflon"
@@ -1501,15 +1429,14 @@ export const PROCESS_CONTROL_CATALOG: ProcessCatalog = {
           "Flowpack: filme BOPP 300mm"
         ],
         "3": [
-          "Nº Unidades Por massa",
-          "Nº Quebras e Motivos",
+                    "Nº Quebras",
           "Nº Sobras",
-          "Nº Caixas por massa"
+          "Nº Cx Massa"
         ]
       },
       "Panquecas DF": {
         "1": [
-          "Verificação dos lotes a uso",
+          "PESAGEM DE MP",
           "Batedeira: 3 min Vel 1. e 4 min na Vel.10",
           "Repouso: 5 a 10 min",
           "Pulverizar os tabuleiros de teflon com desmoldante"
@@ -1521,15 +1448,14 @@ export const PROCESS_CONTROL_CATALOG: ProcessCatalog = {
           "Rotulagem correta"
         ],
         "3": [
-          "Nº Unidades Por massa",
-          "Nº Quebras e Motivos",
+                    "Nº Quebras",
           "Nº Sobras",
-          "Nº Caixas por massa"
+          "Nº Cx Massa"
         ]
       },
       "Fatias Pão Forma Rústico DF": {
         "1": [
-          "Verificação dos lotes a uso",
+          "PESAGEM DE MP",
           "Misturar a água, levedura e óleo até total dissolução da levedura",
           "Batedeira: 3-4 min na Vel. 1 e 4-5 min na Vel. 2"
         ],
@@ -1541,15 +1467,14 @@ export const PROCESS_CONTROL_CATALOG: ProcessCatalog = {
           "Rotulagem correta"
         ],
         "3": [
-          "Nº Unidades Por massa",
-          "Nº Quebras e Motivos",
+                    "Nº Quebras",
           "Nº Sobras",
-          "Nº Caixas por massa"
+          "Nº Cx Massa"
         ]
       },
       "Fatias Pão Forma Branco DF": {
         "1": [
-          "Verificação do registo correto dos lotes a uso",
+          "PESAGEM DE MP",
           "Amassadeira: 3 min à Vel. 1 e 4 min à Vel. 2"
         ],
         "2": [
@@ -1560,15 +1485,14 @@ export const PROCESS_CONTROL_CATALOG: ProcessCatalog = {
           "Rotulagem correta"
         ],
         "3": [
-          "Nº Unidades Por massa",
-          "Nº Quebras e Motivos",
+                    "Nº Quebras",
           "Nº Sobras",
-          "Nº Caixas por massa"
+          "Nº Cx Massa"
         ]
       },
       "Fatias Pão Forma 5 Sementes DF": {
         "1": [
-          "Verificação do registo correto dos lotes a uso",
+          "PESAGEM DE MP",
           "Amassadeira: 3 a 4 min a Vel. 1 e 4 a 5 min a Vel. 2"
         ],
         "2": [
@@ -1580,15 +1504,14 @@ export const PROCESS_CONTROL_CATALOG: ProcessCatalog = {
           "Rotulagem correta"
         ],
         "3": [
-          "Nº Unidades Por massa",
-          "Nº Quebras e Motivos",
+                    "Nº Quebras",
           "Nº Sobras",
-          "Nº Caixas por massa"
+          "Nº Cx Massa"
         ]
       },
       "Muffins Simples Panidor": {
         "1": [
-          "Verificação do registo correto dos lotes a uso",
+          "PESAGEM DE MP",
           "Batedeira: ovo, água e óleo durante 2 min à Vel. 2",
           "Batedeira: adicionar muffin mix gluten free, 5 min à Vel. 2",
           "Tulipas cor beje"
@@ -1600,15 +1523,14 @@ export const PROCESS_CONTROL_CATALOG: ProcessCatalog = {
           "Rotulagem correta"
         ],
         "3": [
-          "Nº Unidades Por massa",
-          "Nº Quebras e Motivos",
+                    "Nº Quebras",
           "Nº Sobras",
-          "Nº Caixas por massa"
+          "Nº Cx Massa"
         ]
       },
       "Muffins Chocolate Panidor": {
         "1": [
-          "Verificação do registo correto dos lotes a uso",
+          "PESAGEM DE MP",
           "Batedeira: ovo, água e óleo, 2 min à Vel. 2",
           "Batedeira: muffin mix gluten free, 5 min à Vel. 2",
           "Dispor tulipas cor beje nos tabuleiros de suporte para tulipas"
@@ -1620,15 +1542,14 @@ export const PROCESS_CONTROL_CATALOG: ProcessCatalog = {
           "Rotulagem correta"
         ],
         "3": [
-          "Nº Unidades Por massa",
-          "Nº Quebras e Motivos",
+                    "Nº Quebras",
           "Nº Sobras",
-          "Nº Caixas por massa"
+          "Nº Cx Massa"
         ]
       },
       "Muffins Papoila e Limão Panidor": {
         "1": [
-          "Verificação do registo correto dos lotes a uso",
+          "PESAGEM DE MP",
           "Batedeira: ovo, água e óleo durante 2 min à Vel. 2",
           "Batedeira: adicionar muffin mix gluten free, 5 min à Vel. 2",
           "Tulipas cor beje"
@@ -1640,10 +1561,9 @@ export const PROCESS_CONTROL_CATALOG: ProcessCatalog = {
           "Rotulagem correta"
         ],
         "3": [
-          "Nº Unidades Por massa",
-          "Nº Quebras e Motivos",
+                    "Nº Quebras",
           "Nº Sobras",
-          "Nº Caixas por massa"
+          "Nº Cx Massa"
         ]
       }
     }

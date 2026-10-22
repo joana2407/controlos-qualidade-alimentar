@@ -1915,6 +1915,7 @@ function ModuleHeader({
         "Controlo de amostras em shelf_life": "shelf_life",
         "Controlo de amostras em shelf-life": "shelf_life",
         "Checklist mensal": "monthly_checklist",
+        "Checklist Mensal": "monthly_checklist",
         "Caixas de sugestões": "suggestion_boxes",
         Quebráveis: "fragile_items",
         "Controlo à expedição": "dispatch_control",
@@ -6066,12 +6067,12 @@ function MonthlyChecklistLegacy({ createEntry }: any) {
         });
       })
     );
-    toast.success("Checklist mensal registada.");
+    toast.success("Checklist Mensal registada.");
   }
   return (
     <>
       <ModuleHeader
-        label="Checklist mensal"
+        label="Checklist Mensal"
         description="Avalie os pontos por Área/Zona e acompanhe o preenchimento do mês nas três fábricas."
         icon={ClipboardCheck}
         hideProgress
@@ -6082,7 +6083,7 @@ function MonthlyChecklistLegacy({ createEntry }: any) {
             <div>
               <CardTitle>Preenchimento do mês</CardTitle>
               <CardDescription>
-                Acompanhe a conclusão do checklist mensal por fábrica.
+                Acompanhe a conclusão da Checklist Mensal por fábrica.
               </CardDescription>
             </div>
             {canManage && (
@@ -6210,7 +6211,7 @@ function MonthlyChecklistLegacy({ createEntry }: any) {
         })}
         {grouped.length > 0 && (
           <Button className="w-full" size="lg" disabled={createEntry.isPending}>
-            Concluir checklist mensal
+            Concluir Checklist Mensal
           </Button>
         )}
       </form>
@@ -6499,13 +6500,13 @@ function MonthlyChecklistV2({ createEntry }: any) {
       })
     );
     refresh();
-    toast.success("Checklist mensal registado.");
+    toast.success("Checklist Mensal registada.");
   }
 
   return (
     <>
       <ModuleHeader
-        label="Checklist mensal"
+        label="Checklist Mensal"
         description="Avalie os pontos por Área/Zona e acompanhe o preenchimento do mês nas três fábricas."
         icon={ClipboardCheck}
         hideProgress
@@ -6517,7 +6518,7 @@ function MonthlyChecklistV2({ createEntry }: any) {
                 Preenchimento do mês
               </p>
               <p className="mt-1 text-xs text-slate-300">
-                Acompanhe a conclusão do checklist mensal nas três fábricas.
+                Acompanhe a conclusão da Checklist Mensal nas três fábricas.
               </p>
             </div>
             {canManage && (
@@ -6715,7 +6716,7 @@ function MonthlyChecklistV2({ createEntry }: any) {
               createEntry.isPending || grouped.some(item => !results[item.id])
             }
           >
-            Concluir checklist mensal
+            Concluir Checklist Mensal
           </Button>
         )}
       </form>
@@ -6725,7 +6726,7 @@ function MonthlyChecklistV2({ createEntry }: any) {
             <DialogTitle>Gerir pontos e Áreas/Zonas</DialogTitle>
             <DialogDescription>
               Consulte e mantenha os pontos e as Áreas/Zonas da fábrica
-              selecionada, sem sair da Checklist mensal.
+              selecionada, sem sair da Checklist Mensal.
             </DialogDescription>
           </DialogHeader>
           <div className="rounded-2xl border border-teal-100 bg-teal-50/60 p-4">

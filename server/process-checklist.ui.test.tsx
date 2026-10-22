@@ -19,13 +19,13 @@ describe("Checklist de Processos", () => {
     expect(Object.keys(PROCESS_CONTROL_CATALOG["1"].products).length).toBeGreaterThan(20);
     expect(Object.keys(PROCESS_CONTROL_CATALOG["2"].products)).toContain("Trigo Pão da Serra");
     expect(Object.keys(PROCESS_CONTROL_CATALOG["3"].products)).toContain("Pastel de Nata DF");
-    expect(PROCESS_CONTROL_CATALOG["2"].products["Trigo Pão da Serra"][1]).toContain("Verificação dos lotes a uso");
+    expect(PROCESS_CONTROL_CATALOG["2"].products["Trigo Pão da Serra"][1]).toContain("PESAGEM DE MP");
   });
 
   it("disponibiliza o ponto de lotes para todos os produtos das três fábricas", () => {
     for (const factory of Object.values(PROCESS_CONTROL_CATALOG)) {
       for (const product of Object.values(factory.products)) {
-        expect(product[1].some(parameter => parameter.toLocaleLowerCase("pt-PT").includes("lote"))).toBe(true);
+        expect(product[1].some(parameter => parameter === "PESAGEM DE MP")).toBe(true);
       }
     }
   });
@@ -34,7 +34,7 @@ describe("Checklist de Processos", () => {
     render(<ProcessChecklist />);
     fireEvent.click(screen.getAllByRole("combobox")[1]);
     fireEvent.click(screen.getByText("Broa de Milho"));
-    expect(screen.getByText("Verificação dos lotes a uso")).toBeTruthy();
+    expect(screen.getByText("PESAGEM DE MP")).toBeTruthy();
     expect(screen.getByLabelText("MP")).toBeTruthy();
     expect(screen.getByLabelText("Lote")).toBeTruthy();
     expect(screen.getByLabelText("Validade")).toBeTruthy();
@@ -45,6 +45,16 @@ describe("Checklist de Processos", () => {
     expect(screen.getAllByLabelText("Lote")).toHaveLength(2);
     expect(screen.getAllByLabelText("Validade")).toHaveLength(2);
     expect(screen.getByText("Guardar checklist")).toBeTruthy();
+  });
+
+  it("apresenta empelos por massa no tender e motivos no ponto de quebras", () => {
+    render(<ProcessChecklist />);
+    fireEvent.click(screen.getAllByRole("combobox")[1]);
+    fireEvent.click(screen.getByText("Broa de Milho"));
+    fireEvent.click(screen.getAllByRole("combobox")[2]);
+    fireEvent.click(screen.getByText("Fase final"));
+    expect(screen.getByLabelText("Motivos de quebra")).toBeTruthy();
+    expect(screen.getByText("Nº Quebras")).toBeTruthy();
   });
 
   it("regista o código de receita em qualquer fábrica e preserva-o no histórico", () => {
@@ -90,11 +100,11 @@ describe("Checklist de Processos", () => {
   it("permite à Responsável editar os parâmetros de um produto predefinido", () => {
     render(<ProcessChecklist />);
     fireEvent.click(screen.getByRole("button", { name: "Gerir produtos e parâmetros" }));
-    fireEvent.change(screen.getByLabelText("Fase inicial"), { target: { value: "Verificação dos lotes a uso\nParâmetro revisto" } });
+    fireEvent.change(screen.getByLabelText("Fase inicial"), { target: { value: "PESAGEM DE MP\nParâmetro revisto" } });
     fireEvent.click(screen.getByRole("button", { name: "Guardar configuração" }));
 
     const stored = JSON.parse(localStorage.getItem("qualicontrol-process-catalog-v1") ?? "{}");
-    expect(stored.catalog["1"].products["Broa de Milho"][1]).toEqual(["Verificação dos lotes a uso", "Parâmetro revisto"]);
+    expect(stored.catalog["1"].products["Broa de Milho"][1]).toEqual(["PESAGEM DE MP", "Parâmetro revisto"]);
   });
 
   it("oculta a gestão de configurações para perfis sem autorização de Responsável", () => {

@@ -5,12 +5,15 @@ import { describe, expect, it } from "vitest";
 const modulePath = fileURLToPath(new URL("../client/src/pages/ModuleControl.tsx", import.meta.url));
 const moduleControl = readFileSync(modulePath, "utf8");
 
-describe("Checklist mensal", () => {
+describe("Checklist Mensal", () => {
   it("carrega também os pontos da Área/Zona Geral e concentra o resumo no cabeçalho", () => {
     expect(moduleControl).toMatch(/const names = new Set\(\s*\(checklistAreas\.data \?\? \[\]\)\.map\(item => item\.name\)\s*\)/);
-    expect(moduleControl).toMatch(/<ModuleHeader\s+label="Checklist mensal"/);
+    expect(moduleControl).toMatch(/<ModuleHeader\s+label="Checklist Mensal"/);
     expect(moduleControl).toMatch(/<Label(?:\s+[^>]*)?>\s*Área\/Zona\s*<\/Label>/);
     expect(moduleControl).toContain("Preenchimento do mês");
+    expect(moduleControl).toContain("Acompanhe a conclusão da Checklist Mensal");
+    expect(moduleControl).toContain("Concluir Checklist Mensal");
+    expect(moduleControl).toContain("Checklist Mensal registada.");
     expect(moduleControl).toMatch(/monthlyFactories\.map\(\s*factory\s*=>/);
   });
 

@@ -239,7 +239,7 @@ const qualityModuleLabels: Record<string, string> = {
   metal_detectors: "Detetores de metais",
   sensory: "Controlo sensorial",
   shelf_life: "Shelf-life",
-  monthly_checklist: "Checklist mensal",
+  monthly_checklist: "Checklist Mensal",
   suggestion_boxes: "Caixas de sugestões",
   fragile_items: "Quebráveis",
   dispatch_control: "Controlo à expedição",
@@ -560,7 +560,7 @@ const REQUIRED_MODULE_FREQUENCIES = [
   {
     module: "monthly_checklist",
     frequency: "monthly",
-    title: "Checklist mensal obrigatório",
+    title: "Checklist Mensal obrigatória",
   },
 ] as const;
 const MONTHLY_CHECKLIST_TEMPLATE = [
@@ -2735,7 +2735,7 @@ export const qualityRouter = router({
         { id: "metal_detectors", label: "Verificação de detetores de metais" },
         { id: "sensory", label: "Controlo sensorial de produto acabado" },
         { id: "shelf_life", label: "Controlo de amostras em shelf-life" },
-        { id: "monthly_checklist", label: "Checklist mensal por área" },
+        { id: "monthly_checklist", label: "Checklist Mensal" },
         { id: "suggestion_boxes", label: "Verificação de caixas de sugestões" },
         { id: "fragile_items", label: "Verificação de quebráveis" },
         { id: "dispatch_control", label: "Controlo à expedição" },

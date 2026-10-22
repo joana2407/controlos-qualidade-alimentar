@@ -997,10 +997,10 @@ export default function Controls() {
             role="status"
           >
             <div>
-              <p className="font-semibold">Checklist mensal por planear</p>
+              <p className="font-semibold">Checklist Mensal por planear</p>
               <p className="mt-1 text-sm text-amber-900">
-                Ainda não foi publicado um Checklist Mensal para este mês.
-                Inclua-o no Plano do Dia quando estiver preparado.
+                Ainda não foi publicada a Checklist Mensal para este mês.
+                Inclua-a no Plano do Dia quando estiver preparada.
               </p>
             </div>
             <Button

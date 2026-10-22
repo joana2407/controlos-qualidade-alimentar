@@ -16,7 +16,7 @@ describe("visão geral da plataforma", () => {
     expect(screen.queryByText("Acesso rápido aos controlos.")).toBeNull();
     expect(screen.queryByText("Verifique pelo menos um operador em cada área aplicável.")).toBeNull();
     expect(screen.getByText("Como executar cada controlo.")).toBeTruthy();
-    ["BPHF", "Detetores de metais", "Controlo sensorial", "Shelf-life", "Checklist mensal", "Caixas de sugestões", "Quebráveis", "Controlo à expedição", "Análises internas", "Controlos de Temperatura"].forEach((label) => expect(screen.getAllByText(label).length).toBeGreaterThan(0));
+    ["BPHF", "Detetores de metais", "Controlo sensorial", "Shelf-life", "Checklist Mensal", "Caixas de sugestões", "Quebráveis", "Controlo à expedição", "Análises internas", "Controlos de Temperatura"].forEach((label) => expect(screen.getAllByText(label).length).toBeGreaterThan(0));
     expect(screen.getByText("Um desvio cria uma Incidência; só a decisão de tratamento pode gerar uma NC.")).toBeTruthy();
     expect(screen.getByText("1. Desvio → Incidência")).toBeTruthy();
     expect(screen.getByText("2. Tratar e decidir")).toBeTruthy();

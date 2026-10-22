@@ -51,7 +51,7 @@ const controlPanels = [
   { icon: Magnet, label: "Detetores de metais", path: "/controlos/metal_detectors" },
   { icon: FlaskConical, label: "Controlo sensorial", path: "/controlos/sensory" },
   { icon: TimerReset, label: "Shelf-life", path: "/controlos/shelf_life" },
-  { icon: ListChecks, label: "Checklist mensal", path: "/controlos/monthly_checklist" },
+  { icon: ListChecks, label: "Checklist Mensal", path: "/controlos/monthly_checklist" },
   { icon: MessageSquareMore, label: "Caixas de sugestões", path: "/controlos/suggestion_boxes" },
   { icon: Boxes, label: "Quebráveis", path: "/controlos/fragile_items" },
   { icon: Truck, label: "Controlo à expedição", path: "/controlos/dispatch_control" },

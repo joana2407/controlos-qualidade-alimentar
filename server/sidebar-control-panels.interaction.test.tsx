@@ -87,7 +87,7 @@ describe("atalhos laterais dos painéis de controlo", () => {
     await waitFor(() => expect(screen.getByRole("button", { name: /toggle sidebar/i })).toBeTruthy());
     fireEvent.click(screen.getByRole("button", { name: /toggle sidebar/i }));
     await waitFor(() => expect(screen.getByRole("button", { name: "Controlos" })).toBeTruthy());
-    ["BPHF", "Detetores de metais", "Controlo sensorial", "Shelf-life", "Checklist mensal", "Caixas de sugestões", "Quebráveis"].forEach((label) => {
+    ["BPHF", "Detetores de metais", "Controlo sensorial", "Shelf-life", "Checklist Mensal", "Caixas de sugestões", "Quebráveis"].forEach((label) => {
       expect(screen.getByRole("button", { name: label })).toBeTruthy();
     });
     expect(screen.queryByRole("button", { name: "Sensorial I&D" })).toBeNull();
