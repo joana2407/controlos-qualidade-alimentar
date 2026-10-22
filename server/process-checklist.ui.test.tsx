@@ -90,7 +90,9 @@ describe("Checklist de Processos", () => {
     fireEvent.change(screen.getByLabelText("N.º unidades / unidade de venda"), { target: { value: "2" } });
     fireEvent.change(screen.getByLabelText("N.º unidades / caixa"), { target: { value: "4" } });
     fireEvent.change(screen.getByLabelText("N.º unidades produzidas"), { target: { value: "10" } });
-    fireEvent.change(screen.getByLabelText("N.º unidades embaladas"), { target: { value: "8" } });
+    fireEvent.change(screen.getByLabelText("N.º Cx Final"), { target: { value: "2" } });
+    fireEvent.change(screen.getByLabelText("N.º de quebras"), { target: { value: "2" } });
+    expect(screen.getByText("Unidades embaladas")).toBeTruthy();
     expect(screen.getByText("Unidades de venda")).toBeTruthy();
     expect(screen.getByText("4")).toBeTruthy();
     expect(screen.getByText("20.00%", { exact: false })).toBeTruthy();
