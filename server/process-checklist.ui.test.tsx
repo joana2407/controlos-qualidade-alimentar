@@ -64,6 +64,23 @@ describe("Checklist de Processos", () => {
     expect((screen.getByLabelText("Outro motivo — qual?") as HTMLInputElement).value).toBe("Falha na linha");
   });
 
+  it("calcula unidades de venda, percentagem de quebra e rentabilidade no embalamento", () => {
+    render(<ProcessChecklist />);
+    fireEvent.click(screen.getAllByRole("combobox")[1]);
+    fireEvent.click(screen.getByText("Broa de Milho"));
+    fireEvent.click(screen.getAllByRole("combobox")[2]);
+    fireEvent.click(screen.getByText("Fase de produção"));
+    fireEvent.change(screen.getByLabelText("Forma de embalamento primário"), { target: { value: "Saco" } });
+    fireEvent.change(screen.getByLabelText("N.º unidades / unidade de venda"), { target: { value: "2" } });
+    fireEvent.change(screen.getByLabelText("N.º unidades / caixa"), { target: { value: "4" } });
+    fireEvent.change(screen.getByLabelText("N.º unidades produzidas"), { target: { value: "10" } });
+    fireEvent.change(screen.getByLabelText("N.º unidades embaladas"), { target: { value: "8" } });
+    expect(screen.getByText("Unidades de venda")).toBeTruthy();
+    expect(screen.getByText("4")).toBeTruthy();
+    expect(screen.getByText("20.00%", { exact: false })).toBeTruthy();
+    expect(screen.getByText("80.00%", { exact: false })).toBeTruthy();
+  });
+
   it("regista o código de receita em qualquer fábrica e preserva-o no histórico", () => {
     render(<ProcessChecklist />);
     const recipeCode = screen.getByLabelText("Código da receita") as HTMLInputElement;
