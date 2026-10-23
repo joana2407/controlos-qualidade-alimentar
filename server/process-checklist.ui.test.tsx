@@ -95,6 +95,11 @@ describe("Checklist de Processos", () => {
     fireEvent.change(screen.getByLabelText("N.º de sobras"), { target: { value: "0" } });
     expect(screen.getByText("Unidades embaladas")).toBeTruthy();
     expect(screen.getByText("Sobras")).toBeTruthy();
+    fireEvent.change(screen.getByLabelText("N.º Cx Final"), { target: { value: "1" } });
+    expect(screen.getByText("4 em falta")).toBeTruthy();
+    fireEvent.change(screen.getByLabelText("N.º Cx Final"), { target: { value: "3" } });
+    expect(screen.getByText("4 em excesso")).toBeTruthy();
+    fireEvent.change(screen.getByLabelText("N.º Cx Final"), { target: { value: "2" } });
     expect(screen.getByText("Unidades de venda")).toBeTruthy();
     expect(screen.getByText("4")).toBeTruthy();
     expect(screen.getByText("20.00%", { exact: false })).toBeTruthy();
