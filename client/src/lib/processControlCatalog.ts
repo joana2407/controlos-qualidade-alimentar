@@ -1577,7 +1577,7 @@ const LEGACY_PROCESS_CONTROL_CATALOG: LegacyProcessCatalog = {
 
 export const PROCESS_FACTORY_LABELS: Record<string, string> = { "1": "Fábrica 1 · Fatiado", "2": "Fábrica 2 · Granel", "3": "Fábrica 3 · SG" };
 export const DEFAULT_PROCESS_PHASES: Array<Pick<ProcessPhaseDefinition, "id" | "name">> = [
-  { id: "1", name: "Pesagem e amassadura" },
+  { id: "1", name: "Pesagem de MP" },
   { id: "2", name: "Produção" },
   { id: "3", name: "Cozedura" },
   { id: "4", name: "Embalamento" },
@@ -1640,7 +1640,7 @@ export function restructureProcessProduct(product: LegacyProcessProduct | Proces
     if (isPackagingParameter(value)) return add("4", pointWithReference("Condições de embalamento", value));
     if (isThermalParameter(value)) return add("3", pointWithReference("Tratamento térmico", value));
     if (/pesagem\s+de\s+mp/.test(normalized)) return add("1", "PESAGEM DE MP");
-    if (/amassadeir|batedeir|\bamassar|\bbater\b|\bmisturar\b|\bjuntar\b/.test(normalized)) return add("1", pointWithReference("Amassadura", value));
+    if (/amassadeir|batedeir|\bamassar|\bbater\b|\bmisturar\b|\bjuntar\b/.test(normalized)) return add("2", pointWithReference("Amassadura", value));
     if (/repous|descans|estanca/.test(normalized)) return add("2", pointWithReference("Repouso", value));
     if (/tender|dividir|pesadora|moldar|moldagem/.test(normalized)) return add("2", pointWithReference("Tender/dividir a massa", value));
     if (/gramagem|multidrop|n[ºo]?\s*unidades?\s+por\s+massa/.test(normalized)) return add("2", pointWithReference("Nº unidades por massa", value));
@@ -1654,8 +1654,7 @@ export function restructureProcessProduct(product: LegacyProcessProduct | Proces
     if (!stages[phase].some(value => normalizeProcessText(pointName(value)) === normalizeProcessText(point))) add(phase, point);
   };
   ensure("1", "PESAGEM DE MP");
-  ensure("1", "Amassadura");
-  for (const point of ["Repouso", "Tender/dividir a massa", "Nº unidades por massa", "Levedação", "Acabamento"]) ensure("2", point);
+  for (const point of ["Amassadura", "Repouso", "Tender/dividir a massa", "Nº unidades por massa", "Levedação", "Acabamento"]) ensure("2", point);
   ensure("3", "Tratamento térmico");
   for (const point of FINAL_PACKAGING_POINTS) ensure("4", point);
   return { phases: DEFAULT_PROCESS_PHASES.map(phase => ({ ...phase, parameters: stages[phase.id] })) };
@@ -1666,10 +1665,34 @@ export function restructureProcessCatalog(catalog: ProcessCatalog | LegacyProces
   for (const [factoryId, factory] of Object.entries(catalog)) {
     next[factoryId] = { sheet: factory.sheet, products: {} };
     for (const [productName, product] of Object.entries(factory.products)) {
-      next[factoryId].products[productName] = restructureProcessProduct(product as LegacyProcessProduct | ProcessProduct);
+      next[factoryId].products[productName] = normalizeProcessPhaseAssignments(restructureProcessProduct(product as LegacyProcessProduct | ProcessProduct));
     }
   }
   return next;
+}
+
+/** Corrige catálogos já guardados antes da separação entre Pesagem de MP e Produção. */
+export function normalizeProcessPhaseAssignments(product: ProcessProduct): ProcessProduct {
+  const phases = product.phases.map(clonePhase);
+  const weighingPhase = phases.find(phase => phase.id === "1");
+  const productionPhase = phases.find(phase => phase.id === "2");
+  if (!weighingPhase || !productionPhase) return { phases };
+
+  if (normalizeProcessText(weighingPhase.name) === "pesagem e amassadura") weighingPhase.name = "Pesagem de MP";
+  const movedParameters = weighingPhase.parameters.filter(parameter => normalizeProcessText(pointName(parameter)) === "amassadura");
+  weighingPhase.parameters = weighingPhase.parameters.filter(parameter => normalizeProcessText(pointName(parameter)) !== "amassadura");
+  for (const parameter of movedParameters) {
+    const targetIndex = productionPhase.parameters.findIndex(candidate => normalizeProcessText(pointName(candidate)) === "amassadura");
+    if (targetIndex < 0) {
+      productionPhase.parameters.unshift(parameter);
+      continue;
+    }
+    const existing = productionPhase.parameters[targetIndex];
+    const existingReference = existing.includes(" — ") ? existing.split(" — ").slice(1).join(" — ").trim() : "";
+    const movedReference = parameter.includes(" — ") ? parameter.split(" — ").slice(1).join(" — ").trim() : "";
+    if (movedReference && !existingReference.split(" | ").includes(movedReference)) productionPhase.parameters[targetIndex] = `Amassadura — ${[existingReference, movedReference].filter(Boolean).join(" | ")}`;
+  }
+  return { phases };
 }
 
 export const PROCESS_CONTROL_CATALOG: ProcessCatalog = restructureProcessCatalog(LEGACY_PROCESS_CONTROL_CATALOG);

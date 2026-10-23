@@ -23,10 +23,10 @@ afterEach(() => {
 
 describe("Controlo de Processos", () => {
   it("aplica a grelha transversal a todos os produtos das três fábricas", () => {
-    const requiredPhases = ["Pesagem e amassadura", "Produção", "Cozedura", "Embalamento"];
+    const requiredPhases = ["Pesagem de MP", "Produção", "Cozedura", "Embalamento"];
     const requiredPoints: Record<string, string[]> = {
-      "Pesagem e amassadura": ["PESAGEM DE MP", "Amassadura"],
-      "Produção": ["Repouso", "Tender/dividir a massa", "Nº unidades por massa", "Levedação", "Acabamento"],
+      "Pesagem de MP": ["PESAGEM DE MP"],
+      "Produção": ["Amassadura", "Repouso", "Tender/dividir a massa", "Nº unidades por massa", "Levedação", "Acabamento"],
       "Cozedura": ["Tratamento térmico"],
       "Embalamento": ["Condições de embalamento", "Rotulagem", "Nº Quebras", "Nº Sobras", "Nº Amostras", "Nº Cx/massa"],
     };
@@ -48,7 +48,8 @@ describe("Controlo de Processos", () => {
       "3": { sheet: "Fábrica 3", products: {} },
     } as any);
     const phases = migrated["1"].products["Produto de teste"].phases;
-    expect(phases.find(phase => phase.name === "Pesagem e amassadura")?.parameters).toContain("Amassadura — Amassadeira: 10 min");
+    expect(phases.find(phase => phase.name === "Pesagem de MP")?.parameters).toEqual(["PESAGEM DE MP"]);
+    expect(phases.find(phase => phase.name === "Produção")?.parameters).toContain("Amassadura — Amassadeira: 10 min");
     expect(phases.find(phase => phase.name === "Cozedura")?.parameters).toContain("Tratamento térmico — Forno: 220 ºC");
     expect(phases.find(phase => phase.name === "Embalamento")?.parameters.map(parameter => parameter.split(" — ")[0])).toEqual(expect.arrayContaining(["Condições de embalamento", "Nº Quebras", "Nº Amostras"]));
   });
@@ -60,6 +61,16 @@ describe("Controlo de Processos", () => {
       "3": { sheet: "Fábrica 3", products: {} },
     } as any;
     expect(restructureProcessCatalog(savedCatalog)["1"].products["Produto configurado"].phases.map(phase => phase.name)).toEqual(["Pesagem", "Produção"]);
+  });
+
+  it("migra os catálogos locais anteriores, movendo Amassadura para Produção", () => {
+    const migrated = restructureProcessCatalog({
+      "1": { sheet: "Fábrica 1", products: { "Produto guardado": { phases: [{ id: "1", name: "Pesagem e amassadura", parameters: ["PESAGEM DE MP", "Amassadura — 12 min"] }, { id: "2", name: "Produção", parameters: ["Repouso"] }] } } },
+      "2": { sheet: "Fábrica 2", products: {} },
+      "3": { sheet: "Fábrica 3", products: {} },
+    } as any)["1"].products["Produto guardado"].phases;
+    expect(migrated[0]).toMatchObject({ name: "Pesagem de MP", parameters: ["PESAGEM DE MP"] });
+    expect(migrated[1].parameters).toEqual(expect.arrayContaining(["Amassadura — 12 min", "Repouso"]));
   });
 
   it("disponibiliza os horários predefinidos e muda o turno ao trocar de fábrica", () => {
@@ -115,7 +126,7 @@ describe("Controlo de Processos", () => {
 
     const stored = JSON.parse(localStorage.getItem("qualicontrol-process-catalog-v1") ?? "{}");
     const configuredProduct = stored.catalog["1"].products["Pão de teste"];
-    expect(configuredProduct.phases.map((phase: { name: string }) => phase.name)).toEqual(expect.arrayContaining(["Pesagem e amassadura", "Embalamento", "Arrefecimento"]));
+    expect(configuredProduct.phases.map((phase: { name: string }) => phase.name)).toEqual(expect.arrayContaining(["Pesagem de MP", "Embalamento", "Arrefecimento"]));
     expect(configuredProduct.phases.find((phase: { name: string }) => phase.name === "Arrefecimento").parameters).toEqual(["Arrefecimento — inferior a 30 ºC"]);
   });
 

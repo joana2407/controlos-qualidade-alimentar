@@ -62,7 +62,7 @@ type ProcessRecord = {
   checks: ProcessCheck[];
   overallResult: CheckResult;
 };
-type CatalogStorage = { version: 2; catalog: ProcessCatalog };
+type CatalogStorage = { version: 3; catalog: ProcessCatalog };
 
 const STORAGE_KEY = "qualicontrol-process-checklist-v1";
 const CATALOG_STORAGE_KEY = "qualicontrol-process-catalog-v1";
@@ -88,8 +88,8 @@ const selectedBreakReasons = (check: ProcessCheck) => Array.isArray(check.breakR
 const emptyLotRow = (): LotRow => ({ mp: { value: "", result: "" }, lot: { value: "", result: "" }, expiry: { value: "", result: "" } });
 const cloneCatalog = (catalog: ProcessCatalog): ProcessCatalog => JSON.parse(JSON.stringify(catalog)) as ProcessCatalog;
 const DEFAULT_PHASE_PARAMETERS: Record<string, string[]> = {
-  "1": ["PESAGEM DE MP", "Amassadura"],
-  "2": ["Repouso", "Tender/dividir a massa", "Nº unidades por massa", "Levedação", "Acabamento"],
+  "1": ["PESAGEM DE MP"],
+  "2": ["Amassadura", "Repouso", "Tender/dividir a massa", "Nº unidades por massa", "Levedação", "Acabamento"],
   "3": ["Tratamento térmico"],
   "4": ["Condições de embalamento", "Rotulagem", "Nº Quebras", "Nº Sobras", "Nº Amostras", "Nº Cx/massa"],
 };
@@ -196,7 +196,7 @@ export default function ProcessChecklist() {
   const [packagingFormatsDraft, setPackagingFormatsDraft] = useState("");
 
   useEffect(() => {
-    const storage: CatalogStorage = { version: 2, catalog };
+    const storage: CatalogStorage = { version: 3, catalog };
     localStorage.setItem(CATALOG_STORAGE_KEY, JSON.stringify(storage));
   }, [catalog]);
 
