@@ -1,8 +1,13 @@
 export type ProcessFactoryId = 1 | 2 | 3;
-export type ProcessPhase = 1 | 2 | 3;
-export type ProcessCatalog = Record<string, { sheet: string; products: Record<string, Record<1 | 2 | 3, string[]>> }>;
+export type ProcessPhase = string;
+export type ProcessPhaseDefinition = { id: ProcessPhase; name: string; parameters: string[] };
+export type ProcessProduct = { phases: ProcessPhaseDefinition[] };
+export type ProcessCatalog = Record<string, { sheet: string; products: Record<string, ProcessProduct> }>;
 
-export const PROCESS_CONTROL_CATALOG: ProcessCatalog = {
+type LegacyProcessProduct = Record<1 | 2 | 3, string[]> & Partial<Record<4, string[]>>;
+type LegacyProcessCatalog = Record<string, { sheet: string; products: Record<string, LegacyProcessProduct> }>;
+
+const LEGACY_PROCESS_CONTROL_CATALOG: LegacyProcessCatalog = {
   "1": {
     "sheet": "Fábrica 1",
     "products": {
@@ -1571,4 +1576,100 @@ export const PROCESS_CONTROL_CATALOG: ProcessCatalog = {
 };
 
 export const PROCESS_FACTORY_LABELS: Record<string, string> = { "1": "Fábrica 1 · Fatiado", "2": "Fábrica 2 · Granel", "3": "Fábrica 3 · SG" };
-export const PROCESS_PHASE_LABELS: Record<string, string> = { "1": "Fase inicial", "2": "Fase de produção", "3": "Fase final" };
+export const DEFAULT_PROCESS_PHASES: Array<Pick<ProcessPhaseDefinition, "id" | "name">> = [
+  { id: "1", name: "Pesagem e amassadura" },
+  { id: "2", name: "Produção" },
+  { id: "3", name: "Cozedura" },
+  { id: "4", name: "Embalamento" },
+];
+export const PROCESS_PHASE_LABELS: Record<string, string> = Object.fromEntries(DEFAULT_PROCESS_PHASES.map(phase => [phase.id, phase.name]));
+
+const FINAL_PACKAGING_POINTS = ["Condições de embalamento", "Rotulagem", "Nº Quebras", "Nº Sobras", "Nº Amostras", "Nº Cx/massa"];
+
+const normalizeProcessText = (value: string) => value
+  .normalize("NFD")
+  .replace(/[\u0300-\u036f]/g, "")
+  .toLocaleLowerCase("pt-PT");
+
+const isPackagingParameter = (value: string) => /embala|embalmento|flow\s?-?pack|rotul/.test(normalizeProcessText(value));
+const isThermalParameter = (value: string) => /forno|cozed|enfornar|enforn|desidrata|tratamento termico/.test(normalizeProcessText(value));
+const pointWithReference = (point: string, reference: string) => {
+  const cleanedReference = reference.replace(/\s+/g, " ").trim();
+  return normalizeProcessText(cleanedReference) === normalizeProcessText(point) ? point : `${point} — ${cleanedReference}`;
+};
+const pointName = (value: string) => value.split(" — ")[0].trim();
+
+const clonePhase = (phase: ProcessPhaseDefinition): ProcessPhaseDefinition => ({ ...phase, parameters: [...phase.parameters] });
+const isConfigurableProduct = (product: unknown): product is ProcessProduct => Boolean(product && typeof product === "object" && Array.isArray((product as ProcessProduct).phases));
+
+/**
+ * Estrutura comum aprovada para os controlos de processo. As referências de
+ * produto mantêm-se intactas; apenas passam para a fase operacional correta.
+ */
+export function restructureProcessProduct(product: LegacyProcessProduct | ProcessProduct): ProcessProduct {
+  if (isConfigurableProduct(product)) {
+    const phases = product.phases
+      .filter(phase => phase && typeof phase.id === "string" && typeof phase.name === "string")
+      .map(phase => ({ id: phase.id, name: phase.name.trim() || "Fase sem nome", parameters: Array.from(new Set((phase.parameters ?? []).map(value => value.trim()).filter(Boolean))) }));
+    return { phases };
+  }
+
+  const stages = Object.fromEntries(DEFAULT_PROCESS_PHASES.map(phase => [phase.id, [] as string[]])) as Record<ProcessPhase, string[]>;
+  const add = (phase: ProcessPhase, value: string) => {
+    const clean = value.replace(/\s+/g, " ").trim();
+    if (!clean) return;
+    const title = pointName(clean);
+    const existingIndex = stages[phase].findIndex(item => normalizeProcessText(pointName(item)) === normalizeProcessText(title));
+    if (existingIndex < 0) {
+      stages[phase].push(clean);
+      return;
+    }
+    const existing = stages[phase][existingIndex];
+    const existingReference = existing.includes(" — ") ? existing.split(" — ").slice(1).join(" — ").trim() : "";
+    const nextReference = clean.includes(" — ") ? clean.split(" — ").slice(1).join(" — ").trim() : "";
+    if (!nextReference || existingReference.split(" | ").includes(nextReference)) return;
+    stages[phase][existingIndex] = `${title} — ${[existingReference, nextReference].filter(Boolean).join(" | ")}`;
+  };
+
+  const assign = (value: string) => {
+    const normalized = normalizeProcessText(value);
+    if (/^n[ºo]?\s*quebras/.test(normalized)) return add("4", "Nº Quebras");
+    if (/^n[ºo]?\s*sobras/.test(normalized)) return add("4", "Nº Sobras");
+    if (/^n[ºo]?\s*cx\s*(massa|\/massa)|caixas?\s+por\s+massa/.test(normalized)) return add("4", "Nº Cx/massa");
+    if (normalized.includes("rotul")) return add("4", pointWithReference("Rotulagem", value));
+    if (isPackagingParameter(value)) return add("4", pointWithReference("Condições de embalamento", value));
+    if (isThermalParameter(value)) return add("3", pointWithReference("Tratamento térmico", value));
+    if (/pesagem\s+de\s+mp/.test(normalized)) return add("1", "PESAGEM DE MP");
+    if (/amassadeir|batedeir|\bamassar|\bbater\b|\bmisturar\b|\bjuntar\b/.test(normalized)) return add("1", pointWithReference("Amassadura", value));
+    if (/repous|descans|estanca/.test(normalized)) return add("2", pointWithReference("Repouso", value));
+    if (/tender|dividir|pesadora|moldar|moldagem/.test(normalized)) return add("2", pointWithReference("Tender/dividir a massa", value));
+    if (/gramagem|multidrop|n[ºo]?\s*unidades?\s+por\s+massa/.test(normalized)) return add("2", pointWithReference("Nº unidades por massa", value));
+    if (/estufa|levad|ferment/.test(normalized)) return add("2", pointWithReference("Levedação", value));
+    return add("2", pointWithReference("Acabamento", value));
+  };
+
+  for (const value of [...(product[1] ?? []), ...(product[2] ?? []), ...(product[3] ?? []), ...(product[4] ?? [])]) assign(value);
+
+  const ensure = (phase: ProcessPhase, point: string) => {
+    if (!stages[phase].some(value => normalizeProcessText(pointName(value)) === normalizeProcessText(point))) add(phase, point);
+  };
+  ensure("1", "PESAGEM DE MP");
+  ensure("1", "Amassadura");
+  for (const point of ["Repouso", "Tender/dividir a massa", "Nº unidades por massa", "Levedação", "Acabamento"]) ensure("2", point);
+  ensure("3", "Tratamento térmico");
+  for (const point of FINAL_PACKAGING_POINTS) ensure("4", point);
+  return { phases: DEFAULT_PROCESS_PHASES.map(phase => ({ ...phase, parameters: stages[phase.id] })) };
+}
+
+export function restructureProcessCatalog(catalog: ProcessCatalog | LegacyProcessCatalog): ProcessCatalog {
+  const next: ProcessCatalog = {};
+  for (const [factoryId, factory] of Object.entries(catalog)) {
+    next[factoryId] = { sheet: factory.sheet, products: {} };
+    for (const [productName, product] of Object.entries(factory.products)) {
+      next[factoryId].products[productName] = restructureProcessProduct(product as LegacyProcessProduct | ProcessProduct);
+    }
+  }
+  return next;
+}
+
+export const PROCESS_CONTROL_CATALOG: ProcessCatalog = restructureProcessCatalog(LEGACY_PROCESS_CONTROL_CATALOG);

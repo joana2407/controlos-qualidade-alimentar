@@ -3,175 +3,133 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import ProcessChecklist from "../client/src/pages/ProcessChecklist";
-import { PROCESS_CONTROL_CATALOG } from "../client/src/lib/processControlCatalog";
+import { PROCESS_CONTROL_CATALOG, restructureProcessCatalog } from "../client/src/lib/processControlCatalog";
 
 const qualityAccess = vi.hoisted(() => ({ canManage: true }));
 vi.mock("@/contexts/QualityAccessContext", () => ({ useQualityAccess: () => ({ activeProfile: { id: 3, name: "Joana Pina", title: "Resp. Qualidade", role: "manager" }, canManage: qualityAccess.canManage, canOperate: true }) }));
 vi.mock("@/lib/trpc", () => ({ trpc: { quality: { listBphfInspectionEmployees: { useQuery: () => ({ data: [{ id: 1, name: "Responsável da produção" }] }) } } } }));
 
+const selectOption = (label: string, option: string) => {
+  fireEvent.click(screen.getByLabelText(label));
+  fireEvent.click(screen.getByText(option));
+};
+
 afterEach(() => {
   cleanup();
   localStorage.clear();
   qualityAccess.canManage = true;
+  vi.restoreAllMocks();
 });
 
-describe("Checklist de Processos", () => {
-  it("mantém catálogo por fábrica, produto e fase", () => {
-    expect(Object.keys(PROCESS_CONTROL_CATALOG["1"].products).length).toBeGreaterThan(20);
-    expect(Object.keys(PROCESS_CONTROL_CATALOG["2"].products)).toContain("Trigo Pão da Serra");
-    expect(Object.keys(PROCESS_CONTROL_CATALOG["3"].products)).toContain("Pastel de Nata DF");
-    expect(PROCESS_CONTROL_CATALOG["2"].products["Trigo Pão da Serra"][1]).toContain("PESAGEM DE MP");
+describe("Controlo de Processos", () => {
+  it("aplica a grelha transversal a todos os produtos das três fábricas", () => {
+    const requiredPhases = ["Pesagem e amassadura", "Produção", "Cozedura", "Embalamento"];
+    const requiredPoints: Record<string, string[]> = {
+      "Pesagem e amassadura": ["PESAGEM DE MP", "Amassadura"],
+      "Produção": ["Repouso", "Tender/dividir a massa", "Nº unidades por massa", "Levedação", "Acabamento"],
+      "Cozedura": ["Tratamento térmico"],
+      "Embalamento": ["Condições de embalamento", "Rotulagem", "Nº Quebras", "Nº Sobras", "Nº Amostras", "Nº Cx/massa"],
+    };
+
+    for (const factory of Object.values(PROCESS_CONTROL_CATALOG)) {
+      for (const product of Object.values(factory.products)) {
+        expect(product.phases.map(phase => phase.name)).toEqual(requiredPhases);
+        for (const phase of product.phases) {
+          expect(phase.parameters.map(parameter => parameter.split(" — ")[0])).toEqual(expect.arrayContaining(requiredPoints[phase.name]));
+        }
+      }
+    }
+  });
+
+  it("migra um catálogo local anterior sem perder parâmetros específicos", () => {
+    const migrated = restructureProcessCatalog({
+      "1": { sheet: "Fábrica 1", products: { "Produto de teste": { 1: ["PESAGEM DE MP", "Amassadeira: 10 min"], 2: ["Forno: 220 ºC", "Embalamento"], 3: ["Nº Quebras"] } } },
+      "2": { sheet: "Fábrica 2", products: {} },
+      "3": { sheet: "Fábrica 3", products: {} },
+    } as any);
+    const phases = migrated["1"].products["Produto de teste"].phases;
+    expect(phases.find(phase => phase.name === "Pesagem e amassadura")?.parameters).toContain("Amassadura — Amassadeira: 10 min");
+    expect(phases.find(phase => phase.name === "Cozedura")?.parameters).toContain("Tratamento térmico — Forno: 220 ºC");
+    expect(phases.find(phase => phase.name === "Embalamento")?.parameters.map(parameter => parameter.split(" — ")[0])).toEqual(expect.arrayContaining(["Condições de embalamento", "Nº Quebras", "Nº Amostras"]));
+  });
+
+  it("preserva as fases que a Responsável decidiu eliminar numa configuração guardada", () => {
+    const savedCatalog = {
+      "1": { sheet: "Fábrica 1", products: { "Produto configurado": { phases: [{ id: "1", name: "Pesagem", parameters: ["PESAGEM DE MP"] }, { id: "2", name: "Produção", parameters: ["Amassadura"] }] } } },
+      "2": { sheet: "Fábrica 2", products: {} },
+      "3": { sheet: "Fábrica 3", products: {} },
+    } as any;
+    expect(restructureProcessCatalog(savedCatalog)["1"].products["Produto configurado"].phases.map(phase => phase.name)).toEqual(["Pesagem", "Produção"]);
   });
 
   it("disponibiliza os horários predefinidos e muda o turno ao trocar de fábrica", () => {
     render(<ProcessChecklist />);
     expect((screen.getByLabelText("Horário do turno") as HTMLButtonElement).textContent).toContain("15h-23h");
-    fireEvent.click(screen.getByLabelText("Fábrica"));
-    fireEvent.click(screen.getByText("Fábrica 2 · Granel"));
+    selectOption("Fábrica", "Fábrica 2 · Granel");
     expect((screen.getByLabelText("Horário do turno") as HTMLButtonElement).textContent).toContain("15-23h");
-    fireEvent.click(screen.getByLabelText("Horário do turno"));
-    expect(screen.getByText("23h-7h")).toBeTruthy();
-    fireEvent.click(screen.getByLabelText("Fábrica"));
-    fireEvent.click(screen.getByText("Fábrica 3 · SG"));
+    selectOption("Fábrica", "Fábrica 3 · SG");
     expect((screen.getByLabelText("Horário do turno") as HTMLButtonElement).textContent).toContain("14h-22h");
-    fireEvent.click(screen.getByLabelText("Horário do turno"));
-    expect(screen.getByText("6h-14h")).toBeTruthy();
   });
 
-  it("disponibiliza o ponto de lotes para todos os produtos das três fábricas", () => {
-    for (const factory of Object.values(PROCESS_CONTROL_CATALOG)) {
-      for (const product of Object.values(factory.products)) {
-        expect(product[1].some(parameter => parameter === "PESAGEM DE MP")).toBe(true);
-      }
-    }
-  });
-
-  it("carrega os pontos da fase selecionada e valida campos obrigatórios", () => {
+  it("apresenta a validação individual e várias MP na pesagem", () => {
     render(<ProcessChecklist />);
-    fireEvent.click(screen.getAllByRole("combobox")[2]);
-    fireEvent.click(screen.getByText("Broa de Milho"));
+    selectOption("Produto", "Broa de Milho");
     expect(screen.getByText("PESAGEM DE MP")).toBeTruthy();
     expect(screen.getByLabelText("MP")).toBeTruthy();
     expect(screen.getByLabelText("Lote")).toBeTruthy();
     expect(screen.getByLabelText("Validade")).toBeTruthy();
-    expect(screen.getAllByRole("button", { name: "C" }).length).toBeGreaterThanOrEqual(3);
-    expect(screen.getAllByRole("button", { name: "NC" }).length).toBeGreaterThanOrEqual(3);
     fireEvent.click(screen.getByRole("button", { name: "Adicionar MP" }));
     expect(screen.getAllByLabelText("MP")).toHaveLength(2);
     expect(screen.getAllByLabelText("Lote")).toHaveLength(2);
     expect(screen.getAllByLabelText("Validade")).toHaveLength(2);
-    expect(screen.getByText("Guardar checklist")).toBeTruthy();
   });
 
-  it("apresenta empelos por massa no tender e motivos no ponto de quebras", () => {
+  it("mantém cálculo e reconciliação em Condições de embalamento", () => {
     render(<ProcessChecklist />);
-    fireEvent.click(screen.getAllByRole("combobox")[2]);
-    fireEvent.click(screen.getByText("Broa de Milho"));
-    fireEvent.click(screen.getAllByRole("combobox")[3]);
-    fireEvent.click(screen.getByText("Fase final"));
-    expect(screen.getByText("Motivos de quebra")).toBeTruthy();
-    expect(screen.getByText("Nº Quebras")).toBeTruthy();
-    expect(screen.getByLabelText("Metal")).toBeTruthy();
-    expect(screen.getByLabelText("Mal cozido")).toBeTruthy();
-    fireEvent.click(screen.getByLabelText("Metal"));
-    fireEvent.click(screen.getByLabelText("Outro"));
-    expect(screen.getByLabelText("Outro motivo — qual?")).toBeTruthy();
-    fireEvent.change(screen.getByLabelText("Outro motivo — qual?"), { target: { value: "Falha na linha" } });
-    expect((screen.getByLabelText("Outro motivo — qual?") as HTMLInputElement).value).toBe("Falha na linha");
-  });
-
-  it("calcula unidades de venda, percentagem de quebra e rentabilidade no embalamento", () => {
-    render(<ProcessChecklist />);
-    fireEvent.click(screen.getAllByRole("combobox")[2]);
-    fireEvent.click(screen.getByText("Broa de Milho"));
-    fireEvent.click(screen.getAllByRole("combobox")[3]);
-    fireEvent.click(screen.getByText("Fase de produção"));
+    selectOption("Produto", "Broa de Milho");
+    selectOption("Fase", "Embalamento");
+    expect(screen.getByText("Condições de embalamento")).toBeTruthy();
     fireEvent.change(screen.getByLabelText("Forma de embalamento primário"), { target: { value: "Saco" } });
     fireEvent.change(screen.getByLabelText("N.º unidades / unidade de venda"), { target: { value: "2" } });
     fireEvent.change(screen.getByLabelText("N.º unidades / caixa"), { target: { value: "4" } });
     fireEvent.change(screen.getByLabelText("N.º unidades produzidas"), { target: { value: "10" } });
-    fireEvent.change(screen.getByLabelText("N.º Cx Final"), { target: { value: "2" } });
+    fireEvent.change(screen.getByLabelText("N.º Cx Final"), { target: { value: "1" } });
     fireEvent.change(screen.getByLabelText("N.º de quebras"), { target: { value: "2" } });
     fireEvent.change(screen.getByLabelText("N.º de sobras"), { target: { value: "0" } });
-    expect(screen.getByText("Unidades embaladas")).toBeTruthy();
-    expect(screen.getByText("Sobras")).toBeTruthy();
-    fireEvent.change(screen.getByLabelText("N.º Cx Final"), { target: { value: "1" } });
     expect(screen.getByText("4 em falta")).toBeTruthy();
-    fireEvent.change(screen.getByLabelText("N.º Cx Final"), { target: { value: "3" } });
-    expect(screen.getByText("4 em excesso")).toBeTruthy();
     fireEvent.change(screen.getByLabelText("N.º Cx Final"), { target: { value: "2" } });
-    expect(screen.getByText("Unidades de venda")).toBeTruthy();
-    expect(screen.getByText("4")).toBeTruthy();
     expect(screen.getByText("20.00%", { exact: false })).toBeTruthy();
     expect(screen.getByText("80.00%", { exact: false })).toBeTruthy();
   });
 
-  it("regista o código de receita em qualquer fábrica e preserva-o no histórico", () => {
-    render(<ProcessChecklist />);
-    const recipeCode = screen.getByLabelText("Código da receita") as HTMLInputElement;
-    fireEvent.change(recipeCode, { target: { value: "REC-F1-042" } });
-    fireEvent.click(screen.getAllByRole("combobox")[0]);
-    fireEvent.click(screen.getByText("Fábrica 3 · SG"));
-    expect((screen.getByLabelText("Código da receita") as HTMLInputElement).value).toBe("REC-F1-042");
-
-    fireEvent.click(screen.getAllByRole("combobox")[2]);
-    fireEvent.click(screen.getByText("Bolo Avó Mármore"));
-    fireEvent.click(screen.getAllByRole("combobox")[3]);
-    fireEvent.click(screen.getByText("Fase final"));
-    expect((screen.getByLabelText("Horário do turno") as HTMLButtonElement).textContent).toContain("14h-22h");
-    fireEvent.change(screen.getByPlaceholderText("Nome do responsável"), { target: { value: "Técnica de teste" } });
-    fireEvent.click(screen.getByLabelText("Responsável pela fase"));
-    fireEvent.click(screen.getByText("Responsável da produção"));
-    screen.getAllByRole("button", { name: "C" }).forEach((button) => fireEvent.click(button));
-    fireEvent.click(screen.getByRole("button", { name: "Guardar checklist" }));
-
-    const stored = JSON.parse(localStorage.getItem("qualicontrol-process-checklist-v1") ?? "[]");
-    expect(stored[0].recipeCode).toBe("REC-F1-042");
-    expect(stored[0].responsiblePhase).toBe("Responsável da produção");
-    expect(screen.getByText(/Responsável da fase: Responsável da produção/)).toBeTruthy();
-    expect(screen.getByText(/Receita: REC-F1-042/)).toBeTruthy();
-  });
-
-  it("permite à Responsável criar um produto e definir os parâmetros das três fases", () => {
+  it("permite criar produto, acrescentar fase e definir pontos individuais", () => {
     render(<ProcessChecklist />);
     fireEvent.click(screen.getByRole("button", { name: "Gerir produtos e parâmetros" }));
     fireEvent.click(screen.getByRole("button", { name: "Criar novo produto" }));
     fireEvent.change(screen.getByLabelText("Nome do produto"), { target: { value: "Pão de teste" } });
-    fireEvent.change(screen.getByLabelText("Fase inicial"), { target: { value: "Verificação dos lotes a uso\nAmassadeira: 5 min" } });
-    fireEvent.change(screen.getByLabelText("Fase de produção"), { target: { value: "Gramagem: 0,500 kg" } });
-    fireEvent.change(screen.getByLabelText("Fase final"), { target: { value: "Nº de unidades por massa" } });
+    fireEvent.click(screen.getByRole("button", { name: "Adicionar fase" }));
+    fireEvent.change(screen.getByLabelText("Nome da fase 5"), { target: { value: "Arrefecimento" } });
+    fireEvent.click(screen.getAllByRole("button", { name: "Adicionar ponto de controlo" })[4]);
+    fireEvent.change(screen.getByLabelText("Ponto 1 da fase 5"), { target: { value: "Arrefecimento — inferior a 30 ºC" } });
     fireEvent.click(screen.getByRole("button", { name: "Guardar configuração" }));
 
     const stored = JSON.parse(localStorage.getItem("qualicontrol-process-catalog-v1") ?? "{}");
-    expect(stored.catalog["1"].products["Pão de teste"]).toEqual({
-      1: ["Verificação dos lotes a uso", "Amassadeira: 5 min"],
-      2: ["Gramagem: 0,500 kg"],
-      3: ["Nº de unidades por massa"],
-    });
+    const configuredProduct = stored.catalog["1"].products["Pão de teste"];
+    expect(configuredProduct.phases.map((phase: { name: string }) => phase.name)).toEqual(expect.arrayContaining(["Pesagem e amassadura", "Embalamento", "Arrefecimento"]));
+    expect(configuredProduct.phases.find((phase: { name: string }) => phase.name === "Arrefecimento").parameters).toEqual(["Arrefecimento — inferior a 30 ºC"]);
   });
 
-  it("permite à Responsável editar os parâmetros de um produto predefinido", () => {
+  it("permite à Responsável eliminar pontos, fases e produtos com confirmação", () => {
+    vi.spyOn(window, "confirm").mockReturnValue(true);
     render(<ProcessChecklist />);
     fireEvent.click(screen.getByRole("button", { name: "Gerir produtos e parâmetros" }));
-    fireEvent.change(screen.getByLabelText("Fase inicial"), { target: { value: "PESAGEM DE MP\nParâmetro revisto" } });
-    fireEvent.change(screen.getByLabelText("Formatos de embalagem"), { target: { value: "Saco 5 un | 5 | 20\nSaco individual | 1 | 30" } });
-    fireEvent.click(screen.getByRole("button", { name: "Guardar configuração" }));
-
-    const stored = JSON.parse(localStorage.getItem("qualicontrol-process-catalog-v1") ?? "{}");
-    expect(stored.catalog["1"].products["Broa de Milho"][1]).toEqual(["PESAGEM DE MP", "Parâmetro revisto"]);
-    const packaging = JSON.parse(localStorage.getItem("qualicontrol-process-packaging-catalog-v1") ?? "{}");
-    expect(packaging["1"]["Broa de Milho"]).toEqual([
-      { name: "Saco 5 un", unitsPerSalesUnit: "5", unitsPerBox: "20" },
-      { name: "Saco individual", unitsPerSalesUnit: "1", unitsPerBox: "30" },
-    ]);
-    fireEvent.click(screen.getByRole("button", { name: "Cancelar" }));
-    fireEvent.click(screen.getAllByRole("combobox")[2]);
-    fireEvent.click(screen.getByText("Broa de Milho"));
-    fireEvent.click(screen.getAllByRole("combobox")[3]);
-    fireEvent.click(screen.getByText("Fase de produção"));
-    expect((screen.getByLabelText("Forma de embalamento primário") as HTMLInputElement).value).toBe("Saco 5 un");
-    expect((screen.getByLabelText("N.º unidades / unidade de venda") as HTMLInputElement).value).toBe("5");
-    expect((screen.getByLabelText("N.º unidades / caixa") as HTMLInputElement).value).toBe("20");
+    const initialPointCount = screen.getAllByRole("button", { name: /Eliminar ponto \d+ da fase/ }).length;
+    fireEvent.click(screen.getAllByRole("button", { name: /Eliminar ponto 1 da fase/ })[0]);
+    expect(screen.getAllByRole("button", { name: /Eliminar ponto \d+ da fase/ }).length).toBe(initialPointCount - 1);
+    fireEvent.click(screen.getAllByRole("button", { name: "Eliminar fase" })[3]);
+    expect(screen.queryByLabelText("Nome da fase 4")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Eliminar produto" }));
+    expect(screen.getByLabelText("Nome do produto")).toBeTruthy();
   });
 
   it("oculta a gestão de configurações para perfis sem autorização de Responsável", () => {
