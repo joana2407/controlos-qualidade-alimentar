@@ -60,6 +60,7 @@
     "input-otp": "^1.4.2",
     "jose": "6.1.0",
     "lucide-react": "^0.453.0",
+    "lz-string": "^1.5.0",
     "mysql2": "^3.15.0",
     "nanoid": "^5.1.5",
     "next-themes": "^0.4.6",
@@ -75,6 +76,7 @@
     "tailwind-merge": "^3.3.1",
     "tailwindcss-animate": "^1.0.7",
     "vaul": "^1.1.2",
+    "workbox-routing": "^7.3.0",
     "wouter": "^3.3.5",
     "xlsx": "^0.18.5",
     "zod": "^4.1.12"

@@ -1,3 +1,5 @@
+import { LOCAL_MODE } from "./localDatabase";
+import { executeLocalOperation } from "./localRpc";
 export const OFFLINE_INCIDENCE_EVENT = "qualicontrol:offline-incidences";
 export const OFFLINE_INCIDENCE_SYNC_TAG = "qualicontrol-incidence-sync";
 
@@ -76,9 +78,18 @@ async function requestBackgroundSync() {
 }
 
 async function performOfflineIncidenceSync() {
-  if (typeof navigator !== "undefined" && !navigator.onLine) return { synced: 0, pending: (await listOfflineIncidences()).length };
+  if (!LOCAL_MODE && typeof navigator !== "undefined" && !navigator.onLine) return { synced: 0, pending: (await listOfflineIncidences()).length };
   const items = await listOfflineIncidences();
   if (!items.length) return { synced: 0, pending: 0 };
+  if (LOCAL_MODE) {
+    const ids: string[] = [];
+    for (const item of items) {
+      await executeLocalOperation("quality.createEntry", { module: item.module, title: item.title, area: "Incidência manual", notes: item.description, factoryId: item.factoryId, result: "NC", manualIncidence: true, incidenceOccurredOn: item.occurredOn, offlineSyncId: item.offlineSyncId, payload: { collaboratorId: item.collaboratorId, incidenceTheme: item.theme, incidenceOccurredOn: item.occurredOn, evidencePhotos: item.photos.map(photo => ({ ...photo, url: photo.dataUrl })) } }, "mutation");
+      ids.push(item.offlineSyncId);
+    }
+    await removeOfflineIncidences(ids); announceQueueChange();
+    return { synced: ids.length, pending: (await listOfflineIncidences()).length };
+  }
   const response = await fetch("/api/offline-incidences", {
     method: "POST",
     credentials: "include",
@@ -107,7 +118,7 @@ export async function queueOfflineIncidence(draft: Omit<OfflineIncidenceDraft, "
   await runStore("readwrite", (store) => store.put(record));
   announceQueueChange();
   try {
-    if (navigator.onLine) return await syncOfflineIncidences();
+    if (LOCAL_MODE || navigator.onLine) return await syncOfflineIncidences();
     await requestBackgroundSync();
   } catch {
     // A incidência mantém-se na fila local e será reenviada quando a ligação regressar.

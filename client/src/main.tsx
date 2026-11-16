@@ -8,6 +8,8 @@ import App from "./App";
 import { startLogin } from "./const";
 import { initialiseOfflineIncidenceSync } from "./lib/offlineIncidences";
 import "./index.css";
+import { LOCAL_MODE } from "./lib/localDatabase";
+import { localStorageLink } from "./lib/localRpc";
 
 type DeferredInstallPrompt = Event & {
   prompt: () => Promise<void>;
@@ -62,7 +64,7 @@ const redirectToLoginIfUnauthorized = (error: unknown) => {
 
   const isUnauthorized = error.message === UNAUTHED_ERR_MSG;
 
-  if (!isUnauthorized) return;
+  if (!isUnauthorized || LOCAL_MODE) return;
 
   startLogin();
 };
@@ -84,7 +86,7 @@ queryClient.getMutationCache().subscribe(event => {
 });
 
 const trpcClient = trpc.createClient({
-  links: [
+  links: LOCAL_MODE ? [localStorageLink] : [
     httpBatchLink({
       url: "/api/trpc",
       transformer: superjson,
@@ -119,6 +121,10 @@ const trpcClient = trpc.createClient({
 });
 
 initialiseOfflineIncidenceSync();
+if (LOCAL_MODE) {
+  window.addEventListener("storage", () => void queryClient.invalidateQueries());
+  window.addEventListener("qualicontrol-local-data", () => void queryClient.invalidateQueries());
+}
 
 createRoot(document.getElementById("root")!).render(
   <trpc.Provider client={trpcClient} queryClient={queryClient}>

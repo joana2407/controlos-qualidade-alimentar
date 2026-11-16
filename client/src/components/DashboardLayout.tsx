@@ -1,3 +1,4 @@
+import { LOCAL_MODE } from "@/lib/localDatabase";
 import { OperatorPinGate } from "@/components/OperatorPinGate";
 import { QualityManagerCopilot } from "@/components/quality/QualityManagerCopilot";
 import { QualityAccessProvider, useQualityAccess } from "@/contexts/QualityAccessContext";
@@ -117,6 +118,7 @@ export default function DashboardLayout({
     localStorage.setItem(SIDEBAR_WIDTH_KEY, sidebarWidth.toString());
   }, [sidebarWidth]);
 
+  if (access.error) return <main className="mx-auto max-w-xl p-8"><h1 className="text-xl font-semibold">Não foi possível abrir os dados</h1><p className="my-4 text-sm">{access.error.message}</p><Button onClick={() => access.refetch()}>Tentar novamente</Button><p className="mt-4 text-xs">Os dados existentes não foram apagados.</p></main>;
   if (access.isLoading || !access.data) return <DashboardLayoutSkeleton />;
   if (!access.data.activeProfile) return <OperatorPinGate access={access.data} />;
   const accessValue = { activeProfile: access.data.activeProfile, canManage: access.data.canManage, canOperate: access.data.activeProfile?.role !== "viewer" };
@@ -371,7 +373,7 @@ function DashboardLayoutContent({
       </div>
 
       <SidebarInset>
-        <LisbonOperationalClock />
+        <LisbonOperationalClock />{LOCAL_MODE && <div className="border-b border-amber-100 bg-amber-50 px-4 py-2 text-xs text-amber-950">Versão independente · Dados guardados apenas neste navegador · Exporte cópias de segurança para os transferir. A IA remota e a leitura automática de PDF não estão disponíveis.</div>}
         {!canOperate && <div className="border-b border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-950"><div className="mx-auto flex max-w-7xl items-center gap-2"><ShieldCheck className="h-4 w-4 text-sky-700" /><span><strong>Modo consulta:</strong> pode consultar a informação, mas não pode registar, editar, eliminar ou publicar.</span></div></div>}
         {isMobile && (
           <div className="flex border-b h-14 items-center justify-between bg-background/95 px-2 backdrop-blur supports-[backdrop-filter]:backdrop-blur sticky top-0 z-40">
@@ -388,7 +390,7 @@ function DashboardLayoutContent({
           </div>
         )}
         <main className="flex-1 p-4">{canViewCurrentPanel ? children : <section className="mx-auto grid min-h-[55vh] max-w-lg place-items-center text-center"><Card className="border-amber-200 bg-amber-50"><CardContent className="p-8"><ShieldAlert className="mx-auto h-8 w-8 text-amber-700" /><h1 className="mt-4 text-xl font-semibold text-amber-950">Painel não autorizado</h1><p className="mt-2 text-sm leading-6 text-amber-900">O seu perfil não tem acesso a este painel. Contacte a Responsável de Qualidade para rever as suas autorizações.</p><Button className="mt-5" onClick={() => setLocation("/qualicontrol")}>Voltar aos painéis autorizados</Button></CardContent></Card></section>}</main>
-        {canManage && <QualityManagerCopilot />}
+        {canManage && !LOCAL_MODE && <QualityManagerCopilot />}
       </SidebarInset>
     </>
   );

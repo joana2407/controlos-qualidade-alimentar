@@ -28,7 +28,7 @@ describe("Copiloto de Qualidade global", () => {
 
   it("mantém o copiloto disponível em todo o shell apenas para Responsáveis de Qualidade", () => {
     expect(layout).toContain('import { QualityManagerCopilot }');
-    expect(layout).toContain("{canManage && <QualityManagerCopilot />}");
+    expect(layout).toContain("{canManage && !LOCAL_MODE && <QualityManagerCopilot />}");
     expect(copilot).toContain("if (!canManage) return null");
   });
 
