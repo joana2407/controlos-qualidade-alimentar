@@ -45,4 +45,11 @@ export async function localPinDigest(pin: string, salt: string): Promise<string>
   const bits = await crypto.subtle.deriveBits({ name: "PBKDF2", salt: new TextEncoder().encode(salt), iterations: 100000, hash: "SHA-256" }, key, 256);
   return Array.from(new Uint8Array(bits), byte => byte.toString(16).padStart(2, "0")).join("");
 }
-export const LOCAL_MODE = import.meta.env.VITE_LOCAL_MODE === "true";
+// Uma publicação Vercel é uma instalação independente. O teste do hostname
+// evita que uma compilação automática do Vercel caia acidentalmente no cliente
+// online e altere a base Manus através de /api/trpc.
+const independentProductionHost = typeof window !== "undefined"
+  && import.meta.env.PROD
+  && !/((^|\.)manus(?:pre)?\.com|(^|\.)manuscomputer\.ai|(^|\.)manusvm\.computer|^localhost$|^127\.0\.0\.1$)/i.test(window.location.hostname);
+
+export const LOCAL_MODE = import.meta.env.VITE_LOCAL_MODE === "true" || independentProductionHost;
