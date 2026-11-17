@@ -9,7 +9,6 @@ import { VitePWA } from "vite-plugin-pwa";
 
 // O Vercel publica a aplicação na raiz. Para GitHub Pages pode ser definido
 // VITE_BASE_PATH=/qualicontrol/ durante o build, sem alterar o código.
-const LOCAL_BUILD = process.env.VITE_LOCAL_MODE === "true";
 const configuredBase = process.env.VITE_BASE_PATH?.trim();
 const APP_BASE = configuredBase
   ? `${configuredBase.startsWith("/") ? "" : "/"}${configuredBase.endsWith("/") ? configuredBase : `${configuredBase}/`}`
@@ -159,17 +158,15 @@ function vitePluginManusDebugCollector(): Plugin {
   };
 }
 
-const staticDeployment: Plugin = { name: "independent-vercel-config", generateBundle() { this.emitFile({ type: "asset", fileName: "vercel.json", source: '{ "buildCommand": "", "outputDirectory": ".", "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }] }\n' }); } };
 const plugins = [
   react(),
   tailwindcss(),
-  ...(LOCAL_BUILD ? [staticDeployment] : []),
-  ...(LOCAL_BUILD ? [] : [jsxLocPlugin(), vitePluginManusRuntime()]),
-  ...(LOCAL_BUILD ? [{ name: "independent-html", transformIndexHtml: (html: string) => html.replace(/<script\s+defer[\s\S]*?data-website-id="[^"]*"><\/script>/g, "") }] : []),
+  jsxLocPlugin(),
+  vitePluginManusRuntime(),
   VitePWA({
     strategies: "injectManifest",
     srcDir: "src",
-    filename: LOCAL_BUILD ? "local-sw.ts" : "offline-sync-sw.ts",
+    filename: "offline-sync-sw.ts",
     registerType: "autoUpdate",
     injectRegister: "auto",
     manifest: {
@@ -191,7 +188,7 @@ const plugins = [
       maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
     },
   }),
-  ...(LOCAL_BUILD ? [] : [vitePluginManusDebugCollector()]),
+  vitePluginManusDebugCollector(),
 ];
 
 export default defineConfig({

@@ -1,5 +1,4 @@
 import { SeverityBadge, StatusBadge } from "@/components/quality/QualityUi";
-import { LOCAL_MODE } from "@/lib/localDatabase";
 import { IncidenceAiAssistant } from "@/components/quality/IncidenceAiAssistant";
 import { Badge } from "@/components/ui/badge";
 import { OfflineIncidencePanel } from "@/components/OfflineIncidencePanel";
