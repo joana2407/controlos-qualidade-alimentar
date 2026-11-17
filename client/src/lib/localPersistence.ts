@@ -37,28 +37,19 @@ export async function loadPersistentDatabase(): Promise<LocalDatabase> {
     // A build Vercel independente inclui os registos históricos sem fotografias
     // pesadas. Migra-os uma única vez; os dispositivos que já têm dados locais
     // nunca são substituídos automaticamente.
-    try {
-      if (!import.meta.env.PROD) return initialLocalDatabase();
-      const response = await fetch(`${import.meta.env.BASE_URL}${INITIAL_HISTORY_FILE}`, { cache: "no-store" });
-      if (response.ok) {
-        const transfer = await response.json() as { format?: string; version?: number; entries?: Record<string, string> };
-        const initialRaw = transfer.format === "qualicontrol-local-storage-backup" && transfer.version === 1
-          ? transfer.entries?.[LOCAL_DATABASE_KEY]
-          : undefined;
-        if (initialRaw) {
-          const database = decodeLocalDatabase(initialRaw);
-          await persistDatabase(database, database.revision, false);
-          return database;
-        }
-      }
-    } catch {
-      // Primeira utilização sem o ficheiro inicial: começar com uma base vazia.
-    }
+    const database = await loadBundledInitialHistory();
+    if (database) { await persistDatabase(database, database.revision, false); return database; }
     return initialLocalDatabase();
   }
   const stored = raw === INDEXED_MARKER ? await readIndexed() : raw;
   if (!stored) throw new Error("O histórico local não foi encontrado. Importe a cópia de segurança; o armazenamento não foi reinicializado.");
-  return decodeLocalDatabase(stored);
+  const database = decodeLocalDatabase(stored);
+  const hasOperationalHistory = database.tables.entries.length > 0 || database.tables.tasks.length > 0 || database.tables.archives.length > 0;
+  if (!hasOperationalHistory) {
+    const bundled = await loadBundledInitialHistory();
+    if (bundled) { await persistDatabase(bundled, database.revision, false); return bundled; }
+  }
+  return database;
 }
 export async function persistDatabase(database: LocalDatabase, revision: number, enforceRevision = true) {
   validateLocalDatabase(database);
@@ -75,6 +66,22 @@ export async function persistDatabase(database: LocalDatabase, revision: number,
   localStorage.setItem(LOCAL_DATABASE_KEY, INDEXED_MARKER);
   window.dispatchEvent(new Event("qualicontrol-local-data"));
 }
+
+async function loadBundledInitialHistory(): Promise<LocalDatabase | null> {
+  try {
+    if (!import.meta.env.PROD) return null;
+    const response = await fetch(`${import.meta.env.BASE_URL}${INITIAL_HISTORY_FILE}`, { cache: "no-store" });
+    if (!response.ok) return null;
+    const transfer = await response.json() as { format?: string; version?: number; entries?: Record<string, string> };
+    const initialRaw = transfer.format === "qualicontrol-local-storage-backup" && transfer.version === 1
+      ? transfer.entries?.[LOCAL_DATABASE_KEY]
+      : undefined;
+    return initialRaw ? decodeLocalDatabase(initialRaw) : null;
+  } catch {
+    return null;
+  }
+}
+
 export async function exportStorageEntries(): Promise<Record<string, string>> {
   const entries: Record<string, string> = {};
   for (let index = 0; index < localStorage.length; index++) { const key = localStorage.key(index); if (key) entries[key] = localStorage.getItem(key)!; }
