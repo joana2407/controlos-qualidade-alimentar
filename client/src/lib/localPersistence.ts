@@ -7,6 +7,7 @@ const INDEXED_MARKER = "indexeddb:v1";
 const COMPRESSED_PREFIX = "lz:v1:";
 const DB_NAME = "qualicontrol-independent-data";
 const STORE = "database";
+const INITIAL_HISTORY_FILE = "qualicontrol-historico-inicial.json";
 export function encodeLocalDatabase(database: LocalDatabase): string { return COMPRESSED_PREFIX + LZString.compressToUTF16(superjson.stringify(database)); }
 export function decodeLocalDatabase(raw: string): LocalDatabase {
   const text = raw.startsWith(COMPRESSED_PREFIX) ? LZString.decompressFromUTF16(raw.slice(COMPRESSED_PREFIX.length)) : raw;
@@ -32,7 +33,29 @@ async function writeIndexed(raw: string, revision: number, enforceRevision: bool
 }
 export async function loadPersistentDatabase(): Promise<LocalDatabase> {
   const raw = localStorage.getItem(LOCAL_DATABASE_KEY);
-  if (!raw) return initialLocalDatabase();
+  if (!raw) {
+    // A build Vercel independente inclui os registos históricos sem fotografias
+    // pesadas. Migra-os uma única vez; os dispositivos que já têm dados locais
+    // nunca são substituídos automaticamente.
+    try {
+      if (!import.meta.env.PROD) return initialLocalDatabase();
+      const response = await fetch(`${import.meta.env.BASE_URL}${INITIAL_HISTORY_FILE}`, { cache: "no-store" });
+      if (response.ok) {
+        const transfer = await response.json() as { format?: string; version?: number; entries?: Record<string, string> };
+        const initialRaw = transfer.format === "qualicontrol-local-storage-backup" && transfer.version === 1
+          ? transfer.entries?.[LOCAL_DATABASE_KEY]
+          : undefined;
+        if (initialRaw) {
+          const database = decodeLocalDatabase(initialRaw);
+          await persistDatabase(database, database.revision, false);
+          return database;
+        }
+      }
+    } catch {
+      // Primeira utilização sem o ficheiro inicial: começar com uma base vazia.
+    }
+    return initialLocalDatabase();
+  }
   const stored = raw === INDEXED_MARKER ? await readIndexed() : raw;
   if (!stored) throw new Error("O histórico local não foi encontrado. Importe a cópia de segurança; o armazenamento não foi reinicializado.");
   return decodeLocalDatabase(stored);
